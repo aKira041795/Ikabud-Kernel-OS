@@ -162,7 +162,9 @@ class SemanticScorer
                        'and', 'or', 'but', 'not', 'no', 'if'];
 
         $words = preg_split('/\W+/', mb_strtolower($text));
-        return array_values(array_filter($words, fn(string $w) =>
+        return array_values(array_filter(
+            $words,
+            fn (string $w) =>
             strlen($w) > 2 && !in_array($w, $stopWords, true)
         ));
     }

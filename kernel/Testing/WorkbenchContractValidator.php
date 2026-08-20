@@ -94,7 +94,9 @@ final class WorkbenchContractValidator
         // Validate input attributes
         $attrDefs = $contract['attributes'] ?? [];
         foreach ($attrDefs as $attrName => $attrDef) {
-            if ($attrName === 'data-wb-component') continue;
+            if ($attrName === 'data-wb-component') {
+                continue;
+            }
             $source = $attrDef['source'] ?? null;
             if ($source !== null) {
                 $expectedValue = $this->resolveAttributeSource($source, $props);
@@ -237,7 +239,9 @@ final class WorkbenchContractValidator
      */
     private function checkClickableRowsHaveDataWbHref(string $html, bool $expected): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         if (preg_match('/<tr\b[^>]*(?:role=\"link\"|tabindex=\"0\")[^>]*>/i', $html)
             && !preg_match('/<tr\b[^>]*data-wb-href=\"[^\"]+\"[^>]*>/i', $html)) {
             return 'Clickable rows missing data-wb-href';
@@ -250,7 +254,9 @@ final class WorkbenchContractValidator
      */
     private function checkEntityRowsHaveDataWbEntityId(string $html, bool $expected): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
 
         preg_match_all('/<tbody\b[^>]*>(.*?)<\/tbody>/is', $html, $bodies);
         foreach ($bodies[1] ?? [] as $bodyHtml) {
@@ -309,7 +315,9 @@ final class WorkbenchContractValidator
      */
     private function checkErrorLinksPointToFields(string $html, bool $expected): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         preg_match_all('/href="#([^"]+)"/', $html, $links);
         if (empty($links[1])) {
             return 'Error summary has no field links';
@@ -333,7 +341,9 @@ final class WorkbenchContractValidator
      */
     private function checkHasExactlyOneH1(string $html, bool $expected): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         $count = preg_match_all('/<h1[^>]*>/i', $html);
         if ($count !== 1) {
             return "Expected exactly 1 H1, found {$count}";
@@ -346,7 +356,9 @@ final class WorkbenchContractValidator
      */
     private function checkActionsHaveDataWbAction(string $html, bool $expected): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         // If there are <button> or <a> elements, they should have data-wb-action
         if (preg_match('/<(button|a)\s[^>]*>/', $html)) {
             if (!str_contains($html, 'data-wb-action="')) {
@@ -361,7 +373,9 @@ final class WorkbenchContractValidator
      */
     private function checkPostActionsHaveDataWbMethod(string $html, bool $expected): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         if (preg_match_all('/<form\b[^>]*method="POST"[^>]*>(.*?)<\/form>/is', $html, $forms)) {
             foreach ($forms[1] as $formBody) {
                 if (!str_contains($formBody, 'data-wb-method="POST"')) {
@@ -391,7 +405,9 @@ final class WorkbenchContractValidator
      */
     private function checkDisplaysLabel(string $html, bool $expected, array $props = []): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         $label = trim((string)($props['label'] ?? ''));
         if ($label !== '' && !str_contains(strip_tags($html), $label)) {
             return "Missing label text '{$label}'";
@@ -404,7 +420,9 @@ final class WorkbenchContractValidator
      */
     private function checkDisplaysValue(string $html, bool $expected, array $props = []): ?string
     {
-        if (!$expected) return null;
+        if (!$expected) {
+            return null;
+        }
         $value = trim((string)($props['value'] ?? ''));
         if ($value !== '' && !str_contains(strip_tags($html), $value)) {
             return "Missing value text '{$value}'";
@@ -428,7 +446,9 @@ final class WorkbenchContractValidator
      */
     private function checkClickableWhenHrefPresent(string $html, bool $expected, array $props = []): ?string
     {
-        if (!$expected || empty($props['href'])) return null;
+        if (!$expected || empty($props['href'])) {
+            return null;
+        }
         if (!str_contains($html, 'data-wb-href="' . (string)$props['href'] . '"')) {
             return 'Clickable summary card missing data-wb-href';
         }
@@ -449,14 +469,38 @@ final class WorkbenchContractValidator
      *
      * @behavior-stub issued-by review-of-c27d03c — do not add more stubs.
      */
-    private function checkKeyboardNavigation(string $html, array $expected): ?string { return null; }
-    private function checkFocusTrapsWithinListbox(string $html, bool $expected): ?string { return null; }
-    private function checkEscapeCloses(string $html, bool $expected): ?string { return null; }
-    private function checkFocusTrap(string $html, bool $expected): ?string { return null; }
-    private function checkRestoresFocus(string $html, bool $expected): ?string { return null; }
-    private function checkCloseOnBackdrop(string $html, bool $expected): ?string { return null; }
-    private function checkReceivesFocusOnError(string $html, bool $expected): ?string { return null; }
-    private function checkMobileBreakpoint(string $html, string $expected): ?string { return null; }
+    private function checkKeyboardNavigation(string $html, array $expected): ?string
+    {
+        return null;
+    }
+    private function checkFocusTrapsWithinListbox(string $html, bool $expected): ?string
+    {
+        return null;
+    }
+    private function checkEscapeCloses(string $html, bool $expected): ?string
+    {
+        return null;
+    }
+    private function checkFocusTrap(string $html, bool $expected): ?string
+    {
+        return null;
+    }
+    private function checkRestoresFocus(string $html, bool $expected): ?string
+    {
+        return null;
+    }
+    private function checkCloseOnBackdrop(string $html, bool $expected): ?string
+    {
+        return null;
+    }
+    private function checkReceivesFocusOnError(string $html, bool $expected): ?string
+    {
+        return null;
+    }
+    private function checkMobileBreakpoint(string $html, string $expected): ?string
+    {
+        return null;
+    }
 
     /**
      * Convert snake_case or dot-separated to CamelCase.

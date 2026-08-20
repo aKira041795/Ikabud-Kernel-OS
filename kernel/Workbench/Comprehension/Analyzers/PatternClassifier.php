@@ -165,7 +165,9 @@ class PatternClassifier
      */
     public function classifyTop(string $errorText, int $limit = 3): array
     {
-        if (trim($errorText) === '' || $limit < 1) return [];
+        if (trim($errorText) === '' || $limit < 1) {
+            return [];
+        }
 
         $ranked = [];
         foreach (self::PATTERNS as $category => $profile) {
@@ -183,7 +185,9 @@ class PatternClassifier
                     $matchedTerms[] = $pattern;
                 }
             }
-            if ($score <= 0.0) continue;
+            if ($score <= 0.0) {
+                continue;
+            }
             $normalized = min(1.0, $score / 5.0);
             $ranked[] = [
                 'category' => $category,
@@ -192,7 +196,7 @@ class PatternClassifier
                 'confidence' => $normalized >= 0.7 ? 'high' : ($normalized >= 0.4 ? 'medium' : ($normalized >= 0.1 ? 'low' : 'none')),
             ];
         }
-        usort($ranked, static fn(array $a, array $b): int => ($b['score'] <=> $a['score']) ?: strcmp($a['category'], $b['category']));
+        usort($ranked, static fn (array $a, array $b): int => ($b['score'] <=> $a['score']) ?: strcmp($a['category'], $b['category']));
         return array_slice($ranked, 0, $limit);
     }
 

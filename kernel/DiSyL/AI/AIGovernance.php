@@ -25,7 +25,9 @@ final class AIGovernance
     public static function getProviderConfig(): array
     {
         $path = STORAGE_PATH . '/' . self::SETTINGS_FILE;
-        if (!is_file($path)) return self::defaultConfig();
+        if (!is_file($path)) {
+            return self::defaultConfig();
+        }
 
         $data = json_decode(file_get_contents($path), true);
         return is_array($data) ? array_merge(self::defaultConfig(), $data) : self::defaultConfig();
@@ -75,7 +77,9 @@ final class AIGovernance
     public static function getTenantSettings(int $tenantId): array
     {
         $path = STORAGE_PATH . '/tenant-ai-settings.json';
-        if (!is_file($path)) return self::defaultTenantSettings();
+        if (!is_file($path)) {
+            return self::defaultTenantSettings();
+        }
 
         $all = json_decode(file_get_contents($path), true);
         $key = 'tenant_' . $tenantId;
@@ -147,7 +151,9 @@ final class AIGovernance
     public static function getUsageStats(): array
     {
         $auditDir = STORAGE_PATH . '/' . self::AUDIT_DIR;
-        if (!is_dir($auditDir)) return self::emptyStats();
+        if (!is_dir($auditDir)) {
+            return self::emptyStats();
+        }
 
         $today = date('Y-m-d');
         $month = date('Y-m');
@@ -158,7 +164,9 @@ final class AIGovernance
 
         foreach (glob($auditDir . '/*.json') as $file) {
             $entry = json_decode(file_get_contents($file), true);
-            if (!is_array($entry)) continue;
+            if (!is_array($entry)) {
+                continue;
+            }
 
             $date = substr($entry['timestamp'] ?? '', 0, 10);
             $monthKey = substr($entry['timestamp'] ?? '', 0, 7);
@@ -207,7 +215,9 @@ final class AIGovernance
     public static function listPromptTemplates(): array
     {
         $dir = STORAGE_PATH . '/' . self::PROMPTS_DIR;
-        if (!is_dir($dir)) return [];
+        if (!is_dir($dir)) {
+            return [];
+        }
 
         $templates = [];
         foreach (glob($dir . '/*.json') as $file) {
@@ -223,7 +233,9 @@ final class AIGovernance
     public static function savePromptTemplate(string $id, array $template): bool
     {
         $dir = STORAGE_PATH . '/' . self::PROMPTS_DIR;
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
         $template['updated_at'] = date('c');
         return file_put_contents(
             $dir . '/' . preg_replace('/[^a-z0-9\-]/', '_', $id) . '.json',
@@ -243,12 +255,16 @@ final class AIGovernance
     public static function listRedactionRules(): array
     {
         $dir = STORAGE_PATH . '/' . self::REDACTION_DIR;
-        if (!is_dir($dir)) return self::defaultRedactionRules();
+        if (!is_dir($dir)) {
+            return self::defaultRedactionRules();
+        }
 
         $rules = [];
         foreach (glob($dir . '/*.json') as $file) {
             $data = json_decode(file_get_contents($file), true);
-            if (is_array($data)) $rules[] = $data;
+            if (is_array($data)) {
+                $rules[] = $data;
+            }
         }
         return !empty($rules) ? $rules : self::defaultRedactionRules();
     }
@@ -256,7 +272,9 @@ final class AIGovernance
     public static function saveRedactionRule(string $id, array $rule): bool
     {
         $dir = STORAGE_PATH . '/' . self::REDACTION_DIR;
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
         return file_put_contents(
             $dir . '/' . preg_replace('/[^a-z0-9\-]/', '_', $id) . '.json',
             json_encode($rule, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
@@ -278,8 +296,12 @@ final class AIGovernance
     {
         $rules = self::listRedactionRules();
         foreach ($rules as $rule) {
-            if (!($rule['enabled'] ?? false)) continue;
-            if (!empty($ruleIds) && !in_array(($rule['id'] ?? ''), $ruleIds, true)) continue;
+            if (!($rule['enabled'] ?? false)) {
+                continue;
+            }
+            if (!empty($ruleIds) && !in_array(($rule['id'] ?? ''), $ruleIds, true)) {
+                continue;
+            }
             $pattern = $rule['pattern'] ?? null;
             $replacement = $rule['replacement'] ?? '[REDACTED]';
             if (is_string($pattern) && $pattern !== '') {
@@ -295,7 +317,9 @@ final class AIGovernance
     public static function listReviewQueue(): array
     {
         $dir = STORAGE_PATH . '/' . self::REVIEW_DIR;
-        if (!is_dir($dir)) return [];
+        if (!is_dir($dir)) {
+            return [];
+        }
 
         $queue = [];
         foreach (glob($dir . '/*.json') as $file) {
@@ -306,14 +330,16 @@ final class AIGovernance
             }
         }
 
-        usort($queue, fn($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+        usort($queue, fn ($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
         return $queue;
     }
 
     public static function addToReviewQueue(array $draft): string
     {
         $dir = STORAGE_PATH . '/' . self::REVIEW_DIR;
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
 
         $id = uniqid('rev_', true);
         $draft['id'] = $id;
@@ -331,7 +357,9 @@ final class AIGovernance
     public static function approveReview(string $id): bool
     {
         $file = STORAGE_PATH . '/' . self::REVIEW_DIR . '/' . $id . '.json';
-        if (!is_file($file)) return false;
+        if (!is_file($file)) {
+            return false;
+        }
 
         $draft = json_decode(file_get_contents($file), true);
         $draft['status'] = 'approved';
@@ -343,7 +371,9 @@ final class AIGovernance
     public static function rejectReview(string $id, string $reason = ''): bool
     {
         $file = STORAGE_PATH . '/' . self::REVIEW_DIR . '/' . $id . '.json';
-        if (!is_file($file)) return false;
+        if (!is_file($file)) {
+            return false;
+        }
 
         $draft = json_decode(file_get_contents($file), true);
         $draft['status'] = 'rejected';
@@ -355,11 +385,21 @@ final class AIGovernance
 
     // ── AI Output Audit Trail ──
 
-    public static function auditAiCall(string $capabilityId, string $model, string $prompt, string $output,
-        int $inputTokens, int $outputTokens, float $costUsd, ?string $requestId, ?int $userId): void
-    {
+    public static function auditAiCall(
+        string $capabilityId,
+        string $model,
+        string $prompt,
+        string $output,
+        int $inputTokens,
+        int $outputTokens,
+        float $costUsd,
+        ?string $requestId,
+        ?int $userId
+    ): void {
         $dir = STORAGE_PATH . '/' . self::AUDIT_DIR;
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
 
         $id = uniqid('ai_', true);
         file_put_contents(
@@ -397,15 +437,19 @@ final class AIGovernance
     public static function listAuditTrail(int $limit = 50): array
     {
         $dir = STORAGE_PATH . '/' . self::AUDIT_DIR;
-        if (!is_dir($dir)) return [];
+        if (!is_dir($dir)) {
+            return [];
+        }
 
         $entries = [];
         foreach (glob($dir . '/*.json') as $file) {
             $data = json_decode(file_get_contents($file), true);
-            if (is_array($data)) $entries[] = $data;
+            if (is_array($data)) {
+                $entries[] = $data;
+            }
         }
 
-        usort($entries, fn($a, $b) => ($b['timestamp'] ?? '') <=> ($a['timestamp'] ?? ''));
+        usort($entries, fn ($a, $b) => ($b['timestamp'] ?? '') <=> ($a['timestamp'] ?? ''));
         return array_slice($entries, 0, $limit);
     }
 
@@ -423,11 +467,17 @@ final class AIGovernance
         $config = self::getProviderConfig();
         $providers = $config['providers'] ?? [];
 
-        if (!isset($providers[$providerId])) return false;
-        if (empty($providers[$providerId]['enabled'])) return false;
+        if (!isset($providers[$providerId])) {
+            return false;
+        }
+        if (empty($providers[$providerId]['enabled'])) {
+            return false;
+        }
 
         // Echo is always available
-        if ($providerId === 'echo') return true;
+        if ($providerId === 'echo') {
+            return true;
+        }
 
         // Check if API key is configured for OpenAI (from encrypted settings store)
         if ($providerId === 'openai') {
@@ -447,24 +497,32 @@ final class AIGovernance
     public static function certifyAiCapability(string $capabilityId): array
     {
         $checks = [];
-        $total = 5; $passed = 0;
+        $total = 5;
+        $passed = 0;
 
         // C1: Provider configured
         $providerAvailable = false;
         foreach (self::getFallbackChain() as $pid) {
-            if (self::isProviderAvailable($pid)) { $providerAvailable = true; break; }
+            if (self::isProviderAvailable($pid)) {
+                $providerAvailable = true;
+                break;
+            }
         }
         $checks[] = ['check' => 'C1: AI provider available', 'passed' => $providerAvailable];
-        if ($providerAvailable) $passed++;
+        if ($providerAvailable) {
+            $passed++;
+        }
 
         // C2: Policy defined
         $policy = self::getCapabilityPolicy($capabilityId);
         $checks[] = ['check' => 'C2: Capability policy exists', 'passed' => $policy['enabled'] ?? false];
-        if ($policy['enabled'] ?? false) $passed++;
+        if ($policy['enabled'] ?? false) {
+            $passed++;
+        }
 
         // C3: Prompt template exists
         $templates = self::listPromptTemplates();
-        $hasTemplate = !empty(array_filter($templates, fn($t) => ($t['capability_id'] ?? '') === $capabilityId));
+        $hasTemplate = !empty(array_filter($templates, fn ($t) => ($t['capability_id'] ?? '') === $capabilityId));
         $checks[] = ['check' => 'C3: Prompt template registered', 'passed' => $hasTemplate, 'detail' => $hasTemplate ? 'Found' : 'No template — using default'];
         // Template is optional
 
@@ -472,9 +530,11 @@ final class AIGovernance
         $redactionRequired = $policy['redaction_required'] ?? false;
         if ($redactionRequired) {
             $rules = self::listRedactionRules();
-            $hasRedaction = !empty(array_filter($rules, fn($r) => $r['enabled'] ?? false));
+            $hasRedaction = !empty(array_filter($rules, fn ($r) => $r['enabled'] ?? false));
             $checks[] = ['check' => 'C4: Redaction rules active', 'passed' => $hasRedaction];
-            if ($hasRedaction) $passed++;
+            if ($hasRedaction) {
+                $passed++;
+            }
         } else {
             $checks[] = ['check' => 'C4: Redaction not required', 'passed' => true];
             $passed++;

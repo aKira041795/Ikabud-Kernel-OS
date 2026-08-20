@@ -1,9 +1,10 @@
 <?php
+
 /**
  * DiSyL Component Definition v1.0.0
- * 
+ *
  * Represents a parsed component block from DiSyL v3.1 grammar.
- * 
+ *
  * Component structure:
  * {component MyComponent extends BaseComponent}
  *   {props}
@@ -18,7 +19,7 @@
  *   {template}...{/template}
  *   {style scoped}...{/style}
  * {/component}
- * 
+ *
  * @version 1.0.0
  */
 
@@ -28,46 +29,46 @@ class ComponentDefinition implements \JsonSerializable
 {
     /** @var string Component name */
     public string $name;
-    
+
     /** @var string|null Parent component name */
     public ?string $extends = null;
-    
+
     /** @var array Props definitions */
     public array $props = [];
-    
+
     /** @var array Slot definitions */
     public array $slots = [];
-    
+
     /** @var array State variables */
     public array $state = [];
-    
+
     /** @var array Computed properties */
     public array $computed = [];
-    
+
     /** @var array Watch declarations */
     public array $watchers = [];
-    
+
     /** @var array Event handlers */
     public array $eventHandlers = [];
-    
+
     /** @var array Methods (functions) */
     public array $methods = [];
-    
+
     /** @var array|null Template AST */
     public ?array $template = null;
-    
+
     /** @var array|null Style block */
     public ?array $style = null;
-    
+
     /** @var array|null Client-side JavaScript */
     public ?array $client = null;
-    
+
     /** @var array Decorators applied to component */
     public array $decorators = [];
-    
+
     /** @var array Source location */
     public array $loc = [];
-    
+
     /**
      * Constructor
      */
@@ -76,7 +77,7 @@ class ComponentDefinition implements \JsonSerializable
         $this->name = $name;
         $this->extends = $extends;
     }
-    
+
     /**
      * Add a prop definition
      */
@@ -85,7 +86,7 @@ class ComponentDefinition implements \JsonSerializable
         $this->props[$prop->name] = $prop;
         return $this;
     }
-    
+
     /**
      * Add a slot definition
      */
@@ -94,7 +95,7 @@ class ComponentDefinition implements \JsonSerializable
         $this->slots[$slot->name] = $slot;
         return $this;
     }
-    
+
     /**
      * Add a state variable
      */
@@ -107,7 +108,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Add a computed property
      */
@@ -120,7 +121,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Add a watcher
      */
@@ -133,7 +134,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Add an event handler
      */
@@ -146,7 +147,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Add a method
      */
@@ -160,7 +161,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Set template AST
      */
@@ -169,7 +170,7 @@ class ComponentDefinition implements \JsonSerializable
         $this->template = $template;
         return $this;
     }
-    
+
     /**
      * Set style block
      */
@@ -182,7 +183,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Set client-side JavaScript
      */
@@ -193,7 +194,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Add decorator
      */
@@ -205,7 +206,7 @@ class ComponentDefinition implements \JsonSerializable
         ];
         return $this;
     }
-    
+
     /**
      * Get prop by name
      */
@@ -213,42 +214,42 @@ class ComponentDefinition implements \JsonSerializable
     {
         return $this->props[$name] ?? null;
     }
-    
+
     /**
      * Get required props
      */
     public function getRequiredProps(): array
     {
-        return array_filter($this->props, fn($p) => $p->required);
+        return array_filter($this->props, fn ($p) => $p->required);
     }
-    
+
     /**
      * Get optional props
      */
     public function getOptionalProps(): array
     {
-        return array_filter($this->props, fn($p) => !$p->required);
+        return array_filter($this->props, fn ($p) => !$p->required);
     }
-    
+
     /**
      * Validate props against provided values
      */
     public function validateProps(array $values): array
     {
         $errors = [];
-        
+
         // Check required props
         foreach ($this->getRequiredProps() as $name => $prop) {
             if (!isset($values[$name])) {
                 $errors[] = "Missing required prop: {$name}";
             }
         }
-        
+
         // Type checking would go here in the future
-        
+
         return $errors;
     }
-    
+
     /**
      * Get initial state values
      */
@@ -260,7 +261,7 @@ class ComponentDefinition implements \JsonSerializable
         }
         return $state;
     }
-    
+
     /**
      * Convert to array
      */
@@ -270,8 +271,8 @@ class ComponentDefinition implements \JsonSerializable
             'type' => 'ComponentDefinition',
             'name' => $this->name,
             'extends' => $this->extends,
-            'props' => array_map(fn($p) => $p->toArray(), $this->props),
-            'slots' => array_map(fn($s) => $s->toArray(), $this->slots),
+            'props' => array_map(fn ($p) => $p->toArray(), $this->props),
+            'slots' => array_map(fn ($s) => $s->toArray(), $this->slots),
             'state' => $this->state,
             'computed' => $this->computed,
             'watchers' => $this->watchers,
@@ -284,7 +285,7 @@ class ComponentDefinition implements \JsonSerializable
             'loc' => $this->loc,
         ];
     }
-    
+
     /**
      * JSON serialization
      */
@@ -292,7 +293,7 @@ class ComponentDefinition implements \JsonSerializable
     {
         return $this->toArray();
     }
-    
+
     /**
      * Create from AST node
      */
@@ -302,19 +303,19 @@ class ComponentDefinition implements \JsonSerializable
             $node['name'] ?? 'Anonymous',
             $node['extends'] ?? null
         );
-        
+
         $component->loc = $node['loc'] ?? [];
-        
+
         // Process props
         foreach ($node['props'] ?? [] as $propNode) {
             $component->addProp(PropDefinition::fromAST($propNode));
         }
-        
+
         // Process slots
         foreach ($node['slots'] ?? [] as $slotNode) {
             $component->addSlot(SlotDefinition::fromAST($slotNode));
         }
-        
+
         // Process state
         foreach ($node['state'] ?? [] as $stateNode) {
             $component->addState(
@@ -323,7 +324,7 @@ class ComponentDefinition implements \JsonSerializable
                 $stateNode['type'] ?? null
             );
         }
-        
+
         // Process computed
         foreach ($node['computed'] ?? [] as $computedNode) {
             $component->addComputed(
@@ -332,7 +333,7 @@ class ComponentDefinition implements \JsonSerializable
                 $computedNode['type'] ?? null
             );
         }
-        
+
         // Process watchers
         foreach ($node['watchers'] ?? [] as $watchNode) {
             $component->addWatcher(
@@ -341,7 +342,7 @@ class ComponentDefinition implements \JsonSerializable
                 $watchNode['options'] ?? []
             );
         }
-        
+
         // Process event handlers
         foreach ($node['eventHandlers'] ?? [] as $eventNode) {
             $component->addEventHandler(
@@ -350,7 +351,7 @@ class ComponentDefinition implements \JsonSerializable
                 $eventNode['body'] ?? []
             );
         }
-        
+
         // Process methods
         foreach ($node['methods'] ?? [] as $methodNode) {
             $component->addMethod(
@@ -360,12 +361,12 @@ class ComponentDefinition implements \JsonSerializable
                 $methodNode['returnType'] ?? null
             );
         }
-        
+
         // Template
         if (isset($node['template'])) {
             $component->setTemplate($node['template']);
         }
-        
+
         // Style
         if (isset($node['style'])) {
             $component->setStyle(
@@ -374,17 +375,17 @@ class ComponentDefinition implements \JsonSerializable
                 $node['style']['global'] ?? false
             );
         }
-        
+
         // Client
         if (isset($node['client'])) {
             $component->setClient($node['client']['content'] ?? '');
         }
-        
+
         // Decorators
         foreach ($node['decorators'] ?? [] as $dec) {
             $component->addDecorator($dec['name'] ?? '', $dec['args'] ?? []);
         }
-        
+
         return $component;
     }
 }
@@ -400,12 +401,12 @@ class PropDefinition implements \JsonSerializable
     public bool $optional = false;
     public mixed $defaultValue = null;
     public array $decorators = [];
-    
+
     public function __construct(string $name)
     {
         $this->name = $name;
     }
-    
+
     public function toArray(): array
     {
         return [
@@ -417,12 +418,12 @@ class PropDefinition implements \JsonSerializable
             'decorators' => $this->decorators,
         ];
     }
-    
+
     public function jsonSerialize(): array
     {
         return $this->toArray();
     }
-    
+
     public static function fromAST(array $node): self
     {
         $prop = new self($node['name'] ?? '');

@@ -123,7 +123,9 @@ final class FixtureCleanupPolicy
 
         foreach ($receiptEntities as $entity) {
             $type = (string) ($entity['type'] ?? '');
-            if ($type === '') continue;
+            if ($type === '') {
+                continue;
+            }
             $entities[] = [
                 'type' => $type,
                 'cleanup_method' => 'delete-where-_ark_scenario',

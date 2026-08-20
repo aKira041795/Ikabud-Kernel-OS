@@ -23,5 +23,6 @@ final class ThemeValidationResult
         public readonly bool $valid,
         public readonly array $correctedValues,
         public readonly array $messages = [],
-    ) {}
+    ) {
+    }
 }

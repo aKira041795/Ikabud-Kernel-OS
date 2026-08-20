@@ -41,7 +41,7 @@ final class CellRendererRegistry implements CellRendererRegistryInterface
         if ($provider === null) {
             return $this->providers;
         }
-        return array_filter($this->providers, fn(string $p): bool => $p === $provider);
+        return array_filter($this->providers, fn (string $p): bool => $p === $provider);
     }
 
     public function reset(): void

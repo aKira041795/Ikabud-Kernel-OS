@@ -24,7 +24,8 @@ final class EntityDetailResult
         public readonly ?array $entity = null,
         public readonly bool $found = false,
         public readonly ?string $error = null,
-    ) {}
+    ) {
+    }
 
     /**
      * Create from a capability handler's return array.

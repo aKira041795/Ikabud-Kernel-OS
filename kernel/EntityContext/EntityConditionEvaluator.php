@@ -105,17 +105,19 @@ final class EntityConditionEvaluator
      */
     private function parseExpression(string $input): array
     {
-        $parser = new class($input) {
+        $parser = new class ($input) {
             private string $input;
             private int $pos = 0;
             private int $len;
 
-            public function __construct(string $input) {
+            public function __construct(string $input)
+            {
                 $this->input = $input;
                 $this->len = strlen($input);
             }
 
-            public function parse(): array {
+            public function parse(): array
+            {
                 $result = $this->orExpr();
                 $this->skipWhitespace();
                 if ($this->pos < $this->len) {
@@ -126,7 +128,8 @@ final class EntityConditionEvaluator
                 return $result;
             }
 
-            private function orExpr(): array {
+            private function orExpr(): array
+            {
                 $left = $this->andExpr();
                 $this->skipWhitespace();
                 while ($this->pos < $this->len && substr($this->input, $this->pos, 2) === '||') {
@@ -138,7 +141,8 @@ final class EntityConditionEvaluator
                 return $left;
             }
 
-            private function andExpr(): array {
+            private function andExpr(): array
+            {
                 $left = $this->unaryExpr();
                 $this->skipWhitespace();
                 while ($this->pos < $this->len && substr($this->input, $this->pos, 2) === '&&') {
@@ -150,7 +154,8 @@ final class EntityConditionEvaluator
                 return $left;
             }
 
-            private function unaryExpr(): array {
+            private function unaryExpr(): array
+            {
                 $this->skipWhitespace();
                 if ($this->pos < $this->len && $this->input[$this->pos] === '!') {
                     $this->pos++;
@@ -160,7 +165,8 @@ final class EntityConditionEvaluator
                 return $this->primaryExpr();
             }
 
-            private function primaryExpr(): array {
+            private function primaryExpr(): array
+            {
                 $this->skipWhitespace();
 
                 // Parenthesized expression
@@ -183,17 +189,23 @@ final class EntityConditionEvaluator
                 if ($this->pos < $this->len) {
                     $op = null;
                     if (substr($this->input, $this->pos, 2) === '==') {
-                        $op = '=='; $this->pos += 2;
+                        $op = '==';
+                        $this->pos += 2;
                     } elseif (substr($this->input, $this->pos, 2) === '!=') {
-                        $op = '!='; $this->pos += 2;
+                        $op = '!=';
+                        $this->pos += 2;
                     } elseif (substr($this->input, $this->pos, 2) === '>=') {
-                        $op = '>='; $this->pos += 2;
+                        $op = '>=';
+                        $this->pos += 2;
                     } elseif (substr($this->input, $this->pos, 2) === '<=') {
-                        $op = '<='; $this->pos += 2;
+                        $op = '<=';
+                        $this->pos += 2;
                     } elseif ($this->input[$this->pos] === '>') {
-                        $op = '>'; $this->pos++;
+                        $op = '>';
+                        $this->pos++;
                     } elseif ($this->input[$this->pos] === '<') {
-                        $op = '<'; $this->pos++;
+                        $op = '<';
+                        $this->pos++;
                     } elseif (substr($this->input, $this->pos, 2) === 'in' && ($this->pos + 2 >= $this->len || ctype_space($this->input[$this->pos + 2] ?? ' ') || $this->input[$this->pos + 2] === '(')) {
                         $op = 'in';
                         $this->pos += 2;
@@ -214,7 +226,8 @@ final class EntityConditionEvaluator
                 return $node;
             }
 
-            private function valueExpr(): array {
+            private function valueExpr(): array
+            {
                 $this->skipWhitespace();
                 if ($this->pos >= $this->len) {
                     throw new \InvalidArgumentException('Expected value but reached end of condition.');
@@ -230,7 +243,9 @@ final class EntityConditionEvaluator
                 // Number
                 if ($ch === '-' || ctype_digit($ch)) {
                     $num = $this->parseNumber();
-                    if ($num !== null) return $num;
+                    if ($num !== null) {
+                        return $num;
+                    }
                 }
 
                 // Keyword null/true/false
@@ -251,7 +266,8 @@ final class EntityConditionEvaluator
                 return $this->parseIdentifier();
             }
 
-            private function parseString(string $quote): array {
+            private function parseString(string $quote): array
+            {
                 $start = $this->pos + 1;
                 $end = strpos($this->input, $quote, $start);
                 if ($end === false) {
@@ -262,9 +278,12 @@ final class EntityConditionEvaluator
                 return ['type' => 'string', 'value' => $value];
             }
 
-            private function parseNumber(): ?array {
+            private function parseNumber(): ?array
+            {
                 $start = $this->pos;
-                if ($this->input[$this->pos] === '-') $this->pos++;
+                if ($this->input[$this->pos] === '-') {
+                    $this->pos++;
+                }
                 while ($this->pos < $this->len && ctype_digit($this->input[$this->pos])) {
                     $this->pos++;
                 }
@@ -275,7 +294,8 @@ final class EntityConditionEvaluator
                 return null;
             }
 
-            private function parseIdentifier(): array {
+            private function parseIdentifier(): array
+            {
                 $start = $this->pos;
                 while ($this->pos < $this->len && (ctype_alnum($this->input[$this->pos]) || $this->input[$this->pos] === '_' || $this->input[$this->pos] === '.')) {
                     $this->pos++;
@@ -287,7 +307,8 @@ final class EntityConditionEvaluator
                 return ['type' => 'field', 'name' => $name];
             }
 
-            private function parseList(): array {
+            private function parseList(): array
+            {
                 $this->skipWhitespace();
                 $items = [];
                 if ($this->pos < $this->len && $this->input[$this->pos] === '[') {
@@ -308,7 +329,8 @@ final class EntityConditionEvaluator
                 return ['type' => 'list', 'items' => $items];
             }
 
-            private function skipWhitespace(): void {
+            private function skipWhitespace(): void
+            {
                 while ($this->pos < $this->len && ctype_space($this->input[$this->pos])) {
                     $this->pos++;
                 }
@@ -357,17 +379,27 @@ final class EntityConditionEvaluator
     private function compareEq(mixed $left, mixed $right): bool
     {
         // Null comparison
-        if ($left === null && $right === null) return true;
-        if ($left === null || $right === null) return false;
+        if ($left === null && $right === null) {
+            return true;
+        }
+        if ($left === null || $right === null) {
+            return false;
+        }
 
         // String comparison
-        if (is_string($left) && is_string($right)) return $left === $right;
+        if (is_string($left) && is_string($right)) {
+            return $left === $right;
+        }
 
         // Numeric comparison
-        if (is_numeric($left) && is_numeric($right)) return (float)$left === (float)$right;
+        if (is_numeric($left) && is_numeric($right)) {
+            return (float)$left === (float)$right;
+        }
 
         // Boolean comparison
-        if (is_bool($left) && is_bool($right)) return $left === $right;
+        if (is_bool($left) && is_bool($right)) {
+            return $left === $right;
+        }
 
         return (string)$left === (string)$right;
     }
@@ -391,7 +423,7 @@ final class EntityConditionEvaluator
             'number' => $node['value'],
             'bool' => $node['value'],
             'null' => null,
-            'list' => array_map(fn(array $item): mixed => $this->resolveValue($item, $row), $node['items']),
+            'list' => array_map(fn (array $item): mixed => $this->resolveValue($item, $row), $node['items']),
             default => null,
         };
     }
@@ -416,11 +448,21 @@ final class EntityConditionEvaluator
 
     private static function isTruthy(mixed $value): bool
     {
-        if ($value === null) return false;
-        if (is_bool($value)) return $value;
-        if (is_string($value)) return $value !== '' && $value !== '0';
-        if (is_numeric($value)) return (float)$value !== 0.0;
-        if (is_array($value)) return !empty($value);
+        if ($value === null) {
+            return false;
+        }
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_string($value)) {
+            return $value !== '' && $value !== '0';
+        }
+        if (is_numeric($value)) {
+            return (float)$value !== 0.0;
+        }
+        if (is_array($value)) {
+            return !empty($value);
+        }
         return (bool)$value;
     }
 }

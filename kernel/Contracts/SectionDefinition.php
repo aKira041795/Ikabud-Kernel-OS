@@ -28,5 +28,6 @@ final class SectionDefinition
         public readonly array $controls,
         public readonly bool $isRegion = false,
         public readonly array $defaults = [],
-    ) {}
+    ) {
+    }
 }

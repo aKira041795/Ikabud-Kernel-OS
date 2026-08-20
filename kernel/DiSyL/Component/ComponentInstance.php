@@ -1,9 +1,10 @@
 <?php
+
 /**
  * DiSyL Component Instance v1.0.0
- * 
+ *
  * Represents a runtime instance of a component with reactive state.
- * 
+ *
  * @version 1.0.0
  */
 
@@ -13,34 +14,34 @@ class ComponentInstance
 {
     /** @var ComponentDefinition The component definition */
     private ComponentDefinition $definition;
-    
+
     /** @var array Props values passed to this instance */
     private array $props = [];
-    
+
     /** @var array Current state values */
     private array $state = [];
-    
+
     /** @var array Computed property cache */
     private array $computedCache = [];
-    
+
     /** @var array Slot content provided by parent */
     private array $slotContent = [];
-    
+
     /** @var ComponentInstance|null Parent component instance */
     private ?ComponentInstance $parent = null;
-    
+
     /** @var array Child component instances */
     private array $children = [];
-    
+
     /** @var array Event listeners */
     private array $listeners = [];
-    
+
     /** @var bool Whether the instance is mounted */
     private bool $mounted = false;
-    
+
     /** @var string Unique instance ID */
     private string $instanceId;
-    
+
     /**
      * Constructor
      */
@@ -48,14 +49,14 @@ class ComponentInstance
     {
         $this->definition = $definition;
         $this->instanceId = uniqid('cmp_', true);
-        
+
         // Initialize props with defaults
         $this->initializeProps($props);
-        
+
         // Initialize state
         $this->state = $definition->getInitialState();
     }
-    
+
     /**
      * Initialize props with validation and defaults
      */
@@ -67,7 +68,7 @@ class ComponentInstance
                 $props[$name] = $propDef->defaultValue;
             }
         }
-        
+
         // Validate props
         $errors = $this->definition->validateProps($props);
         if (!empty($errors)) {
@@ -75,10 +76,10 @@ class ComponentInstance
                 "Component '{$this->definition->name}' prop validation failed: " . implode(', ', $errors)
             );
         }
-        
+
         $this->props = $props;
     }
-    
+
     /**
      * Get component definition
      */
@@ -86,7 +87,7 @@ class ComponentInstance
     {
         return $this->definition;
     }
-    
+
     /**
      * Get instance ID
      */
@@ -94,7 +95,7 @@ class ComponentInstance
     {
         return $this->instanceId;
     }
-    
+
     /**
      * Get prop value
      */
@@ -102,7 +103,7 @@ class ComponentInstance
     {
         return $this->props[$name] ?? null;
     }
-    
+
     /**
      * Get all props
      */
@@ -110,7 +111,7 @@ class ComponentInstance
     {
         return $this->props;
     }
-    
+
     /**
      * Get state value
      */
@@ -118,7 +119,7 @@ class ComponentInstance
     {
         return $this->state[$name] ?? null;
     }
-    
+
     /**
      * Get all state
      */
@@ -126,7 +127,7 @@ class ComponentInstance
     {
         return $this->state;
     }
-    
+
     /**
      * Set state value (triggers reactivity)
      */
@@ -134,14 +135,14 @@ class ComponentInstance
     {
         $oldValue = $this->state[$name] ?? null;
         $this->state[$name] = $value;
-        
+
         // Invalidate computed cache
         $this->invalidateComputed();
-        
+
         // Trigger watchers
         $this->triggerWatchers($name, $value, $oldValue);
     }
-    
+
     /**
      * Update multiple state values
      */
@@ -151,7 +152,7 @@ class ComponentInstance
             $this->setState($name, $value);
         }
     }
-    
+
     /**
      * Get computed property value
      *
@@ -167,22 +168,22 @@ class ComponentInstance
         if (isset($this->computedCache[$name])) {
             return $this->computedCache[$name];
         }
-        
+
         // Get computed definition
         $computed = $this->definition->computed[$name] ?? null;
         if ($computed === null) {
             return null;
         }
-        
+
         // Build evaluation scope: props take priority, then state
         $scope = array_merge($this->state, $this->props);
-        
+
         // Evaluate the expression against scope
         $result = $this->evaluateExpression($computed['expression'] ?? '', $scope);
         $this->computedCache[$name] = $result;
         return $result;
     }
-    
+
     /**
      * Evaluate a simple expression string against a variable scope.
      * Supports: variables, numbers, strings, binary ops (+, -, *, /, .),
@@ -192,24 +193,32 @@ class ComponentInstance
     {
         if (is_string($expr)) {
             $expr = trim($expr);
-            if ($expr === '') return null;
-            
+            if ($expr === '') {
+                return null;
+            }
+
             // Numeric literal
             if (is_numeric($expr)) {
                 return str_contains($expr, '.') ? (float)$expr : (int)$expr;
             }
-            
+
             // String literal (single or double quoted)
             if ((str_starts_with($expr, "'") && str_ends_with($expr, "'"))
                 || (str_starts_with($expr, '"') && str_ends_with($expr, '"'))) {
                 return substr($expr, 1, -1);
             }
-            
+
             // Boolean/null literals
-            if ($expr === 'true') return true;
-            if ($expr === 'false') return false;
-            if ($expr === 'null') return null;
-            
+            if ($expr === 'true') {
+                return true;
+            }
+            if ($expr === 'false') {
+                return false;
+            }
+            if ($expr === 'null') {
+                return null;
+            }
+
             // Binary operations (simple left-to-right for common cases)
             // Pattern: left op right
             if (preg_match('/^(.+?)\s*([+\-*\/\.])\s*(.+)$/s', $expr, $m)) {
@@ -224,7 +233,7 @@ class ComponentInstance
                     default => null,
                 };
             }
-            
+
             // Dotted property access: a.b.c
             if (str_contains($expr, '.')) {
                 $parts = explode('.', $expr);
@@ -241,19 +250,19 @@ class ComponentInstance
                 }
                 return $val;
             }
-            
+
             // Simple variable lookup
             return $this->resolveScopeVar($expr, $scope);
         }
-        
+
         // If expression is already an AST array from the parser, attempt structured evaluation
         if (is_array($expr)) {
             return $this->evaluateAstNode($expr, $scope);
         }
-        
+
         return $expr;
     }
-    
+
     /**
      * Resolve a variable name from the component scope.
      */
@@ -261,25 +270,25 @@ class ComponentInstance
     {
         return $scope[$name] ?? null;
     }
-    
+
     /**
      * Evaluate a structured AST node array from the component parser.
      */
     private function evaluateAstNode(array $node, array $scope): mixed
     {
         $type = $node['type'] ?? '';
-        
+
         return match ($type) {
             'literal' => $node['value'] ?? null,
             'identifier' => $this->resolveScopeVar($node['name'] ?? '', $scope),
             'property_access' => $this->evaluatePropertyAccess($node, $scope),
             'binary_op' => $this->evaluateBinaryOp($node, $scope),
             'unary_op' => $this->evaluateUnaryOp($node, $scope),
-            'array' => array_map(fn($e) => $this->evaluateExpression($e, $scope), $node['elements'] ?? []),
+            'array' => array_map(fn ($e) => $this->evaluateExpression($e, $scope), $node['elements'] ?? []),
             default => null,
         };
     }
-    
+
     private function evaluatePropertyAccess(array $node, array $scope): mixed
     {
         $object = $this->evaluateExpression($node['object'] ?? '', $scope);
@@ -292,13 +301,13 @@ class ComponentInstance
         }
         return null;
     }
-    
+
     private function evaluateBinaryOp(array $node, array $scope): mixed
     {
         $left = $this->evaluateExpression($node['left'] ?? '', $scope);
         $right = $this->evaluateExpression($node['right'] ?? '', $scope);
         $op = $node['operator'] ?? '';
-        
+
         return match ($op) {
             '+' => (is_string($left) || is_string($right)) ? $left . $right : $left + $right,
             '-' => $left - $right,
@@ -317,12 +326,12 @@ class ComponentInstance
             default => null,
         };
     }
-    
+
     private function evaluateUnaryOp(array $node, array $scope): mixed
     {
         $operand = $this->evaluateExpression($node['operand'] ?? '', $scope);
         $op = $node['operator'] ?? '';
-        
+
         return match ($op) {
             '!' => !$operand,
             '-' => -$operand,
@@ -330,7 +339,7 @@ class ComponentInstance
             default => null,
         };
     }
-    
+
     /**
      * Invalidate computed cache
      */
@@ -338,7 +347,7 @@ class ComponentInstance
     {
         $this->computedCache = [];
     }
-    
+
     /**
      * Trigger watchers for a state change
      *
@@ -352,7 +361,7 @@ class ComponentInstance
         foreach ($this->definition->watchers as $watcher) {
             $watchExpr = $watcher['expression'] ?? '';
             $watchStr = is_string($watchExpr) ? $watchExpr : (is_array($watchExpr) ? ($watchExpr['name'] ?? '') : '');
-            
+
             // Check if this watcher references the changed variable
             if (str_contains($watchStr, $name)) {
                 $scope = array_merge($this->state, $this->props);
@@ -363,7 +372,7 @@ class ComponentInstance
             }
         }
     }
-    
+
     /**
      * Set slot content
      */
@@ -371,7 +380,7 @@ class ComponentInstance
     {
         $this->slotContent[$name] = $content;
     }
-    
+
     /**
      * Get slot content
      */
@@ -379,7 +388,7 @@ class ComponentInstance
     {
         return $this->slotContent[$name] ?? null;
     }
-    
+
     /**
      * Check if slot has content
      */
@@ -387,7 +396,7 @@ class ComponentInstance
     {
         return isset($this->slotContent[$name]) && !empty($this->slotContent[$name]);
     }
-    
+
     /**
      * Set parent instance
      */
@@ -395,7 +404,7 @@ class ComponentInstance
     {
         $this->parent = $parent;
     }
-    
+
     /**
      * Get parent instance
      */
@@ -403,7 +412,7 @@ class ComponentInstance
     {
         return $this->parent;
     }
-    
+
     /**
      * Add child instance
      */
@@ -412,7 +421,7 @@ class ComponentInstance
         $child->setParent($this);
         $this->children[] = $child;
     }
-    
+
     /**
      * Get children
      */
@@ -420,7 +429,7 @@ class ComponentInstance
     {
         return $this->children;
     }
-    
+
     /**
      * Add event listener
      */
@@ -431,7 +440,7 @@ class ComponentInstance
         }
         $this->listeners[$event][] = $callback;
     }
-    
+
     /**
      * Remove event listener
      */
@@ -442,11 +451,11 @@ class ComponentInstance
         } else {
             $this->listeners[$event] = array_filter(
                 $this->listeners[$event] ?? [],
-                fn($cb) => $cb !== $callback
+                fn ($cb) => $cb !== $callback
             );
         }
     }
-    
+
     /**
      * Emit event
      */
@@ -456,13 +465,13 @@ class ComponentInstance
         foreach ($this->listeners[$event] ?? [] as $callback) {
             $callback($data, $this);
         }
-        
+
         // Bubble to parent
         if ($this->parent !== null) {
             $this->parent->emit($event, $data);
         }
     }
-    
+
     /**
      * Call a method on this component
      *
@@ -483,29 +492,29 @@ class ComponentInstance
                 "Method '{$name}' not found on component '{$this->definition->name}'"
             );
         }
-        
+
         // Build execution scope: state + props + bound params
         $params = $method['params'] ?? [];
         $body = $method['body'] ?? [];
-        
+
         // Bind positional args to parameter names
         $bound = [];
         foreach ($params as $i => $param) {
             $paramName = is_string($param) ? $param : ($param['name'] ?? 'p' . $i);
             $bound[$paramName] = $args[$i] ?? ($args[$paramName] ?? null);
         }
-        
+
         $scope = array_merge($this->state, $this->props, $bound);
-        
+
         // Execute body expressions sequentially, return last result
         $result = null;
         foreach ($body as $expr) {
             $result = $this->evaluateExpression($expr, $scope);
         }
-        
+
         return $result;
     }
-    
+
     /**
      * Mount the component (lifecycle hook)
      */
@@ -514,9 +523,9 @@ class ComponentInstance
         if ($this->mounted) {
             return;
         }
-        
+
         $this->mounted = true;
-        
+
         // Call onMount handler if defined
         if (isset($this->definition->eventHandlers['mount'])) {
             $handler = $this->definition->eventHandlers['mount'];
@@ -526,7 +535,7 @@ class ComponentInstance
             }
         }
     }
-    
+
     /**
      * Unmount the component (lifecycle hook)
      */
@@ -535,7 +544,7 @@ class ComponentInstance
         if (!$this->mounted) {
             return;
         }
-        
+
         // Call onUnmount handler if defined
         if (isset($this->definition->eventHandlers['unmount'])) {
             $handler = $this->definition->eventHandlers['unmount'];
@@ -544,15 +553,15 @@ class ComponentInstance
                 $this->evaluateExpression($expr, array_merge($this->state, $this->props));
             }
         }
-        
+
         // Unmount children
         foreach ($this->children as $child) {
             $child->unmount();
         }
-        
+
         $this->mounted = false;
     }
-    
+
     /**
      * Check if mounted
      */
@@ -560,7 +569,7 @@ class ComponentInstance
     {
         return $this->mounted;
     }
-    
+
     /**
      * Get rendering context (props + state + computed)
      */
@@ -570,11 +579,11 @@ class ComponentInstance
             'props' => $this->props,
             'state' => $this->state,
             'computed' => $this->computedCache,
-            '$emit' => fn($event, $data = null) => $this->emit($event, $data),
-            '$setState' => fn($name, $value) => $this->setState($name, $value),
+            '$emit' => fn ($event, $data = null) => $this->emit($event, $data),
+            '$setState' => fn ($name, $value) => $this->setState($name, $value),
         ];
     }
-    
+
     /**
      * Convert to array for debugging
      */

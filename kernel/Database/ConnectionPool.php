@@ -25,8 +25,8 @@
 
 namespace Ikabud\Kernel\Database;
 
-use PDO;
 use Exception;
+use PDO;
 
 class ConnectionPool
 {

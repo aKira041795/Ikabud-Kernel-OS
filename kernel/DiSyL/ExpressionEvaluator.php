@@ -43,18 +43,48 @@ class ExpressionEvaluator
 
     // ── Configuration ────────────────────────────────────────────────
 
-    public function setStrictMode(bool $strict): void { $this->strictMode = $strict; }
-    public function isStrictMode(): bool { return $this->strictMode; }
-    public function setDeclaredVars(array $vars): void { $this->declaredVars = $vars; }
-    public function setCurrentTemplatePath(?string $path): void { $this->currentTemplatePath = $path; }
-    public function setScriptContext(bool $v): void { $this->scriptContext = $v; }
-    public function isScriptContext(): bool { return $this->scriptContext; }
+    public function setStrictMode(bool $strict): void
+    {
+        $this->strictMode = $strict;
+    }
+    public function isStrictMode(): bool
+    {
+        return $this->strictMode;
+    }
+    public function setDeclaredVars(array $vars): void
+    {
+        $this->declaredVars = $vars;
+    }
+    public function setCurrentTemplatePath(?string $path): void
+    {
+        $this->currentTemplatePath = $path;
+    }
+    public function setScriptContext(bool $v): void
+    {
+        $this->scriptContext = $v;
+    }
+    public function isScriptContext(): bool
+    {
+        return $this->scriptContext;
+    }
 
-    public function setSandboxRequire(callable $cb): void { $this->sandboxRequire = $cb; }
-    public function setLogErrorCallback(callable $cb): void { $this->logErrorCallback = $cb; }
+    public function setSandboxRequire(callable $cb): void
+    {
+        $this->sandboxRequire = $cb;
+    }
+    public function setLogErrorCallback(callable $cb): void
+    {
+        $this->logErrorCallback = $cb;
+    }
 
-    public function setFilters(array $filters): void { $this->filters = $filters; }
-    public function getFilters(): array { return $this->filters; }
+    public function setFilters(array $filters): void
+    {
+        $this->filters = $filters;
+    }
+    public function getFilters(): array
+    {
+        return $this->filters;
+    }
 
     // ── Core value resolution ────────────────────────────────────────
 
@@ -90,8 +120,15 @@ class ExpressionEvaluator
             $pdepth = 0;
             $balanced = true;
             for ($pi = 0, $pl = strlen($inner); $pi < $pl; $pi++) {
-                if ($inner[$pi] === '(') { $pdepth++; }
-                elseif ($inner[$pi] === ')') { $pdepth--; if ($pdepth < 0) { $balanced = false; break; } }
+                if ($inner[$pi] === '(') {
+                    $pdepth++;
+                } elseif ($inner[$pi] === ')') {
+                    $pdepth--;
+                    if ($pdepth < 0) {
+                        $balanced = false;
+                        break;
+                    }
+                }
             }
             if ($balanced && $pdepth === 0) {
                 $path = $inner;
@@ -112,9 +149,18 @@ class ExpressionEvaluator
 
         // Boolean and null literals
         $lower = strtolower($path);
-        if ($lower === 'true') { $this->currentExpression = $prevExpr; return true; }
-        if ($lower === 'false') { $this->currentExpression = $prevExpr; return false; }
-        if ($lower === 'null') { $this->currentExpression = $prevExpr; return null; }
+        if ($lower === 'true') {
+            $this->currentExpression = $prevExpr;
+            return true;
+        }
+        if ($lower === 'false') {
+            $this->currentExpression = $prevExpr;
+            return false;
+        }
+        if ($lower === 'null') {
+            $this->currentExpression = $prevExpr;
+            return null;
+        }
 
         // keyof expression
         if (str_starts_with($lower, 'keyof ')) {
@@ -181,7 +227,9 @@ class ExpressionEvaluator
                 $result = [];
                 foreach ($parts as $part) {
                     $part = trim($part);
-                    if ($part === '') { continue; }
+                    if ($part === '') {
+                        continue;
+                    }
 
                     // Associative entry: key => value
                     $arrowPos = $this->findUnquotedArrow($part);
@@ -374,11 +422,35 @@ class ExpressionEvaluator
         $out = '';
         while ($i < $len) {
             $ch = $expr[$i];
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $out .= $ch; $i++; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $out .= $ch; $i++; continue; }
-            if ($inSingle || $inDouble) { $out .= $ch; $i++; continue; }
-            if ($ch === '(') { $depth++; $out .= $ch; $i++; continue; }
-            if ($ch === ')') { $depth--; $out .= $ch; $i++; continue; }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $out .= $ch;
+                $i++;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $out .= $ch;
+                $i++;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                $out .= $ch;
+                $i++;
+                continue;
+            }
+            if ($ch === '(') {
+                $depth++;
+                $out .= $ch;
+                $i++;
+                continue;
+            }
+            if ($ch === ')') {
+                $depth--;
+                $out .= $ch;
+                $i++;
+                continue;
+            }
             if ($depth === 0 && preg_match('/\G([a-zA-Z_]\w*)\s*\(/A', $expr, $m, 0, $i)) {
                 $name = $m[1];
                 if (!FunctionRegistry::has($name)) {
@@ -390,16 +462,28 @@ class ExpressionEvaluator
                 $d = 0;
                 $close = -1;
                 for ($j = $parenStart; $j < $len; $j++) {
-                    if ($expr[$j] === '(') { $d++; }
-                    elseif ($expr[$j] === ')') { $d--; if ($d === 0) { $close = $j; break; } }
+                    if ($expr[$j] === '(') {
+                        $d++;
+                    } elseif ($expr[$j] === ')') {
+                        $d--;
+                        if ($d === 0) {
+                            $close = $j;
+                            break;
+                        }
+                    }
                 }
-                if ($close === -1) { return false; }
+                if ($close === -1) {
+                    return false;
+                }
                 $argsStr = substr($expr, $parenStart + 1, $close - $parenStart - 1);
                 $argParts = $this->splitCallArgs($argsStr);
                 $resolved = [];
                 foreach ($argParts as $arg) {
                     $arg = trim($arg);
-                    if ($arg === '') { $resolved[] = null; continue; }
+                    if ($arg === '') {
+                        $resolved[] = null;
+                        continue;
+                    }
                     if (is_numeric($arg)) {
                         $resolved[] = str_contains($arg, '.') ? (float)$arg : (int)$arg;
                     } elseif (preg_match('/^["\'](.*)["\']$/', $arg, $qm)) {
@@ -430,7 +514,10 @@ class ExpressionEvaluator
         $len = strlen($expr);
         while ($i < $len) {
             $c = $expr[$i];
-            if ($c === ' ') { $i++; continue; }
+            if ($c === ' ') {
+                $i++;
+                continue;
+            }
             if ($c === '(' || $c === ')' || in_array($c, ['+', '-', '*', '/', '%'], true)) {
                 $tokens[] = $c;
                 $i++;
@@ -438,7 +525,9 @@ class ExpressionEvaluator
             }
             if (ctype_digit($c) || ($c === '.' && $i + 1 < $len && ctype_digit($expr[$i + 1]))) {
                 $j = $i;
-                while ($j < $len && (ctype_digit($expr[$j]) || $expr[$j] === '.')) { $j++; }
+                while ($j < $len && (ctype_digit($expr[$j]) || $expr[$j] === '.')) {
+                    $j++;
+                }
                 $num = substr($expr, $i, $j - $i);
                 $tokens[] = str_contains($num, '.') ? (float)$num : (int)$num;
                 $i = $j;
@@ -446,7 +535,9 @@ class ExpressionEvaluator
             }
             if (ctype_alpha($c) || $c === '_') {
                 $j = $i;
-                while ($j < $len && (ctype_alnum($expr[$j]) || $expr[$j] === '_' || $expr[$j] === '.')) { $j++; }
+                while ($j < $len && (ctype_alnum($expr[$j]) || $expr[$j] === '_' || $expr[$j] === '.')) {
+                    $j++;
+                }
                 $tokens[] = ['var', substr($expr, $i, $j - $i)];
                 $i = $j;
                 continue;
@@ -459,12 +550,16 @@ class ExpressionEvaluator
     private function exprAdd(array $tokens, int &$pos, array $context): int|float|null
     {
         $left = $this->exprMul($tokens, $pos, $context);
-        if ($left === null) { return null; }
+        if ($left === null) {
+            return null;
+        }
         $n = count($tokens);
         while ($pos < $n && ($tokens[$pos] === '+' || $tokens[$pos] === '-')) {
             $op = $tokens[$pos++];
             $right = $this->exprMul($tokens, $pos, $context);
-            if ($right === null) { return null; }
+            if ($right === null) {
+                return null;
+            }
             $left = $op === '+' ? $left + $right : $left - $right;
         }
         return $left;
@@ -473,12 +568,16 @@ class ExpressionEvaluator
     private function exprMul(array $tokens, int &$pos, array $context): int|float|null
     {
         $left = $this->exprUnary($tokens, $pos, $context);
-        if ($left === null) { return null; }
+        if ($left === null) {
+            return null;
+        }
         $n = count($tokens);
         while ($pos < $n && in_array($tokens[$pos], ['*', '/', '%'], true)) {
             $op = $tokens[$pos++];
             $right = $this->exprUnary($tokens, $pos, $context);
-            if ($right === null) { return null; }
+            if ($right === null) {
+                return null;
+            }
             if ($op === '*') {
                 $left = $left * $right;
             } elseif ($op === '/') {
@@ -502,7 +601,9 @@ class ExpressionEvaluator
 
     private function exprPrimary(array $tokens, int &$pos, array $context): int|float|null
     {
-        if ($pos >= count($tokens)) { return null; }
+        if ($pos >= count($tokens)) {
+            return null;
+        }
         $tok = $tokens[$pos];
         if (is_int($tok) || is_float($tok)) {
             $pos++;
@@ -535,7 +636,9 @@ class ExpressionEvaluator
         $result = '';
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '') { continue; }
+            if ($part === '') {
+                continue;
+            }
             if (preg_match('/^["\'](.*)["\']$/', $part, $m)) {
                 $result .= $m[1];
             } else {
@@ -558,9 +661,20 @@ class ExpressionEvaluator
                 $current .= $ch . $expr[++$i];
                 continue;
             }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $current .= $ch; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $current .= $ch; continue; }
-            if ($inSingle || $inDouble) { $current .= $ch; continue; }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $current .= $ch;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $current .= $ch;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                $current .= $ch;
+                continue;
+            }
             if ($ch === '~') {
                 $parts[] = $current;
                 $current = '';
@@ -589,7 +703,10 @@ class ExpressionEvaluator
         }
         $quote = $expr[0];
         for ($i = 1; $i < $len; $i++) {
-            if ($expr[$i] === '\\') { $i++; continue; }
+            if ($expr[$i] === '\\') {
+                $i++;
+                continue;
+            }
             if ($expr[$i] === $quote) {
                 return trim(substr($expr, $i + 1)) === '';
             }
@@ -604,12 +721,16 @@ class ExpressionEvaluator
         if (preg_match('/^(.*?)\s*\|\|\s*(.*)$/', $expr, $m)) {
             $left = $this->evaluateComparison(trim($m[1]), $context);
             $right = $this->evaluateComparison(trim($m[2]), $context);
-            if ($left !== null && $right !== null) { return $left || $right; }
+            if ($left !== null && $right !== null) {
+                return $left || $right;
+            }
         }
         if (preg_match('/^(.*?)\s*&&\s*(.*)$/', $expr, $m)) {
             $left = $this->evaluateComparison(trim($m[1]), $context);
             $right = $this->evaluateComparison(trim($m[2]), $context);
-            if ($left !== null && $right !== null) { return $left && $right; }
+            if ($left !== null && $right !== null) {
+                return $left && $right;
+            }
         }
 
         if (str_starts_with($expr, '!')) {
@@ -629,11 +750,15 @@ class ExpressionEvaluator
         $ops = ['!==', '===', '!=', '==', '>=', '<=', '>', '<'];
         foreach ($ops as $op) {
             $parts = explode($op, $expr, 2);
-            if (count($parts) !== 2) { continue; }
+            if (count($parts) !== 2) {
+                continue;
+            }
             $left = trim($parts[0]);
             $right = trim($parts[1]);
 
-            if (!preg_match('/^(\$?\w[\w.]*)$/', $left, $lm)) { continue; }
+            if (!preg_match('/^(\$?\w[\w.]*)$/', $left, $lm)) {
+                continue;
+            }
             $leftVal = $this->resolveValue($lm[1], $context);
 
             if (preg_match('/^["\'](.*)["\']$/', $right, $rm)) {
@@ -666,15 +791,24 @@ class ExpressionEvaluator
     public function evaluateCondition(string $condition, array $context): bool
     {
         $condition = trim($condition);
-        if ($condition === '') { return false; }
+        if ($condition === '') {
+            return false;
+        }
 
         if (preg_match('/^\((.+)\)$/', $condition, $pm)) {
             $inner = $pm[1];
             $depth = 0;
             $balanced = true;
             for ($ci = 0, $cl = strlen($inner); $ci < $cl; $ci++) {
-                if ($inner[$ci] === '(') { $depth++; }
-                elseif ($inner[$ci] === ')') { $depth--; if ($depth < 0) { $balanced = false; break; } }
+                if ($inner[$ci] === '(') {
+                    $depth++;
+                } elseif ($inner[$ci] === ')') {
+                    $depth--;
+                    if ($depth < 0) {
+                        $balanced = false;
+                        break;
+                    }
+                }
             }
             if ($balanced && $depth === 0) {
                 $condition = $inner;
@@ -700,8 +834,12 @@ class ExpressionEvaluator
             $op = $match[2];
             $right = $this->resolveConditionOperand(trim($match[3]), $context);
 
-            if ($op !== '===' && $op !== '!==' && is_numeric($left)) { $left = $left + 0; }
-            if ($op !== '===' && $op !== '!==' && is_numeric($right)) { $right = $right + 0; }
+            if ($op !== '===' && $op !== '!==' && is_numeric($left)) {
+                $left = $left + 0;
+            }
+            if ($op !== '===' && $op !== '!==' && is_numeric($right)) {
+                $right = $right + 0;
+            }
 
             return match ($op) {
                 '===' => $left === $right,
@@ -730,8 +868,15 @@ class ExpressionEvaluator
             $depth = 0;
             $balanced = true;
             for ($ci = 0, $cl = strlen($inner); $ci < $cl; $ci++) {
-                if ($inner[$ci] === '(') { $depth++; }
-                elseif ($inner[$ci] === ')') { $depth--; if ($depth < 0) { $balanced = false; break; } }
+                if ($inner[$ci] === '(') {
+                    $depth++;
+                } elseif ($inner[$ci] === ')') {
+                    $depth--;
+                    if ($depth < 0) {
+                        $balanced = false;
+                        break;
+                    }
+                }
             }
             if ($balanced && $depth === 0) {
                 $raw = $inner;
@@ -743,12 +888,18 @@ class ExpressionEvaluator
         }
 
         $arith = $this->evaluateArithmetic($raw, $context);
-        if ($arith !== null) { return $arith; }
+        if ($arith !== null) {
+            return $arith;
+        }
 
         $resolved = $this->resolveValueWithFilters($raw, $context);
-        if ($resolved !== null) { return $resolved; }
+        if ($resolved !== null) {
+            return $resolved;
+        }
 
-        if (is_numeric($raw)) { return $raw + 0; }
+        if (is_numeric($raw)) {
+            return $raw + 0;
+        }
 
         return $raw;
     }
@@ -758,13 +909,17 @@ class ExpressionEvaluator
     public function evaluateTernary(string $expr, array $context): string
     {
         $qPos = strpos($expr, '?');
-        if ($qPos === false) { return ''; }
+        if ($qPos === false) {
+            return '';
+        }
 
         $condition = trim(substr($expr, 0, $qPos));
         $rest = substr($expr, $qPos + 1);
 
         $colonPos = $this->findTernaryColon($rest);
-        if ($colonPos === false) { return ''; }
+        if ($colonPos === false) {
+            return '';
+        }
 
         $trueExpr = trim(substr($rest, 0, $colonPos));
         $falseExpr = trim(substr($rest, $colonPos + 1));
@@ -862,7 +1017,9 @@ class ExpressionEvaluator
     public function normalizeFilterArg(string $filterName, string $arg, array $context): mixed
     {
         $arg = trim($arg);
-        if ($arg === '') { return ''; }
+        if ($arg === '') {
+            return '';
+        }
 
         if (preg_match('/^["\'](.*)["\']\s*$/', $arg, $matches)) {
             return $matches[1];
@@ -879,8 +1036,15 @@ class ExpressionEvaluator
                 $pdepth = 0;
                 $balanced = true;
                 for ($pi = 0, $pl = strlen($inner); $pi < $pl; $pi++) {
-                    if ($inner[$pi] === '(') { $pdepth++; }
-                    elseif ($inner[$pi] === ')') { $pdepth--; if ($pdepth < 0) { $balanced = false; break; } }
+                    if ($inner[$pi] === '(') {
+                        $pdepth++;
+                    } elseif ($inner[$pi] === ')') {
+                        $pdepth--;
+                        if ($pdepth < 0) {
+                            $balanced = false;
+                            break;
+                        }
+                    }
                 }
                 if ($balanced && $pdepth === 0) {
                     $arg = $inner;
@@ -932,16 +1096,41 @@ class ExpressionEvaluator
                 $cur .= $ch . $str[++$i];
                 continue;
             }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $cur .= $ch; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $cur .= $ch; continue; }
-            if ($inSingle || $inDouble) { $cur .= $ch; continue; }
-            if ($ch === '(' || $ch === '[') { $depth++; $cur .= $ch; continue; }
-            if ($ch === ')' || $ch === ']') { $depth--; $cur .= $ch; continue; }
-            if ($ch === ',' && $depth === 0) { $parts[] = trim($cur); $cur = ''; continue; }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $cur .= $ch;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === '(' || $ch === '[') {
+                $depth++;
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === ')' || $ch === ']') {
+                $depth--;
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === ',' && $depth === 0) {
+                $parts[] = trim($cur);
+                $cur = '';
+                continue;
+            }
             $cur .= $ch;
         }
         $t = trim($cur);
-        if ($t !== '') { $parts[] = $t; }
+        if ($t !== '') {
+            $parts[] = $t;
+        }
         return $parts;
     }
 
@@ -967,19 +1156,47 @@ class ExpressionEvaluator
             $ch = $expr[$i];
             if ($ch === '\\' && ($inSingle || $inDouble)) {
                 $current .= $ch;
-                if ($i + 1 < $len) { $current .= $expr[++$i]; }
+                if ($i + 1 < $len) {
+                    $current .= $expr[++$i];
+                }
                 continue;
             }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $current .= $ch; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $current .= $ch; continue; }
-            if ($inSingle || $inDouble) { $current .= $ch; continue; }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $current .= $ch;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $current .= $ch;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                $current .= $ch;
+                continue;
+            }
             // Track bracket/paren depth to avoid splitting inside nested groups
-            if ($ch === '(' || $ch === '[') { $depth++; $current .= $ch; continue; }
-            if ($ch === ')' || $ch === ']') { if ($depth > 0) $depth--; $current .= $ch; continue; }
-            if ($ch === $delimiter && $depth === 0) { $parts[] = $current; $current = ''; continue; }
+            if ($ch === '(' || $ch === '[') {
+                $depth++;
+                $current .= $ch;
+                continue;
+            }
+            if ($ch === ')' || $ch === ']') {
+                if ($depth > 0) {
+                    $depth--;
+                } $current .= $ch;
+                continue;
+            }
+            if ($ch === $delimiter && $depth === 0) {
+                $parts[] = $current;
+                $current = '';
+                continue;
+            }
             $current .= $ch;
         }
-        if ($current !== '') { $parts[] = $current; }
+        if ($current !== '') {
+            $parts[] = $current;
+        }
         return $parts;
     }
 
@@ -1088,12 +1305,30 @@ class ExpressionEvaluator
 
         for ($i = $start + 1, $len = strlen($str); $i < $len; $i++) {
             $ch = $str[$i];
-            if ($ch === '\\' && ($inSingle || $inDouble)) { $i++; continue; }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; continue; }
-            if ($inSingle || $inDouble) continue;
-            if ($ch === $open) $depth++;
-            if ($ch === $close) { $depth--; if ($depth === 0) return $i; }
+            if ($ch === '\\' && ($inSingle || $inDouble)) {
+                $i++;
+                continue;
+            }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                continue;
+            }
+            if ($ch === $open) {
+                $depth++;
+            }
+            if ($ch === $close) {
+                $depth--;
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
         }
         return false;
     }

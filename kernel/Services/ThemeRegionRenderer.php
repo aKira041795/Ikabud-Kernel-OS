@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Services;
 
-use Ikabud\Kernel\Contracts\ThemeRenderContext;
 use Ikabud\Kernel\Contracts\ThemeCustomizerProvider;
+use Ikabud\Kernel\Contracts\ThemeRenderContext;
 
 /**
  * Renders theme-owned DiSyL region templates with a safe render context.

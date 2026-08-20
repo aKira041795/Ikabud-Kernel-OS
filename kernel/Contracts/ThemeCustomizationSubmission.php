@@ -26,5 +26,6 @@ final class ThemeCustomizationSubmission
         public readonly array $values,
         public readonly ThemeCustomizationScope $scope,
         public readonly ?string $submittedBy = null,
-    ) {}
+    ) {
+    }
 }

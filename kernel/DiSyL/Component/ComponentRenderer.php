@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL Component Renderers
  *
@@ -18,7 +19,7 @@ use Ikabud\Kernel\DiSyL\TemplateEngine;
 
 final class ComponentRenderer
 {
-        private TemplateEngine $engine;
+    private TemplateEngine $engine;
 
     public function __construct(TemplateEngine $engine)
     {
@@ -211,21 +212,21 @@ final class ComponentRenderer
                      'hx-select', 'hx-indicator', 'hx-confirm', 'hx-vals',
                      'hx-boost', 'hx-ext', 'hx-headers', 'hx-include',
                      'hx-params', 'hx-preserve', 'hx-prompt', 'hx-replace-url'];
-        
+
         foreach ($htmxKeys as $key) {
             $camelKey = str_replace('-', '_', $key);
             $value = $attrs[$key] ?? $attrs[$camelKey] ?? null;
-            
+
             if ($value !== null) {
                 // For all HTMX attributes, use double quotes and htmlspecialchars to prevent
                 // attribute injection regardless of the attribute value's content.
                 $htmxAttrs[] = "{$key}=\"" . htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') . "\"";
             }
         }
-        
+
         return !empty($htmxAttrs) ? ' ' . implode(' ', $htmxAttrs) : '';
     }
-    
+
     /**
      * Sanitize a URL for use in an href attribute.
      * Rejects javascript:, vbscript:, and data: schemes to prevent XSS.
@@ -254,75 +255,75 @@ final class ComponentRenderer
         $bg = $attrs['background'] ?? '';
         $class = $attrs['class'] ?? '';
         $id = isset($attrs['id']) ? ' id="' . htmlspecialchars((string) $attrs['id'], ENT_QUOTES, 'UTF-8') . '"' : '';
-        
+
         $paddingClass = match($padding) {
             'none' => '', 'small' => 'py-4', 'medium' => 'py-8',
             'large' => 'py-12', 'xlarge' => 'py-16', default => 'py-8',
         };
-        
+
         $bgClass = match($bg) {
             'white' => 'bg-white', 'gray' => 'bg-gray-50',
             'dark' => 'bg-gray-900 text-white', 'primary' => 'bg-indigo-600 text-white',
             'gradient' => 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white',
             default => '',
         };
-        
+
         $htmx = $this->buildHtmxAttrs($attrs);
         return "<section{$id} class=\"{$paddingClass} {$bgClass} {$class}\"{$htmx}>{$children}</section>";
     }
-    
+
     private function renderContainer(array $attrs, string $children): string
     {
         $size = $attrs['size'] ?? 'large';
         $class = $attrs['class'] ?? '';
-        
+
         $sizeClass = match($size) {
             'small' => 'max-w-2xl', 'medium' => 'max-w-4xl', 'large' => 'max-w-6xl',
             'xlarge' => 'max-w-7xl', 'full' => 'max-w-full', default => 'max-w-6xl',
         };
-        
+
         $htmx = $this->buildHtmxAttrs($attrs);
         return "<div class=\"container mx-auto px-4 {$sizeClass} {$class}\"{$htmx}>{$children}</div>";
     }
-    
+
     private function renderGrid(array $attrs, string $children): string
     {
         $columns = $attrs['columns'] ?? '3';
         $gap = $attrs['gap'] ?? 'medium';
         $class = $attrs['class'] ?? '';
-        
+
         $colClass = "grid-cols-1 md:grid-cols-{$columns}";
         $gapClass = match($gap) {
             'none' => 'gap-0', 'small' => 'gap-2', 'medium' => 'gap-4',
             'large' => 'gap-6', 'xlarge' => 'gap-8', default => 'gap-4',
         };
-        
+
         $htmx = $this->buildHtmxAttrs($attrs);
         return "<div class=\"grid {$colClass} {$gapClass} {$class}\"{$htmx}>{$children}</div>";
     }
-    
+
     private function renderCard(array $attrs, string $children): string
     {
         $variant = $attrs['variant'] ?? 'default';
         $padding = $attrs['padding'] ?? 'medium';
         $class = $attrs['class'] ?? '';
         $id = isset($attrs['id']) ? ' id="' . htmlspecialchars((string) $attrs['id'], ENT_QUOTES, 'UTF-8') . '"' : '';
-        
+
         $variantClass = match($variant) {
             'elevated' => 'bg-white shadow-lg hover:shadow-xl transition-shadow',
             'outlined' => 'bg-white border border-gray-200',
             'flat' => 'bg-gray-50', 'stat' => 'bg-white shadow rounded-lg text-center',
             default => 'bg-white shadow rounded-lg',
         };
-        
+
         $paddingClass = match($padding) {
             'none' => '', 'small' => 'p-3', 'medium' => 'p-4', 'large' => 'p-6', default => 'p-4',
         };
-        
+
         $htmx = $this->buildHtmxAttrs($attrs);
         return "<div{$id} class=\"rounded-lg {$variantClass} {$paddingClass} {$class}\"{$htmx}>{$children}</div>";
     }
-    
+
     private function renderText(array $attrs, string $children): string
     {
         $allowedTags = ['p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'small', 'label', 'li', 'dt', 'dd', 'figcaption'];
@@ -334,30 +335,30 @@ final class ComponentRenderer
         $align = $attrs['align'] ?? '';
         $class = $attrs['class'] ?? '';
         $bind = $attrs['bind'] ?? '';
-        
+
         $sizeClass = match($size) {
             'xs' => 'text-xs', 'sm' => 'text-sm', 'base' => 'text-base',
             'lg' => 'text-lg', 'xl' => 'text-xl', '2xl' => 'text-2xl',
             '3xl' => 'text-3xl', '4xl' => 'text-4xl', default => 'text-base',
         };
-        
+
         $weightClass = match($weight) {
             'light' => 'font-light', 'normal' => 'font-normal', 'medium' => 'font-medium',
             'semibold' => 'font-semibold', 'bold' => 'font-bold', default => '',
         };
-        
+
         $colorClass = match($color) {
             'muted' => 'text-gray-500', 'primary' => 'text-indigo-600',
             'success' => 'text-green-600', 'warning' => 'text-yellow-600',
             'danger' => 'text-red-600', 'white' => 'text-white', default => '',
         };
-        
+
         $alignClass = match($align) {
             'left' => 'text-left', 'center' => 'text-center', 'right' => 'text-right', default => '',
         };
-        
+
         $classAttr = "{$sizeClass} {$weightClass} {$colorClass} {$alignClass} {$class}";
-        
+
         // If bind attribute is set, emit framework-neutral binding via current bridge
         if ($bind !== '') {
             $bridge = BridgeManager::resolve($attrs['bridge'] ?? 'alpine');
@@ -365,10 +366,10 @@ final class ComponentRenderer
             $classAttr = trim($classAttr) !== '' ? " class=\"" . trim($classAttr) . "\"" : '';
             return "<{$tag}{$bindAttr}{$classAttr}>{$children}</{$tag}>";
         }
-        
+
         return "<{$tag} class=\"{$classAttr}\">{$children}</{$tag}>";
     }
-    
+
     private function renderButton(array $attrs, string $children): string
     {
         $variant = $attrs['variant'] ?? 'primary';
@@ -377,7 +378,7 @@ final class ComponentRenderer
         $type = $attrs['type'] ?? 'button';
         $class = $attrs['class'] ?? '';
         $disabled = isset($attrs['disabled']) && $attrs['disabled'];
-        
+
         $variantClass = match($variant) {
             'primary' => 'bg-indigo-600 text-white hover:bg-indigo-700',
             'secondary' => 'bg-gray-200 text-gray-800 hover:bg-gray-300',
@@ -389,29 +390,29 @@ final class ComponentRenderer
             'link' => 'text-indigo-600 hover:underline',
             default => 'bg-indigo-600 text-white hover:bg-indigo-700',
         };
-        
+
         $sizeClass = match($size) {
             'small' => 'px-3 py-1.5 text-sm', 'medium' => 'px-4 py-2',
             'large' => 'px-6 py-3 text-lg', default => 'px-4 py-2',
         };
-        
+
         $disabledClass = $disabled ? 'opacity-50 cursor-not-allowed' : '';
         $disabledAttr = $disabled ? ' disabled' : '';
         $htmx = $this->buildHtmxAttrs($attrs);
-        
+
         if ($href && !$disabled) {
             $safeHref = $this->sanitizeHref($href);
             return "<a href=\"{$safeHref}\" class=\"inline-flex items-center justify-center rounded-lg font-medium transition {$variantClass} {$sizeClass} {$class}\"{$htmx}>{$children}</a>";
         }
-        
+
         return "<button type=\"{$type}\" class=\"inline-flex items-center justify-center rounded-lg font-medium transition {$variantClass} {$sizeClass} {$disabledClass} {$class}\"{$disabledAttr}{$htmx}>{$children}</button>";
     }
-    
+
     private function renderBadge(array $attrs, string $children): string
     {
         $variant = $attrs['variant'] ?? 'default';
         $class = $attrs['class'] ?? '';
-        
+
         $variantClass = match($variant) {
             'primary' => 'bg-indigo-100 text-indigo-800',
             'success' => 'bg-green-100 text-green-800',
@@ -430,10 +431,10 @@ final class ComponentRenderer
             'no_show' => 'bg-yellow-100 text-yellow-800',
             default => 'bg-gray-100 text-gray-800',
         };
-        
+
         return "<span class=\"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {$variantClass} {$class}\">{$children}</span>";
     }
-    
+
     private function renderInput(array $attrs): string
     {
         $type = $attrs['type'] ?? 'text';
@@ -446,17 +447,17 @@ final class ComponentRenderer
         $class = $attrs['class'] ?? '';
         $model = $attrs['model'] ?? '';
         $htmx = $this->buildHtmxAttrs($attrs);
-        
+
         // If model attribute is set, emit framework-neutral binding via current bridge
         if ($model !== '') {
             $bridge = BridgeManager::resolve($attrs['bridge'] ?? 'alpine');
             $modelAttr = $bridge->renderModel($model);
             return "<input type=\"{$type}\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" placeholder=\"{$placeholder}\" class=\"w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 {$class}\"{$required}{$disabled}{$modelAttr}{$htmx}>";
         }
-        
+
         return "<input type=\"{$type}\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" placeholder=\"{$placeholder}\" class=\"w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 {$class}\"{$required}{$disabled}{$htmx}>";
     }
-    
+
     private function renderTextarea(array $attrs, string $children): string
     {
         $name = htmlspecialchars($attrs['name'] ?? '', ENT_QUOTES, 'UTF-8');
@@ -466,10 +467,10 @@ final class ComponentRenderer
         $required = isset($attrs['required']) ? ' required' : '';
         $class = htmlspecialchars($attrs['class'] ?? '', ENT_QUOTES, 'UTF-8');
         $escapedChildren = htmlspecialchars($children, ENT_QUOTES, 'UTF-8');
-        
+
         return "<textarea id=\"{$id}\" name=\"{$name}\" rows=\"{$rows}\" placeholder=\"{$placeholder}\" class=\"w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 {$class}\"{$required}>{$escapedChildren}</textarea>";
     }
-    
+
     private function renderSelect(array $attrs, string $children): string
     {
         $name = htmlspecialchars($attrs['name'] ?? '', ENT_QUOTES, 'UTF-8');
@@ -477,58 +478,58 @@ final class ComponentRenderer
         $required = isset($attrs['required']) ? ' required' : '';
         $class = htmlspecialchars($attrs['class'] ?? '', ENT_QUOTES, 'UTF-8');
         $htmx = $this->buildHtmxAttrs($attrs);
-        
+
         return "<select id=\"{$id}\" name=\"{$name}\" class=\"w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 {$class}\"{$required}{$htmx}>{$children}</select>";
     }
-    
+
     private function renderIcon(array $attrs): string
     {
         $name = htmlspecialchars($attrs['name'] ?? 'circle', ENT_QUOTES, 'UTF-8');
         $size = $attrs['size'] ?? 'md';
         $class = htmlspecialchars($attrs['class'] ?? '', ENT_QUOTES, 'UTF-8');
-        
+
         $sizeClass = match($size) {
             'sm' => 'w-4 h-4', 'md' => 'w-5 h-5', 'lg' => 'w-6 h-6', 'xl' => 'w-8 h-8', default => 'w-5 h-5',
         };
-        
+
         return "<i class=\"fas fa-{$name} {$sizeClass} {$class}\"></i>";
     }
-    
+
     private function renderImage(array $attrs): string
     {
         $src = htmlspecialchars($attrs['src'] ?? '', ENT_QUOTES);
         $alt = htmlspecialchars($attrs['alt'] ?? '', ENT_QUOTES);
         $class = $attrs['class'] ?? '';
-        
+
         return "<img src=\"{$src}\" alt=\"{$alt}\" class=\"{$class}\" loading=\"lazy\">";
     }
-    
+
     private function renderLink(array $attrs, string $children): string
     {
         $href = $this->sanitizeHref($attrs['href'] ?? '#');
         $class = htmlspecialchars($attrs['class'] ?? 'text-indigo-600 hover:underline', ENT_QUOTES, 'UTF-8');
         $htmx = $this->buildHtmxAttrs($attrs);
-        
+
         return "<a href=\"{$href}\" class=\"{$class}\"{$htmx}>{$children}</a>";
     }
-    
+
     private function renderTable(array $attrs, string $children): string
     {
         $class = $attrs['class'] ?? '';
         return "<div class=\"overflow-x-auto\"><table class=\"min-w-full divide-y divide-gray-200 {$class}\">{$children}</table></div>";
     }
-    
+
     private function renderModal(array $attrs, string $children): string
     {
         $id = htmlspecialchars($attrs['id'] ?? 'modal', ENT_QUOTES, 'UTF-8');
         $title = htmlspecialchars($attrs['title'] ?? '', ENT_QUOTES, 'UTF-8');
         $size = $attrs['size'] ?? 'medium';
-        
+
         $sizeClass = match($size) {
             'small' => 'max-w-md', 'medium' => 'max-w-lg', 'large' => 'max-w-2xl',
             'xlarge' => 'max-w-4xl', default => 'max-w-lg',
         };
-        
+
         return "<div id=\"{$id}\" class=\"hidden fixed inset-0 z-50 overflow-y-auto\" aria-modal=\"true\">
             <div class=\"flex items-center justify-center min-h-screen px-4\">
                 <div class=\"fixed inset-0 bg-black bg-opacity-50\" onclick=\"document.getElementById('{$id}').classList.add('hidden')\"></div>
@@ -544,34 +545,34 @@ final class ComponentRenderer
             </div>
         </div>";
     }
-    
+
     private function renderAlert(array $attrs, string $children): string
     {
         $variant = $attrs['variant'] ?? 'info';
         $class = $attrs['class'] ?? '';
-        
+
         $config = match($variant) {
             'success' => ['bg-green-50 border-green-500 text-green-800', 'check-circle'],
             'warning' => ['bg-yellow-50 border-yellow-500 text-yellow-800', 'exclamation-triangle'],
             'danger', 'error' => ['bg-red-50 border-red-500 text-red-800', 'exclamation-circle'],
             default => ['bg-blue-50 border-blue-500 text-blue-800', 'info-circle'],
         };
-        
+
         return "<div class=\"flex items-start p-4 border-l-4 rounded-r-lg {$config[0]} {$class}\">
             <i class=\"fas fa-{$config[1]} mr-3 mt-0.5\"></i>
             <div>{$children}</div>
         </div>";
     }
-    
+
     private function renderSpinner(array $attrs): string
     {
         $size = $attrs['size'] ?? 'md';
         $class = $attrs['class'] ?? '';
-        
+
         $sizeClass = match($size) {
             'sm' => 'w-4 h-4', 'md' => 'w-6 h-6', 'lg' => 'w-8 h-8', default => 'w-6 h-6',
         };
-        
+
         return "<div class=\"animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600 {$sizeClass} {$class}\"></div>";
     }
 
@@ -1408,7 +1409,9 @@ final class ComponentRenderer
 
         $signatures = '';
         foreach ($roles as $index => $role) {
-            if ($role === '') { continue; }
+            if ($role === '') {
+                continue;
+            }
             $safeRole = htmlspecialchars($role, ENT_QUOTES, 'UTF-8');
             $signatures .= <<<SIG
             <div class="ikb-signature flex-1 min-w-[120px]">
@@ -1507,7 +1510,7 @@ final class ComponentRenderer
 
                 // Validate renderer format if present
                 if (!empty($fieldAttrs['renderer'])) {
-                    $fieldRenderers[$fieldName] = $fieldAttrs['renderer']; 
+                    $fieldRenderers[$fieldName] = $fieldAttrs['renderer'];
                     $this->validateFieldRenderer($name, $fieldName, $fieldAttrs['renderer']);
                 }
             }
@@ -1559,7 +1562,9 @@ final class ComponentRenderer
             foreach ($filterMatches[1] as $filterStr) {
                 $filterAttrs = $this->parseSimpleAttrs($filterStr);
                 $filterName = $filterAttrs['name'] ?? '';
-                if ($filterName === '') continue;
+                if ($filterName === '') {
+                    continue;
+                }
 
                 $entry = ['type' => $filterAttrs['type'] ?? 'string'];
                 if (!empty($filterAttrs['values'])) {
@@ -1578,18 +1583,42 @@ final class ComponentRenderer
             'actions' => $actions,
         ];
 
-        if (!empty($actionUrls)) { $contract['action_urls'] = $actionUrls; }
-        if (!empty($actionMethods)) { $contract['action_methods'] = $actionMethods; }
-        if (!empty($actionLabels)) { $contract['action_labels'] = $actionLabels; }
-        if (!empty($actionConfirm)) { $contract['action_confirm'] = $actionConfirm; }
-        if (!empty($actionShowIf)) { $contract['action_show_if'] = $actionShowIf; }
-        if (!empty($actionRoles)) { $contract['action_roles'] = $actionRoles; }
-        if (!empty($fieldRenderers)) { $contract['renderers'] = $fieldRenderers; }
-        if (!empty($visibleFields)) { $contract['visible_fields'] = $visibleFields; }
-        if (!empty($filterSchema)) { $contract['filter_schema'] = $filterSchema; }
-        if ($renderer !== '') { $contract['renderer'] = $renderer; }
-        if ($class !== '') { $contract['class'] = $class; }
-        if ($timeoutMs !== null) { $contract['timeout_ms'] = $timeoutMs; }
+        if (!empty($actionUrls)) {
+            $contract['action_urls'] = $actionUrls;
+        }
+        if (!empty($actionMethods)) {
+            $contract['action_methods'] = $actionMethods;
+        }
+        if (!empty($actionLabels)) {
+            $contract['action_labels'] = $actionLabels;
+        }
+        if (!empty($actionConfirm)) {
+            $contract['action_confirm'] = $actionConfirm;
+        }
+        if (!empty($actionShowIf)) {
+            $contract['action_show_if'] = $actionShowIf;
+        }
+        if (!empty($actionRoles)) {
+            $contract['action_roles'] = $actionRoles;
+        }
+        if (!empty($fieldRenderers)) {
+            $contract['renderers'] = $fieldRenderers;
+        }
+        if (!empty($visibleFields)) {
+            $contract['visible_fields'] = $visibleFields;
+        }
+        if (!empty($filterSchema)) {
+            $contract['filter_schema'] = $filterSchema;
+        }
+        if ($renderer !== '') {
+            $contract['renderer'] = $renderer;
+        }
+        if ($class !== '') {
+            $contract['class'] = $class;
+        }
+        if ($timeoutMs !== null) {
+            $contract['timeout_ms'] = $timeoutMs;
+        }
 
         // Store role→field mapping in contract so renderers can use semantic roles
         if (!empty($roleFields)) {
@@ -1953,12 +1982,12 @@ final class ComponentRenderer
         $name = $attrs['name'] ?? 'island';
         $strategy = $attrs['strategy'] ?? 'load';
         $class = $attrs['class'] ?? '';
-        
+
         $strategyAttr = match($strategy) {
             'visible' => 'data-hydrate="visible"', 'idle' => 'data-hydrate="idle"',
             'interaction' => 'data-hydrate="interaction"', default => 'data-hydrate="load"',
         };
-        
+
         return "<div data-island=\"{$name}\" {$strategyAttr} class=\"{$class}\">{$children}</div>";
     }
 
@@ -1976,8 +2005,12 @@ final class ComponentRenderer
         $source = (string)($attrs['source'] ?? '');
         $view = (string)($attrs['view'] ?? 'compact');
         $overrides = [];
-        if (isset($attrs['limit'])) { $overrides['limit'] = (int)$attrs['limit']; }
-        if (isset($attrs['actions'])) { $overrides['actions'] = array_map('trim', explode(',', (string)$attrs['actions'])); }
+        if (isset($attrs['limit'])) {
+            $overrides['limit'] = (int)$attrs['limit'];
+        }
+        if (isset($attrs['actions'])) {
+            $overrides['actions'] = array_map('trim', explode(',', (string)$attrs['actions']));
+        }
 
         // Parse filter attribute: filter="project_id={project.id},status=approved"
         // Resolves {var.path} references from the template context.
@@ -1985,7 +2018,9 @@ final class ComponentRenderer
             $overrides['filters'] = [];
             foreach (explode(',', (string)$attrs['filter']) as $pair) {
                 $pair = trim($pair);
-                if ($pair === '' || !str_contains($pair, '=')) continue;
+                if ($pair === '' || !str_contains($pair, '=')) {
+                    continue;
+                }
                 [$key, $rawVal] = explode('=', $pair, 2);
                 $key = trim($key);
                 $rawVal = trim($rawVal);
@@ -1996,7 +2031,9 @@ final class ComponentRenderer
                     $current = $context;
                     foreach ($segments as $seg) {
                         $current = is_array($current) && isset($current[$seg]) ? $current[$seg] : null;
-                        if ($current === null) break;
+                        if ($current === null) {
+                            break;
+                        }
                     }
                     $overrides['filters'][$key] = $current ?? $rawVal;
                 } else {

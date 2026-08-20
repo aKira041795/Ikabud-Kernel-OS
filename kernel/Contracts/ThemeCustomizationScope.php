@@ -17,7 +17,8 @@ final class ThemeCustomizationScope
         public readonly ?string $siteId = null,
         public readonly string $scopeType = 'theme', // 'theme', 'tenant', 'page'
         public readonly ?string $scopeId = null,
-    ) {}
+    ) {
+    }
 
     /**
      * Create a scope from a compound string like "native_ark".

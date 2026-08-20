@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Ikabud Kernel — Lightweight Query Builder
- * 
+ *
  * Fluent API for SELECT / INSERT / UPDATE / DELETE with automatic
  * tenant_id scoping when multi-tenancy is active.
- * 
+ *
  * Usage:
  *   $rows = db()->table('products')->where('is_active', 1)->get();
  *   db()->table('products')->insert(['name' => 'Pandesal', 'price' => 5.00]);
@@ -12,7 +13,7 @@
  *   db()->table('products')->where('id', 7)->delete();
  *   $count = db()->table('products')->where('is_active', 1)->count();
  *   $row   = db()->table('products')->where('id', 7)->first();
- * 
+ *
  * Joins:
  *   db()->table('daily_ledger l')
  *       ->join('products p', 'p.id = l.product_id')
@@ -20,16 +21,16 @@
  *       ->select('l.*', 'p.name as product_name', 'u.full_name')
  *       ->where('l.ledger_date', '2025-01-01')
  *       ->get();
- * 
+ *
  * Raw:
  *   db()->raw('SELECT * FROM products WHERE price > ?', [10.00]);
- * 
+ *
  * Tenant scoping:
  *   When a tenant_id is set on the builder (via setTenantId or auto-injected
  *   by the App layer), every query automatically adds a WHERE tenant_id = ?
  *   clause, and every INSERT automatically includes the tenant_id column.
  *   Call ->unscoped() to bypass for cross-tenant queries (admin use).
- * 
+ *
  * @package Ikabud\Kernel\Database
  * @version 1.0.0
  */
@@ -145,7 +146,7 @@ class QueryBuilder
 
     /**
      * Add a WHERE condition.
-     * 
+     *
      * Signatures:
      *   where('status', 'active')           → status = ?
      *   where('price', '>', 10)             → price > ?
@@ -374,7 +375,7 @@ class QueryBuilder
         $data = $this->injectTenant($data);
         $columns = array_keys($data);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-        $colList = implode(', ', array_map(fn($c) => "`{$c}`", $columns));
+        $colList = implode(', ', array_map(fn ($c) => "`{$c}`", $columns));
 
         $sql = "INSERT INTO `{$this->table}` ({$colList}) VALUES ({$placeholders})";
         $this->execute($sql, array_values($data));
@@ -387,13 +388,15 @@ class QueryBuilder
      */
     public function insertMany(array $rows): int
     {
-        if (empty($rows)) return 0;
+        if (empty($rows)) {
+            return 0;
+        }
 
         // Inject tenant into each row
-        $rows = array_map(fn($r) => $this->injectTenant($r), $rows);
+        $rows = array_map(fn ($r) => $this->injectTenant($r), $rows);
 
         $columns = array_keys($rows[0]);
-        $colList = implode(', ', array_map(fn($c) => "`{$c}`", $columns));
+        $colList = implode(', ', array_map(fn ($c) => "`{$c}`", $columns));
         $rowPlaceholder = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
         $allPlaceholders = implode(', ', array_fill(0, count($rows), $rowPlaceholder));
 
@@ -419,7 +422,7 @@ class QueryBuilder
         $data = $this->injectTenant($data);
         $columns = array_keys($data);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-        $colList = implode(', ', array_map(fn($c) => "`{$c}`", $columns));
+        $colList = implode(', ', array_map(fn ($c) => "`{$c}`", $columns));
 
         $updateParts = [];
         $updateBindings = [];
@@ -444,7 +447,9 @@ class QueryBuilder
      */
     public function update(array $data): int
     {
-        if (empty($data)) return 0;
+        if (empty($data)) {
+            return 0;
+        }
 
         $setParts = [];
         $setBindings = [];
@@ -678,7 +683,9 @@ class QueryBuilder
                     $sql = $ctx['sql'] ?? $sql;
                     $finalBindings = $ctx['bindings'] ?? $finalBindings;
                 }
-            } catch (\Throwable $e) { write_log('db_event_error', 'warning', ['error' => $e->getMessage(), 'source' => 'querybuilder_before']); }
+            } catch (\Throwable $e) {
+                write_log('db_event_error', 'warning', ['error' => $e->getMessage(), 'source' => 'querybuilder_before']);
+            }
         }
         $start = microtime(true);
 
@@ -686,7 +693,11 @@ class QueryBuilder
         $stmt->execute($finalBindings);
 
         if (function_exists('app')) {
-            try { app()->events()->fire('kernel.database.query.after', ['sql' => $sql, 'table' => $this->table, 'duration_ms' => (microtime(true) - $start) * 1000]); } catch (\Throwable $e) { write_log('db_event_error', 'warning', ['error' => $e->getMessage(), 'source' => 'querybuilder_after']); }
+            try {
+                app()->events()->fire('kernel.database.query.after', ['sql' => $sql, 'table' => $this->table, 'duration_ms' => (microtime(true) - $start) * 1000]);
+            } catch (\Throwable $e) {
+                write_log('db_event_error', 'warning', ['error' => $e->getMessage(), 'source' => 'querybuilder_after']);
+            }
         }
 
         return $stmt;

@@ -87,12 +87,20 @@ final class Scheduler
                     $error = null;
 
                     $promise->then(
-                        function ($v) use (&$resolved, &$result) { $resolved = true; $result = $v; },
-                        function (\Throwable $e) use (&$resolved, &$error) { $resolved = true; $error = $e; },
+                        function ($v) use (&$resolved, &$result) {
+                            $resolved = true;
+                            $result = $v;
+                        },
+                        function (\Throwable $e) use (&$resolved, &$error) {
+                            $resolved = true;
+                            $error = $e;
+                        },
                     );
 
                     if ($resolved) {
-                        if ($error !== null) throw $error;
+                        if ($error !== null) {
+                            throw $error;
+                        }
                         return $result;
                     }
 
@@ -101,14 +109,22 @@ final class Scheduler
 
                     // Check again after resume
                     $promise->then(
-                        function ($v) use (&$resolved, &$result) { $resolved = true; $result = $v; },
-                        function (\Throwable $e) use (&$resolved, &$error) { $resolved = true; $error = $e; },
+                        function ($v) use (&$resolved, &$result) {
+                            $resolved = true;
+                            $result = $v;
+                        },
+                        function (\Throwable $e) use (&$resolved, &$error) {
+                            $resolved = true;
+                            $error = $e;
+                        },
                     );
 
                     if (!$resolved) {
                         throw new \RuntimeException('DISYL_AWAIT_TIMEOUT');
                     }
-                    if ($error !== null) throw $error;
+                    if ($error !== null) {
+                        throw $error;
+                    }
                     return $result;
                 });
 
@@ -139,7 +155,9 @@ final class Scheduler
             HttpClient::tick();
 
             foreach ($fibers as $i => $fiber) {
-                if (!$fiber->isSuspended()) continue;
+                if (!$fiber->isSuspended()) {
+                    continue;
+                }
 
                 try {
                     $fiber->resume();
@@ -176,6 +194,12 @@ final class Scheduler
         return $out;
     }
 
-    public function clear(): void { $this->tasks = []; }
-    public function count(): int { return count($this->tasks); }
+    public function clear(): void
+    {
+        $this->tasks = [];
+    }
+    public function count(): int
+    {
+        return count($this->tasks);
+    }
 }

@@ -32,5 +32,6 @@ final class ControlDefinition
         public readonly array $options = [],
         public readonly array $constraints = [],
         public readonly ?string $description = null,
-    ) {}
+    ) {
+    }
 }

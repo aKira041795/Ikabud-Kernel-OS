@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel;
 
-use Throwable;
 use Ikabud\Kernel\Database\KernelPDO;
+use Throwable;
 
 class IntegrationBridge
 {
@@ -123,7 +123,7 @@ class IntegrationBridge
             $providers = app()->capabilities()->providers($resolvedCapability);
             $allowedProviders = array_values(array_filter(
                 $providers,
-                static fn(array $provider): bool => self::providerAllowsCaller($provider, $resolvedCapability, 'kernel')
+                static fn (array $provider): bool => self::providerAllowsCaller($provider, $resolvedCapability, 'kernel')
             ));
             if ($providers !== [] && $allowedProviders === []) {
                 $errors[] = 'Capability caller policy denies kernel bridge access for ' . $targetCapability . '.';
@@ -234,7 +234,7 @@ class IntegrationBridge
 
     public static function deleteBridgesByNames(array $names): int
     {
-        $names = array_values(array_filter(array_map(static fn(mixed $value): string => trim((string)$value), $names)));
+        $names = array_values(array_filter(array_map(static fn (mixed $value): string => trim((string)$value), $names)));
         if ($names === []) {
             return 0;
         }
@@ -581,7 +581,7 @@ class IntegrationBridge
                 return [];
             }
 
-            $vars = array_values(array_unique(array_filter($decoded, static fn(mixed $value): bool => is_string($value) && trim($value) !== '')));
+            $vars = array_values(array_unique(array_filter($decoded, static fn (mixed $value): bool => is_string($value) && trim($value) !== '')));
             sort($vars);
 
             return $vars;
@@ -597,7 +597,7 @@ class IntegrationBridge
                     }
 
                     $vars = is_array($event['available_vars'] ?? null) ? $event['available_vars'] : [];
-                    $vars = array_values(array_unique(array_filter($vars, static fn(mixed $value): bool => is_string($value) && trim($value) !== '')));
+                    $vars = array_values(array_unique(array_filter($vars, static fn (mixed $value): bool => is_string($value) && trim($value) !== '')));
                     sort($vars);
 
                     return $vars;
@@ -630,7 +630,7 @@ class IntegrationBridge
                         }
 
                         $vars = is_array($event['available_vars'] ?? null) ? $event['available_vars'] : [];
-                        $vars = array_values(array_unique(array_filter($vars, static fn(mixed $value): bool => is_string($value) && trim($value) !== '')));
+                        $vars = array_values(array_unique(array_filter($vars, static fn (mixed $value): bool => is_string($value) && trim($value) !== '')));
                         sort($vars);
 
                         return $vars;
@@ -728,7 +728,7 @@ class IntegrationBridge
         if (is_array($rule['deny_callers'] ?? null)) {
             $denyCallers = array_merge($denyCallers, $rule['deny_callers']);
         }
-        $denyCallers = array_values(array_filter($denyCallers, static fn(mixed $value): bool => is_string($value) && $value !== ''));
+        $denyCallers = array_values(array_filter($denyCallers, static fn (mixed $value): bool => is_string($value) && $value !== ''));
         if (in_array($callerModule, $denyCallers, true)) {
             return false;
         }
@@ -740,7 +740,7 @@ class IntegrationBridge
         if (is_array($rule['allow_callers'] ?? null)) {
             $allowCallers = array_merge($allowCallers, $rule['allow_callers']);
         }
-        $allowCallers = array_values(array_filter($allowCallers, static fn(mixed $value): bool => is_string($value) && $value !== ''));
+        $allowCallers = array_values(array_filter($allowCallers, static fn (mixed $value): bool => is_string($value) && $value !== ''));
 
         return $allowCallers === [] || in_array($callerModule, $allowCallers, true);
     }

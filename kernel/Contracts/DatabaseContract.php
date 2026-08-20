@@ -1,15 +1,16 @@
 <?php
+
 /**
  * Ikabud Kernel — Database Contract
- * 
+ *
  * Modules consume this interface for database access.
  * The kernel implementation enforces table ownership rules:
  *   - owns_tables:  full CRUD
  *   - reads_tables: SELECT only
  *   - anything else: denied + logged
- * 
+ *
  * Modules never get raw PDO. They get this.
- * 
+ *
  * @package Ikabud\Kernel\Contracts
  */
 
@@ -22,7 +23,7 @@ interface DatabaseContract
     /**
      * Prepare and return a PDOStatement for a SQL query.
      * The implementation MUST validate table access before execution.
-     * 
+     *
      * @throws \RuntimeException if the query accesses unauthorized tables
      */
     public function prepare(string $sql): PDOStatement;

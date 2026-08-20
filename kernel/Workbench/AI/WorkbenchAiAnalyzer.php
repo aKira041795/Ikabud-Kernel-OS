@@ -12,16 +12,23 @@ final class WorkbenchAiAnalyzer
         private readonly array $policy = [],
         private $caller = null,
         private readonly ?string $cachePath = null,
-    ) {}
+    ) {
+    }
 
     public function analyze(array $packet, array $heuristic): array
     {
-        if (!(bool)($this->policy['enabled'] ?? false)) return $this->fallback($heuristic, 'disabled');
+        if (!(bool)($this->policy['enabled'] ?? false)) {
+            return $this->fallback($heuristic, 'disabled');
+        }
         $redacted = $this->redact($packet);
         $maxBytes = max(1024, (int)($this->policy['max_evidence_bytes'] ?? 32768));
         $encoded = json_encode($redacted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if (!is_string($encoded)) return $this->fallback($heuristic, 'evidence_encode_failed');
-        if (strlen($encoded) > $maxBytes) $encoded = substr($encoded, 0, $maxBytes);
+        if (!is_string($encoded)) {
+            return $this->fallback($heuristic, 'evidence_encode_failed');
+        }
+        if (strlen($encoded) > $maxBytes) {
+            $encoded = substr($encoded, 0, $maxBytes);
+        }
 
         $promptVersion = (string)($this->policy['prompt_version'] ?? 'workbench-diagnosis-v1');
         $messages = [
@@ -34,7 +41,9 @@ final class WorkbenchAiAnalyzer
         ];
         $cacheMaterial = json_encode($messages, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $cacheKey = hash('sha256', $promptVersion . '|' . ($this->policy['provider'] ?? '') . '|' . ($this->policy['model'] ?? '') . '|' . ($cacheMaterial ?: $encoded));
-        if ($cached = $this->readCache($cacheKey)) return $cached + ['cache_hit' => true];
+        if ($cached = $this->readCache($cacheKey)) {
+            return $cached + ['cache_hit' => true];
+        }
 
         $started = microtime(true);
         try {
@@ -48,10 +57,14 @@ final class WorkbenchAiAnalyzer
         } catch (\Throwable $e) {
             return $this->fallback($heuristic, 'provider_error:' . $e->getMessage());
         }
-        if (empty($response['ok'])) return $this->fallback($heuristic, 'provider_rejected:' . (string)($response['error'] ?? 'unknown'));
+        if (empty($response['ok'])) {
+            return $this->fallback($heuristic, 'provider_rejected:' . (string)($response['error'] ?? 'unknown'));
+        }
         $content = $response['content'] ?? '';
         $result = is_array($content) ? $content : json_decode((string)$content, true);
-        if (!is_array($result) || !$this->valid($result)) return $this->fallback($heuristic, 'schema_validation_failed');
+        if (!is_array($result) || !$this->valid($result)) {
+            return $this->fallback($heuristic, 'schema_validation_failed');
+        }
         $result['provider_trace'] = array_merge($result['provider_trace'] ?? [], [
             'provider' => (string)($response['provider'] ?? $this->policy['provider'] ?? 'configured'),
             'model' => (string)($response['model'] ?? $this->policy['model'] ?? 'configured'),
@@ -67,16 +80,22 @@ final class WorkbenchAiAnalyzer
 
     private function call(array $payload): array
     {
-        if (is_callable($this->caller)) return ($this->caller)($payload);
-        if (!function_exists('app')) throw new \RuntimeException('Capability bus unavailable');
-        $invoke = fn(): array => app()->cap()->call('ai.text.generate@1', $payload, [
+        if (is_callable($this->caller)) {
+            return ($this->caller)($payload);
+        }
+        if (!function_exists('app')) {
+            throw new \RuntimeException('Capability bus unavailable');
+        }
+        $invoke = fn (): array => app()->cap()->call('ai.text.generate@1', $payload, [
             'caller_module' => 'kernel.workbench',
             'timeout_ms' => max(1000, (int)($this->policy['timeout_ms'] ?? 15000)),
         ]);
         if (function_exists('aiWithRuntimeOverrides')) {
             $provider = trim((string)($this->policy['provider'] ?? ''));
             $overrides = ['tier' => (string)($this->policy['tier'] ?? 'free')];
-            if ($provider !== '') $overrides['provider'] = $provider;
+            if ($provider !== '') {
+                $overrides['provider'] = $provider;
+            }
             if ($provider !== '' && trim((string)($this->policy['model'] ?? '')) !== '') {
                 $overrides[$provider . '_model'] = trim((string)$this->policy['model']);
             }
@@ -87,20 +106,32 @@ final class WorkbenchAiAnalyzer
 
     private function valid(array $result): bool
     {
-        foreach (['hypotheses', 'next_tests', 'graph_suggestions'] as $key) if (!is_array($result[$key] ?? null)) return false;
+        foreach (['hypotheses', 'next_tests', 'graph_suggestions'] as $key) {
+            if (!is_array($result[$key] ?? null)) {
+                return false;
+            }
+        }
         foreach ($result['hypotheses'] as $hypothesis) {
-            if (!is_array($hypothesis) || !isset($hypothesis['summary'], $hypothesis['confidence']) || !is_array($hypothesis['evidence_for'] ?? null) || !is_array($hypothesis['evidence_against'] ?? null)) return false;
-            if ((float)$hypothesis['confidence'] < 0 || (float)$hypothesis['confidence'] > 1) return false;
+            if (!is_array($hypothesis) || !isset($hypothesis['summary'], $hypothesis['confidence']) || !is_array($hypothesis['evidence_for'] ?? null) || !is_array($hypothesis['evidence_against'] ?? null)) {
+                return false;
+            }
+            if ((float)$hypothesis['confidence'] < 0 || (float)$hypothesis['confidence'] > 1) {
+                return false;
+            }
         }
         return true;
     }
 
     private function redact(mixed $value, string $key = ''): mixed
     {
-        if (preg_match('/password|token|secret|cookie|authorization|api[_-]?key|bearer|csrf/i', $key)) return '[REDACTED]';
+        if (preg_match('/password|token|secret|cookie|authorization|api[_-]?key|bearer|csrf/i', $key)) {
+            return '[REDACTED]';
+        }
         if (is_array($value)) {
             $out = [];
-            foreach ($value as $k => $v) $out[$k] = $this->redact($v, (string)$k);
+            foreach ($value as $k => $v) {
+                $out[$k] = $this->redact($v, (string)$k);
+            }
             return $out;
         }
         if (is_string($value)) {
@@ -129,29 +160,43 @@ final class WorkbenchAiAnalyzer
 
     private function readCache(string $key): ?array
     {
-        if ($this->cachePath === null) return null;
+        if ($this->cachePath === null) {
+            return null;
+        }
         $file = rtrim($this->cachePath, '/') . '/' . $key . '.json';
-        if (!is_file($file)) return null;
+        if (!is_file($file)) {
+            return null;
+        }
         $data = json_decode((string)file_get_contents($file), true);
         return is_array($data) ? $data : null;
     }
 
     private function writeCache(string $key, array $value): void
     {
-        if ($this->cachePath === null) return;
-        if (!is_dir($this->cachePath)) @mkdir($this->cachePath, 0770, true);
+        if ($this->cachePath === null) {
+            return;
+        }
+        if (!is_dir($this->cachePath)) {
+            @mkdir($this->cachePath, 0770, true);
+        }
         @file_put_contents(rtrim($this->cachePath, '/') . '/' . $key . '.json', json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
     }
 
     private function metric(string $metric, array $labels, float $value): void
     {
         $file = trim((string)($this->policy['metrics_path'] ?? ''));
-        if ($file === '') return;
+        if ($file === '') {
+            return;
+        }
         $class = 'Ikabud\\Kernel\\Workbench\\Governance\\WorkbenchMetrics';
         if (!class_exists($class)) {
             $source = dirname(__DIR__) . '/Governance/WorkbenchMetrics.php';
-            if (is_file($source)) require_once $source;
+            if (is_file($source)) {
+                require_once $source;
+            }
         }
-        if (class_exists($class)) (new $class($file))->record($metric, $labels, $value);
+        if (class_exists($class)) {
+            (new $class($file))->record($metric, $labels, $value);
+        }
     }
 }

@@ -61,7 +61,7 @@ class EntityListQuery
             // Only keep fields that exist in the column map (whitelist)
             $fields = array_values(array_filter(
                 $requested,
-                fn($f) => is_string($f) && array_key_exists($f, $columnMap)
+                fn ($f) => is_string($f) && array_key_exists($f, $columnMap)
             ));
             // If nothing survived, fall back to all mapped columns
             if (empty($fields)) {
@@ -109,7 +109,9 @@ class EntityListQuery
                 }
                 if (is_array($value)) {
                     // IN (…) filter
-                    if (empty($value)) { continue; }
+                    if (empty($value)) {
+                        continue;
+                    }
                     $placeholders = [];
                     foreach ($value as $i => $v) {
                         $ph = ":f_{$key}_{$i}";

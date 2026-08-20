@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Services;
 
-use Ikabud\Kernel\Contracts\ThemeCustomizerProvider;
-use Ikabud\Kernel\Contracts\ThemeCustomizerDefinition;
-use Ikabud\Kernel\Contracts\ThemeCustomizationScope;
-use Ikabud\Kernel\Contracts\ThemeRenderContext;
-use Ikabud\Kernel\Contracts\ThemeCustomizationSubmission;
-use Ikabud\Kernel\Contracts\ThemeValidationResult;
-use Ikabud\Kernel\Contracts\SectionDefinition;
 use Ikabud\Kernel\Contracts\ControlDefinition;
+use Ikabud\Kernel\Contracts\SectionDefinition;
+use Ikabud\Kernel\Contracts\ThemeCustomizationSubmission;
+use Ikabud\Kernel\Contracts\ThemeCustomizerDefinition;
+use Ikabud\Kernel\Contracts\ThemeCustomizerProvider;
+use Ikabud\Kernel\Contracts\ThemeRenderContext;
+use Ikabud\Kernel\Contracts\ThemeValidationResult;
 
 /**
  * Adapter that wraps the legacy CMS generic customizer into the

@@ -20,7 +20,9 @@ final class ReportManager
     public static function listTemplates(): array
     {
         $dir = STORAGE_PATH . '/report-templates';
-        if (!is_dir($dir)) return [];
+        if (!is_dir($dir)) {
+            return [];
+        }
 
         $templates = [];
         foreach (glob($dir . '/*.json') as $file) {
@@ -36,7 +38,9 @@ final class ReportManager
     public static function saveTemplate(string $id, array $config): bool
     {
         $dir = STORAGE_PATH . '/report-templates';
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
 
         $config['updated_at'] = date('c');
         return file_put_contents(
@@ -57,7 +61,9 @@ final class ReportManager
     public static function listArchived(): array
     {
         $dir = STORAGE_PATH . '/' . self::STORAGE_DIR;
-        if (!is_dir($dir)) return [];
+        if (!is_dir($dir)) {
+            return [];
+        }
 
         $reports = [];
         foreach (glob($dir . '/*.json') as $file) {
@@ -68,19 +74,23 @@ final class ReportManager
             }
         }
 
-        usort($reports, fn($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+        usort($reports, fn ($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
         return $reports;
     }
 
     public static function archiveReport(string $entityType, string $format, string $filePath, string $title, array $meta = []): ?string
     {
         $dir = STORAGE_PATH . '/' . self::STORAGE_DIR;
-        if (!is_dir($dir)) mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
 
         $id = uniqid('rpt_', true);
         $archivePath = $dir . '/' . $id . '.' . $format;
 
-        if (!copy($filePath, $archivePath)) return null;
+        if (!copy($filePath, $archivePath)) {
+            return null;
+        }
 
         $meta['id'] = $id;
         $meta['entity_type'] = $entityType;
@@ -103,7 +113,9 @@ final class ReportManager
     public static function getArchivedReport(string $id): ?array
     {
         $metaFile = STORAGE_PATH . '/' . self::STORAGE_DIR . '/' . $id . '.json';
-        if (!is_file($metaFile)) return null;
+        if (!is_file($metaFile)) {
+            return null;
+        }
         $meta = json_decode(file_get_contents($metaFile), true);
         return is_array($meta) ? $meta : null;
     }
@@ -115,7 +127,9 @@ final class ReportManager
         $role = (string)($user['role'] ?? 'guest');
 
         // Superadmin and administrator can export anything
-        if (in_array($role, ['superadmin', 'administrator'], true)) return true;
+        if (in_array($role, ['superadmin', 'administrator'], true)) {
+            return true;
+        }
 
         // Check capability gate
         $capId = "export.{$entityType}";
@@ -134,7 +148,9 @@ final class ReportManager
         }
 
         // Editors can export common formats
-        if ($role === 'editor' && in_array($format, ['csv', 'pdf'], true)) return true;
+        if ($role === 'editor' && in_array($format, ['csv', 'pdf'], true)) {
+            return true;
+        }
 
         return false;
     }
@@ -149,10 +165,14 @@ final class ReportManager
 
         foreach ($modules as $id => $manifest) {
             $reports = $manifest['report_packs'] ?? $manifest['reports'] ?? null;
-            if (!is_array($reports) || empty($reports)) continue;
+            if (!is_array($reports) || empty($reports)) {
+                continue;
+            }
 
             foreach ($reports as $report) {
-                if (!is_array($report) || empty($report['id'])) continue;
+                if (!is_array($report) || empty($report['id'])) {
+                    continue;
+                }
                 $packs[] = [
                     'module' => $id,
                     'module_name' => $manifest['name'] ?? $id,
@@ -176,7 +196,9 @@ final class ReportManager
     public static function listScheduled(): array
     {
         $file = STORAGE_PATH . '/scheduled-reports.json';
-        if (!is_file($file)) return [];
+        if (!is_file($file)) {
+            return [];
+        }
         $data = json_decode(file_get_contents($file), true);
         return is_array($data) ? $data : [];
     }
@@ -202,7 +224,7 @@ final class ReportManager
 
     public static function cancelScheduled(string $id): bool
     {
-        $scheduled = array_filter(self::listScheduled(), fn($s) => ($s['id'] ?? '') !== $id);
+        $scheduled = array_filter(self::listScheduled(), fn ($s) => ($s['id'] ?? '') !== $id);
         return file_put_contents(
             STORAGE_PATH . '/scheduled-reports.json',
             json_encode(array_values($scheduled), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)

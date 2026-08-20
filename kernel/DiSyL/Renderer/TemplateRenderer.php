@@ -128,7 +128,7 @@ final class TemplateRenderer
     /** Reset aggregate cache counters. */
     public static function resetCacheMetrics(): void
     {
-        self::$cacheMetrics = array_map(fn() => 0, self::$cacheMetrics);
+        self::$cacheMetrics = array_map(fn () => 0, self::$cacheMetrics);
         self::$rendersSinceMetricsLog = 0;
         self::$cacheAuthorityWarningEmitted = false;
     }

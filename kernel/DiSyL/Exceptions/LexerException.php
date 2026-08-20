@@ -1,9 +1,10 @@
 <?php
+
 /**
  * DiSyL Lexer Exception
- * 
+ *
  * Thrown when lexical analysis encounters an error
- * 
+ *
  * @version 0.1.0
  */
 
@@ -16,7 +17,7 @@ class LexerException extends Exception
     private int $lexerLine;
     private int $lexerColumn;
     private int $lexerPosition;
-    
+
     /**
      * Constructor
      */
@@ -29,7 +30,7 @@ class LexerException extends Exception
         $this->lexerLine = $line;
         $this->lexerColumn = $column;
         $this->lexerPosition = $position;
-        
+
         $fullMessage = sprintf(
             '%s at line %d, column %d (position %d)',
             $message,
@@ -37,10 +38,10 @@ class LexerException extends Exception
             $column,
             $position
         );
-        
+
         parent::__construct($fullMessage);
     }
-    
+
     /**
      * Get lexer line number
      */
@@ -48,7 +49,7 @@ class LexerException extends Exception
     {
         return $this->lexerLine;
     }
-    
+
     /**
      * Get lexer column number
      */
@@ -56,7 +57,7 @@ class LexerException extends Exception
     {
         return $this->lexerColumn;
     }
-    
+
     /**
      * Get lexer position
      */

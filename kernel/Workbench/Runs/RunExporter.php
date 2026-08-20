@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Ikabud\Kernel\Workbench\Runs;
 
 final class RunExporter
@@ -91,7 +93,7 @@ final class RunExporter
     public function sarif(array $run, ?array $task = null): string
     {
         $results = array_map(
-            static fn(array $issue): array => [
+            static fn (array $issue): array => [
                 'ruleId' => (string) ($issue['category'] ?? 'workbench'),
                 'level' => in_array($issue['severity'] ?? '', ['critical', 'major'], true) ? 'error' : 'warning',
                 'message' => ['text' => (string) ($issue['message'] ?? 'Workbench issue')],

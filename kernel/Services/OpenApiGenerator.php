@@ -105,7 +105,7 @@ class OpenApiGenerator
         ksort($paths);
 
         // Sort tags
-        usort($tags, fn($a, $b) => strcmp($a['name'], $b['name']));
+        usort($tags, fn ($a, $b) => strcmp($a['name'], $b['name']));
 
         // Merge module fragments into components
         $components = [

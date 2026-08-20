@@ -63,7 +63,9 @@ final class Policy
 
     public function allowsModel(string $model): bool
     {
-        if ($this->modelAllowlist === null) return true;
+        if ($this->modelAllowlist === null) {
+            return true;
+        }
         return in_array($model, $this->modelAllowlist, true);
     }
 

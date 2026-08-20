@@ -31,19 +31,32 @@ abstract class TypeNode
 
 final class PrimitiveType extends TypeNode
 {
-    public function __construct(public readonly string $name) {}
-    public function describe(): string { return $this->name; }
+    public function __construct(public readonly string $name)
+    {
+    }
+    public function describe(): string
+    {
+        return $this->name;
+    }
 }
 
 final class LiteralType extends TypeNode
 {
     /** @param string|int|float|bool|null $value */
-    public function __construct(public readonly string|int|float|bool|null $value) {}
+    public function __construct(public readonly string|int|float|bool|null $value)
+    {
+    }
     public function describe(): string
     {
-        if ($this->value === null) return 'null';
-        if (is_bool($this->value)) return $this->value ? 'true' : 'false';
-        if (is_string($this->value)) return "'" . $this->value . "'";
+        if ($this->value === null) {
+            return 'null';
+        }
+        if (is_bool($this->value)) {
+            return $this->value ? 'true' : 'false';
+        }
+        if (is_string($this->value)) {
+            return "'" . $this->value . "'";
+        }
         return (string) $this->value;
     }
 }
@@ -53,7 +66,9 @@ final class ObjectType extends TypeNode
     /**
      * @param array<string, array{type: TypeNode, optional: bool, readonly: bool}> $properties
      */
-    public function __construct(public readonly array $properties) {}
+    public function __construct(public readonly array $properties)
+    {
+    }
     public function describe(): string
     {
         $parts = [];
@@ -72,7 +87,8 @@ final class ArrayType extends TypeNode
     public function __construct(
         public readonly TypeNode $element,
         public readonly bool $readonly = false
-    ) {}
+    ) {
+    }
     public function describe(): string
     {
         return ($this->readonly ? 'readonly ' : '') . $this->element->describe() . '[]';
@@ -82,21 +98,27 @@ final class ArrayType extends TypeNode
 final class UnionType extends TypeNode
 {
     /** @param list<TypeNode> $members */
-    public function __construct(public readonly array $members) {}
+    public function __construct(public readonly array $members)
+    {
+    }
     public function describe(): string
     {
-        return implode(' | ', array_map(static fn(TypeNode $t) => $t->describe(), $this->members));
+        return implode(' | ', array_map(static fn (TypeNode $t) => $t->describe(), $this->members));
     }
 }
 
 final class TypeRef extends TypeNode
 {
     /** @param list<TypeNode> $args */
-    public function __construct(public readonly string $name, public readonly array $args = []) {}
+    public function __construct(public readonly string $name, public readonly array $args = [])
+    {
+    }
     public function describe(): string
     {
-        if ($this->args === []) return $this->name;
-        $argDescs = array_map(static fn(TypeNode $t) => $t->describe(), $this->args);
+        if ($this->args === []) {
+            return $this->name;
+        }
+        $argDescs = array_map(static fn (TypeNode $t) => $t->describe(), $this->args);
         return $this->name . '<' . implode(', ', $argDescs) . '>';
     }
 }

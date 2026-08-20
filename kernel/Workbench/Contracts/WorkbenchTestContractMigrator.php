@@ -16,7 +16,7 @@ final class WorkbenchTestContractMigrator
         $moduleId = (string) ($manifest['id'] ?? $legacy['module'] ?? basename($modulePath));
         $routes = $this->routes($modulePath . '/routes.php');
         $capabilities = array_values(array_filter(array_map(
-            static fn($cap): string => is_array($cap) ? (string) ($cap['id'] ?? '') : '',
+            static fn ($cap): string => is_array($cap) ? (string) ($cap['id'] ?? '') : '',
             is_array($manifest['capabilities']['exposes'] ?? null) ? $manifest['capabilities']['exposes'] : []
         )));
         sort($capabilities);
@@ -26,14 +26,16 @@ final class WorkbenchTestContractMigrator
         foreach ((array) ($legacy['workflows'] ?? []) as $id => $states) {
             $workflows[] = ['id' => (string) $id, 'states' => array_values(array_map('strval', (array) $states)), 'transitions' => []];
         }
-        usort($workflows, static fn(array $a, array $b): int => $a['id'] <=> $b['id']);
+        usort($workflows, static fn (array $a, array $b): int => $a['id'] <=> $b['id']);
         $pages = [];
         foreach ((array) ($legacy['page_families'] ?? []) as $family) {
             $pages[] = ['id' => (string) $family, 'family' => (string) $family, 'roles' => $roles, 'required_components' => []];
         }
         if ($pages === []) {
             foreach ($routes['GET'] as $route) {
-                if (str_contains($route, '/api/')) continue;
+                if (str_contains($route, '/api/')) {
+                    continue;
+                }
                 $pages[] = ['id' => $this->routeId('page', $route), 'family' => 'module-page', 'route' => $route, 'roles' => $roles, 'required_components' => []];
             }
         }
@@ -57,7 +59,9 @@ final class WorkbenchTestContractMigrator
             $scenarios[] = ['id' => 'navigation-smoke', 'description' => 'Owned pages resolve for declared actors and tenants', 'actions' => []];
         }
         $profile = $manifest['application_profile'] ?? ($legacy['application_profile'] ?? 'ark.workbench');
-        if (is_array($profile)) $profile = $profile['id'] ?? 'ark.workbench';
+        if (is_array($profile)) {
+            $profile = $profile['id'] ?? 'ark.workbench';
+        }
         $requiredTests = array_values(array_unique(array_map('strval', (array) ($legacy['required_tests'] ?? ['contract', 'routes', 'ui-smoke']))));
         sort($requiredTests);
 
@@ -74,9 +78,9 @@ final class WorkbenchTestContractMigrator
                 'navigation_dependencies' => array_values((array) ($manifest['navigation_dependencies'] ?? [])),
                 'tables' => array_values(array_map('strval', (array) ($manifest['owns_tables'] ?? []))),
                 'capabilities' => $capabilities,
-                'events' => array_values(array_filter(array_map(static fn($event): string => is_array($event) ? (string) ($event['key'] ?? '') : (string) $event, (array) ($manifest['events'] ?? [])))),
+                'events' => array_values(array_filter(array_map(static fn ($event): string => is_array($event) ? (string) ($event['key'] ?? '') : (string) $event, (array) ($manifest['events'] ?? [])))),
             ],
-            'actors' => array_map(static fn(string $role): array => ['id' => $role, 'capabilities' => []], $roles),
+            'actors' => array_map(static fn (string $role): array => ['id' => $role, 'capabilities' => []], $roles),
             'tenancy' => ['mode' => 'tenant', 'isolation_invariants' => ['records are scoped to the active tenant']],
             'pages' => $pages,
             'workflows' => $workflows,
@@ -108,7 +112,9 @@ final class WorkbenchTestContractMigrator
     /** @return array<string,mixed> */
     private function json(string $path): array
     {
-        if (!is_file($path)) return [];
+        if (!is_file($path)) {
+            return [];
+        }
         $data = json_decode((string) file_get_contents($path), true);
         return is_array($data) ? $data : [];
     }
@@ -117,9 +123,13 @@ final class WorkbenchTestContractMigrator
     private function routes(string $path): array
     {
         $routes = ['GET' => [], 'POST' => [], 'PUT' => [], 'PATCH' => [], 'DELETE' => []];
-        if (!is_file($path)) return $routes;
+        if (!is_file($path)) {
+            return $routes;
+        }
         $loaded = include $path;
-        if (!is_array($loaded)) return $routes;
+        if (!is_array($loaded)) {
+            return $routes;
+        }
         foreach ($routes as $method => $_) {
             $routes[$method] = array_keys(is_array($loaded[$method] ?? null) ? $loaded[$method] : []);
             sort($routes[$method]);

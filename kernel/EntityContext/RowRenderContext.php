@@ -51,5 +51,6 @@ final class RowRenderContext
         public readonly bool $hasBulk = false,
         public readonly array $fieldContracts = [],
         public readonly array $roleFields = [],
-    ) {}
+    ) {
+    }
 }

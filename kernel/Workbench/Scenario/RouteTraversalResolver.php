@@ -19,7 +19,9 @@ namespace Ikabud\Kernel\Workbench\Scenario;
 final class RouteTraversalResolver
 {
     /** @param array<string,string> $observedLinks Map of route_pattern => observed_href */
-    public function __construct(private array $observedLinks = []) {}
+    public function __construct(private array $observedLinks = [])
+    {
+    }
 
     /**
      * Register observed links from a list page traversal.

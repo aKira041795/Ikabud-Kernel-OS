@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Ikabud\Kernel\EntityContext\Renderer;
 
 use Ikabud\Kernel\EntityContext\CellRenderContext;
-use Ikabud\Kernel\EntityContext\CellRenderResult;
 use Ikabud\Kernel\EntityContext\CellRendererInterface;
+use Ikabud\Kernel\EntityContext\CellRenderResult;
 
 /**
  * Renders a plain text string with HTML escaping.
