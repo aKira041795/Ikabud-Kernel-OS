@@ -20,5 +20,12 @@ updates:
       - "dependencies"
       - "npm"
     open-pull-requests-limit: 5
+    # Tailwind v4 is a breaking major bump: the workbench build
+    # (scripts/build-tailwind.php, watch:tailwind) uses the v3 CLI
+    # (`tailwindcss -c tailwind.config.js`). Defer major bumps to a
+    # deliberate v4 migration task; keep 3.x patch/minor updates flowing.
+    ignore:
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
 
