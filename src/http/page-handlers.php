@@ -159,7 +159,7 @@ if (!function_exists('kernelHandlePageKernelIntegrations')) {
                 ? (json_decode((string)$eventRow['available_vars'], true) ?: [])
                 : [];
             $eventRow['available_vars_csv'] = !empty($eventRow['available_vars'])
-                ? implode(',', array_map(static fn($value): string => (string)$value, (array)$eventRow['available_vars']))
+                ? implode(',', array_map(static fn ($value): string => (string)$value, (array)$eventRow['available_vars']))
                 : '';
         }
         unset($eventRow);
@@ -183,7 +183,7 @@ if (!function_exists('kernelHandlePageKernelIntegrations')) {
                 ];
             }
         }
-        usort($capabilities, static fn(array $left, array $right): int => strcmp((string)$left['id'], (string)$right['id']));
+        usort($capabilities, static fn (array $left, array $right): int => strcmp((string)$left['id'], (string)$right['id']));
 
         echo app()->render('pages/kernel-integrations.disyl', array_merge(
             kernelAdminContext($user, 'integrations'),
@@ -349,107 +349,107 @@ if (!function_exists('kernelHandlePageSuperadminPerf')) {
     }
 }
 if (!function_exists('kernelHandlePageHome')) {
-function kernelHandlePageHome(): void
-{
-    $user = app()->user();
-    if (!$user) {
-        app()->redirect('/login');
-    }
-    $homeRole = trim((string)($user['role'] ?? ''));
-    $homeSource = trim((string)($user['source'] ?? 'kernel'));
-    $homeUrl = kernelResolveAuthenticatedHomeRedirect($user, false);
-    if ($homeUrl) {
-        app()->redirect($homeUrl);
-    } else {
-        // No module landing page available — show kernel home with module status
-        $enabledModules = array_values(getEnabledModules());
-        $enabledNames = array_values(array_filter(array_map(function ($m) {
-            $name = (string)($m['name'] ?? $m['id'] ?? '');
-            return $name !== '' ? $name : null;
-        }, $enabledModules)));
+    function kernelHandlePageHome(): void
+    {
+        $user = app()->user();
+        if (!$user) {
+            app()->redirect('/login');
+        }
+        $homeRole = trim((string)($user['role'] ?? ''));
+        $homeSource = trim((string)($user['source'] ?? 'kernel'));
+        $homeUrl = kernelResolveAuthenticatedHomeRedirect($user, false);
+        if ($homeUrl) {
+            app()->redirect($homeUrl);
+        } else {
+            // No module landing page available — show kernel home with module status
+            $enabledModules = array_values(getEnabledModules());
+            $enabledNames = array_values(array_filter(array_map(function ($m) {
+                $name = (string)($m['name'] ?? $m['id'] ?? '');
+                return $name !== '' ? $name : null;
+            }, $enabledModules)));
 
-        $enabledCount = count($enabledNames);
+            $enabledCount = count($enabledNames);
 
-        $accessibleNames = $enabledNames;
-        if ($homeRole === 'admin' && $homeSource === 'kernel') {
-            $accessibleNames = [];
-            foreach ($enabledModules as $m) {
-                $settings = is_array($m['_settings'] ?? null) ? $m['_settings'] : [];
-                if (!empty($settings['allow_kernel_admin'])) {
-                    $accessibleNames[] = (string)($m['name'] ?? $m['id'] ?? '');
+            $accessibleNames = $enabledNames;
+            if ($homeRole === 'admin' && $homeSource === 'kernel') {
+                $accessibleNames = [];
+                foreach ($enabledModules as $m) {
+                    $settings = is_array($m['_settings'] ?? null) ? $m['_settings'] : [];
+                    if (!empty($settings['allow_kernel_admin'])) {
+                        $accessibleNames[] = (string)($m['name'] ?? $m['id'] ?? '');
+                    }
                 }
             }
-        }
 
-        echo app()->render('pages/home.disyl', [
-            'page_title' => 'Home',
-            'enabled_modules_count' => $enabledCount,
-            'enabled_modules_names' => $enabledNames,
-            'accessible_modules_count' => count($accessibleNames),
-            'accessible_modules_names' => $accessibleNames,
-        ]);
+            echo app()->render('pages/home.disyl', [
+                'page_title' => 'Home',
+                'enabled_modules_count' => $enabledCount,
+                'enabled_modules_names' => $enabledNames,
+                'accessible_modules_count' => count($accessibleNames),
+                'accessible_modules_names' => $accessibleNames,
+            ]);
+        }
+        exit;
     }
-    exit;
-}
 }
 
 if (!function_exists('kernelHandlePageAdminProfile')) {
-function kernelHandlePageAdminProfile(): void
-{
-    $user = app()->requireAuth();
-    if (!in_array($user['role'] ?? '', ['admin', 'superadmin'], true)) {
-        app()->redirect('/');
-        exit;
-    }
+    function kernelHandlePageAdminProfile(): void
+    {
+        $user = app()->requireAuth();
+        if (!in_array($user['role'] ?? '', ['admin', 'superadmin'], true)) {
+            app()->redirect('/');
+            exit;
+        }
 
-    $requestPath = parse_url((string)($_SERVER['REQUEST_URI'] ?? '/admin/profile'), PHP_URL_PATH) ?: '/admin/profile';
-    if ($requestPath === '/api/v1/admin/profile/update') {
-        app()->redirect('/admin/profile');
-        exit;
-    }
+        $requestPath = parse_url((string)($_SERVER['REQUEST_URI'] ?? '/admin/profile'), PHP_URL_PATH) ?: '/admin/profile';
+        if ($requestPath === '/api/v1/admin/profile/update') {
+            app()->redirect('/admin/profile');
+            exit;
+        }
 
-    $profileNotice = null;
-    if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['_admin_profile_notice']) && is_array($_SESSION['_admin_profile_notice'])) {
-        $profileNotice = $_SESSION['_admin_profile_notice'];
-        unset($_SESSION['_admin_profile_notice']);
-    }
+        $profileNotice = null;
+        if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['_admin_profile_notice']) && is_array($_SESSION['_admin_profile_notice'])) {
+            $profileNotice = $_SESSION['_admin_profile_notice'];
+            unset($_SESSION['_admin_profile_notice']);
+        }
 
-    $emailSupported = kernelUsersHasEmailColumn(app()->db());
-    $profileUser = $user;
-    $profileStmt = app()->db()->prepare(
-        $emailSupported
-            ? 'SELECT username, email, full_name, role
+        $emailSupported = kernelUsersHasEmailColumn(app()->db());
+        $profileUser = $user;
+        $profileStmt = app()->db()->prepare(
+            $emailSupported
+                ? 'SELECT username, email, full_name, role
          FROM users
          WHERE id = :id AND role IN (\'admin\', \'superadmin\')
          LIMIT 1'
-            : 'SELECT username, full_name, role
+                : 'SELECT username, full_name, role
          FROM users
          WHERE id = :id AND role IN (\'admin\', \'superadmin\')
          LIMIT 1'
-    );
-    $profileStmt->execute([':id' => (int)($user['id'] ?? 0)]);
-    $profileRow = $profileStmt->fetch(PDO::FETCH_ASSOC);
-    if (is_array($profileRow)) {
-        $profileUser = array_merge($profileUser, [
-            'username' => (string)($profileRow['username'] ?? ($profileUser['username'] ?? '')),
-            'email' => $emailSupported ? (string)($profileRow['email'] ?? '') : '',
-            'full_name' => (string)($profileRow['full_name'] ?? ($profileUser['full_name'] ?? $profileUser['name'] ?? '')),
-            'name' => (string)($profileRow['full_name'] ?? ($profileUser['full_name'] ?? $profileUser['name'] ?? '')),
-            'role' => (string)($profileRow['role'] ?? ($profileUser['role'] ?? '')),
-        ]);
-    }
+        );
+        $profileStmt->execute([':id' => (int)($user['id'] ?? 0)]);
+        $profileRow = $profileStmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($profileRow)) {
+            $profileUser = array_merge($profileUser, [
+                'username' => (string)($profileRow['username'] ?? ($profileUser['username'] ?? '')),
+                'email' => $emailSupported ? (string)($profileRow['email'] ?? '') : '',
+                'full_name' => (string)($profileRow['full_name'] ?? ($profileUser['full_name'] ?? $profileUser['name'] ?? '')),
+                'name' => (string)($profileRow['full_name'] ?? ($profileUser['full_name'] ?? $profileUser['name'] ?? '')),
+                'role' => (string)($profileRow['role'] ?? ($profileUser['role'] ?? '')),
+            ]);
+        }
 
-    echo app()->render('pages/admin-profile.disyl', array_merge(
-        kernelAdminContext($user, 'profile'),
-        [
-            'page_title' => 'Profile',
-            'email_supported' => $emailSupported,
-            'profile_notice' => $profileNotice,
-            'user' => $profileUser,
-        ]
-    ));
-    exit;
-}
+        echo app()->render('pages/admin-profile.disyl', array_merge(
+            kernelAdminContext($user, 'profile'),
+            [
+                'page_title' => 'Profile',
+                'email_supported' => $emailSupported,
+                'profile_notice' => $profileNotice,
+                'user' => $profileUser,
+            ]
+        ));
+        exit;
+    }
 }
 
 /**
@@ -476,304 +476,304 @@ function kernelAdminContext(array $user, string $currentPage): array
 }
 
 if (!function_exists('kernelHandlePageAdminUsers')) {
-function kernelHandlePageAdminUsers(): void
-{
-    $user = app()->requireAuth();
-    if (($user['role'] ?? '') !== 'admin') {
-        app()->redirect('/');
-        exit;
-    }
+    function kernelHandlePageAdminUsers(): void
+    {
+        $user = app()->requireAuth();
+        if (($user['role'] ?? '') !== 'admin') {
+            app()->redirect('/');
+            exit;
+        }
 
-    $q = trim((string)($_GET['q'] ?? ''));
-    $where = ["role IN ('admin','superadmin','manager','viewer')"]; 
-    $bind = [];
-    if ($q !== '') {
-        $where[] = '(username LIKE :q OR full_name LIKE :q)';
-        $bind[':q'] = '%' . $q . '%';
-    }
+        $q = trim((string)($_GET['q'] ?? ''));
+        $where = ["role IN ('admin','superadmin','manager','viewer')"];
+        $bind = [];
+        if ($q !== '') {
+            $where[] = '(username LIKE :q OR full_name LIKE :q)';
+            $bind[':q'] = '%' . $q . '%';
+        }
 
-    $stmt = app()->db()->prepare(
-        'SELECT id, username, full_name, role, is_active, created_at
+        $stmt = app()->db()->prepare(
+            'SELECT id, username, full_name, role, is_active, created_at
          FROM users
          WHERE ' . implode(' AND ', $where) . '
          ORDER BY created_at DESC'
-    );
-    $stmt->execute($bind);
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        );
+        $stmt->execute($bind);
+        $users = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    echo app()->render('pages/admin-users.disyl', array_merge(
-        kernelAdminContext($user, 'users'),
-        [
-            'page_title' => 'Users',
-            'users' => $users,
-            'search' => $q,
-        ]
-    ));
-}
+        echo app()->render('pages/admin-users.disyl', array_merge(
+            kernelAdminContext($user, 'users'),
+            [
+                'page_title' => 'Users',
+                'users' => $users,
+                'search' => $q,
+            ]
+        ));
+    }
 }
 
 if (!function_exists('kernelHandlePageAdminPlatform')) {
-function kernelHandlePageAdminPlatform(): void
-{
-    $user = app()->requireAuth();
-    if (($user['role'] ?? '') !== 'admin') {
-        app()->redirect('/');
+    function kernelHandlePageAdminPlatform(): void
+    {
+        $user = app()->requireAuth();
+        if (($user['role'] ?? '') !== 'admin') {
+            app()->redirect('/');
+            exit;
+        }
+        echo app()->render('pages/admin-platform.disyl', array_merge(
+            kernelAdminContext($user, 'platform'),
+            ['page_title' => 'Platform Dashboard']
+        ));
         exit;
     }
-    echo app()->render('pages/admin-platform.disyl', array_merge(
-        kernelAdminContext($user, 'platform'),
-        ['page_title' => 'Platform Dashboard']
-    ));
-    exit;
-}
 }
 
 if (!function_exists('kernelHandlePageAdminModules')) {
-function kernelHandlePageAdminModules(): void
-{
-    $user = app()->requireAuth();
-    if (($user['role'] ?? '') !== 'admin') {
-        app()->redirect('/');
-        exit;
-    }
+    function kernelHandlePageAdminModules(): void
+    {
+        $user = app()->requireAuth();
+        if (($user['role'] ?? '') !== 'admin') {
+            app()->redirect('/');
+            exit;
+        }
 
-    $allModules = discoverModules();
-    $moduleList = [];
-    foreach ($allModules as $m) {
-        $modSettings = getModuleSettings((string)($m['id'] ?? ''));
-        $capCheck = validateModuleCapabilities($m);
-        $capError = empty($capCheck['ok']) ? ($capCheck['error'] ?? 'Invalid capability manifest') : null;
-        $capDepends = (!empty($capCheck['ok']) && is_array($capCheck['depends'] ?? null)) ? $capCheck['depends'] : [];
-        $capExposes = (!empty($capCheck['ok']) && is_array($capCheck['exposes'] ?? null)) ? $capCheck['exposes'] : [];
-        $capMissing = [];
-        $routeCount = 0;
-        $settingsUrl = '';
+        $allModules = discoverModules();
+        $moduleList = [];
+        foreach ($allModules as $m) {
+            $modSettings = getModuleSettings((string)($m['id'] ?? ''));
+            $capCheck = validateModuleCapabilities($m);
+            $capError = empty($capCheck['ok']) ? ($capCheck['error'] ?? 'Invalid capability manifest') : null;
+            $capDepends = (!empty($capCheck['ok']) && is_array($capCheck['depends'] ?? null)) ? $capCheck['depends'] : [];
+            $capExposes = (!empty($capCheck['ok']) && is_array($capCheck['exposes'] ?? null)) ? $capCheck['exposes'] : [];
+            $capMissing = [];
+            $routeCount = 0;
+            $settingsUrl = '';
 
-        $moduleId = (string)($m['id'] ?? '');
-        $rf = ($m['_path'] ?? '') . '/routes.php';
-        if ($moduleId !== '' && is_file($rf)) {
-            $mr = require $rf;
-            if (is_array($mr)) {
-                foreach ($mr as $method => $routes_arr) {
-                    if (!is_array($routes_arr)) {
-                        continue;
-                    }
-                    $routeCount += count($routes_arr);
+            $moduleId = (string)($m['id'] ?? '');
+            $rf = ($m['_path'] ?? '') . '/routes.php';
+            if ($moduleId !== '' && is_file($rf)) {
+                $mr = require $rf;
+                if (is_array($mr)) {
+                    foreach ($mr as $method => $routes_arr) {
+                        if (!is_array($routes_arr)) {
+                            continue;
+                        }
+                        $routeCount += count($routes_arr);
 
-                    if ($settingsUrl === '' && strtoupper((string)$method) === 'GET') {
-                        foreach ($routes_arr as $path => $handler) {
-                            if (!is_string($path)) {
-                                continue;
-                            }
-                            if (preg_match('#^/' . preg_quote($moduleId, '#') . '/admin/settings$#', $path)) {
-                                $settingsUrl = $path;
-                                break;
+                        if ($settingsUrl === '' && strtoupper((string)$method) === 'GET') {
+                            foreach ($routes_arr as $path => $handler) {
+                                if (!is_string($path)) {
+                                    continue;
+                                }
+                                if (preg_match('#^/' . preg_quote($moduleId, '#') . '/admin/settings$#', $path)) {
+                                    $settingsUrl = $path;
+                                    break;
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        if ($capError === null) {
-            foreach ($capDepends as $capId) {
-                if (!app()->capabilities()->has((string)$capId)) {
-                    $capMissing[] = (string)$capId;
+            if ($capError === null) {
+                foreach ($capDepends as $capId) {
+                    if (!app()->capabilities()->has((string)$capId)) {
+                        $capMissing[] = (string)$capId;
+                    }
                 }
             }
-        }
 
-        $editableSettingsFields = moduleEditableSettingsFields($m);
-        $settingsContextNotice = null;
+            $editableSettingsFields = moduleEditableSettingsFields($m);
+            $settingsContextNotice = null;
 
-        // Compute entity authority UI indicators
-        $entitiesOwned = [];
-        if (!empty($m['entities']) && is_array($m['entities'])) {
-            foreach ($m['entities'] as $eType => $eDef) {
-                if (!empty($eDef['authority']) && $eDef['authority'] === true) {
-                    $entitiesOwned[] = $eType;
+            // Compute entity authority UI indicators
+            $entitiesOwned = [];
+            if (!empty($m['entities']) && is_array($m['entities'])) {
+                foreach ($m['entities'] as $eType => $eDef) {
+                    if (!empty($eDef['authority']) && $eDef['authority'] === true) {
+                        $entitiesOwned[] = $eType;
+                    }
                 }
             }
-        }
-        if (empty($editableSettingsFields) && !empty($m['settings_fields']) && moduleTenantSettingsModeEnabled()) {
-            $settingsContextNotice = 'Feature settings are managed by the Superadmin on the tenant domain.';
-        }
+            if (empty($editableSettingsFields) && !empty($m['settings_fields']) && moduleTenantSettingsModeEnabled()) {
+                $settingsContextNotice = 'Feature settings are managed by the Superadmin on the tenant domain.';
+            }
 
-        $moduleList[] = [
-            'id' => $m['id'],
-            'name' => $m['name'] ?? $m['id'],
-            'version' => $m['version'] ?? '0.0.0',
-            'description' => $m['description'] ?? '',
-            'author' => $m['author'] ?? '',
-            'enabled' => !empty($m['_enabled']),
-            'allow_kernel_admin' => (bool)($modSettings['allow_kernel_admin'] ?? false),
-            'nav_count' => count($m['nav'] ?? []),
-            'route_count' => $routeCount,
-            'settings_url' => $settingsUrl,
-            'settings_fields' => $editableSettingsFields,
-            'settings' => is_array($modSettings) ? $modSettings : [],
-            'settings_context_notice' => $settingsContextNotice,
-            'capability_exposes_count' => is_array($capExposes) ? count($capExposes) : 0,
-            'capability_depends_count' => is_array($capDepends) ? count($capDepends) : 0,
-            'capability_missing_depends' => $capMissing,
-            'capability_manifest_error' => $capError,
-            'capability_ready_to_enable' => ($capError === null && empty($capMissing)),
-            'entities_owned' => $entitiesOwned,
-            'entities_owned_count' => count($entitiesOwned),
-        ];
+            $moduleList[] = [
+                'id' => $m['id'],
+                'name' => $m['name'] ?? $m['id'],
+                'version' => $m['version'] ?? '0.0.0',
+                'description' => $m['description'] ?? '',
+                'author' => $m['author'] ?? '',
+                'enabled' => !empty($m['_enabled']),
+                'allow_kernel_admin' => (bool)($modSettings['allow_kernel_admin'] ?? false),
+                'nav_count' => count($m['nav'] ?? []),
+                'route_count' => $routeCount,
+                'settings_url' => $settingsUrl,
+                'settings_fields' => $editableSettingsFields,
+                'settings' => is_array($modSettings) ? $modSettings : [],
+                'settings_context_notice' => $settingsContextNotice,
+                'capability_exposes_count' => is_array($capExposes) ? count($capExposes) : 0,
+                'capability_depends_count' => is_array($capDepends) ? count($capDepends) : 0,
+                'capability_missing_depends' => $capMissing,
+                'capability_manifest_error' => $capError,
+                'capability_ready_to_enable' => ($capError === null && empty($capMissing)),
+                'entities_owned' => $entitiesOwned,
+                'entities_owned_count' => count($entitiesOwned),
+            ];
+        }
+        echo app()->render('pages/admin-modules.disyl', array_merge(
+            kernelAdminContext($user, 'modules'),
+            [
+                'page_title' => 'Module Manager',
+                'modules' => $moduleList,
+            ]
+        ));
+        exit;
     }
-    echo app()->render('pages/admin-modules.disyl', array_merge(
-        kernelAdminContext($user, 'modules'),
-        [
-            'page_title' => 'Module Manager',
-            'modules' => $moduleList,
-        ]
-    ));
-    exit;
-}
 }
 
 if (!function_exists('kernelHandlePageAdminTenants')) {
-function kernelHandlePageAdminTenants(): void
-{
-    $user = app()->requireAuth();
-    if (($user['role'] ?? '') !== 'admin') {
-        app()->redirect('/');
+    function kernelHandlePageAdminTenants(): void
+    {
+        $user = app()->requireAuth();
+        if (($user['role'] ?? '') !== 'admin') {
+            app()->redirect('/');
+            exit;
+        }
+        $entryModuleOptions = listTenantEntryModuleOptions();
+        echo app()->render('pages/admin-tenants.disyl', array_merge(
+            kernelAdminContext($user, 'tenants'),
+            [
+                'page_title' => 'Tenants',
+                'entry_module_options_json' => json_encode($entryModuleOptions, JSON_UNESCAPED_SLASHES),
+            ]
+        ));
         exit;
     }
-    $entryModuleOptions = listTenantEntryModuleOptions();
-    echo app()->render('pages/admin-tenants.disyl', array_merge(
-        kernelAdminContext($user, 'tenants'),
-        [
-            'page_title' => 'Tenants',
-            'entry_module_options_json' => json_encode($entryModuleOptions, JSON_UNESCAPED_SLASHES),
-        ]
-    ));
-    exit;
-}
 }
 
 if (!function_exists('kernelHandlePageAdminKernelTriggers')) {
-function kernelHandlePageAdminKernelTriggers(): void
-{
-    $user = app()->requireAuth();
-    $role = (string)($user['role'] ?? '');
-    $source = (string)($user['source'] ?? '');
-    if ($role !== 'admin' && !($role === 'superadmin' && $source === 'kernel')) {
-        app()->redirect('/');
+    function kernelHandlePageAdminKernelTriggers(): void
+    {
+        $user = app()->requireAuth();
+        $role = (string)($user['role'] ?? '');
+        $source = (string)($user['source'] ?? '');
+        if ($role !== 'admin' && !($role === 'superadmin' && $source === 'kernel')) {
+            app()->redirect('/');
+            exit;
+        }
+        echo app()->render('pages/admin-kernel-triggers.disyl', array_merge(
+            kernelAdminContext($user, 'kernel_triggers'),
+            ['page_title' => 'Kernel Triggers']
+        ));
         exit;
     }
-    echo app()->render('pages/admin-kernel-triggers.disyl', array_merge(
-        kernelAdminContext($user, 'kernel_triggers'),
-        ['page_title' => 'Kernel Triggers']
-    ));
-    exit;
-}
 }
 
 if (!function_exists('kernelHandlePageAdminAi')) {
-function kernelHandlePageAdminAi(): void
-{
-    $user = app()->requireAuth();
-    if (($user['role'] ?? '') !== 'admin') {
-        app()->redirect('/');
+    function kernelHandlePageAdminAi(): void
+    {
+        $user = app()->requireAuth();
+        if (($user['role'] ?? '') !== 'admin') {
+            app()->redirect('/');
+            exit;
+        }
+        echo app()->render('pages/admin-ai.disyl', array_merge(
+            kernelAdminContext($user, 'ai'),
+            ['page_title' => 'AI']
+        ));
         exit;
     }
-    echo app()->render('pages/admin-ai.disyl', array_merge(
-        kernelAdminContext($user, 'ai'),
-        ['page_title' => 'AI']
-    ));
-    exit;
-}
 }
 
 if (!function_exists('kernelHandleApiAdminCheckUpdates')) {
-function kernelHandleApiAdminCheckUpdates(): void
-{
-    header('Content-Type: application/json; charset=utf-8');
-    header('X-Request-Id: ' . request_id());
-    $user = app()->user();
-    if (!$user || !in_array($user['role'] ?? '', ['admin', 'superadmin'], true) || ($user['source'] ?? 'kernel') !== 'kernel') {
-        http_response_code(403);
-        echo json_encode(['ok' => false, 'error' => 'Kernel admin only']);
-        exit;
-    }
+    function kernelHandleApiAdminCheckUpdates(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Request-Id: ' . request_id());
+        $user = app()->user();
+        if (!$user || !in_array($user['role'] ?? '', ['admin', 'superadmin'], true) || ($user['source'] ?? 'kernel') !== 'kernel') {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'Kernel admin only']);
+            exit;
+        }
 
-    app()->csrfEnforce();
-    $result = kernelUpdatesSyncCatalog($user);
-    if (empty($result['ok'])) {
-        http_response_code(422);
+        app()->csrfEnforce();
+        $result = kernelUpdatesSyncCatalog($user);
+        if (empty($result['ok'])) {
+            http_response_code(422);
+            echo json_encode($result, JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+
+        adminViewCacheInvalidate(['admin:view:platform']);
+        $result['updates'] = kernelUpdatesBuildSummary();
         echo json_encode($result, JSON_UNESCAPED_SLASHES);
         exit;
     }
-
-    adminViewCacheInvalidate(['admin:view:platform']);
-    $result['updates'] = kernelUpdatesBuildSummary();
-    echo json_encode($result, JSON_UNESCAPED_SLASHES);
-    exit;
-}
 }
 
 if (!function_exists('kernelHandleApiHealth')) {
-function kernelHandleApiHealth(): void
-{
-    $healthStartedAt = microtime(true);
-    $tenantId = null;
-    $entryModuleId = null;
-    try {
-        $tenantId = app()->tenant()->current();
-        if ($tenantId !== null && function_exists('tenantEntryModuleIdForTenant')) {
-            $entryModuleId = tenantEntryModuleIdForTenant((int)$tenantId);
+    function kernelHandleApiHealth(): void
+    {
+        $healthStartedAt = microtime(true);
+        $tenantId = null;
+        $entryModuleId = null;
+        try {
+            $tenantId = app()->tenant()->current();
+            if ($tenantId !== null && function_exists('tenantEntryModuleIdForTenant')) {
+                $entryModuleId = tenantEntryModuleIdForTenant((int)$tenantId);
+            }
+        } catch (Throwable $ignored) {
         }
-    } catch (Throwable $ignored) {
-    }
 
-    if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-        $cacheKey = 'kernel:api_health:payload';
-        $cached = apcu_fetch($cacheKey, $hit);
-        if ($hit && is_array($cached)) {
-            log_timing('kernel.api.health.path', $healthStartedAt, [
-                'phase' => 'cache_hit',
-                'tenant_id' => $tenantId,
-                'entry_module_id' => $entryModuleId,
-                'cache_hit' => true,
-                'cache_key' => $cacheKey,
-            ]);
-            app()->json($cached);
-            return;
+        if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
+            $cacheKey = 'kernel:api_health:payload';
+            $cached = apcu_fetch($cacheKey, $hit);
+            if ($hit && is_array($cached)) {
+                log_timing('kernel.api.health.path', $healthStartedAt, [
+                    'phase' => 'cache_hit',
+                    'tenant_id' => $tenantId,
+                    'entry_module_id' => $entryModuleId,
+                    'cache_hit' => true,
+                    'cache_key' => $cacheKey,
+                ]);
+                app()->json($cached);
+                return;
+            }
         }
+
+        $identityStartedAt = microtime(true);
+        $identity = app()->platformIdentity();
+        $identityMs = round((microtime(true) - $identityStartedAt) * 1000, 2);
+        $skippedModules = array_values(getSkippedModules());
+        $payload = [
+            'ok' => true,
+            'app' => $identity['app']['name'] ?? config('app.name', 'Ikabud'),
+            'kernel_version' => $identity['kernel']['version'] ?? '0.0.0',
+            'kernel_codename' => $identity['kernel']['codename'] ?? '',
+            'modules' => [
+                'skipped_count' => count($skippedModules),
+            ],
+            'time' => gmdate('c'),
+        ];
+
+        if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
+            // Very short TTL: enough to collapse bursts, short enough to stay fresh.
+            apcu_store('kernel:api_health:payload', $payload, 2);
+        }
+
+        log_timing('kernel.api.health.path', $healthStartedAt, [
+            'phase' => 'render',
+            'tenant_id' => $tenantId,
+            'entry_module_id' => $entryModuleId,
+            'cache_hit' => false,
+            'identity_ms' => $identityMs,
+        ]);
+
+        app()->json($payload);
     }
-
-    $identityStartedAt = microtime(true);
-    $identity = app()->platformIdentity();
-    $identityMs = round((microtime(true) - $identityStartedAt) * 1000, 2);
-    $skippedModules = array_values(getSkippedModules());
-    $payload = [
-        'ok' => true,
-        'app' => $identity['app']['name'] ?? config('app.name', 'Ikabud'),
-        'kernel_version' => $identity['kernel']['version'] ?? '0.0.0',
-        'kernel_codename' => $identity['kernel']['codename'] ?? '',
-        'modules' => [
-            'skipped_count' => count($skippedModules),
-        ],
-        'time' => gmdate('c'),
-    ];
-
-    if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-        // Very short TTL: enough to collapse bursts, short enough to stay fresh.
-        apcu_store('kernel:api_health:payload', $payload, 2);
-    }
-
-    log_timing('kernel.api.health.path', $healthStartedAt, [
-        'phase' => 'render',
-        'tenant_id' => $tenantId,
-        'entry_module_id' => $entryModuleId,
-        'cache_hit' => false,
-        'identity_ms' => $identityMs,
-    ]);
-
-    app()->json($payload);
-}
 }
 
 if (!function_exists('kernelHandlePageSuperadminCache')) {
@@ -847,4 +847,3 @@ if (!function_exists('kernelHandlePageSuperadminCache')) {
         ));
     }
 }
-

@@ -5,15 +5,14 @@ declare(strict_types=1);
 /**
  * PHP-CS-Fixer configuration — Ikabud Kernel OS.
  *
- * Scoped to kernel/ (the core OS). Add src/ and modules/ incrementally
- * as the codebase is cleaned up. Run:
+ * Scoped to kernel/, src/ and modules/ (the application OS core). Run:
  *   composer lint        (dry-run, used by CI)
  *   composer lint:fix    (apply fixes locally)
  */
 
 $finder = (new PhpCsFixer\Finder())
-    ->in(__DIR__ . '/kernel')
-    ->notPath(['vendor', 'node_modules']);
+    ->in([__DIR__ . '/kernel', __DIR__ . '/src', __DIR__ . '/modules'])
+    ->notPath(['vendor', 'node_modules', 'builder-ui']);
 
 return (new PhpCsFixer\Config())
     ->setFinder($finder)

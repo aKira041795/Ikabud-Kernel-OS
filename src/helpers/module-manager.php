@@ -65,7 +65,7 @@ function moduleInstallTargetDirForId(string $moduleId, ?string $explicitSuiteId 
         return $base . '/' . $suiteId . '/' . $moduleId;
     }
 
-    $parts = array_values(array_filter(explode('-', $moduleId), fn($p) => $p !== ''));
+    $parts = array_values(array_filter(explode('-', $moduleId), fn ($p) => $p !== ''));
     if (count($parts) >= 3) {
         $suite = $parts[0] . '-' . $parts[1];
         $suiteDir = $base . '/' . $suite;
@@ -177,7 +177,7 @@ function moduleSuiteGraph(?array $modules = null): array
                 'extensions'      => [],
                 'adapters'        => [],
                 'profiles'        => [],
-                'extension_points'=> [],
+                'extension_points' => [],
             ];
         }
         $graph[$suite]['modules'][] = $moduleId;
@@ -570,30 +570,44 @@ function kernelModuleIntegrationMap(?array $modules = null): array
     $features = [];
     foreach ($modules as $moduleId => $manifest) {
         $integrations = $manifest['integrations'] ?? null;
-        if (!is_array($integrations)) { continue; }
+        if (!is_array($integrations)) {
+            continue;
+        }
 
         $callerMap = [];
         $callerFeatures = [];
         foreach ($integrations as $providerModuleId => $contract) {
-            if (!is_string($providerModuleId) || $providerModuleId === '' || !is_array($contract)) { continue; }
+            if (!is_string($providerModuleId) || $providerModuleId === '' || !is_array($contract)) {
+                continue;
+            }
 
             $uses = $contract['uses'] ?? [];
-            if (!is_array($uses)) { $uses = []; }
+            if (!is_array($uses)) {
+                $uses = [];
+            }
             $uses = array_values(array_filter($uses, static fn ($u) => is_string($u) && $u !== ''));
 
             $addsFeatures = $contract['adds_features'] ?? [];
-            if (!is_array($addsFeatures)) { $addsFeatures = []; }
+            if (!is_array($addsFeatures)) {
+                $addsFeatures = [];
+            }
             $addsFeatures = array_values(array_filter($addsFeatures, static fn ($f) => is_string($f) && $f !== ''));
 
             $type = strtolower(trim((string)($contract['type'] ?? 'optional')));
-            if ($type === '') { $type = 'optional'; }
+            if ($type === '') {
+                $type = 'optional';
+            }
 
             $callerMap[$providerModuleId] = array_merge($uses, ['__type' => $type]);
-            if ($addsFeatures !== []) { $callerFeatures[$providerModuleId] = $addsFeatures; }
+            if ($addsFeatures !== []) {
+                $callerFeatures[$providerModuleId] = $addsFeatures;
+            }
         }
         if ($callerMap !== []) {
             $map[$moduleId] = $callerMap;
-            if ($callerFeatures !== []) { $features[$moduleId] = $callerFeatures; }
+            if ($callerFeatures !== []) {
+                $features[$moduleId] = $callerFeatures;
+            }
         }
     }
 
@@ -612,21 +626,33 @@ function integrationIsDeclared(string $callerModuleId, string $providerModuleId,
     $callerModuleId = trim($callerModuleId);
     $providerModuleId = trim($providerModuleId);
     $capabilityId = trim($capabilityId);
-    if ($callerModuleId === '' || $providerModuleId === '' || $capabilityId === '') { return false; }
+    if ($callerModuleId === '' || $providerModuleId === '' || $capabilityId === '') {
+        return false;
+    }
 
     $registry = kernelModuleIntegrationMap();
     $callerIntegrations = $registry['map'][$callerModuleId] ?? null;
-    if (!is_array($callerIntegrations)) { return false; }
+    if (!is_array($callerIntegrations)) {
+        return false;
+    }
 
     $uses = $callerIntegrations[$providerModuleId] ?? null;
-    if (!is_array($uses)) { return false; }
+    if (!is_array($uses)) {
+        return false;
+    }
 
     foreach ($uses as $declared) {
-        if ($declared === '__type') { continue; }
-        if ($declared === $capabilityId) { return true; }
+        if ($declared === '__type') {
+            continue;
+        }
+        if ($declared === $capabilityId) {
+            return true;
+        }
         $baseDeclared = str_contains((string)$declared, '@') ? explode('@', (string)$declared, 2)[0] : $declared;
         $baseRequested = str_contains($capabilityId, '@') ? explode('@', $capabilityId, 2)[0] : $capabilityId;
-        if ($baseDeclared === $baseRequested) { return true; }
+        if ($baseDeclared === $baseRequested) {
+            return true;
+        }
     }
     return false;
 }
@@ -882,7 +908,9 @@ function exportModuleOwnedTables(string $moduleId, array $manifest, ?string $exp
             $cols = $colsStmt ? $colsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
             $colNames = [];
             foreach ($cols as $c) {
-                if (!is_array($c) || empty($c['Field'])) continue;
+                if (!is_array($c) || empty($c['Field'])) {
+                    continue;
+                }
                 $colNames[] = (string)$c['Field'];
             }
             if (empty($colNames)) {
@@ -901,8 +929,10 @@ function exportModuleOwnedTables(string $moduleId, array $manifest, ?string $exp
             $select = $pdo->query("SELECT * FROM `{$table}`");
             if ($select) {
                 while ($row = $select->fetch(PDO::FETCH_ASSOC)) {
-                    if (!is_array($row)) continue;
-                    $colsSql = implode(', ', array_map(fn($c) => '`' . str_replace('`', '``', $c) . '`', $colNames));
+                    if (!is_array($row)) {
+                        continue;
+                    }
+                    $colsSql = implode(', ', array_map(fn ($c) => '`' . str_replace('`', '``', $c) . '`', $colNames));
                     $vals = [];
                     foreach ($colNames as $c) {
                         $v = $row[$c] ?? null;
@@ -945,7 +975,7 @@ function declaredModuleAuthCookieNames(): array
     if ($ttl > 0) {
         $cached = app()->cache()->get('kernel_bootstrap', 'module_auth_cookies:v2');
         if (is_array($cached) && isset($cached['names']) && is_array($cached['names'])) {
-            $names = array_values(array_filter($cached['names'], fn($name) => is_string($name) && $name !== ''));
+            $names = array_values(array_filter($cached['names'], fn ($name) => is_string($name) && $name !== ''));
             return $names;
         }
     }
@@ -1216,13 +1246,19 @@ function preloadAllTenantModuleSettings(): void
 
         $cache = [];
         foreach ($rows as $row) {
-            if (!is_array($row)) continue;
+            if (!is_array($row)) {
+                continue;
+            }
             $mid = trim((string)($row['module_id'] ?? ''));
             $key = trim((string)($row['setting_key'] ?? ''));
-            if ($mid === '' || $key === '') continue;
+            if ($mid === '' || $key === '') {
+                continue;
+            }
             $raw = (string)($row['setting_value'] ?? 'null');
             $decoded = json_decode($raw, true);
-            if (!isset($cache[$mid])) $cache[$mid] = [];
+            if (!isset($cache[$mid])) {
+                $cache[$mid] = [];
+            }
             $cache[$mid][$key] = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $raw;
         }
 
@@ -1268,9 +1304,13 @@ function _readTenantModuleSettingsSingle(string $moduleId, int $tenantId, ?PDO $
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $settings = [];
         foreach ($rows as $row) {
-            if (!is_array($row)) continue;
+            if (!is_array($row)) {
+                continue;
+            }
             $key = trim((string)($row['setting_key'] ?? ''));
-            if ($key === '') continue;
+            if ($key === '') {
+                continue;
+            }
             $raw = (string)($row['setting_value'] ?? 'null');
             $decoded = json_decode($raw, true);
             $settings[$key] = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $raw;
@@ -1644,9 +1684,9 @@ function getEnabledModules(): array
 
     resetSkippedModules();
 
-    $enabled = array_filter(discoverModules(), fn($m) => !empty($m['_enabled']));
+    $enabled = array_filter(discoverModules(), fn ($m) => !empty($m['_enabled']));
 
-    // Parse entity authorities and contracts across all enabled modules 
+    // Parse entity authorities and contracts across all enabled modules
     // strictly during kernel boot.
     app()->entityAuthority()->reset();
     app()->syncContracts()->reset();
@@ -1853,19 +1893,31 @@ function validateModuleCapabilities(array $manifest): array
         }
 
         $validateProviderList = function ($v): bool {
-            if ($v === null) return true;
-            if (!is_array($v)) return false;
+            if ($v === null) {
+                return true;
+            }
+            if (!is_array($v)) {
+                return false;
+            }
             foreach ($v as $p) {
-                if (!is_string($p) || trim($p) === '') return false;
+                if (!is_string($p) || trim($p) === '') {
+                    return false;
+                }
             }
             return true;
         };
 
         $validateCallerList = function ($v): bool {
-            if ($v === null) return true;
-            if (!is_array($v)) return false;
+            if ($v === null) {
+                return true;
+            }
+            if (!is_array($v)) {
+                return false;
+            }
             foreach ($v as $c) {
-                if (!is_string($c) || trim($c) === '') return false;
+                if (!is_string($c) || trim($c) === '') {
+                    return false;
+                }
             }
             return true;
         };
@@ -2008,9 +2060,9 @@ function validateAuthOwnedSpec(mixed $raw, bool $strictReservedRoles = false): a
 function kernelNormalizeAuthOwnedSpec(string $moduleId, array $raw): array
 {
     $adminRoles = array_values(array_filter(array_map(
-        static fn($r) => is_string($r) ? trim($r) : '',
+        static fn ($r) => is_string($r) ? trim($r) : '',
         $raw['admin_roles'] ?? []
-    ), static fn($r) => $r !== ''));
+    ), static fn ($r) => $r !== ''));
 
     if ($adminRoles === []) {
         $adminRoles = ['admin'];
@@ -2850,21 +2902,31 @@ function executeModuleHandler(string $handler, array $params = []): void
             $html = ob_get_clean();
             $responseCode = http_response_code();
             pageCacheSet($requestUri, $html, $moduleId, (int)$responseCode);
-            if ($pageCacheLock) { pageCacheLockRelease($pageCacheLock); $pageCacheLock = null; }
+            if ($pageCacheLock) {
+                pageCacheLockRelease($pageCacheLock);
+                $pageCacheLock = null;
+            }
             if (!headers_sent()) {
                 header('X-Page-Cache: miss');
             }
             echo $html;
             // Release session lock after GET render so concurrent requests can proceed.
-            if (function_exists('releaseSessionAfterRender')) { releaseSessionAfterRender(); }
+            if (function_exists('releaseSessionAfterRender')) {
+                releaseSessionAfterRender();
+            }
         } else {
             ob_end_flush(); // success — send captured output
             // Release session lock after GET render so concurrent requests can proceed.
-            if (function_exists('releaseSessionAfterRender')) { releaseSessionAfterRender(); }
+            if (function_exists('releaseSessionAfterRender')) {
+                releaseSessionAfterRender();
+            }
         }
     } catch (\Throwable $e) {
         ob_end_clean(); // discard any partial output from the bad handler
-        if ($pageCacheLock) { pageCacheLockRelease($pageCacheLock); $pageCacheLock = null; }
+        if ($pageCacheLock) {
+            pageCacheLockRelease($pageCacheLock);
+            $pageCacheLock = null;
+        }
 
         write_log("Module handler '{$handler}' threw: " . $e->getMessage(), 'error', [
             'module'  => $moduleId,
@@ -3033,7 +3095,9 @@ function registerModuleManagerHooks(): void
 
     // kernel.nav_items: inject module navigation items for the current user
     $hooks->on('kernel.nav_items', function (array $items, ?array $user) {
-        if (!$user) return $items;
+        if (!$user) {
+            return $items;
+        }
         $role = (string)($user['role'] ?? '');
         return array_merge($items, getModuleNavItems($role));
     });
@@ -3320,7 +3384,7 @@ function validateModuleNavigationRoutes(array $manifest, ?array $installedModule
         if (in_array($moduleId, $owners, true)) {
             continue;
         }
-        $declaredOwner = array_filter($owners, static fn(string $owner): bool => isset($allowedDependencies[$owner]));
+        $declaredOwner = array_filter($owners, static fn (string $owner): bool => isset($allowedDependencies[$owner]));
         if ($declaredOwner === []) {
             $undeclaredDependencies[$url] = array_values(array_unique($owners));
         }
@@ -3374,7 +3438,9 @@ function validateModuleCertification(array $manifest): array
     $total++;
     $ok = !empty($manifest['id']) && !empty($manifest['name']) && !empty($manifest['version']);
     $checks[] = ['check' => 'C1: Identity', 'passed' => $ok, 'detail' => $ok ? "{$manifest['name']} v{$manifest['version']}" : 'Missing id, name, or version'];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C2: Table ownership declared (skip for service-modules)
     $total++;
@@ -3387,7 +3453,9 @@ function validateModuleCertification(array $manifest): array
         $reads = array_key_exists('reads_tables', $manifest) && is_array($manifest['reads_tables']);
         $ok = $owns && $reads;
         $checks[] = ['check' => 'C2: Table ownership', 'passed' => $ok, 'detail' => $ok ? 'owns_tables and reads_tables explicitly declared' : 'Missing explicit owns_tables or reads_tables declaration'];
-        if ($ok) $passed++;
+        if ($ok) {
+            $passed++;
+        }
     }
 
     // C3: Capabilities exposed (declared capabilities key with exposes array — even if empty)
@@ -3403,7 +3471,9 @@ function validateModuleCertification(array $manifest): array
     $ok = $capsDeclared;
     $count = is_array($capsExposes) ? count($capsExposes) : 0;
     $checks[] = ['check' => 'C3: Capabilities', 'passed' => $ok, 'detail' => $ok ? ($count > 0 ? "{$count} capabilities exposed" : 'capabilities declared (none exposed)') : 'No capabilities declared'];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C3b: Every PHP capability declaration resolves to a runtime callable.
     $total++;
@@ -3441,7 +3511,9 @@ function validateModuleCertification(array $manifest): array
                 ? 'All declared capability handlers resolve'
                 : 'Missing handler reference(s): ' . implode(', ', $missingHandlers) . ". Export them from {$exportFunction}() in helpers.php.",
         ];
-        if ($ok) $passed++;
+        if ($ok) {
+            $passed++;
+        }
     }
 
     // C4: Events declared (accept empty array — module has declared it, just has none)
@@ -3450,7 +3522,9 @@ function validateModuleCertification(array $manifest): array
     $ok = $events;
     $hasEvents = $events && !empty($manifest['events']);
     $checks[] = ['check' => 'C4: Events', 'passed' => $ok, 'detail' => $ok ? ($hasEvents ? count($manifest['events']) . ' events declared' : 'events key declared (none needed)') : 'No events declared'];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C5: Routes declared (skip for service-modules)
     $total++;
@@ -3461,7 +3535,9 @@ function validateModuleCertification(array $manifest): array
         $routes = (is_array($manifest['routes'] ?? null) && !empty($manifest['routes'])) || !empty($manifest['routes']);
         $ok = $routes;
         $checks[] = ['check' => 'C5: Routes', 'passed' => $ok, 'detail' => $ok ? 'Routes declared' : 'No routes declared'];
-        if ($ok) $passed++;
+        if ($ok) {
+            $passed++;
+        }
     }
 
     // C6: Migrations present (accept empty array, skip for service-modules)
@@ -3474,7 +3550,9 @@ function validateModuleCertification(array $manifest): array
         $hasMigrations = $migrations && !empty($manifest['migrations']);
         $ok = $migrations;
         $checks[] = ['check' => 'C6: Migrations', 'passed' => $ok, 'detail' => $ok ? ($hasMigrations ? count($manifest['migrations']) . ' migrations' : 'migrations key declared (none needed)') : 'No migrations declared'];
-        if ($ok) $passed++;
+        if ($ok) {
+            $passed++;
+        }
     }
 
     // C7: Author declared
@@ -3482,21 +3560,27 @@ function validateModuleCertification(array $manifest): array
     $author = !empty($manifest['author']) && is_string($manifest['author']);
     $ok = $author;
     $checks[] = ['check' => 'C7: Author', 'passed' => $ok, 'detail' => $ok ? (string)$manifest['author'] : 'No author declared'];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C8: Description
     $total++;
     $desc = !empty($manifest['description']) && is_string($manifest['description']);
     $ok = $desc;
     $checks[] = ['check' => 'C8: Description', 'passed' => $ok, 'detail' => $ok ? substr((string)$manifest['description'], 0, 60) . '...' : 'No description'];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C9: Module type valid
     $total++;
     $validTypes = ['php-module', 'module', 'service-module'];
     $ok = in_array($type, $validTypes, true);
     $checks[] = ['check' => 'C9: Module type', 'passed' => $ok, 'detail' => $ok ? $type : "Invalid type: {$type}"];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C10: Every declared/rendered internal navigation URL has a GET route.
     $total++;
@@ -3521,7 +3605,9 @@ function validateModuleCertification(array $manifest): array
         $endpoint = !empty($manifest['service']['endpoint']) && is_string($manifest['service']['endpoint']);
         $ok = $endpoint;
         $checks[] = ['check' => 'C11: Service endpoint', 'passed' => $ok, 'detail' => $ok ? (string)$manifest['service']['endpoint'] : 'No service endpoint declared'];
-        if ($ok) $passed++;
+        if ($ok) {
+            $passed++;
+        }
     }
 
     // C12: Product suite contract (additive — lenient for legacy modules that
@@ -3543,7 +3629,9 @@ function validateModuleCertification(array $manifest): array
                 $suiteContractFatal
             )),
     ];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     // C13: Dynamic admin contributions well-formed and routes resolvable.
     // Advisory when the module declares contributions; skipped otherwise.
@@ -3582,7 +3670,9 @@ function validateModuleCertification(array $manifest): array
             ? ($ok ? count($contribs) . ' contribution(s) declared with owned routes' : 'Malformed contribution: ' . implode('; ', $badRoutes))
             : 'No admin contributions declared',
     ];
-    if ($ok) $passed++;
+    if ($ok) {
+        $passed++;
+    }
 
     foreach ($checks as &$check) {
         $check['severity'] ??= \Ikabud\Kernel\Contracts\DiagnosticSeverity::CertificationBlocker->value;
@@ -4516,8 +4606,8 @@ function installModuleFromZip(string $zipPath): array
     if (empty($certification['ok'])) {
         $cleanupInstall();
         $failedChecks = array_values(array_map(
-            static fn(array $check): string => (string)$check['check'] . ': ' . (string)$check['detail'],
-            array_filter($certification['checks'], static fn(array $check): bool => empty($check['passed']))
+            static fn (array $check): string => (string)$check['check'] . ': ' . (string)$check['detail'],
+            array_filter($certification['checks'], static fn (array $check): bool => empty($check['passed']))
         ));
         return moduleInstallFailure(
             'module_not_certified',
@@ -4677,7 +4767,9 @@ function uninstallModule(string $moduleId, array $options = []): array
             $dropList = [];
             if (is_array($tables)) {
                 foreach ($tables as $t) {
-                    if (!is_string($t) || trim($t) === '') continue;
+                    if (!is_string($t) || trim($t) === '') {
+                        continue;
+                    }
                     $dropList[] = trim($t);
                 }
             }

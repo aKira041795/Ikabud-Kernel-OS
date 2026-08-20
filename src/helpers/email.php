@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception as MailException;
+use PHPMailer\PHPMailer\PHPMailer;
 
 function emailEnv(string $key, string $default = ''): string
 {
@@ -46,7 +46,7 @@ function emailNormalizeSmtpPassword(string $host, string $password): string
 
 /**
  * Send an email using configured SMTP settings
- * 
+ *
  * Available for all modules (contact-form, forgot-password, etc.)
  * Uses PHPMailer with SMTP for reliable email delivery.
  *
@@ -75,10 +75,10 @@ function sendEmail(string $to, string $subject, string $body, array $options = [
             write_log("Email [$mailerMode]: to=$to, subject=$subject", 'debug');
             return true;
         }
-        
+
         // Create PHPMailer instance
         $mail = new PHPMailer(true);
-        
+
         $protocol = strtolower(emailEnv('EMAIL_PROTOCOL', 'smtp'));
         if ($protocol !== 'smtp') {
             write_log("Email protocol '$protocol' is not supported by sendEmail(); expected smtp", 'error');
@@ -102,20 +102,20 @@ function sendEmail(string $to, string $subject, string $body, array $options = [
             $mail->SMTPSecure = '';
             $mail->SMTPAutoTLS = false;
         }
-        
+
         // Mail settings
         $mailType = strtolower(emailEnv('EMAIL_MAIL_TYPE', 'html'));
         $mail->isHTML($mailType === 'html');
         $mail->CharSet = emailEnv('EMAIL_CHARSET', 'utf-8');
-        
+
         // From address
         $fromEmail = emailEnv('EMAIL_FROM_EMAIL', 'noreply@ikabudkernel.com');
         $fromName = emailEnv('EMAIL_FROM_NAME', 'Ikabud Kernel');
         $mail->setFrom($fromEmail, $fromName);
-        
+
         // Recipients
         $mail->addAddress($to);
-        
+
         // CC if provided
         if (!empty($options['cc']) && is_array($options['cc'])) {
             foreach ($options['cc'] as $cc) {
@@ -124,7 +124,7 @@ function sendEmail(string $to, string $subject, string $body, array $options = [
                 }
             }
         }
-        
+
         // BCC if provided
         if (!empty($options['bcc']) && is_array($options['bcc'])) {
             foreach ($options['bcc'] as $bcc) {
@@ -133,26 +133,26 @@ function sendEmail(string $to, string $subject, string $body, array $options = [
                 }
             }
         }
-        
+
         // Reply-To header
         $replyTo = $options['reply_to'] ?? $fromEmail;
         if (filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
             $mail->addReplyTo($replyTo);
         }
-        
+
         // Subject and body
         $mail->Subject = $subject;
         $mail->Body    = $body;
         $mail->AltBody = strip_tags($body);
-        
+
         // Log email config (without sensitive data)
         write_log("Sending email via SMTP: to=$to, host=" . $mail->Host . ":" . $mail->Port . ", subject=$subject", 'debug');
-        
+
         // Send email
         $mail->send();
         write_log("Email sent successfully: to=$to, subject=$subject", 'info');
         return true;
-        
+
     } catch (MailException $e) {
         $errorMsg = $e->getMessage();
         if ($mail) {
@@ -168,7 +168,7 @@ function sendEmail(string $to, string $subject, string $body, array $options = [
 
 /**
  * Build a professional HTML email template
- * 
+ *
  * Use this to wrap your email content in a consistent branded template
  *
  * @param string $title       Email title/headline
@@ -193,7 +193,7 @@ function buildEmailTemplate(string $title, string $content, string $ctaText = ''
                             </table>
 HTML;
     }
-    
+
     return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -238,4 +238,3 @@ HTML;
 </html>
 HTML;
 }
-
