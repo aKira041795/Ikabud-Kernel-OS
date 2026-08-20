@@ -106,6 +106,12 @@ function validateModuleManifestV1(array $manifest, array $context = []): array
         }
     }
 
+    if (array_key_exists('kernel_companion', $manifest)) {
+        if (!is_bool($manifest['kernel_companion'])) {
+            $fatal('manifest_invalid_kernel_companion', 'manifest.v1.kernel-companion', '/kernel_companion', "module.json field 'kernel_companion' must be a boolean when provided.", 'Use true or false.');
+        }
+    }
+
     foreach (['owns_tables', 'co_owns_tables', 'reads_tables', 'requires_tables'] as $field) {
         if (!array_key_exists($field, $manifest)) {
             continue;

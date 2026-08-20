@@ -583,8 +583,13 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 }
             }
 
-            $editableSettingsFields = moduleEditableSettingsFields($m);
-            $settingsContextNotice = null;
+            // Module settings are tenant-owned: the tenant admin configures them
+            // on the tenant domain. The kernel module manager only manages
+            // enable/disable + access, so no inline config is offered here.
+            $editableSettingsFields = [];
+            $settingsContextNotice = !empty($m['settings_fields']) && is_array($m['settings_fields'])
+                ? 'Module settings are configured by the admin on the tenant domain.'
+                : null;
 
             // Compute entity authority UI indicators
             $entitiesOwned = [];
@@ -595,9 +600,29 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                     }
                 }
             }
-            if (empty($editableSettingsFields) && !empty($m['settings_fields']) && moduleTenantSettingsModeEnabled()) {
-                $settingsContextNotice = 'Feature settings are managed by the Superadmin on the tenant domain.';
-            }
+            // The kernel-admin access opt-in applies to companion modules:
+            // suite extensions/adapters and modules declared as kernel
+            // companions (e.g. gui-settings, which customizes the kernel admin
+            // shell). Standalone and entity modules have their own auth surface
+            // (or none at all), so the toggle is not shown for them.
+            $kind = function_exists('moduleManifestKindFromManifest')
+                ? moduleManifestKindFromManifest($m)
+                : MODULE_KIND_STANDALONE;
+            $isCompanion = $kind === MODULE_KIND_EXTENSION
+                || $kind === MODULE_KIND_ADAPTER
+                || (function_exists('moduleExtendsForModule') && moduleExtendsForModule($moduleId) !== null)
+                || !empty($m['kernel_companion'] ?? false);
+            $showAllowKernelAdmin = $isCompanion;
+
+            // Modules authenticating against the kernel users table are always
+            // reachable by the kernel admin (the route gate is bypassed), so the
+            // opt-in is locked on for those companions.
+            $usesKernelUsers = function_exists('tenantEntryModuleUsesKernelUsers')
+                && tenantEntryModuleUsesKernelUsers($moduleId);
+            $kernelAdminGuaranteed = $isCompanion && $usesKernelUsers;
+            $allowKernelAdmin = $kernelAdminGuaranteed
+                ? true
+                : (bool)($modSettings['allow_kernel_admin'] ?? false);
 
             $moduleList[] = [
                 'id' => $m['id'],
@@ -607,7 +632,9 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 'author' => $m['author'] ?? '',
                 'icon' => trim((string) ($m['icon'] ?? '')),
                 'enabled' => !empty($m['_enabled']),
-                'allow_kernel_admin' => (bool)($modSettings['allow_kernel_admin'] ?? false),
+                'allow_kernel_admin' => $allowKernelAdmin,
+                'kernel_admin_guaranteed' => $kernelAdminGuaranteed,
+                'show_allow_kernel_admin' => $showAllowKernelAdmin,
                 'nav_count' => count($m['nav'] ?? []),
                 'route_count' => $routeCount,
                 'settings_url' => $settingsUrl,
@@ -623,6 +650,7 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 'entities_owned_count' => count($entitiesOwned),
             ];
         }
+
         echo app()->render('pages/admin-modules.disyl', array_merge(
             kernelAdminContext($user, 'modules'),
             [
