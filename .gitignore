@@ -3,6 +3,17 @@
 # Domain modules (CMS, WMS, EHR, …) are installed at runtime and are NOT
 # committed here.
 
+# ── Runtime-installed modules ───────────────────────────────────────
+# Modules added via the web GUI installer (or module:pack) land in
+# modules/<id> and templates/modules/<id> at runtime. They are NOT kernel
+# source and must never be pushed. Only the bundled companion is tracked.
+modules/*
+!modules/gui-settings/
+!modules/gui-settings/**
+templates/modules/*
+!templates/modules/gui-settings/
+!templates/modules/gui-settings/**
+
 # ── Local agent/tool state ──────────────────────────────────────────
 /.ai/current-task.md
 .lean-ctx/
