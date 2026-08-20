@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# =============================================================================
+# ARK Workbench Test Pipeline
+#
+# Runs Playwright browser tests (discovered from the module's workbench contract),
+# then the ARK Test Steward for AI-assisted failure diagnosis and coverage analysis.
+#
+# Browser specs are discovered automatically from:
+#   modules/$MODULE/workbench-contract.json  →  test_files.browser
+# plus shared specs (wb-inspect, module-page-views) that apply to all modules.
+#
+# Usage:
+#   ./scripts/ark-test <module> [--mode coverage|triage|contract]
+#
+# Examples:
+#   ./scripts/ark-test project-audit-ledger                    # Full pipeline
+#   ./scripts/ark-test daily-ledger                            # Full pipeline
+#   ./scripts/ark-test daily-ledger --mode contract            # Contract checks only (no browser)
+#   ./scripts/ark-test project-audit-ledger --mode coverage    # Coverage only
+#   ./scripts/ark-test project-audit-ledger --mode triage      # Failure analysis only
+#
+# Env vars (module-agnostic, required for browser tests):
+#   TEST_BASE_URL                    — target site URL (e.g. https://palsystem.test)
+#   TEST_ADMIN_USER, TEST_ADMIN_PASS — login credentials
+#   TEST_TENANT                      — tenant ID for test data (optional)
+#   ARK_AI_API_KEY                   — AI provider API key (Groq/DeepSeek)
+#
+# Use --mode contract to skip browser tests and avoid env requirements.
+# =============================================================================
+
+set -euo pipefail
+
+MODULE="${1:-}"
+MODE="${2:-}"
+if [ "$MODE" = "--mode" ]; then MODE="${3:-pipeline}"; fi
+if [ -z "$MODE" ]; then MODE="pipeline"; fi
+
+if [ -z "$MODULE" ]; then
+    echo "Usage: ./scripts/ark-test <module> [--mode coverage|triage|contract]"
+    echo ""
+    echo "Examples:"
+    echo "  ./scripts/ark-test project-audit-ledger"
+    echo "  ./scripts/ark-test daily-ledger --mode contract"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$ROOT_DIR"
+
+echo ""
+echo "============================================"
+echo " ARK Workbench Test Pipeline"
+echo " Module: $MODULE"
+echo " Mode:   $MODE"
+echo "============================================"
+echo ""
+
+# ── Step 0: Discover browser specs from workbench contract ────
+CONTRACT_FILE="modules/$MODULE/workbench-contract.json"
+SHARED_SPECS=(
+    "tests/browser/workbench/wb-inspect.spec.js"
+    "tests/browser/module-page-views.spec.js"
+)
+MODULE_SPECS=()
+
+if [ -f "$CONTRACT_FILE" ]; then
+    # Extract test_files.browser from the contract JSON
+    while IFS= read -r spec; do
+        spec="${spec//\"/}"
+        spec="${spec//,/}"
+        spec="$(echo "$spec" | xargs)"
+        if [ -n "$spec" ] && [ -f "$spec" ]; then
+            MODULE_SPECS+=("$spec")
+        fi
+    done < <(node -e "
+        try {
+            var c = require('./$CONTRACT_FILE');
+            var files = (c.test_files && c.test_files.browser) || [];
+            files.forEach(function(f) { console.log(f); });
+        } catch(e) { /* contract missing or unreadable — no module-specific browser specs */ }
+    " 2>/dev/null || true)
+fi
+
+# ── Step 1: Clear logs ──────────────────────────────────────
+: > storage/logs/error.log
+: > storage/logs/app.log
+
+# ── Step 2: Workbench contract checks ───────────────────────
+echo "📋 Workbench contract: $MODULE"
+php ikabud workbench:doctor "$MODULE" 2>&1 || true
+echo ""
+
+if [ "$MODE" = "contract" ]; then
+    echo "============================================"
+    echo " Contract checks complete (no browser run)"
+    echo "============================================"
+    exit 0
+fi
+
+# ── Step 3: Pre-flight env check ───────────────────────────
+# Browser tests need real credentials + target URL. Defaults will fail.
+# This gate ensures the operator has configured the environment.
+TEST_BASE_URL="${TEST_BASE_URL:-}"
+TEST_ADMIN_USER="${TEST_ADMIN_USER:-}"
+TEST_ADMIN_PASS="${TEST_ADMIN_PASS:-}"
+TEST_TENANT="${TEST_TENANT:-}"
+
+MISSING_ENV=()
+
+if [ -z "$TEST_BASE_URL" ]; then
+    MISSING_ENV+=("TEST_BASE_URL   (e.g. https://palsystem.test)")
+fi
+if [ -z "$TEST_ADMIN_USER" ]; then
+    MISSING_ENV+=("TEST_ADMIN_USER  (login username)")
+fi
+if [ -z "$TEST_ADMIN_PASS" ]; then
+    MISSING_ENV+=("TEST_ADMIN_PASS  (login password)")
+fi
+
+if [ ${#MISSING_ENV[@]} -gt 0 ]; then
+    echo "❌ Browser tests require environment configuration:"
+    echo ""
+    for var in "${MISSING_ENV[@]}"; do
+        echo "   export ${var}"
+    done
+    echo ""
+    echo "   Example:"
+    echo "     TEST_BASE_URL=https://palsystem.test \\"
+    echo "     TEST_ADMIN_USER=admin \\"
+    echo "     TEST_ADMIN_PASS=secret \\"
+    echo "     ./scripts/ark-test $MODULE"
+    echo ""
+    echo "   Or use --mode contract to skip browser tests entirely."
+    exit 1
+fi
+
+echo "✓ Environment configured: ${TEST_BASE_URL} (user: ${TEST_ADMIN_USER})"
+echo ""
+
+# ── Step 4: Run Playwright tests ────────────────────────────
+# Browser specs: shared (always present) + module-specific (from contract).
+# Skipped only when --mode contract is used (step 2 exits early).
+ALL_SPECS=("${SHARED_SPECS[@]}" "${MODULE_SPECS[@]}")
+
+echo "📋 Running browser tests (${#ALL_SPECS[@]} specs)..."
+echo "   Shared:  ${SHARED_SPECS[*]}"
+if [ ${#MODULE_SPECS[@]} -gt 0 ]; then
+    echo "   Module:  ${MODULE_SPECS[*]}"
+else
+    echo "   Module:  (none declared in workbench contract — add browser specs to test_files.browser)"
+fi
+
+TEST_ADMIN_USER="$TEST_ADMIN_USER" \
+TEST_ADMIN_PASS="$TEST_ADMIN_PASS" \
+TEST_TENANT="$TEST_TENANT" \
+TEST_BASE_URL="$TEST_BASE_URL" \
+MODULE="$MODULE" \
+npx playwright test "${ALL_SPECS[@]}" 2>&1 | tail -12
+
+echo ""
+
+# ── Step 5: Run ARK Test Steward ────────────────────────────
+if [ "$MODE" = "pipeline" ] || [ "$MODE" = "triage" ] || [ "$MODE" = "coverage" ]; then
+    echo "🔍 ARK Test Steward — ${MODE}..."
+    
+    if [ "$MODE" = "pipeline" ]; then STEWARD_MODE="triage"; else STEWARD_MODE="$MODE"; fi
+    
+    node tests/ai/ArkTestSteward.js \
+        --module "$MODULE" \
+        --mode "$STEWARD_MODE"
+    
+    echo ""
+fi
+
+# ── Step 6: Summary ─────────────────────────────────────────
+if [ -f test_results/ai/steward-diagnosis.json ]; then
+    echo "📊 Results:"
+    node -e "
+        var d = require('$(pwd)/test_results/ai/steward-diagnosis.json');
+        console.log('   Tests:  ' + d.run_context.total_tests + ' total, ' + d.run_context.passed + ' passed, ' + d.run_context.failed + ' failed');
+        console.log('   Issues: ' + d.run_context.issues + ' reported');
+        console.log('   Classification: ' + d.classification + ' (' + Math.round(d.confidence*100) + '%)');
+        if (d.ai_assisted) console.log('   AI-assisted: yes');
+    " 2>/dev/null || true
+fi
+
+if [ -f test_results/ai/coverage-report.json ]; then
+    node -e "
+        var r = require('$(pwd)/test_results/ai/coverage-report.json');
+        console.log('   Coverage: ' + Math.round((r.coverage_score||0)*100) + '%');
+    " 2>/dev/null || true
+fi
+
+echo ""
+echo "============================================"
+echo " Pipeline complete"
+echo "============================================"

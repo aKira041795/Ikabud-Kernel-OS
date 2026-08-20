@@ -1,0 +1,385 @@
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/../src/helpers/module-manager.php';
+
+$pass = 0;
+$fail = 0;
+$errors = [];
+
+function t(string $label, bool $ok, string $detail = ''): void
+{
+    global $pass, $fail, $errors;
+
+    if ($ok) {
+        $pass++;
+        echo "  ✓ {$label}\n";
+        return;
+    }
+
+    $fail++;
+    $errors[] = $label . ($detail !== '' ? ': ' . $detail : '');
+    echo "  ✗ {$label}" . ($detail !== '' ? " — {$detail}" : '') . "\n";
+}
+
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+file_put_contents(STORAGE_PATH . '/logs/error.log', '');
+
+echo "\n=== RENDER CONTRACT REGISTRY ===\n";
+
+$modules = discoverModules();
+$moduleIds = [
+    'ecommerce',
+    'guidance',
+    'gui-settings',
+    'sms',
+    'daily-ledger',
+    'anti-spam',
+    'ticketing',
+];
+
+foreach ($moduleIds as $moduleId) {
+    t($moduleId . ' module discovered', isset($modules[$moduleId]) && is_array($modules[$moduleId]));
+
+    if (isset($modules[$moduleId]) && is_array($modules[$moduleId])) {
+        loadModuleHelpers($modules[$moduleId]);
+    }
+}
+
+// wordpress-importer is now a distributable package (installed on demand) — load directly from packages/.
+$wpiPackagePath = dirname(__DIR__) . '/packages/cms-wordpress-importer';
+t('wordpress-importer package present', is_dir($wpiPackagePath) && is_file($wpiPackagePath . '/module.json'));
+if (is_file($wpiPackagePath . '/handlers/10-wordpress-importer.php')) {
+    require_once $wpiPackagePath . '/handlers/10-wordpress-importer.php';
+}
+if (is_file($wpiPackagePath . '/helpers.php')) {
+    require_once $wpiPackagePath . '/helpers.php';
+}
+
+$contracts = kernelRegisteredRenderContextContracts();
+$profiles = kernelRegisteredRenderContextProfiles();
+t('cms public profile registered', isset($profiles['cms_public']) && ($profiles['cms_public']['shell_schema_stack'] ?? []) === ['kernel.shell@1']);
+t('commerce public profile registered', isset($profiles['commerce_public']) && ($profiles['commerce_public']['shell_schema_stack'] ?? []) === ['kernel.shell@1']);
+t('reserved admin profile registered', isset($profiles['admin']) && ($profiles['admin']['status'] ?? '') === 'reserved');
+t('ecommerce public shell contract registered', isset($contracts['ecommerce.public.shell']));
+t('ecommerce catalog contract registered', isset($contracts['ecommerce.public.catalog']));
+t('ecommerce order confirmation contract registered', isset($contracts['ecommerce.public.order.confirmation']));
+t('ecommerce public shell contract stores schema metadata', ($contracts['ecommerce.public.shell']['schema_id'] ?? '') === 'ecommerce.public.shell@1' && ($contracts['ecommerce.public.shell']['profile_hint'] ?? '') === 'commerce_public');
+t('ecommerce catalog contract stores schema metadata', ($contracts['ecommerce.public.catalog']['schema_id'] ?? '') === 'ecommerce.public.catalog@1' && ($contracts['ecommerce.public.catalog']['schema_version'] ?? 0) === 1 && ($contracts['ecommerce.public.catalog']['profile_hint'] ?? '') === 'commerce_public');
+t('guidance page shell contract registered', isset($contracts['guidance.page.shell']));
+t('gui settings admin contract registered', isset($contracts['gui-settings.admin.settings']));
+t('sms log contract registered', isset($contracts['sms.page.log']));
+t('daily ledger admin contract registered', isset($contracts['daily-ledger.admin.shell']));
+t('anti-spam dashboard contract registered', isset($contracts['anti-spam.page.dashboard']));
+t('ticketing public submit contract registered', isset($contracts['ticketing.page.public-submit']));
+t('wordpress importer admin contract registered', isset($contracts['wordpress-importer.admin.import']));
+
+echo "\n=== PREPARE CONTEXT ===\n";
+
+$preparedCatalog = kernelPrepareRenderContext(
+    'modules/ecommerce/public/shop.disyl',
+    ecPublicRenderContext('modules/ecommerce/public/shop.disyl', [
+        'page_title' => 'Catalog',
+        'products' => [],
+        'available_categories' => [],
+        'search' => '',
+        'category_id' => 0,
+        'page' => 1,
+        'total' => 0,
+        'total_pages' => 1,
+    ])
+);
+
+t('prepared catalog context infers the storefront route', ($preparedCatalog['storefront']['route']['kind'] ?? '') === 'shop_index');
+t('prepared catalog context infers catalog page kind', ($preparedCatalog['storefront']['page']['kind'] ?? '') === 'catalog');
+t('prepared catalog context initializes storefront filters', is_array($preparedCatalog['storefront']['filters'] ?? null));
+t('prepared catalog context initializes storefront collection items', is_array($preparedCatalog['storefront']['collection']['items'] ?? null));
+t('prepared catalog context reports commerce_public profile', ($preparedCatalog['render_profile_id'] ?? '') === 'commerce_public', json_encode($preparedCatalog['render_profile_id'] ?? null));
+t('prepared catalog context reports schema stack in order', ($preparedCatalog['render_schema_stack'] ?? null) === ['kernel.shell@1', 'ecommerce.public.shell@1', 'ecommerce.public.catalog@1'], json_encode($preparedCatalog['render_schema_stack'] ?? null));
+
+$logicalThemeCatalog = kernelNormalizeRenderContextContracts([
+    '__render_contract_template' => 'modules/ecommerce/public/shop.disyl',
+    'page_title' => 'Catalog',
+    'products' => [],
+    'available_categories' => [],
+    'search' => '',
+    'category_id' => 0,
+    'page' => 1,
+    'total' => 0,
+    'total_pages' => 1,
+], '_cms_active_theme/public/ecommerce/shop.disyl');
+
+t('logical contract template resolves commerce_public profile on theme path', ($logicalThemeCatalog['render_profile_id'] ?? '') === 'commerce_public', json_encode($logicalThemeCatalog['render_profile_id'] ?? null));
+t('logical contract template resolves schema stack on theme path', ($logicalThemeCatalog['render_schema_stack'] ?? null) === ['kernel.shell@1', 'ecommerce.public.shell@1', 'ecommerce.public.catalog@1'], json_encode($logicalThemeCatalog['render_schema_stack'] ?? null));
+t('logical contract template keeps catalog route normalization on theme path', (($logicalThemeCatalog['storefront']['route']['kind'] ?? '') === 'shop_index') && (($logicalThemeCatalog['storefront']['page']['kind'] ?? '') === 'catalog'), json_encode($logicalThemeCatalog['storefront'] ?? null));
+
+echo "\n=== ADDITIONAL MODULES ===\n";
+
+$preparedGuidance = kernelPrepareRenderContext('modules/guidance/pages/login.disyl', [
+    'page_title' => 'Guidance Login',
+]);
+t('guidance page shell fills default admin route metadata', ($preparedGuidance['base_url'] ?? '') === '/admin/guidance' && ($preparedGuidance['hour'] ?? null) === 0);
+
+$preparedGuiSettings = kernelPrepareRenderContext('modules/gui-settings/settings.disyl', [
+    'page_title' => 'GUI Settings',
+    'settings' => [],
+    'defaults' => [],
+    'setting_keys' => [],
+    'font_presets' => [],
+    'color_presets' => [],
+]);
+t('gui settings contract preserves array-based preset collections', is_array($preparedGuiSettings['font_presets'] ?? null) && is_array($preparedGuiSettings['color_presets'] ?? null));
+
+$preparedSms = kernelPrepareRenderContext('modules/sms/partials/log-table.disyl', [
+    'logs' => [],
+    'total' => 12,
+    'page' => 2,
+    'limit' => 50,
+    'pages' => 4,
+]);
+t('sms log table contract keeps pagination metadata normalized', ($preparedSms['page'] ?? null) === 2 && ($preparedSms['limit'] ?? null) === 50 && ($preparedSms['pages'] ?? null) === 4);
+
+$preparedDailyLedger = kernelPrepareRenderContext('modules/daily-ledger/cashier/ledger.disyl', [
+    'page_title' => 'Ledger',
+    'user_name' => 'Cashier',
+    'user_role' => 'cashier',
+    'current_page' => 'ledger',
+    'base_url' => '/daily-ledger',
+    'branch_id' => 1,
+    'branch_name' => 'Main',
+    'ledger_date' => '2026-03-30',
+    'today' => '2026-03-30',
+    'day_status' => 'open',
+    'branches' => [],
+    'is_cashier' => true,
+]);
+t('daily ledger contract fills cashier automation defaults', ($preparedDailyLedger['auto_close_enabled'] ?? null) === false && ($preparedDailyLedger['business_date_label'] ?? '') === '');
+
+$preparedAntiSpam = kernelPrepareRenderContext('modules/anti-spam/pages/home.disyl', [
+    'page_title' => 'Anti-Spam Dashboard',
+    'stats' => [],
+    'settings' => [],
+    'recent_log' => [],
+]);
+t('anti-spam dashboard contract expands nested stats defaults', ($preparedAntiSpam['stats']['blocked_ips'] ?? null) === 0 && ($preparedAntiSpam['stats']['total_log'] ?? null) === 0);
+
+$preparedTicketing = kernelPrepareRenderContext('modules/ticketing/public-submit.disyl', [
+    'page_title' => 'Submit a Maintenance Request',
+    'captcha_question' => '1 + 1',
+    'captcha_token' => 'token',
+    'base_url' => '/ticketing',
+]);
+t('ticketing public contract preserves form metadata', ($preparedTicketing['captcha_token'] ?? '') === 'token' && ($preparedTicketing['base_url'] ?? '') === '/ticketing');
+
+t('wordpress importer prepare helper is available', function_exists('wordpressImporterPrepareRenderContext'));
+if (function_exists('wordpressImporterPrepareRenderContext')) {
+    $preparedWordPressImporter = wordpressImporterPrepareRenderContext('templates/admin/wordpress-importer.disyl', [
+        'page_title' => 'WordPress Import',
+    ]);
+    t('wordpress importer render-string helper prepares admin template context', ($preparedWordPressImporter['page_title'] ?? '') === 'WordPress Import');
+}
+
+echo "\n=== FINALIZE RENDER ===\n";
+
+$renderedShop = app()->render('modules/ecommerce/public/shop.disyl');
+t('shop render receives normalized storefront route metadata', str_contains($renderedShop, 'data-storefront-route-kind="shop_index"') && str_contains($renderedShop, 'data-storefront-page-kind="catalog"'), $renderedShop);
+t('shop render uses normalized empty-state defaults', str_contains($renderedShop, 'No products found.'), $renderedShop);
+
+$renderedCart = app()->render('modules/ecommerce/public/cart.disyl');
+t('cart render receives empty cart defaults', str_contains($renderedCart, 'Your cart is empty.') && str_contains($renderedCart, '/ecommerce/shop'), $renderedCart);
+
+$renderedProduct = app()->render('modules/ecommerce/public/product.disyl');
+t('product render receives normalized product detail metadata', str_contains($renderedProduct, 'data-storefront-route-kind="product_detail"') && str_contains($renderedProduct, 'data-storefront-page-kind="detail"'), $renderedProduct);
+
+echo "\n=== RENDER TRACE ===\n";
+
+$traceOutputEnv = array_key_exists('APP_RENDER_TRACE_OUTPUT', $_ENV) ? (string)$_ENV['APP_RENDER_TRACE_OUTPUT'] : null;
+$traceLogEnv = array_key_exists('APP_RENDER_TRACE_LOGS', $_ENV) ? (string)$_ENV['APP_RENDER_TRACE_LOGS'] : null;
+kernelClearRenderTraces();
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+try {
+    $_ENV['APP_RENDER_TRACE_OUTPUT'] = 'comment';
+    $_ENV['APP_RENDER_TRACE_LOGS'] = '1';
+    $tracedShop = app()->render('modules/ecommerce/public/shop.disyl');
+    $latestTrace = kernelLatestRenderTrace();
+
+    kernelClearRenderTraces();
+    ob_start();
+    ecRender('modules/ecommerce/public/shop.disyl');
+    $helperRenderedShop = (string)ob_get_clean();
+    $helperTrace = kernelLatestRenderTrace();
+} finally {
+    if ($traceOutputEnv === null) {
+        unset($_ENV['APP_RENDER_TRACE_OUTPUT']);
+    } else {
+        $_ENV['APP_RENDER_TRACE_OUTPUT'] = $traceOutputEnv;
+    }
+
+    if ($traceLogEnv === null) {
+        unset($_ENV['APP_RENDER_TRACE_LOGS']);
+    } else {
+        $_ENV['APP_RENDER_TRACE_LOGS'] = $traceLogEnv;
+    }
+}
+
+t('shop render emits render-trace HTML comment when enabled', str_contains($tracedShop, '<!-- render-trace ') && str_contains($tracedShop, '"render_profile_id":"commerce_public"'), $tracedShop);
+t('shop render records latest render trace metadata', is_array($latestTrace) && ($latestTrace['render_profile_id'] ?? '') === 'commerce_public' && (($latestTrace['render_schema_stack'] ?? null) === ['kernel.shell@1', 'ecommerce.public.shell@1', 'ecommerce.public.catalog@1']) && in_array('ecommerce.public.catalog', $latestTrace['matched_contract_ids'] ?? [], true), json_encode($latestTrace));
+$helperNormalizationActions = is_array($helperTrace['normalization_actions'] ?? null) ? $helperTrace['normalization_actions'] : [];
+t('shop helper render preserves canonical trace metadata', str_contains($helperRenderedShop, '<!-- render-trace ') && is_array($helperTrace) && (($helperTrace['contract_template'] ?? '') === 'modules/ecommerce/public/shop.disyl') && in_array('ecommerce.public.catalog', $helperTrace['matched_contract_ids'] ?? [], true) && $helperNormalizationActions !== [], json_encode($helperTrace));
+$traceAppLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
+t('shop render logs render trace when enabled', str_contains($traceAppLog, 'kernel.render_trace') && str_contains($traceAppLog, '"render_profile_id":"commerce_public"') && str_contains($traceAppLog, '"matched_contract_ids":["ecommerce.public.shell","ecommerce.public.catalog"]'), $traceAppLog);
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+
+$traceOutputEnv = array_key_exists('APP_RENDER_TRACE_OUTPUT', $_ENV) ? (string)$_ENV['APP_RENDER_TRACE_OUTPUT'] : null;
+$traceLogEnv = array_key_exists('APP_RENDER_TRACE_LOGS', $_ENV) ? (string)$_ENV['APP_RENDER_TRACE_LOGS'] : null;
+kernelClearRenderTraces();
+try {
+    unset($_ENV['APP_RENDER_TRACE_OUTPUT']);
+    unset($_ENV['APP_RENDER_TRACE_LOGS']);
+    $untracedShop = app()->render('modules/ecommerce/public/shop.disyl');
+    $disabledTrace = kernelLatestRenderTrace();
+} finally {
+    if ($traceOutputEnv === null) {
+        unset($_ENV['APP_RENDER_TRACE_OUTPUT']);
+    } else {
+        $_ENV['APP_RENDER_TRACE_OUTPUT'] = $traceOutputEnv;
+    }
+
+    if ($traceLogEnv === null) {
+        unset($_ENV['APP_RENDER_TRACE_LOGS']);
+    } else {
+        $_ENV['APP_RENDER_TRACE_LOGS'] = $traceLogEnv;
+    }
+}
+
+t('shop render does not emit render-trace output when disabled', !str_contains($untracedShop, '<!-- render-trace '), $untracedShop);
+t('shop render does not record render trace when disabled', $disabledTrace === null, json_encode($disabledTrace));
+
+echo "\n=== RENDER FAILURES ===\n";
+
+$renderFailure = null;
+$renderFailureMessage = '';
+$renderFailurePrevious = null;
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+
+try {
+    app()->render('_cms_active_theme/public/ecommerce/missing-shop.disyl', [
+        '__render_contract_template' => 'modules/ecommerce/public/shop.disyl',
+        '__render_trace_contract_template' => 'modules/ecommerce/public/shop.disyl',
+    ]);
+} catch (RuntimeException $e) {
+    $renderFailure = $e;
+    $renderFailureMessage = $e->getMessage();
+    $renderFailurePrevious = $e->getPrevious();
+}
+
+t(
+    'theme-aware render failure includes canonical contract metadata',
+    $renderFailure instanceof RuntimeException
+        && str_contains($renderFailureMessage, 'Template render failed for _cms_active_theme/public/ecommerce/missing-shop.disyl')
+        && str_contains($renderFailureMessage, '"contract_template":"modules/ecommerce/public/shop.disyl"')
+        && str_contains($renderFailureMessage, '"render_profile_id":"commerce_public"')
+        && str_contains($renderFailureMessage, '"matched_contract_ids":["ecommerce.public.shell","ecommerce.public.catalog"]'),
+    $renderFailureMessage
+);
+
+t(
+    'theme-aware render failure preserves original template exception',
+    $renderFailurePrevious instanceof RuntimeException && str_contains($renderFailurePrevious->getMessage(), 'Template not found: _cms_active_theme/public/ecommerce/missing-shop.disyl'),
+    $renderFailurePrevious instanceof Throwable ? $renderFailurePrevious->getMessage() : 'no previous exception'
+);
+
+$renderFailureLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
+t(
+    'theme-aware render failure writes structured render failure log',
+    str_contains($renderFailureLog, 'kernel.render_failure')
+        && str_contains($renderFailureLog, '"contract_template":"modules/ecommerce/public/shop.disyl"')
+        && str_contains($renderFailureLog, '"render_profile_id":"commerce_public"')
+        && str_contains($renderFailureLog, '"matched_contract_ids":["ecommerce.public.shell","ecommerce.public.catalog"]')
+        && str_contains($renderFailureLog, '"exception_class":"RuntimeException"'),
+    $renderFailureLog
+);
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+
+echo "\n=== MISMATCH LOGGING ===\n";
+
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+
+$driftedCatalogContext = ecPublicRenderContext('modules/ecommerce/public/shop.disyl', [
+    'page_title' => 'Catalog',
+    'products' => 'bad-products',
+    'available_categories' => [],
+    'search' => '',
+    'category_id' => 0,
+    'page' => 1,
+    'total' => 0,
+    'total_pages' => 1,
+]);
+
+kernelPrepareRenderContext('modules/ecommerce/public/shop.disyl', $driftedCatalogContext);
+
+$appLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
+$contractMismatchLines = array_values(array_filter(explode("\n", $appLog), static fn(string $line): bool => str_contains($line, 'ecommerce.render_context.contract_mismatch')));
+t('prepare render context logs ecommerce mismatch events', !empty($contractMismatchLines), implode('; ', $contractMismatchLines));
+t('prepare render context mismatch logs include profile/schema metadata', str_contains($appLog, '"render_profile_id":"commerce_public"') && str_contains($appLog, '"ecommerce.public.catalog@1"'), $appLog);
+
+echo "\n=== STRICT MODE ===\n";
+
+$strictEnv = array_key_exists('DISYL_RENDER_CONTRACT_STRICT', $_ENV) ? (string)$_ENV['DISYL_RENDER_CONTRACT_STRICT'] : null;
+$_ENV['DISYL_RENDER_CONTRACT_STRICT'] = '1';
+
+$strictThrew = false;
+$strictMessage = '';
+try {
+    kernelPrepareRenderContext('modules/ecommerce/public/shop.disyl', $driftedCatalogContext);
+} catch (RuntimeException $e) {
+    $strictThrew = true;
+    $strictMessage = $e->getMessage();
+}
+
+if ($strictEnv === null) {
+    unset($_ENV['DISYL_RENDER_CONTRACT_STRICT']);
+} else {
+    $_ENV['DISYL_RENDER_CONTRACT_STRICT'] = $strictEnv;
+}
+
+t('strict mode fails fast on ecommerce contract drift', $strictThrew && str_contains($strictMessage, 'ecommerce.public.catalog'), $strictMessage);
+
+echo "\n=== LOG CHECK ===\n";
+
+$appLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
+$errLog = @file_get_contents(STORAGE_PATH . '/logs/error.log') ?: '';
+
+$unexpectedAppErrors = array_values(array_filter(explode("\n", $appLog), static function (string $line): bool {
+    if ($line === '') {
+        return false;
+    }
+
+    if (str_contains($line, 'ecommerce.render_context.contract_mismatch')) {
+        return false;
+    }
+
+    return str_contains($line, '[error]') || str_contains($line, '[warning]');
+}));
+
+$errLines = array_values(array_filter(explode("\n", $errLog), static function (string $line): bool {
+    return trim($line) !== '' && !str_contains($line, 'Ikabud Cache:');
+}));
+
+t('no unexpected app.log errors', empty($unexpectedAppErrors), implode('; ', array_slice($unexpectedAppErrors, 0, 3)));
+t('no PHP errors in error.log', empty($errLines), implode('; ', array_slice($errLines, 0, 3)));
+
+echo "\n══════════════════════════════════════════════════\n";
+echo "  PASS: {$pass}  FAIL: {$fail}\n";
+echo "══════════════════════════════════════════════════\n";
+
+if ($errors !== []) {
+    echo "\nFailed tests:\n";
+    foreach ($errors as $error) {
+        echo "  - {$error}\n";
+    }
+}
+
+exit($fail > 0 ? 1 : 0);

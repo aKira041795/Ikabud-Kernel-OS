@@ -1,0 +1,138 @@
+{extends "layouts/kernel-admin.disyl"}
+
+{block title}Profile{/block}
+
+{block head}
+<script>
+async function submitProfile(e) {
+    e.preventDefault();
+
+    var msg = document.getElementById('profile-msg');
+    var btn = document.getElementById('profile-save-btn');
+    msg.style.display = 'none';
+    msg.className = '';
+    msg.textContent = '';
+
+    var fullName = document.getElementById('full_name').value.trim();
+    var email = document.getElementById('email').value.trim();
+    var password = document.getElementById('password').value;
+    var csrf = (document.querySelector('input[name="_token"]') || {}).value || '';
+    var payload = { full_name: fullName, password: password, _token: csrf };
+    if ({if email_supported}true{else}false{/if}) {
+        payload.email = email;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    try {
+        var res = await fetch('{base_url}/api/v1/admin/profile/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        var data = await res.json().catch(function() { return {}; });
+
+        if (!res.ok || !data.ok) {
+            msg.style.display = 'block';
+            msg.className = 'alert alert-danger';
+            msg.textContent = data.error || 'Failed to update profile';
+            btn.disabled = false;
+            btn.textContent = 'Save Changes';
+            return false;
+        }
+
+        msg.style.display = 'block';
+        msg.className = 'alert alert-success';
+        msg.textContent = data.message || 'Profile updated successfully.';
+        window.dispatchEvent(new CustomEvent('cms-toast', { detail: { message: data.message || 'Profile updated', type: 'success' } }));
+
+        document.getElementById('password').value = '';
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+        setTimeout(function() { window.location.reload(); }, 1200);
+        return false;
+    } catch (err) {
+        msg.style.display = 'block';
+        msg.className = 'alert alert-danger';
+        msg.textContent = 'Failed to update profile';
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+        return false;
+    }
+}
+</script>
+{/block}
+
+{block content}
+<div class="max-w-[640px] mx-auto">
+    <div class="page-header">
+        <div>
+            <h2>Profile</h2>
+            <div class="page-desc">View your account details and update your name, email, or password.</div>
+        </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="flex items-center gap-4 mb-2">
+            <div class="w-14 h-14 rounded bg-blue-600 text-white flex items-center justify-center text-xl font-bold shrink-0" id="profile-avatar">
+                {if user.full_name}{user.full_name | slice:0:1 | upper}{else}{user.name | slice:0:1 | upper}{/if}
+            </div>
+            <div>
+                <div class="text-base font-bold text-gray-900">{if user.full_name}{user.full_name}{else}{user.name}{/if}</div>
+                <div class="text-sm text-gray-500 font-mono">@{user.name}</div>
+            </div>
+        </div>
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 mt-4 pt-4 border-t border-gray-200">
+            <div class="text-xs">
+                <div class="text-gray-500 font-semibold mb-0.5">Role</div>
+                <div class="text-gray-900 font-medium"><span class="role-pill {user.role}">{user.role}</span></div>
+            </div>
+            <div class="text-xs">
+                <div class="text-gray-500 font-semibold mb-0.5">Account Status</div>
+                <div class="text-gray-900 font-medium"><span class="status-pill active">Active</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-lg p-6 mt-4">
+        <strong class="text-sm block mb-3.5">Update Profile</strong>
+
+        <div id="profile-msg"{if profile_notice} class="alert alert-{if profile_notice.type == 'success'}success{else}danger{/if}" style="display:block;"{else} style="display:none;"{/if}>{if profile_notice}{profile_notice.message}{/if}</div>
+
+        <form id="profile-form" method="post" action="{base_url}/api/v1/admin/profile/update" onsubmit="submitProfile(event); return false;">
+            {csrf_field | raw}
+
+            <div class="form-group">
+                <label class="form-label" for="full_name">Full Name</label>
+                <input class="form-input" type="text" id="full_name" name="full_name" value="{if user.full_name}{user.full_name}{else}{user.name}{/if}" required />
+            </div>
+
+            {if email_supported}
+            <div class="form-group">
+                <label class="form-label" for="email">Email</label>
+                <input class="form-input" type="email" id="email" name="email" value="{user.email}" required />
+                <div class="hint">Used by the kernel forgot-password flow to send reset links.</div>
+            </div>
+            {else}
+            <div class="form-group">
+                <label class="form-label" for="email">Email</label>
+                <input class="form-input" type="email" id="email" value="" placeholder="Kernel email storage not available yet" disabled />
+                <div class="hint">Run the latest kernel migration to enable email-backed forgot-password for kernel admins.</div>
+            </div>
+            {/if}
+
+            <div class="form-group">
+                <label class="form-label" for="password">New Password</label>
+                <input class="form-input" type="password" id="password" name="password" placeholder="Leave blank to keep current password" />
+                <div class="hint">Leave blank if you don't want to change your password.</div>
+            </div>
+
+            <div class="mt-[18px] flex gap-2.5 items-center">
+                <button class="btn btn-primary" type="submit" id="profile-save-btn">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+{/block}

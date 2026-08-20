@@ -1,0 +1,85 @@
+{
+  "capability_id": "kernel.auth.authenticate@1",
+  "mode": "pipeline",
+  "cases": [
+    {
+      "name": "kernel-admin-no-seed",
+      "options": {
+        "provider": "kernel"
+      },
+      "payload": {
+        "username": "admin",
+        "password": "admin123"
+      },
+      "expect": {
+        "result": {
+          "is_null": true
+        }
+      }
+    },
+    {
+      "name": "kernel-admin-invalid",
+      "options": {
+        "provider": "kernel"
+      },
+      "payload": {
+        "username": "admin",
+        "password": "__wrong__"
+      },
+      "expect": {
+        "result": {
+          "is_null": true
+        }
+      }
+    },
+    {
+      "name": "daily-ledger-cashier-valid",
+      "options": {
+        "provider": "daily-ledger",
+        "with_modules": true,
+        "tenant_entry_module": "daily-ledger"
+      },
+      "setup_sql": [
+        "INSERT INTO dl_branches (code, name, is_active) VALUES ('CAPFIX-DL', 'Capability Fixture Branch', 1) ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = VALUES(is_active)",
+        "INSERT INTO dl_users (username, password_hash, full_name, role, is_active) VALUES ('cashier1', '$2y$10$fNkRk6B.XsE0UQ5pgUv80OdUdU9YWJAgd.AOfyMIdZ.WShuCqUzH2', 'Capability Fixture Cashier', 'cashier', 1) ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), full_name = VALUES(full_name), role = VALUES(role), is_active = VALUES(is_active)",
+        "INSERT IGNORE INTO dl_user_branches (user_id, branch_id) SELECT (SELECT id FROM dl_users WHERE username = 'cashier1' LIMIT 1), (SELECT id FROM dl_branches WHERE code = 'CAPFIX-DL' LIMIT 1)"
+      ],
+      "payload": {
+        "username": "@daily-ledger:cashier1",
+        "password": "cashier123"
+      },
+      "expect": {
+        "result": {
+          "has_keys": [
+            "user",
+            "source"
+          ],
+          "equals": {
+            "source": "daily-ledger"
+          }
+        }
+      },
+      "teardown_sql": [
+        "DELETE FROM dl_user_branches WHERE user_id = (SELECT id FROM dl_users WHERE username = 'cashier1' LIMIT 1)",
+        "DELETE FROM dl_users WHERE username = 'cashier1'",
+        "DELETE FROM dl_branches WHERE code = 'CAPFIX-DL'"
+      ]
+    },
+    {
+      "name": "guidance-admin-valid-seeded",
+      "options": {
+        "provider": "guidance",
+        "with_modules": true
+      },
+      "payload": {
+        "username": "@guidance:admin@guidance.local",
+        "password": "admin123"
+      },
+      "expect": {
+        "result": {
+          "is_null": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ══════════════════════════════════════════════════════════════════════
+#  Ikabud OS — barebones kernel installer CI
+#
+#  This workflow validates the kernel-only installer (Ikabud OS):
+#    • module-manifest + route contracts (gui-settings is the bundled module)
+#    • DiSyL template lint
+#    • architecture boundaries
+#    • the kernel test suite
+#
+#  Test discovery is automatic: scripts/run-tests.php runs every
+#  tests/**/*_test.php. Add a new kernel test under tests/ and it is
+#  picked up here with no workflow change. When a module is added to
+#  this installer, copy its tests under tests/ (and its seeds under
+#  database/seeds/) and they will run in the same pipeline.
+# ══════════════════════════════════════════════════════════════════════
+
+jobs:
+  kernel-contracts:
+    name: Kernel contracts (manifests, routes, lint, architecture)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_mysql, mbstring, json, openssl, zip
+          coverage: none
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Create storage directories
+        run: mkdir -p storage/logs storage/cache/disyl storage/cache/cms storage/uploads
+
+      - name: Enforce module manifest schema v1
+        run: php scripts/guard-module-manifests.php --strict
+
+      - name: Certify every discovered module
+        run: php ikabud module:certify --all
+
+      - name: DiSyL template lint
+        run: php _lint_disyl.php --ci
+
+      - name: Architecture boundary check
+        run: php ikabud architecture:check
+
+  test:
+    name: Kernel test suite (MySQL 8)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pass
+          MYSQL_DATABASE: ikabudsix_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_mysql, mbstring, json, openssl, zip
+          coverage: none
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        run: cp .env.ci .env
+
+      - name: Create storage directories
+        run: mkdir -p storage/logs storage/cache/disyl storage/cache/cms storage/uploads
+
+      - name: Configure test host
+        run: echo "127.0.0.1 ikabudsix.test" | sudo tee -a /etc/hosts
+
+      - name: Run control-plane migrations
+        run: php ikabud migrate:control
+
+      - name: Apply base app schema
+        run: php ikabud migrate:base
+
+      - name: Run kernel migrations
+        run: php ikabud migrate
+
+      - name: Seed kernel admin user
+        run: php database/seeds/ci_kernel_admin.php
+
+      - name: Run kernel test suite
+        run: composer test

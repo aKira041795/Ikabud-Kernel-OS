@@ -1,0 +1,51 @@
+{
+    "id": "business",
+    "label": "Business Service",
+    "description": "A professional service offering with booking or inquiry CTA and optional media gallery.",
+    "icon": "briefcase",
+    "entity_types": [
+        "service"
+    ],
+    "context_bases": [
+        "business"
+    ],
+    "recommendation_priority": 100,
+    "default_capabilities": [
+        {
+            "id": "inquiry",
+            "config": {
+                "label": "Get a Quote",
+                "form_fields": "name,email,phone,message"
+            }
+        },
+        {
+            "id": "booking",
+            "config": {
+                "slot_duration_minutes": 60,
+                "advance_days": 30
+            }
+        },
+        {
+            "id": "media_gallery",
+            "config": {
+                "columns": 2,
+                "lightbox": true
+            }
+        }
+    ],
+    "token_overrides": {
+        "color": {
+            "primary": "#16a34a",
+            "secondary": "#15803d"
+        },
+        "component": {
+            "button": {
+                "radius": "0.25rem"
+            }
+        }
+    },
+    "builder_defaults": {
+        "layout": "service",
+        "show_sidebar": false
+    }
+}

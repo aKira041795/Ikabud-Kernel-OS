@@ -1,0 +1,688 @@
+{extends "layouts/kernel-admin.disyl"}
+
+{block head}{/block}
+
+{block content}
+<div x-data="superadminSettings()" class="p-4 lg:p-6 space-y-6">
+    <!-- Header -->
+    <div class="flex items-start justify-between">
+        <div>
+            <h1 class="text-xl font-bold text-slate-900">Feature Settings</h1>
+            <p class="text-sm text-gray-500 mt-1">
+                {if multi_tenant}
+                Manage module feature flags and settings per tenant. Select a tenant, then enable/disable modules and adjust settings below.
+                {else}
+                Manage module feature flags and settings. Changes take effect immediately.
+                {/if}
+            </p>
+        </div>
+    </div>
+
+    <!-- Catalog Review -->
+    {if catalog_entries | count > 0}
+    <div class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div>
+                <div class="font-semibold text-sm text-slate-800">Catalog Review</div>
+                <div class="text-xs text-gray-500 mt-0.5">Approve or reject tenant-originated module packages for reuse across tenants, and set the catalog commercial mode.</div>
+            </div>
+            <div class="text-xs text-gray-500 whitespace-nowrap">{catalog_pending_count} pending of {catalog_entries | count} entries</div>
+        </div>
+        <table class="w-full text-sm border-collapse">
+            <thead>
+                <tr class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th class="px-4 py-3">Module</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Origin</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {foreach catalog_entries as entry}
+                <tr class="border-t border-gray-100">
+                    <td class="px-4 py-3 align-top">
+                        <div class="font-semibold text-slate-800">{entry.name}</div>
+                        <div class="text-xs text-gray-500 mt-1">{entry.id} · v{entry.version}</div>
+                        <div class="flex flex-wrap gap-1.5 mt-1.5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {if entry.approval_status == 'approved'}bg-green-100 text-green-800{elseif entry.approval_status == 'rejected'}bg-red-100 text-red-800{else}bg-blue-100 text-blue-800{/if}">{entry.approval_status}</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{entry.commercial_mode}</span>
+                            {if not entry.exists_on_disk}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Missing Files</span>
+                            {/if}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        <div class="text-slate-700">Source: {entry.source}</div>
+                        {if entry.approved_at}
+                        <div class="text-xs text-gray-500 mt-1">Approved: {entry.approved_at}</div>
+                        {/if}
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        {if entry.origin_tenant_label}
+                        <div class="text-slate-700">{entry.origin_tenant_label}</div>
+                        {else}
+                        <div class="text-gray-500">No tenant origin recorded</div>
+                        {/if}
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        <div class="flex flex-wrap gap-2 items-center justify-end">
+                            <select x-ref="catalog-mode-{entry.id}" class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-700 min-w-[120px]">
+                                <option value="free" {if entry.commercial_mode == 'free'}selected{/if}>Free</option>
+                                <option value="freemium" {if entry.commercial_mode == 'freemium'}selected{/if}>Freemium</option>
+                                <option value="paid" {if entry.commercial_mode == 'paid'}selected{/if}>Paid</option>
+                            </select>
+                            <button type="button" @click="updateCatalogApproval('{entry.id}', 'approved')" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">Approve</button>
+                            <button type="button" @click="updateCatalogApproval('{entry.id}', 'rejected')" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">Reject</button>
+                        </div>
+                    </td>
+                </tr>
+                {/foreach}
+            </tbody>
+        </table>
+    </div>
+    {/if}
+
+    <!-- Tenant Access Requests -->
+    {if access_requests | count > 0}
+    <div class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div>
+                <div class="font-semibold text-sm text-slate-800">Tenant Access Requests</div>
+                <div class="text-xs text-gray-500 mt-0.5">Review tenant requests for paid or pro access. Approving a request grants entitlement and invokes module license activation when a provider is available.</div>
+            </div>
+            <div class="text-xs text-gray-500 whitespace-nowrap">{access_request_pending_count} pending of {access_requests | count} requests</div>
+        </div>
+        <table class="w-full text-sm border-collapse">
+            <thead>
+                <tr class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th class="px-4 py-3">Tenant / Module</th>
+                    <th class="px-4 py-3">Request</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {foreach access_requests as request}
+                <tr class="border-t border-gray-100">
+                    <td class="px-4 py-3 align-top">
+                        <div class="font-semibold text-slate-800">{request.module_name}</div>
+                        <div class="text-xs text-gray-500 mt-1">{request.module_id}</div>
+                        <div class="flex flex-wrap gap-1.5 mt-1.5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{request.tenant_label}</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{request.requested_mode}</span>
+                            {if request.license_ref}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{request.license_ref}</span>
+                            {/if}
+                            {if request.has_license_key}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Key on file</span>
+                            {/if}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        {if request.request_notes}
+                        <div class="text-slate-700">{request.request_notes}</div>
+                        {else}
+                        <div class="text-gray-500">No request notes supplied.</div>
+                        {/if}
+                        <div class="text-xs text-gray-500 mt-1">Requested: {request.created_at}</div>
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {if request.status == 'approved'}bg-green-100 text-green-800{elseif request.status == 'rejected'}bg-red-100 text-red-800{else}bg-blue-100 text-blue-800{/if}">{request.status}</span>
+                        {if request.review_notes}
+                        <div class="text-xs text-gray-500 mt-1.5">{request.review_notes}</div>
+                        {/if}
+                        <div class="flex flex-wrap gap-1.5 mt-2">
+                            {if request.activation_status}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {if request.activation_status == 'active'}bg-green-100 text-green-800{elseif request.activation_status == 'error'}bg-red-100 text-red-800{else}bg-blue-100 text-blue-800{/if}">License: {request.activation_status}</span>
+                            {/if}
+                            {if request.activation_provider}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Provider: {request.activation_provider}</span>
+                            {/if}
+                        </div>
+                        {if request.activation_error}
+                        <div class="text-xs text-red-600 mt-1.5">{request.activation_error}</div>
+                        {/if}
+                        {if request.reviewed_at}
+                        <div class="text-xs text-gray-500 mt-1">Reviewed: {request.reviewed_at}</div>
+                        {/if}
+                        {if request.activation_at}
+                        <div class="text-xs text-gray-500 mt-1">License updated: {request.activation_at}</div>
+                        {/if}
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        <div class="flex flex-wrap gap-2 items-center justify-end">
+                            {if request.status == 'pending'}
+                            <button type="button" @click="openAccessRequestReview({request.id}, 'approved')" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">Approve</button>
+                            <button type="button" @click="openAccessRequestReview({request.id}, 'rejected')" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">Reject</button>
+                            {else}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Reviewed</span>
+                            {/if}
+                        </div>
+                    </td>
+                </tr>
+                {/foreach}
+            </tbody>
+        </table>
+    </div>
+    {/if}
+
+    <!-- Access Request Review Modal (Alpine) -->
+    <div x-show="accessRequestModalOpen" x-cloak class="fixed inset-0 bg-black/50 z-50" @click.self="closeAccessRequestReview()">
+        <div class="fixed top-[10vh] left-1/2 -translate-x-1/2 w-full max-w-lg mx-4" @click.stop>
+            <div class="bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col max-h-[80vh]">
+                <div class="flex items-start justify-between gap-3 px-4 py-4 border-b border-gray-200 bg-gray-50">
+                    <div>
+                        <div class="text-sm font-bold text-slate-800" x-text="accessRequestModalData.title">Review Access Request</div>
+                        <div class="text-xs text-gray-500 mt-1" x-text="accessRequestModalData.subtitle">Approve or reject a tenant module access request.</div>
+                    </div>
+                    <button type="button" @click="closeAccessRequestReview()" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">Close</button>
+                </div>
+                <div class="p-4 overflow-y-auto space-y-3.5">
+                    <div class="border border-gray-200 rounded-lg bg-gray-50 p-3.5">
+                        <div class="grid gap-2.5 grid-cols-2">
+                            <div>
+                                <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500">Module</div>
+                                <div class="text-sm text-slate-700 mt-1" x-text="accessRequestModalData.moduleName"></div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500">Tenant</div>
+                                <div class="text-sm text-slate-700 mt-1" x-text="accessRequestModalData.tenantName"></div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500">Requested Mode</div>
+                                <div class="text-sm text-slate-700 mt-1" x-text="accessRequestModalData.requestedMode"></div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500">License</div>
+                                <div class="text-sm text-slate-700 mt-1" x-text="accessRequestModalData.licenseInfo"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border border-gray-200 rounded-lg bg-gray-50 p-3.5">
+                        <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">Tenant Note</div>
+                        <div class="text-sm text-slate-700" x-text="accessRequestModalData.tenantNote"></div>
+                    </div>
+                    <div class="border border-gray-200 rounded-lg bg-gray-50 p-3.5">
+                        <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">Review Note</div>
+                        <textarea x-model="accessRequestModalData.reviewNotes" class="w-full min-h-[120px] border border-gray-300 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white resize-y" placeholder="Record why this request is being approved or rejected."></textarea>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 px-4 py-3.5 border-t border-gray-200">
+                    <button type="button" @click="closeAccessRequestReview()" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">Cancel</button>
+                    <button type="button" @click="submitAccessRequestReview()" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700" x-text="accessRequestModalData.submitLabel">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Picker -->
+    {if multi_tenant}
+    <div class="flex items-center gap-2.5 p-3 bg-white border border-gray-200 rounded-lg">
+        <label class="text-sm font-semibold text-slate-700 whitespace-nowrap">Tenant:</label>
+        <select @change="switchTenant($event.target.value)" class="flex-1 max-w-[360px] border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 bg-white">
+            {foreach tenants as t}
+            <option value="{t.id}" {if t.selected}selected{/if}>{t.label}</option>
+            {/foreach}
+        </select>
+    </div>
+    {/if}
+
+    <!-- DB Warning -->
+    {if not tenant_db_ok}
+    <div class="flex items-center gap-2 p-3 bg-amber-50 border border-amber-400 rounded-lg text-sm text-amber-800">
+        <strong class="font-bold">Warning:</strong> This tenant has no database connection configured. Module toggles and settings are unavailable until a database is set up.
+    </div>
+    {/if}
+
+    <!-- Module List -->
+    {if modules | count == 0}
+    <div class="text-center py-12 text-gray-500">
+        {if multi_tenant}
+        <p class="text-sm">No modules are relevant for this tenant.</p>
+        <p class="text-xs mt-2 text-gray-400">Select a different tenant above, or check the tenant's entry module configuration.</p>
+        {else}
+        <p class="text-sm">No modules discovered.</p>
+        {/if}
+    </div>
+    {else}
+    {if multi_tenant}
+    <div class="text-xs text-gray-500">{module_count} module(s) for this tenant.</div>
+    {/if}
+    <div class="grid gap-5">
+        {foreach modules as mod}
+        <div class="bg-white border border-gray-200 rounded-lg overflow-hidden transition-opacity"
+             :class="{'opacity-65': !moduleStates['{mod.id}']?.enabled}"
+             x-init="$nextTick(function() { if (!moduleStates['{mod.id}']) { moduleStates['{mod.id}'] = { enabled: {if mod.is_enabled}true{else}false{/if}, expanded: true }; } restoreModulePanel('{mod.id}'); })">
+            <!-- Module Header -->
+            <div class="flex items-center justify-between gap-3 px-4 py-3 transition-colors"
+                 :class="moduleStates['{mod.id}']?.expanded ? 'border-b border-gray-200 bg-gray-50' : ''">
+                <div class="flex items-center gap-3">
+                    {if tenant_db_ok}
+                    <label class="relative inline-flex items-center cursor-pointer" title="{if mod.is_enabled}Disable{else}Enable{/if} {mod.name}">
+                        <input type="checkbox" class="sr-only peer"
+                               :checked="moduleStates['{mod.id}']?.enabled"
+                               @change="toggleModule('{mod.id}', $event.target.checked)"
+                               {if mod.entitlement_required and not mod.entitlement_allowed and not mod.is_enabled}disabled{/if}>
+                        <div class="w-[38px] h-[22px] bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-50 peer-disabled:cursor-not-allowed"></div>
+                    </label>
+                    {/if}
+                    <div>
+                        <span class="text-sm font-bold text-slate-800">{mod.name}</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ml-1.5"
+                              :class="moduleStates['{mod.id}']?.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                              x-text="moduleStates['{mod.id}']?.enabled ? 'Enabled' : 'Disabled'">Enabled</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">v{mod.version}</span>
+                        <button type="button" @click="toggleModulePanel('{mod.id}')"
+                            class="sa-module-collapse inline-flex items-center gap-2 border border-gray-200 rounded-lg bg-white text-gray-500 px-2.5 py-1.5 text-xs font-semibold cursor-pointer hover:border-blue-500 hover:text-slate-700 hover:bg-gray-50 transition-colors"
+                            :aria-expanded="moduleStates['{mod.id}']?.expanded">
+                        <span x-text="moduleStates['{mod.id}']?.expanded ? 'Collapse' : 'Expand'">Collapse</span>
+                        <span class="w-2 h-2 border-r-2 border-b-2 border-current transition-transform duration-150"
+                              :class="moduleStates['{mod.id}']?.expanded ? 'rotate-45 -mt-0.5' : '-rotate-45 mt-0.5'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Module Body -->
+            <div x-show="moduleStates['{mod.id}']?.expanded" x-collapse>
+                {if mod.description}
+                <div class="text-xs text-gray-500 px-4 pt-2">{mod.description}</div>
+                {/if}
+
+                <!-- Entitlement Bar -->
+                <div class="flex items-center justify-between gap-3 px-4 pt-2.5">
+                    <div class="flex flex-wrap gap-1.5">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Scope: {mod.scope_label}</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Activation: {mod.enablement_source_label}</span>
+                        {if mod.catalog_managed}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Catalog: {mod.catalog_status}</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Mode: {mod.commercial_mode}</span>
+                        {if mod.entitlement_required}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {if mod.entitlement_allowed}bg-green-100 text-green-800{else}bg-red-100 text-red-800{/if}">Access: {mod.entitlement_status}</span>
+                        {/if}
+                        {/if}
+                    </div>
+                    {if mod.catalog_managed and multi_tenant and mod.entitlement_required}
+                    <button type="button" @click="setModuleEntitlement('{mod.id}', {if mod.entitlement_allowed}false{else}true{/if})" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300">
+                        {if mod.entitlement_allowed}Revoke Access{else}Grant Access{/if}
+                    </button>
+                    {/if}
+                </div>
+
+                <!-- Module Notices / Fields -->
+                {if not tenant_db_ok}
+                <div class="text-xs text-gray-500 text-center py-5">This tenant needs a working database connection before module settings can be updated.</div>
+                {elseif mod.catalog_managed and mod.catalog_status != 'approved'}
+                <div class="text-xs text-gray-500 text-center py-5">This package is tracked in the platform catalog, but it is not approved for tenant reuse yet.</div>
+                {elseif mod.is_enabled and mod.enablement_source == 'runtime_default'}
+                <div class="text-xs text-gray-500 text-center py-5">This module currently appears enabled because no explicit tenant or global registry flag exists yet. Saving a toggle here will convert it to an explicit setting.</div>
+                {elseif not mod.has_fields}
+                <div class="text-xs text-gray-500 text-center py-5">This module has no configurable settings.</div>
+                {else}
+                {if mod.entitlement_required and not mod.entitlement_allowed}
+                <div class="text-xs text-gray-500 text-center py-2">This tenant is not currently entitled to use this catalog-managed module. Grant access before enabling it.</div>
+                {/if}
+                {if not mod.is_enabled}
+                <div class="text-xs text-gray-500 text-center py-2">This module is disabled for this tenant. You can still save settings now; they will apply when enabled.</div>
+                {/if}
+
+                <!-- Fields -->
+                <div class="px-4 py-3 grid gap-3.5" x-ref="fields-{mod.id}">
+                    {foreach mod.fields as field}
+                    {if field.is_checkbox}
+                    <div class="flex flex-col gap-1.5">
+                        <label class="flex items-center gap-2.5 text-sm text-slate-700">
+                            <input type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                   data-sa-module="{mod.id}" data-sa-key="{field.key}" data-sa-type="checkbox"
+                                   {if field.is_checked}checked{/if}>
+                            <span>{field.label}</span>
+                        </label>
+                        {if field.description}
+                        <div class="text-xs text-gray-500">{field.description}</div>
+                        {/if}
+                    </div>
+                    {elseif field.is_select}
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs font-semibold text-slate-700">{field.label}</label>
+                        <select class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm text-slate-700 bg-white"
+                                data-sa-module="{mod.id}" data-sa-key="{field.key}" data-sa-type="select">
+                            {foreach field.options as opt}
+                            <option value="{opt.value}" {if opt.selected}selected{/if}>{opt.label}</option>
+                            {/foreach}
+                        </select>
+                        {if field.description}
+                        <div class="text-xs text-gray-500">{field.description}</div>
+                        {/if}
+                    </div>
+                    {else}
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs font-semibold text-slate-700">{field.label}</label>
+                        <input class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm text-slate-700 bg-white"
+                               type="{field.input_type}" data-sa-module="{mod.id}" data-sa-key="{field.key}" data-sa-type="{field.type}"
+                               autocomplete="{if field.input_type == 'password'}new-password{else}off{/if}"
+                               value="{field.current_value}">
+                        {if field.description}
+                        <div class="text-xs text-gray-500">{field.description}</div>
+                        {/if}
+                    </div>
+                    {/if}
+                    {/foreach}
+                </div>
+
+                <!-- Status & Actions -->
+                <div class="px-4" x-show="moduleStatuses['{mod.id}']">
+                    <div class="text-xs" :class="moduleStatuses['{mod.id}']?.type === 'ok' ? 'text-green-600' : moduleStatuses['{mod.id}']?.type === 'err' ? 'text-red-600' : 'text-gray-500'" x-text="moduleStatuses['{mod.id}']?.message"></div>
+                </div>
+                <div class="flex justify-end gap-2 px-4 py-3 border-t border-gray-200">
+                    {if mod.settings_url}
+                    <a href="{mod.settings_url}" class="text-xs text-gray-500 no-underline py-2 px-3.5 hover:text-slate-700">Advanced Settings &rarr;</a>
+                    {/if}
+                    <button @click="saveModuleSettings('{mod.id}')" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-55 disabled:cursor-not-allowed">Save</button>
+                </div>
+                {/if}
+            </div>
+        </div>
+        {/foreach}
+    </div>
+    {/if}
+
+    {if other_modules | count > 0}
+    <div class="mt-6 border border-gray-200 rounded-lg overflow-hidden">
+        <button type="button" @click="otherModulesExpanded = !otherModulesExpanded"
+                class="w-full flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+            <div class="flex items-center gap-2">
+                <span class="font-semibold text-sm text-slate-800">Other Available Modules</span>
+                <span class="text-xs text-gray-500">({other_module_count})</span>
+            </div>
+            <span class="text-xs text-gray-500">Toggle to show modules not specifically scoped to this tenant's entry module</span>
+            <span class="w-2 h-2 border-r-2 border-b-2 border-current transition-transform duration-150"
+                  :class="otherModulesExpanded ? 'rotate-45 -mt-0.5' : '-rotate-45 mt-0.5'"></span>
+        </button>
+        <div x-show="otherModulesExpanded" x-collapse>
+            <div class="grid gap-4 p-3">
+                {foreach other_modules as mod}
+                <div class="bg-white border border-gray-200 rounded-lg overflow-hidden transition-opacity"
+                     :class="{'opacity-65': !moduleStates['{mod.id}']?.enabled}">
+                    <div class="flex items-center justify-between gap-3 px-4 py-3">
+                        <div class="flex items-center gap-3">
+                            {if tenant_db_ok}
+                            <label class="relative inline-flex items-center cursor-pointer" title="{if mod.is_enabled}Disable{else}Enable{/if} {mod.name}">
+                                <input type="checkbox" class="sr-only peer"
+                                       :checked="moduleStates['{mod.id}']?.enabled"
+                                       @change="toggleModule('{mod.id}', $event.target.checked)">
+                                <div class="w-[38px] h-[22px] bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                            {/if}
+                            <div>
+                                <span class="text-sm font-bold text-slate-800">{mod.name}</span>
+                                <span class="text-xs text-gray-500 ml-2">v{mod.version}</span>
+                            </div>
+                        </div>
+                        <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">Not provisioned</span>
+                    </div>
+                    {if mod.description}
+                    <div class="text-xs text-gray-500 px-4 pb-3">{mod.description}</div>
+                    {/if}
+                </div>
+                {/foreach}
+            </div>
+        </div>
+    </div>
+    {/if}
+</div>
+
+<script>
+function superadminSettings() {
+    return {
+        csrf: '{csrf_token}',
+        otherModulesExpanded: false,
+        multiTenant: {if multi_tenant}true{else}false{/if},
+        selectedTenantId: {selected_tenant_id},
+        panelStorageKey: 'superadmin-feature-settings:panels:' + ({selected_tenant_id} || 'global'),
+        accessRequests: {access_requests_json|raw},
+        moduleStates: {},
+        moduleStatuses: {},
+        accessRequestModalOpen: false,
+        accessRequestModalData: {
+            title: '',
+            subtitle: '',
+            moduleName: '',
+            tenantName: '',
+            requestedMode: '',
+            licenseInfo: '',
+            tenantNote: '',
+            reviewNotes: '',
+            submitLabel: '',
+            requestId: null,
+            status: null,
+        },
+
+        readPanelState: function() {
+            try {
+                var raw = window.localStorage.getItem(this.panelStorageKey);
+                var parsed = raw ? JSON.parse(raw) : {};
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch (e) { return {}; }
+        },
+
+        writePanelState: function(state) {
+            try {
+                window.localStorage.setItem(this.panelStorageKey, JSON.stringify(state || {}));
+            } catch (e) {}
+        },
+
+        restoreModulePanel: function(moduleId) {
+            var state = this.readPanelState();
+            if (!this.moduleStates[moduleId]) return;
+            var expanded = !Object.prototype.hasOwnProperty.call(state, moduleId) || state[moduleId] !== 0;
+            this.moduleStates[moduleId].expanded = expanded;
+        },
+
+        savePanelState: function() {
+            var state = {};
+            var self = this;
+            Object.keys(this.moduleStates).forEach(function(id) {
+                state[id] = self.moduleStates[id]?.expanded ? 1 : 0;
+            });
+            this.writePanelState(state);
+        },
+
+        toggleModulePanel: function(moduleId) {
+            if (!this.moduleStates[moduleId]) return;
+            this.moduleStates[moduleId].expanded = !this.moduleStates[moduleId].expanded;
+            this.savePanelState();
+        },
+
+        switchTenant: function(tenantId) {
+            window.location.href = '/superadmin/settings?tenant_id=' + encodeURIComponent(tenantId);
+        },
+
+        updateCatalogApproval: function(moduleId, approvalStatus) {
+            var modeSelect = this.$refs['catalog-mode-' + moduleId];
+            var commercialMode = modeSelect ? modeSelect.value : 'free';
+            var self = this;
+
+            fetch('/api/v1/superadmin/modules/catalog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    module_id: moduleId,
+                    approval_status: approvalStatus,
+                    commercial_mode: commercialMode,
+                    _token: self.csrf,
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert(res.error || 'Catalog update failed');
+                }
+            })
+            .catch(function() { alert('Network error'); });
+        },
+
+        openAccessRequestReview: function(requestId, status) {
+            var request = null;
+            for (var i = 0; i < this.accessRequests.length; i++) {
+                if (Number(this.accessRequests[i].id) === Number(requestId)) {
+                    request = this.accessRequests[i];
+                    break;
+                }
+            }
+            if (!request) return;
+
+            var isApproval = status === 'approved';
+            this.accessRequestModalData = {
+                requestId: requestId,
+                status: status,
+                title: isApproval ? 'Approve Access Request' : 'Reject Access Request',
+                subtitle: isApproval
+                    ? 'Grant entitlement and record the license activation state for this tenant.'
+                    : 'Record the rejection and keep the request in the review history.',
+                moduleName: request.module_name + ' (' + request.module_id + ')',
+                tenantName: request.tenant_label,
+                requestedMode: request.requested_mode,
+                licenseInfo: request.license_ref || (request.has_license_key ? 'License key on file' : 'No license key supplied'),
+                tenantNote: request.request_notes || 'No request note supplied.',
+                reviewNotes: request.review_notes || '',
+                submitLabel: isApproval ? 'Approve Request' : 'Reject Request',
+            };
+            this.accessRequestModalOpen = true;
+        },
+
+        closeAccessRequestReview: function() {
+            this.accessRequestModalOpen = false;
+        },
+
+        submitAccessRequestReview: function() {
+            if (!this.accessRequestModalData.requestId) return;
+            var self = this;
+
+            fetch('/api/v1/superadmin/modules/access-request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    request_id: self.accessRequestModalData.requestId,
+                    status: self.accessRequestModalData.status,
+                    review_notes: self.accessRequestModalData.reviewNotes,
+                    _token: self.csrf,
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    self.closeAccessRequestReview();
+                    window.location.reload();
+                } else {
+                    alert(res.error || 'Access request review failed');
+                }
+            })
+            .catch(function() { alert('Network error'); });
+        },
+
+        toggleModule: function(moduleId, enabled) {
+            var payload = { module_id: moduleId, enabled: enabled, _token: this.csrf };
+            if (this.multiTenant && this.selectedTenantId) {
+                payload.tenant_id = this.selectedTenantId;
+            }
+            var self = this;
+            fetch('/api/v1/superadmin/modules/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert(res.error || 'Toggle failed');
+                    self.moduleStates[moduleId].enabled = !enabled;
+                }
+            })
+            .catch(function() { alert('Network error'); self.moduleStates[moduleId].enabled = !enabled; });
+        },
+
+        setModuleEntitlement: function(moduleId, entitled) {
+            if (!this.multiTenant || !this.selectedTenantId) return;
+            var self = this;
+
+            self.setStatus(moduleId, entitled ? 'Granting access...' : 'Revoking access...', '');
+            fetch('/api/v1/superadmin/modules/entitlement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    module_id: moduleId,
+                    tenant_id: self.selectedTenantId,
+                    entitled: entitled,
+                    _token: self.csrf,
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    self.setStatus(moduleId, res.error || 'Entitlement update failed', 'err');
+                }
+            })
+            .catch(function() { self.setStatus(moduleId, 'Network error', 'err'); });
+        },
+
+        setStatus: function(moduleId, message, type) {
+            this.moduleStatuses[moduleId] = { message: message || '', type: type || '' };
+        },
+
+        saveModuleSettings: function(moduleId) {
+            var container = this.$refs['fields-' + moduleId];
+            if (!container) return;
+            var self = this;
+
+            var settings = {};
+            var controls = container.querySelectorAll('[data-sa-key]');
+            controls.forEach(function(el) {
+                var key = el.getAttribute('data-sa-key');
+                var type = (el.getAttribute('data-sa-type') || 'text').toLowerCase();
+                if (!key) return;
+                if (type === 'checkbox') {
+                    settings[key] = !!el.checked;
+                } else {
+                    settings[key] = el.value;
+                }
+            });
+
+            self.setStatus(moduleId, 'Saving...', '');
+            var moduleEl = container.closest('[x-ref]');
+            var btn = moduleEl ? moduleEl.parentElement?.querySelector('.bg-blue-600') : null;
+            if (btn) btn.disabled = true;
+
+            var payload = { module_id: moduleId, settings: settings, _token: self.csrf };
+            if (self.multiTenant && self.selectedTenantId) {
+                payload.tenant_id = self.selectedTenantId;
+            }
+
+            fetch('/api/v1/superadmin/modules/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    self.setStatus(moduleId, 'Settings saved.', 'ok');
+                    window.dispatchEvent(new CustomEvent('cms-toast', { detail: { message: 'Settings saved', type: 'success' } }));
+                } else {
+                    self.setStatus(moduleId, res.error || 'Save failed', 'err');
+                }
+            })
+            .catch(function() { self.setStatus(moduleId, 'Network error', 'err'); })
+            .finally(function() { if (btn) btn.disabled = false; });
+        },
+    };
+}
+</script>
+{/block}

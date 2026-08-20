@@ -1,0 +1,394 @@
+{extends "layouts/kernel-admin.disyl"}
+
+{block head}
+<style>
+    .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+    .module-card { background: #fff; border: 1px solid var(--kernel-panel-border); border-radius: var(--radius); padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.04); transition: box-shadow .15s; }
+    .module-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+    .status-dot { width: 6px; height: 6px; border-radius: 2px; display: inline-block; }
+    .status-pill.enabled .status-dot { background: #059669; }
+    .status-pill.disabled .status-dot { background: #dc2626; }
+    .config-modal { position: fixed; inset: 0; z-index: 1200; display: none; }
+    .config-modal.show { display: block; }
+    .config-modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); }
+    .config-modal-dialog { position: absolute; top: 8vh; left: 50%; transform: translateX(-50%); width: min(720px, 95vw); max-height: 84vh; background: #fff; border: 1px solid var(--kernel-panel-border); border-radius: var(--radius); box-shadow: 0 14px 30px rgba(2, 6, 23, .25); overflow: hidden; display: flex; flex-direction: column; }
+    .config-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+    .config-modal-title { font-size: 13px; font-weight: 700; color: #1e293b; }
+    .config-modal-body { padding: 14px; overflow-y: auto; }
+    .cap-panel { background: #fff; border: 1px solid var(--kernel-panel-border); border-radius: var(--radius); padding: 14px 16px; font-size: 12px; color: #1e293b; min-height: 48px; }
+    .cap-panel-loading { color: #64748b; }
+    .cap-panel-error { color: #dc2626; }
+    .cap-cap-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .caller-cap-list { display: flex; flex-wrap: wrap; gap: 4px; }
+</style>
+<script>
+    var BASE = '{base_url}';
+    var CSRF = '{csrf_token}';
+
+    function showToast(message, type) {
+        window.dispatchEvent(new CustomEvent('cms-toast', { detail: { message: message || '', type: type || 'success' } }));
+    }
+
+    function toggleModule(moduleId, enable) {
+        var endpoint = enable ? '/api/v1/admin/modules/enable' : '/api/v1/admin/modules/disable';
+        var btn = document.querySelector('#mod-' + moduleId + ' .btn-enable, #mod-' + moduleId + ' .btn-disable');
+        if (btn) { btn.disabled = true; btn.textContent = enable ? 'Enabling…' : 'Disabling…'; }
+
+        var fd = new FormData();
+        fd.append('module_id', moduleId);
+        fd.append('_token', CSRF);
+
+        fetch(endpoint, {
+            method: 'POST',
+            body: fd
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.ok) {
+                showToast('Module ' + (enable ? 'enabled' : 'disabled'), 'success');
+                setTimeout(function() { window.location.reload(); }, 600);
+            } else {
+                showToast(res.error || 'Failed to toggle module', 'error');
+                if (btn) { btn.disabled = false; btn.textContent = enable ? 'Enable' : 'Disable'; }
+            }
+        })
+        .catch(function() {
+            showToast('Network error', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = enable ? 'Enable' : 'Disable'; }
+        });
+    }
+
+    function toggleAdminOptin(moduleId, checked) {
+        var fd = new FormData();
+        fd.append('module_id', moduleId);
+        fd.append('settings[allow_kernel_admin]', checked ? '1' : '0');
+        fd.append('_token', CSRF);
+
+        fetch('/api/v1/admin/modules/settings', {
+            method: 'POST',
+            body: fd
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.ok) {
+                showToast('Admin access ' + (checked ? 'allowed' : 'revoked'), 'success');
+            } else {
+                showToast(res.error || 'Failed to update', 'error');
+                var cb = document.getElementById('optin-' + moduleId);
+                if (cb) cb.checked = !checked;
+            }
+        })
+        .catch(function() {
+            showToast('Network error', 'error');
+            var cb = document.getElementById('optin-' + moduleId);
+            if (cb) cb.checked = !checked;
+        });
+    }
+
+    function installModule(file) {
+        if (!file) return;
+        var progress = document.getElementById('upload-progress');
+        var diagnostics = document.getElementById('install-diagnostics');
+        if (progress) progress.style.display = 'block';
+        if (diagnostics) diagnostics.innerHTML = '';
+
+        var fd = new FormData();
+        fd.append('module_zip', file);
+        fd.append('_token', CSRF);
+
+        fetch('/api/v1/admin/modules/install', {
+            method: 'POST',
+            body: fd
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (progress) progress.style.display = 'none';
+            if (res.ok) {
+                showToast('Module ' + (res.module_id || '') + ' installed', 'success');
+                setTimeout(function() { window.location.reload(); }, 800);
+            } else {
+                showToast(res.error || 'Install failed', 'error');
+                if (diagnostics) diagnostics.innerHTML = '<div class="install-error">' + (res.error || 'Install failed') + '</div>';
+            }
+        })
+        .catch(function() {
+            if (progress) progress.style.display = 'none';
+            showToast('Network error', 'error');
+        });
+    }
+
+    var _configModuleId = null;
+
+    function openModuleConfig(moduleId) {
+        _configModuleId = moduleId;
+        var title = document.getElementById('module-config-title');
+        if (title) title.textContent = 'Config — ' + moduleId;
+
+        var form = document.getElementById('module-config-form');
+        var status = document.getElementById('module-config-status');
+        if (form) {
+            form.innerHTML = '<div class="cap-panel-loading">Loading settings…</div>';
+        }
+        if (status) status.textContent = '';
+
+        var modal = document.getElementById('module-config-modal');
+        if (modal) modal.classList.add('show');
+
+        fetch(BASE + '/api/v1/admin/modules/settings?module_id=' + encodeURIComponent(moduleId))
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (!form) return;
+                if (!res.ok) {
+                    form.innerHTML = '<div class="cap-panel-error">' + (res.error || 'Failed to load') + '</div>';
+                    return;
+                }
+                var settings = res.settings || {};
+                var fields = res.fields || [];
+                if (fields.length === 0) {
+                    form.innerHTML = '<div class="muted">No configurable settings for this module.</div>';
+                    return;
+                }
+                var html = '';
+                fields.forEach(function(f) {
+                    var val = settings[f.key] !== undefined ? settings[f.key] : (f.default || '');
+                    if (f.type === 'checkbox' || f.is_checkbox) {
+                        var checked = val === true || val === '1' || val === 1 ? 'checked' : '';
+                        html += '<label class="config-field config-field-checkbox"><input type="checkbox" name="' + f.key + '" ' + checked + '> <span>' + escapeHtml(f.label || f.key) + '</span></label>';
+                    } else if (f.type === 'select' || f.is_select) {
+                        html += '<div class="config-field"><label>' + escapeHtml(f.label || f.key) + '</label><select class="form-input" name="' + f.key + '">';
+                        (f.options || []).forEach(function(o) {
+                            var optVal = typeof o === 'object' ? (o.value || o) : o;
+                            var optLabel = typeof o === 'object' ? (o.label || o) : o;
+                            var sel = String(optVal) === String(val) ? ' selected' : '';
+                            html += '<option value="' + escapeHtml(optVal) + '"' + sel + '>' + escapeHtml(optLabel) + '</option>';
+                        });
+                        html += '</select></div>';
+                    } else {
+                        html += '<div class="config-field"><label>' + escapeHtml(f.label || f.key) + '</label><input class="form-input" type="text" name="' + f.key + '" value="' + escapeHtml(String(val)) + '"></div>';
+                    }
+                    if (f.description) {
+                        html += '<div class="hint">' + escapeHtml(f.description) + '</div>';
+                    }
+                });
+                form.innerHTML = html;
+            })
+            .catch(function() {
+                if (form) form.innerHTML = '<div class="cap-panel-error">Network error loading settings</div>';
+            });
+    }
+
+    function closeModuleConfig() {
+        var modal = document.getElementById('module-config-modal');
+        if (modal) modal.classList.remove('show');
+        _configModuleId = null;
+    }
+
+    function saveModuleConfig() {
+        if (!_configModuleId) { showToast('No module selected', 'error'); return; }
+
+        var form = document.getElementById('module-config-form');
+        var status = document.getElementById('module-config-status');
+        if (!form) return;
+
+        var inputs = form.querySelectorAll('input, select');
+        var fd = new FormData();
+        fd.append('module_id', _configModuleId);
+        fd.append('_token', CSRF);
+
+        inputs.forEach(function(input) {
+            if (input.type === 'checkbox') {
+                fd.append('settings[' + input.name + ']', input.checked ? '1' : '0');
+            } else {
+                fd.append('settings[' + input.name + ']', input.value);
+            }
+        });
+
+        if (status) status.textContent = 'Saving…';
+        var saveBtn = document.getElementById('module-config-save');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+        fetch('/api/v1/admin/modules/settings', {
+            method: 'POST',
+            body: fd
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.ok) {
+                showToast('Settings saved', 'success');
+                closeModuleConfig();
+            } else {
+                showToast(res.error || 'Save failed', 'error');
+                if (status) status.textContent = res.error || 'Error';
+            }
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+        })
+        .catch(function() {
+            showToast('Network error', 'error');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+            if (status) status.textContent = 'Network error';
+        });
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+</script>
+{/block}
+
+{block content}
+<div class="page-header">
+    <div>
+        <h2>Module Manager</h2>
+        <div class="page-desc">Install, enable, and configure modules. Manage capability wiring and access policies between modules.</div>
+    </div>
+</div>
+
+<!-- Upload zone -->
+<div class="upload-zone" id="upload-zone" onclick="document.getElementById('zip-input').click()">
+    <div class="upload-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+    <strong style="font-size:14px;">Install Module</strong>
+    <p>Drag &amp; drop a module .zip file here, or click to browse</p>
+    <input type="file" id="zip-input" accept=".zip" onchange="installModule(this.files[0])">
+</div>
+<div class="upload-progress" id="upload-progress">Installing module...</div>
+<div class="install-diagnostics" id="install-diagnostics"></div>
+
+<!-- Module list -->
+<div style="margin-top:24px;">
+    {if modules | count == 0}
+    <div class="empty-state">
+        <h3>No modules installed</h3>
+        <p>Upload a module .zip file above to get started.</p>
+    </div>
+    {else}
+    <div class="module-grid" id="module-grid">
+        {foreach modules as mod}
+        <div class="module-card" id="mod-{mod.id}">
+            <div class="module-card-header">
+                <div>
+                    <div class="module-name">{mod.name}</div>
+                    <div class="module-id">{mod.id}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="module-version">v{mod.version}</span>
+                    {if mod.enabled}
+                    <span class="status-pill enabled"><span class="status-dot"></span> Enabled</span>
+                    {else}
+                    <span class="status-pill disabled"><span class="status-dot"></span> Disabled</span>
+                    {/if}
+                </div>
+            </div>
+
+            {if mod.description}
+            <div class="module-desc">{mod.description}</div>
+            {/if}
+
+            <div class="module-meta" style="margin-bottom: 8px;">
+                {if mod.author}<span>By {mod.author}</span>{/if}
+                <span>{mod.route_count} routes</span>
+                <span>{mod.nav_count} nav items</span>
+                <span>{mod.capability_exposes_count} exposes</span>
+                <span>{mod.capability_depends_count} depends</span>
+            </div>
+
+            {if mod.entities_owned_count > 0}
+            <div style="margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 4px;">
+                <span class="entity-authority-badge" title="This module is the authoritative owner for these entities">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Authority
+                </span>
+                {foreach mod.entities_owned as entity}
+                    <span style="font-size: 11px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; color: var(--text-light); font-family: monospace;">{entity}</span>
+                {/foreach}
+            </div>
+            {/if}
+
+            {if mod.capability_manifest_error}
+            <div class="cap-warning">
+                <strong>Capabilities:</strong> {mod.capability_manifest_error}
+            </div>
+            {/if}
+
+            {if (mod.capability_missing_depends | count) > 0}
+            <div class="cap-warning">
+                <strong>Missing capabilities:</strong>
+                <div style="margin-top:6px;">
+                    {foreach mod.capability_missing_depends as cap}
+                        <div style="font-family: monospace; font-size: 11px;">{cap}</div>
+                    {/foreach}
+                </div>
+            </div>
+            {/if}
+
+            <div class="module-actions">
+                {if mod.settings_fields | count > 0}
+                <button class="btn-sm btn-config" onclick="openModuleConfig('{mod.id}')">Config</button>
+                {/if}
+                {if mod.enabled}
+                <button class="btn-sm btn-disable" onclick="toggleModule('{mod.id}', false)">Disable</button>
+                {else}
+                    {if mod.capability_ready_to_enable}
+                    <button class="btn-sm btn-enable" onclick="toggleModule('{mod.id}', true)">Enable</button>
+                    {else}
+                    <button class="btn-sm btn-enable btn-disabled" disabled>Enable</button>
+                    {/if}
+                {/if}
+            </div>
+
+            {if mod.settings_context_notice}
+            <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">{mod.settings_context_notice}</div>
+            {/if}
+
+            <div class="optin-row">
+                <input type="checkbox" id="optin-{mod.id}" {if mod.allow_kernel_admin}checked{/if} onchange="toggleAdminOptin('{mod.id}', this.checked)">
+                <label for="optin-{mod.id}">Allow kernel admin access</label>
+            </div>
+        </div>
+        {/foreach}
+    </div>
+    {/if}
+</div>
+
+<!-- Capability insights -->
+<div class="cap-section">
+    <div class="cap-section-header">
+        <h3>Capability Insights</h3>
+        <span>Providers, latency/breakers, and which modules are allowed to call each capability.</span>
+    </div>
+    <div id="capabilities-panel" class="cap-panel cap-panel-loading">
+        Loading capability data...
+    </div>
+</div>
+
+<!-- Caller wiring (per-module capability depends) -->
+<div class="cap-section">
+    <div class="cap-section-header">
+        <h3>Caller Wiring</h3>
+        <span>Pick a module and choose which capabilities it depends on.</span>
+    </div>
+    <div id="caller-panel" class="cap-panel cap-panel-loading">
+        Loading caller wiring...
+    </div>
+</div>
+
+<div id="module-config-modal" class="config-modal" aria-hidden="true">
+    <div class="config-modal-backdrop" onclick="closeModuleConfig()"></div>
+    <div class="config-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="module-config-title">
+        <div class="config-modal-header">
+            <div id="module-config-title" class="config-modal-title">Module Config</div>
+            <button type="button" class="config-modal-close" onclick="closeModuleConfig()">Close</button>
+        </div>
+        <div class="config-modal-body">
+            <div id="module-config-status" class="config-status"></div>
+            <form id="module-config-form" class="config-form-grid"></form>
+            <div class="config-actions">
+                <button type="button" class="btn-muted" onclick="closeModuleConfig()">Cancel</button>
+                <button type="button" id="module-config-save" class="btn-save" onclick="saveModuleConfig()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+{/block}
+

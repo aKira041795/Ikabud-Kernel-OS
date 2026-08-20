@@ -1,0 +1,798 @@
+{extends "layouts/kernel-admin.disyl"}
+
+{block head}
+<style>
+    .intg-section { background: var(--surface); border: 1px solid var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 24px; }
+    .intg-section-header { padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--bg); display: flex; align-items: center; gap: 10px; }
+    .intg-section-header h2 { font-size: 15px; font-weight: 700; color: var(--text); margin: 0; }
+    .intg-section-header p { font-size: 12px; color: var(--text-muted); margin: 0; }
+    .intg-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 20px; }
+    .intg-form-full { grid-column: 1 / -1; }
+    .intg-field { display: flex; flex-direction: column; gap: 5px; }
+    .intg-label { font-size: 12px; font-weight: 600; color: var(--text); }
+    .intg-hint { font-size: 11px; color: var(--text-muted); }
+    .intg-input, .intg-textarea { border: 1px solid var(--border); border-radius: 2px; padding: 8px 10px; font-size: 13px; color: var(--text); background: var(--surface); width: 100%; box-sizing: border-box; }
+    .intg-select { border: 1px solid var(--border); border-radius: 2px; padding: 8px 10px; font-size: 13px; color: var(--text); background: var(--surface); width: 100%; box-sizing: border-box; }
+    .intg-textarea { font-family: monospace; font-size: 12px; resize: vertical; }
+    .intg-input:focus, .intg-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
+    .intg-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
+    .intg-toggle-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); padding-top: 4px; }
+    .intg-form-actions { padding: 0 20px 20px; }
+    .intg-form-actions-inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .btn-intg-save { background: var(--primary); color: #fff; border: none; padding: 8px 18px; font-size: 13px; font-weight: 600; border-radius: 2px; cursor: pointer; transition: filter .15s; }
+    .btn-intg-save:hover { filter: brightness(.95); }
+    .btn-intg-save:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-intg-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 8px 14px; font-size: 12px; font-weight: 600; border-radius: 2px; cursor: pointer; }
+    .intg-status { margin: 0 20px 14px; font-size: 12px; padding: 8px 12px; border-radius: 2px; display: none; }
+    .intg-status.ok { background: var(--success-light); color: var(--success); border: 1px solid var(--success); display: block; }
+    .intg-status.err { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger); display: block; }
+    .intg-status.pending { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); display: block; }
+    .intg-table { width: 100%; border-collapse: collapse; }
+    .intg-table th { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .intg-table td { font-size: 13px; padding: 11px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+    .intg-table tr:last-child td { border-bottom: none; }
+    .intg-table tr:hover td { background: var(--bg); }
+    .intg-mono { font-family: monospace; font-size: 11px; color: var(--text-muted); }
+    .intg-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; }
+    .intg-pill.active { background: var(--success-light); color: var(--success); }
+    .intg-pill.inactive { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+    .intg-pill.success { background: var(--success-light); color: var(--success); }
+    .intg-pill.failed { background: var(--danger-light); color: var(--danger); }
+    .intg-pill.dot::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 2px; background: currentColor; }
+    .intg-actions { display: flex; gap: 6px; align-items: center; }
+    .btn-intg-toggle { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 2px; border: none; cursor: pointer; transition: filter .15s; }
+    .btn-intg-toggle.on { background: var(--success-light); color: var(--success); }
+    .btn-intg-toggle.off { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-intg-delete { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 2px; border: none; background: var(--danger-light); color: var(--danger); cursor: pointer; transition: filter .15s; }
+    .btn-intg-delete:hover, .btn-intg-toggle:hover { filter: brightness(.95); }
+    .intg-log-details summary { cursor: pointer; color: var(--primary); font-size: 12px; }
+    .intg-log-details summary:hover { text-decoration: underline; }
+    .intg-payloads { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .intg-payload-block { background: var(--bg); border: 1px solid var(--border); border-radius: 2px; padding: 10px; }
+    .intg-payload-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+    .intg-payload-pre { font-family: monospace; font-size: 10px; color: var(--text); white-space: pre-wrap; word-break: break-all; margin: 0; }
+    .intg-empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 13px; }
+    .intg-error-text { color: var(--danger); font-size: 11px; margin-bottom: 4px; }
+    .intg-badges { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+    .intg-meta { font-size: 11px; color: var(--text-muted); display:flex; gap:10px; flex-wrap:wrap; }
+    .intg-trace { margin-top: 6px; font-size: 11px; color: var(--text-muted); }
+    .intg-trace-link { display:inline-flex; align-items:center; margin-top:8px; font-size:11px; font-weight:600; color: var(--primary); text-decoration:none; }
+    .intg-trace-link:hover { text-decoration:underline; }
+    .intg-template-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .intg-template-chip { font-size: 11px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 5px 9px; border-radius: 2px; cursor: pointer; }
+    .intg-guidance { padding: 0 20px 16px; display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; }
+    .intg-guide-card { border: 1px solid var(--border); border-radius: 2px; background: var(--surface); padding: 10px; }
+    .intg-guide-card strong { display:block; font-size:12px; margin-bottom:4px; }
+    .intg-guide-card span { font-size:11px; color: var(--text-muted); line-height:1.45; }
+    .intg-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg); flex-wrap:wrap; }
+    .intg-toolbar-left, .intg-toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .intg-filter-input, .intg-filter-select { border: 1px solid var(--border); border-radius: 2px; padding: 7px 10px; font-size: 12px; color: var(--text); background: var(--surface); }
+    .intg-filter-input { min-width: 260px; }
+    .intg-filter-note { font-size: 11px; color: var(--text-muted); }
+    @media (max-width: 640px) {
+        .intg-form-grid { grid-template-columns: 1fr; }
+        .intg-payloads { grid-template-columns: 1fr; }
+        .intg-guidance { grid-template-columns: 1fr; }
+        .intg-filter-input { min-width: 0; width: 100%; }
+    }
+
+    .mode-selector { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+    .mode-radio { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 12px; border: 1px solid var(--border); border-radius: 2px; transition: border-color .15s; }
+    .mode-radio:hover { border-color: var(--primary); }
+    .mode-radio input { margin-top: 2px; }
+    .mode-radio strong { display: block; font-size: 13px; color: var(--text); margin-bottom: 2px; }
+    .mode-radio span { display: block; font-size: 12px; color: var(--text-muted); }
+
+</style>
+{/block}
+
+{block content}
+<div class="page-header">
+    <div>
+        <h2>Integration Bridge</h2>
+        <div class="page-desc">Map kernel events to module capabilities without custom code. Create, validate, promote, and inspect traceable bridge executions from a single superadmin surface.</div>
+    </div>
+</div>
+
+
+<!-- Mode Selection -->
+<div class="intg-section">
+    <div class="intg-section-header">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <div>
+            <h2>Data Ownership Modes</h2>
+            <p>Select which module has authority over inventory and product listings.</p>
+        </div>
+    </div>
+    <div class="mode-selector">
+        <label class="mode-radio">
+            <input type="radio" name="intg_mode" value="wms_authoritative_products" checked>
+            <div>
+                <strong>WMS Authoritative (Default)</strong>
+                <span>WMS is the source of truth. Ecommerce acts as the follower. WMS maps its product updates down to the shop.</span>
+            </div>
+        </label>
+        <label class="mode-radio">
+            <input type="radio" name="intg_mode" value="ecommerce_authoritative_products">
+            <div>
+                <strong>Ecommerce Authoritative</strong>
+                <span>Ecommerce handles product listings. WMS acts as the follower, fulfilling orders when requested.</span>
+            </div>
+        </label>
+        <label class="mode-radio">
+            <input type="radio" name="intg_mode" value="decoupled">
+            <div>
+                <strong>Decoupled (Standalone)</strong>
+                <span>Systems are disconnected. You must manage WMS and Ecommerce separately.</span>
+            </div>
+        </label>
+    </div>
+    <div class="intg-form-actions">
+        <button type="button" class="btn-intg-save" id="btn-apply-mode" onclick="applyIntegrationMode()">Apply Global Mode</button>
+        <button type="button" class="btn-intg-secondary" onclick="toggleAdvancedMode()">Toggle Advanced Builder</button>
+    </div>
+    <div class="intg-form-actions"><div id="mode-status" class="intg-status"></div></div>
+</div>
+
+<div id="advanced-mode-container" style="display: none;">
+<!-- Create Integration -->
+<div class="intg-section">
+    <div class="intg-section-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <div>
+            <h2>Create Integration</h2>
+            <p>Choose a known event and capability, then adjust the mapping JSON before activation.</p>
+        </div>
+    </div>
+    <div class="intg-guidance">
+        <div class="intg-guide-card">
+            <strong>1. Pick a trigger event</strong>
+            <span>Use the known event picker to avoid typos and to see the event variables you can map.</span>
+        </div>
+        <div class="intg-guide-card">
+            <strong>2. Lock the capability version</strong>
+            <span>Version lock is filled from the selected capability so runtime drift is caught explicitly in logs.</span>
+        </div>
+        <div class="intg-guide-card">
+            <strong>3. Activate only after validation</strong>
+            <span>Use the sample mapping helpers and recent logs below to confirm the bridge is safe before broader rollout.</span>
+        </div>
+    </div>
+    <div class="intg-form-grid">
+        <div class="intg-field">
+            <label class="intg-label" for="intg_event_picker">Known Event</label>
+            <select class="intg-select" id="intg_event_picker" onchange="applyKnownEvent()">
+                <option value="">Choose a known event…</option>
+                {foreach bridge_events as evt}
+                <option value="{evt.event_key}" data-module="{evt.module}" data-description="{evt.description}" data-vars="{evt.available_vars_csv}">{evt.module} · {evt.event_key}</option>
+                {/foreach}
+            </select>
+        </div>
+        <div class="intg-field">
+            <label class="intg-label" for="intg_cap_picker">Known Capability</label>
+            <select class="intg-select" id="intg_cap_picker" onchange="applyKnownCapability()">
+                <option value="">Choose a known capability…</option>
+                {foreach bridge_capabilities as cap}
+                <option value="{cap.id}" data-description="{cap.description}">{cap.label}</option>
+                {/foreach}
+            </select>
+        </div>
+        <div class="intg-field">
+            <label class="intg-label" for="intg_name">Name</label>
+            <input class="intg-input" id="intg_name" type="text" placeholder="e.g. Order to WMS">
+        </div>
+        <div class="intg-field">
+            <label class="intg-label" for="intg_trigger">Trigger Event</label>
+            <input class="intg-input" id="intg_trigger" type="text" placeholder="e.g. ecommerce.order.created">
+        </div>
+        <div class="intg-field">
+            <label class="intg-label" for="intg_cap">Target Capability</label>
+            <input class="intg-input" id="intg_cap" type="text" placeholder="e.g. wms.stock.reserve@1">
+        </div>
+        <div class="intg-field">
+            <label class="intg-label" for="intg_version_lock">Version Lock</label>
+            <input class="intg-input" id="intg_version_lock" type="text" placeholder="Auto-filled from selected capability">
+            <span class="intg-hint">Leave blank only if you intentionally want the bridge to follow capability alias resolution.</span>
+        </div>
+        <div class="intg-field">
+            <label class="intg-label">Status</label>
+            <div class="intg-toggle-row">
+                <input type="checkbox" id="intg_active" checked style="width:16px;height:16px;cursor:pointer;">
+                <label for="intg_active" style="cursor:pointer;">Active on create</label>
+            </div>
+        </div>
+        <div class="intg-field">
+            <label class="intg-label">Bridge Validation</label>
+            <div class="intg-meta" id="intg_validation_meta">Choose an event or capability to inspect available variables and version lock behavior.</div>
+        </div>
+        <div class="intg-field intg-form-full">
+            <label class="intg-label" for="intg_json">Mapping JSON</label>
+            <span class="intg-hint">Use <code style="font-size:11px;">{{"{{"}}path.to.value{{"}}"}}</code> dot-notation inside string values. Must be valid JSON.</span>
+            <textarea class="intg-textarea" id="intg_json" rows="5" placeholder='{&#10;  "reference_type": "order",&#10;  "reference_id": "{{order.id}}",&#10;  "items": "{{order.items}}"&#10;}'></textarea>
+            <div class="intg-template-row">
+                <button class="intg-template-chip" type="button" onclick="applyTemplateSample('reserve')">Reserve Sample</button>
+                <button class="intg-template-chip" type="button" onclick="applyTemplateSample('release')">Release Sample</button>
+                <button class="intg-template-chip" type="button" onclick="applyTemplateSample('clear')">Clear</button>
+            </div>
+        </div>
+    </div>
+    <div id="intg-save-status" class="intg-status"></div>
+    <div class="intg-form-actions">
+        <div class="intg-form-actions-inline">
+            <button class="btn-intg-save" id="intg-save-btn" onclick="submitIntegration()">Save Integration</button>
+            <button class="btn-intg-secondary" type="button" onclick="validateIntegrationDraft()">Validate Draft</button>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- Integration List -->
+<div class="intg-section">
+    <div class="intg-section-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <div>
+            <h2>Active Integrations</h2>
+        </div>
+    </div>
+    <div class="intg-toolbar">
+        <div class="intg-toolbar-left">
+            <input class="intg-filter-input" id="intgListFilter" type="text" placeholder="Filter by name, event, capability, or version lock..." oninput="renderIntegrationFilters()">
+            <span class="intg-filter-note" id="intgListCount">Showing all bridges</span>
+        </div>
+        <div class="intg-toolbar-right">
+            <button class="btn-intg-secondary" type="button" onclick="clearIntegrationFilters()">Clear</button>
+        </div>
+    </div>
+    {if integrations | count > 0}
+    <table class="intg-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Trigger Event</th>
+                <th>Target Capability</th>
+                <th>Status</th>
+                <th>Version Lock</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="intg-list">
+            {foreach integrations as intg}
+            <tr id="intg-row-{intg.id}" data-name="{intg.name}" data-event="{intg.trigger_event}" data-capability="{intg.target_capability}" data-version-lock="{intg.version_lock}">
+                <td style="font-weight:600;">{intg.name}</td>
+                <td class="intg-mono">{intg.trigger_event}</td>
+                <td>
+                    <div class="intg-mono">{intg.target_capability}</div>
+                    <div class="intg-badges">
+                        <span class="intg-pill inactive">{if intg.event_source}{intg.event_source}{else}eventbus{/if}</span>
+                        {if intg.event_source == 'promoted'}
+                        <span class="intg-pill failed">Promoted</span>
+                        {/if}
+                    </div>
+                    <details class="intg-log-details" style="margin-top:6px;">
+                        <summary>&#9658; View Mapping</summary>
+                        <div class="intg-payload-block" style="margin-top:8px;">
+                            <div class="intg-payload-label">Mapping JSON</div>
+                            <pre class="intg-payload-pre">{intg.mapping_json}</pre>
+                        </div>
+                    </details>
+                </td>
+                <td>
+                    {if intg.is_active}
+                    <span class="intg-pill active dot">Active</span>
+                    {else}
+                    <span class="intg-pill inactive">Inactive</span>
+                    {/if}
+                </td>
+                <td>
+                    {if intg.version_lock}
+                    <span class="intg-pill failed">{intg.version_lock}</span>
+                    {else}
+                    <span class="intg-mono">—</span>
+                    {/if}
+                </td>
+                <td>
+                    <div class="intg-actions">
+                        {if intg.is_active}
+                        <button class="btn-intg-toggle off" onclick="toggleIntegration({intg.id})">Disable</button>
+                        {else}
+                        <button class="btn-intg-toggle on" onclick="toggleIntegration({intg.id})">Enable</button>
+                        {/if}
+                        {if intg.event_source != 'promoted'}
+                        <button class="btn-intg-toggle on" onclick="promoteIntegration({intg.id})">Promote</button>
+                        {/if}
+                        <button class="btn-intg-delete" onclick="deleteIntegration({intg.id})">Delete</button>
+                    </div>
+                </td>
+            </tr>
+            {/foreach}
+        </tbody>
+    </table>
+    {else}
+    <div class="intg-empty">No integrations configured yet. Use the form above to create the first one.</div>
+    {/if}
+</div>
+
+<!-- Logs -->
+<div class="intg-section">
+    <div class="intg-section-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div>
+            <h2>Recent Logs</h2>
+            <p>Last 50 executions</p>
+        </div>
+    </div>
+    <div class="intg-toolbar">
+        <div class="intg-toolbar-left">
+            <input class="intg-filter-input" id="intgLogFilter" type="text" placeholder="Filter by bridge, event, request id, correlation id, or error..." oninput="renderIntegrationFilters()">
+            <select class="intg-filter-select" id="intgLogStatusFilter" onchange="renderIntegrationFilters()">
+                <option value="">All statuses</option>
+                <option value="success">Success</option>
+                <option value="failed">Failed</option>
+            </select>
+            <span class="intg-filter-note" id="intgLogCount">Showing all logs</span>
+        </div>
+        <div class="intg-toolbar-right">
+            <button class="btn-intg-secondary" type="button" onclick="clearLogFilters()">Clear</button>
+        </div>
+    </div>
+    {if logs | count > 0}
+    <table class="intg-table">
+        <thead>
+            <tr>
+                <th style="width:160px;">Time</th>
+                <th>Integration</th>
+                <th style="width:100px;">Status</th>
+                <th style="width:180px;">Trace</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {foreach logs as log}
+            <tr data-log-row="1" data-name="{log.integration_name}" data-event="{log.trigger_event}" data-capability="{log.target_capability}" data-status="{log.status}" data-request-id="{log.request_id}" data-correlation-id="{log.correlation_id}" data-error="{log.error_message}">
+                <td class="intg-mono" style="white-space:nowrap;">{log.created_at}</td>
+                <td style="font-weight:600;">{log.integration_name}</td>
+                <td>
+                    {if log.status == 'success'}
+                    <span class="intg-pill success dot">Success</span>
+                    {else}
+                    <span class="intg-pill failed dot">Failed</span>
+                    {/if}
+                </td>
+                <td>
+                    <div class="intg-mono">Req: {if log.request_id}{log.request_id}{else}—{/if}</div>
+                    <div class="intg-mono">Trace: {if log.correlation_id}{log.correlation_id}{else}—{/if}</div>
+                    <div class="intg-mono">{if log.duration_ms}{log.duration_ms} ms{else}0 ms{/if}</div>
+                    {if user.source == 'kernel' and (user.role == 'admin' or user.role == 'superadmin')}
+                    <a class="intg-trace-link" href="{base_url}/admin/kernel/triggers?request_id={log.request_id}&correlation_id={log.correlation_id}&event_key={log.trigger_event}">Open matching trigger runs</a>
+                    {/if}
+                </td>
+                <td>
+                    {if log.error_message}
+                    <div class="intg-error-text"><strong>Error:</strong> {log.error_message}</div>
+                    {/if}
+                    <details class="intg-log-details">
+                        <summary>&#9658; View Payloads</summary>
+                        <div class="intg-payloads">
+                            <div class="intg-payload-block">
+                                <div class="intg-payload-label">Payload In</div>
+                                <pre class="intg-payload-pre">{log.payload_in}</pre>
+                            </div>
+                            <div class="intg-payload-block">
+                                <div class="intg-payload-label">Payload Out</div>
+                                <pre class="intg-payload-pre">{log.payload_out}</pre>
+                            </div>
+                        </div>
+                    </details>
+                </td>
+            </tr>
+            {/foreach}
+        </tbody>
+    </table>
+    {else}
+    <div class="intg-empty">No execution logs yet. Logs are created whenever an integration fires.</div>
+    {/if}
+</div>
+{/block}
+
+{block scripts}
+<script>
+var BASE = '{base_url}';
+var KNOWN_EVENT_SELECT = null;
+var KNOWN_CAP_SELECT = null;
+var INTEGRATION_VIEW_FILTERS = {
+    integration_q: '',
+    log_q: '',
+    log_status: ''
+};
+
+function selectedOptionData(selectId) {
+    var select = document.getElementById(selectId);
+    if (!select || !select.options || select.selectedIndex < 0) return null;
+    return select.options[select.selectedIndex] || null;
+}
+
+function applyKnownEvent() {
+    var option = selectedOptionData('intg_event_picker');
+    if (!option || !option.value) return;
+    document.getElementById('intg_trigger').value = option.value;
+    updateValidationMeta();
+}
+
+function applyKnownCapability() {
+    var option = selectedOptionData('intg_cap_picker');
+    if (!option || !option.value) return;
+    document.getElementById('intg_cap').value = option.value;
+    document.getElementById('intg_version_lock').value = option.value;
+    updateValidationMeta();
+}
+
+function parseIntegrationFiltersFromQuery() {
+    if (typeof URLSearchParams === 'undefined' || typeof window === 'undefined' || !window.location) return;
+    var params = new URLSearchParams(window.location.search || '');
+    Object.keys(INTEGRATION_VIEW_FILTERS).forEach(function(key) {
+        INTEGRATION_VIEW_FILTERS[key] = String(params.get(key) || '').trim();
+    });
+}
+
+function applyIntegrationFiltersToUi() {
+    var listFilter = document.getElementById('intgListFilter');
+    var logFilter = document.getElementById('intgLogFilter');
+    var logStatus = document.getElementById('intgLogStatusFilter');
+    if (listFilter) listFilter.value = INTEGRATION_VIEW_FILTERS.integration_q || '';
+    if (logFilter) logFilter.value = INTEGRATION_VIEW_FILTERS.log_q || '';
+    if (logStatus) logStatus.value = INTEGRATION_VIEW_FILTERS.log_status || '';
+}
+
+function syncIntegrationFiltersFromUi() {
+    var listFilter = document.getElementById('intgListFilter');
+    var logFilter = document.getElementById('intgLogFilter');
+    var logStatus = document.getElementById('intgLogStatusFilter');
+    INTEGRATION_VIEW_FILTERS.integration_q = String((listFilter && listFilter.value) || '').trim();
+    INTEGRATION_VIEW_FILTERS.log_q = String((logFilter && logFilter.value) || '').trim();
+    INTEGRATION_VIEW_FILTERS.log_status = String((logStatus && logStatus.value) || '').trim();
+}
+
+function updateIntegrationQueryString() {
+    if (typeof URLSearchParams === 'undefined' || typeof window === 'undefined' || !window.location || !window.history || !window.history.replaceState) {
+        return;
+    }
+    var params = new URLSearchParams(window.location.search || '');
+    Object.keys(INTEGRATION_VIEW_FILTERS).forEach(function(key) {
+        var value = String(INTEGRATION_VIEW_FILTERS[key] || '').trim();
+        if (value) params.set(key, value);
+        else params.delete(key);
+    });
+    var next = window.location.pathname + (params.toString() ? ('?' + params.toString()) : '');
+    window.history.replaceState({}, '', next);
+}
+
+function renderIntegrationFilters() {
+    syncIntegrationFiltersFromUi();
+    updateIntegrationQueryString();
+
+    var integrationQuery = String(INTEGRATION_VIEW_FILTERS.integration_q || '').toLowerCase();
+    var logQuery = String(INTEGRATION_VIEW_FILTERS.log_q || '').toLowerCase();
+    var logStatus = String(INTEGRATION_VIEW_FILTERS.log_status || '').toLowerCase();
+
+    var integrationRows = Array.prototype.slice.call(document.querySelectorAll('#intg-list tr[id^="intg-row-"]'));
+    var visibleIntegrationCount = 0;
+    integrationRows.forEach(function(row) {
+        var hay = [
+            row.getAttribute('data-name'),
+            row.getAttribute('data-event'),
+            row.getAttribute('data-capability'),
+            row.getAttribute('data-version-lock')
+        ].map(function(value) { return String(value || '').toLowerCase(); }).join(' ');
+        var visible = !integrationQuery || hay.indexOf(integrationQuery) !== -1;
+        row.style.display = visible ? '' : 'none';
+        if (visible) visibleIntegrationCount++;
+    });
+
+    var listCount = document.getElementById('intgListCount');
+    if (listCount) {
+        listCount.textContent = visibleIntegrationCount + ' bridge' + (visibleIntegrationCount === 1 ? '' : 's') + ' visible';
+    }
+
+    var logRows = Array.prototype.slice.call(document.querySelectorAll('tr[data-log-row="1"]'));
+    var visibleLogCount = 0;
+    logRows.forEach(function(row) {
+        var hay = [
+            row.getAttribute('data-name'),
+            row.getAttribute('data-event'),
+            row.getAttribute('data-capability'),
+            row.getAttribute('data-request-id'),
+            row.getAttribute('data-correlation-id'),
+            row.getAttribute('data-error')
+        ].map(function(value) { return String(value || '').toLowerCase(); }).join(' ');
+        var status = String(row.getAttribute('data-status') || '').toLowerCase();
+        var visible = (!logQuery || hay.indexOf(logQuery) !== -1) && (!logStatus || status === logStatus);
+        row.style.display = visible ? '' : 'none';
+        if (visible) visibleLogCount++;
+    });
+
+    var logCount = document.getElementById('intgLogCount');
+    if (logCount) {
+        logCount.textContent = visibleLogCount + ' log row' + (visibleLogCount === 1 ? '' : 's') + ' visible';
+    }
+}
+
+function clearIntegrationFilters() {
+    INTEGRATION_VIEW_FILTERS.integration_q = '';
+    applyIntegrationFiltersToUi();
+    renderIntegrationFilters();
+}
+
+function clearLogFilters() {
+    INTEGRATION_VIEW_FILTERS.log_q = '';
+    INTEGRATION_VIEW_FILTERS.log_status = '';
+    applyIntegrationFiltersToUi();
+    renderIntegrationFilters();
+}
+
+function updateValidationMeta() {
+    var meta = document.getElementById('intg_validation_meta');
+    if (!meta) return;
+    var evtOption = selectedOptionData('intg_event_picker');
+    var capOption = selectedOptionData('intg_cap_picker');
+    var parts = [];
+    if (evtOption && evtOption.value) {
+        var vars = String(evtOption.getAttribute('data-vars') || '').split(',').filter(Boolean);
+        var evtDesc = String(evtOption.getAttribute('data-description') || '');
+        parts.push(evtDesc ? evtDesc : 'Known event selected');
+        parts.push('Vars: ' + (vars.length ? vars.join(', ') : 'none declared'));
+    }
+    if (capOption && capOption.value) {
+        var capDesc = String(capOption.getAttribute('data-description') || '');
+        parts.push(capDesc ? capDesc : 'Capability selected');
+        parts.push('Version lock: ' + capOption.value);
+    }
+    meta.textContent = parts.length ? parts.join(' • ') : 'Choose an event or capability to inspect available variables and version lock behavior.';
+}
+
+function applyTemplateSample(kind) {
+    var textarea = document.getElementById('intg_json');
+    if (!textarea) return;
+    if (kind === 'clear') {
+        textarea.value = '';
+        return;
+    }
+    if (kind === 'release') {
+        textarea.value = JSON.stringify({
+            reference_type: 'order',
+            reference_id: '{{order.id}}',
+            items: '{{order.items}}',
+            idempotency_key: '{{idempotency_key}}',
+            actor_user_id: '{{actor_user_id}}'
+        }, null, 2);
+        return;
+    }
+    textarea.value = JSON.stringify({
+        reference_type: 'order',
+        reference_id: '{{order.id}}',
+        items: '{{order.items}}',
+        idempotency_key: '{{idempotency_key}}',
+        actor_user_id: '{{actor_user_id}}'
+    }, null, 2);
+}
+
+function validateIntegrationDraft() {
+    var name = (document.getElementById('intg_name').value || '').trim();
+    var trigger = (document.getElementById('intg_trigger').value || '').trim();
+    var cap = (document.getElementById('intg_cap').value || '').trim();
+    var json = (document.getElementById('intg_json').value || '').trim();
+    if (!name || !trigger || !cap || !json) {
+        setStatus('Draft incomplete. Fill name, event, capability, and mapping JSON before validation.', 'err');
+        return;
+    }
+    try {
+        JSON.parse(json);
+    } catch (e) {
+        setStatus('Mapping JSON is not valid: ' + e.message, 'err');
+        return;
+    }
+
+    setStatus('Validating draft...', 'pending');
+
+    fetch(BASE + '/api/v1/kernel/integrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '{csrf_token}' },
+        body: JSON.stringify({
+            _action: 'validate',
+            name: name,
+            trigger_event: trigger,
+            target_capability: cap,
+            mapping_json: JSON.parse(json),
+            version_lock: (document.getElementById('intg_version_lock').value || '').trim() || null,
+            is_active: document.getElementById('intg_active').checked ? 1 : 0
+        })
+    })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                var parts = ['Draft validation passed'];
+                if (data.resolved_capability) {
+                    parts.push('Resolved capability: ' + data.resolved_capability);
+                }
+                if (data.version_lock) {
+                    parts.push('Version lock: ' + data.version_lock);
+                }
+                if (Array.isArray(data.mapping_vars) && data.mapping_vars.length) {
+                    parts.push('Mapping vars: ' + data.mapping_vars.join(', '));
+                }
+                setStatus(parts.join(' • '), 'ok');
+                return;
+            }
+
+            var errors = Array.isArray(data.errors) ? data.errors.filter(Boolean) : [];
+            setStatus((errors.length ? errors.join(' ') : (data.error || 'Draft validation failed.')) + ' Request: ' + String(data.request_id || 'n/a'), 'err');
+        })
+        .catch(function(error) {
+            setStatus('Validation failed: ' + error.message, 'err');
+        });
+}
+
+function setStatus(msg, type) {
+    var el = document.getElementById('intg-save-status');
+    if (!el) return;
+    el.className = 'intg-status ' + (type || 'pending');
+    el.textContent = msg;
+}
+
+async function submitIntegration() {
+    var btn = document.getElementById('intg-save-btn');
+    var name = (document.getElementById('intg_name').value || '').trim();
+    var trigger = (document.getElementById('intg_trigger').value || '').trim();
+    var cap = (document.getElementById('intg_cap').value || '').trim();
+    var json = (document.getElementById('intg_json').value || '').trim();
+    var versionLock = (document.getElementById('intg_version_lock').value || '').trim();
+    var active = document.getElementById('intg_active').checked;
+
+    if (!name || !trigger || !cap || !json) {
+        setStatus('All fields are required.', 'err');
+        return;
+    }
+
+    try {
+        JSON.parse(json);
+    } catch (e) {
+        setStatus('Mapping JSON is not valid: ' + e.message, 'err');
+        return;
+    }
+
+    btn.disabled = true;
+    setStatus('Saving...', '');
+
+    try {
+        var res = await fetch(BASE + '/api/v1/kernel/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '{csrf_token}' },
+            body: JSON.stringify({
+                name: name,
+                trigger_event: trigger,
+                target_capability: cap,
+                mapping_json: json,
+                is_active: active ? 1 : 0,
+                version_lock: versionLock || null
+            })
+        });
+        var data = await res.json();
+        if (data.ok) {
+            setStatus('Integration saved. Request: ' + String(data.request_id || 'n/a'), 'ok');
+            setTimeout(function() { window.location.reload(); }, 600);
+        } else {
+            setStatus((data.error || 'Save failed.') + ' Request: ' + String(data.request_id || 'n/a'), 'err');
+            btn.disabled = false;
+        }
+    } catch (e) {
+        setStatus('Network error: ' + e.message, 'err');
+        btn.disabled = false;
+    }
+}
+
+async function toggleIntegration(id) {
+    try {
+        var res = await fetch(BASE + '/api/v1/kernel/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '{csrf_token}' },
+            body: JSON.stringify({ _action: 'toggle', id: id })
+        });
+        var data = await res.json();
+        if (data.ok) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Toggle failed');
+        }
+    } catch (e) {
+        alert('Network error');
+    }
+}
+
+async function deleteIntegration(id) {
+    if (!confirm('Delete this integration? This cannot be undone.')) return;
+    try {
+        var res = await fetch(BASE + '/api/v1/kernel/integrations?id=' + id, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': '{csrf_token}' }
+        });
+        var data = await res.json();
+        if (data.ok) {
+            var row = document.getElementById('intg-row-' + id);
+            if (row) row.remove();
+            renderIntegrationFilters();
+        } else {
+            alert(data.error || 'Delete failed');
+        }
+    } catch (e) {
+        alert('Network error');
+    }
+}
+
+async function promoteIntegration(id) {
+    if (!confirm('Promote this bridge to a full Automation Rule? The bridge stays visible but will be marked as promoted.')) return;
+    try {
+        var res = await fetch(BASE + '/api/v1/kernel/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '{csrf_token}' },
+            body: JSON.stringify({ _action: 'promote', id: id })
+        });
+        var data = await res.json();
+        if (data.ok) {
+            setStatus('Bridge promoted to Automation Rule. Request: ' + String(data.request_id || 'n/a'), 'ok');
+            setTimeout(function() { window.location.reload(); }, 600);
+            return;
+        }
+        setStatus((data.error || 'Promote failed.') + ' Request: ' + String(data.request_id || 'n/a'), 'err');
+    } catch (e) {
+        setStatus('Network error: ' + e.message, 'err');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    parseIntegrationFiltersFromQuery();
+    applyIntegrationFiltersToUi();
+    updateValidationMeta();
+    renderIntegrationFilters();
+});
+
+function toggleAdvancedMode() {
+    var c = document.getElementById('advanced-mode-container');
+    c.style.display = (c.style.display === 'none') ? 'block' : 'none';
+}
+
+async function applyIntegrationMode() {
+    var mode = document.querySelector('input[name="intg_mode"]:checked').value;
+    var btn = document.getElementById('btn-apply-mode');
+    var stat = document.getElementById('mode-status');
+
+    btn.disabled = true;
+    stat.className = 'intg-status pending';
+    stat.textContent = 'Applying mode...';
+    stat.style.display = 'block';
+
+    try {
+        var res = await fetch(BASE + '/api/v1/kernel/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '{csrf_token}' },
+            body: JSON.stringify({ _action: 'apply_mode', mode: mode })
+        });
+        var data = await res.json();
+        if (data.ok) {
+            stat.className = 'intg-status ok';
+            stat.textContent = 'Mode applied successfully. Integrations rebuilt.';
+            setTimeout(function() { window.location.reload(); }, 600);
+        } else {
+            stat.className = 'intg-status err';
+            stat.textContent = 'Failed: ' + (data.error || 'Server error');
+            btn.disabled = false;
+        }
+    } catch (e) {
+        stat.className = 'intg-status err';
+        stat.textContent = 'Network error: ' + e.message;
+        btn.disabled = false;
+    }
+}
+
+</script>
+{/block}
+

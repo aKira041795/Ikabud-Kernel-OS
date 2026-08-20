@@ -1,0 +1,20 @@
+Ikabud — Open-Core License
+
+Copyright (c) 2024-2026 Ikabud
+
+This project uses a dual-license open-core model:
+
+  Community Edition components — MIT License (LICENSE-MIT)
+  Enterprise Edition components — Ikabud Commercial License (LICENSE-COMMERCIAL)
+
+See LICENSING.md for the complete component-to-license mapping, including
+which directories and modules fall under each license.
+
+Summary:
+  - Community Edition: free to use, modify, and redistribute under MIT
+  - Enterprise Edition: source-available for evaluation and development;
+    production use requires a commercial license
+  - Module developers building against kernel/Contracts/ are not affected
+    by the commercial license
+
+Contact: noah2.omamalin@gmail.com

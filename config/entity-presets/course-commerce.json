@@ -1,0 +1,56 @@
+{
+    "id": "course-commerce",
+    "label": "Sellable Course",
+    "description": "A priced course with lessons, learner progress, and media support for enrollment-style presentation.",
+    "icon": "graduation-cap",
+    "entity_types": [
+        "course"
+    ],
+    "context_bases": [
+        "guidance"
+    ],
+    "recommendation_priority": 80,
+    "default_capabilities": [
+        {
+            "id": "pricing",
+            "config": {
+                "currency": "USD"
+            }
+        },
+        {
+            "id": "lessons_index",
+            "config": {
+                "child_type": "lesson",
+                "show_numbers": true
+            }
+        },
+        {
+            "id": "progress_tracking",
+            "config": {
+                "unit": "percent"
+            }
+        },
+        {
+            "id": "media_gallery",
+            "config": {
+                "columns": 3,
+                "lightbox": true
+            }
+        }
+    ],
+    "token_overrides": {
+        "color": {
+            "primary": "#7c3aed",
+            "secondary": "#5b21b6"
+        },
+        "component": {
+            "button": {
+                "radius": "0.375rem"
+            }
+        }
+    },
+    "builder_defaults": {
+        "layout": "course",
+        "show_sidebar": true
+    }
+}

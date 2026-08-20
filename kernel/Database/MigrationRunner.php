@@ -1,0 +1,740 @@
+<?php
+/**
+ * Ikabud Kernel — Migration Runner
+ * 
+ * Tracks per-module migration state in a `_migrations` table.
+ * Migrations are SQL files in each module's `migrations/` directory,
+ * executed in filename order (e.g. 001_create_tables.sql, 002_add_index.sql).
+ * 
+ * Features:
+ *   - Per-module tracking (knows which module ran which migration)
+ *   - Ordered execution (sorted by filename)
+ *   - Skip already-applied migrations (idempotent)
+ *   - Rollback support via companion _down files (001_create_tables.down.sql)
+ *   - Dry-run mode for previewing pending migrations
+ *   - Kernel-level migrations in migrations/ (module = '_kernel')
+ * 
+ * Usage:
+ *   $runner = new MigrationRunner($pdo);
+ *   $runner->migrate('sms');                    // Run pending for one module
+ *   $runner->migrateAll();                      // Run pending for all enabled modules
+ *   $runner->rollback('sms');                   // Rollback last batch for module
+ *   $runner->status('sms');                     // Get migration status
+ *   $runner->pending();                         // List all pending migrations
+ * 
+ * @package Ikabud\Kernel\Database
+ * @version 1.0.0
+ */
+
+namespace Ikabud\Kernel\Database;
+
+use PDO;
+
+class MigrationRunner
+{
+    private PDO $pdo;
+    private string $modulesPath;
+    private string $kernelMigrationsPath;
+    private string $controlMigrationsPath;
+    /** @var array<string, true> basenames of migration files that must never be executed by this runner. */
+    private array $excludeMigrations;
+
+    private const TABLE = '_migrations';
+
+    /**
+     * @param array<int, string> $excludeMigrations Basenames (e.g. '004_bluehost_install_no_create_db.sql') to skip.
+     */
+    public function __construct(PDO $pdo, ?string $modulesPath = null, ?string $kernelMigrationsPath = null, ?string $controlMigrationsPath = null, array $excludeMigrations = [])
+    {
+        $this->pdo = $pdo;
+        $this->modulesPath = $modulesPath ?? (defined('BASE_PATH') ? BASE_PATH . '/modules' : './modules');
+        $this->kernelMigrationsPath = $kernelMigrationsPath ?? (defined('BASE_PATH') ? BASE_PATH . '/migrations' : './migrations');
+        $this->controlMigrationsPath = $controlMigrationsPath ?? (defined('BASE_PATH') ? BASE_PATH . '/control-migrations' : './control-migrations');
+        $this->excludeMigrations = [];
+        foreach ($excludeMigrations as $ex) {
+            $ex = (string)$ex;
+            if ($ex !== '') {
+                $this->excludeMigrations[$ex] = true;
+            }
+        }
+        $this->ensureTable();
+    }
+
+    /**
+     * Create the _migrations tracking table if it doesn't exist.
+     */
+    private function ensureTable(): void
+    {
+        $this->pdo->exec("
+            CREATE TABLE IF NOT EXISTS `" . self::TABLE . "` (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                module VARCHAR(80) NOT NULL,
+                migration VARCHAR(255) NOT NULL,
+                batch INT UNSIGNED NOT NULL DEFAULT 1,
+                executed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_module_migration (module, migration)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    }
+
+    /**
+     * Run all pending migrations for a specific module.
+     * Uses a MySQL advisory lock to prevent concurrent migration runs.
+     * Returns array of executed migration filenames.
+     */
+    public function migrate(string $moduleId): array
+    {
+        $lockName = 'ikabud_migrate_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $moduleId);
+        $lockTimeout = 10; // seconds
+
+        // Acquire advisory lock — blocks concurrent migrate() for same module.
+        $lockStmt = $this->pdo->prepare('SELECT GET_LOCK(?, ?)');
+        $lockStmt->execute([$lockName, $lockTimeout]);
+        $lockAcquired = (int) $lockStmt->fetchColumn();
+        $lockStmt->closeCursor();
+
+        if ($lockAcquired !== 1) {
+            throw new \RuntimeException(
+                "Could not acquire migration lock for module '{$moduleId}' within {$lockTimeout}s. "
+                . "Another migration may be running concurrently."
+            );
+        }
+
+        try {
+            return $this->migrateUnlocked($moduleId);
+        } finally {
+            // Use query()+fetchColumn() instead of exec() to fully consume the
+            // result set.  exec("SELECT ...") leaves an unconsumed result that
+            // triggers "unbuffered queries" on the next use of the connection.
+            $rel = $this->pdo->query("SELECT RELEASE_LOCK(" . $this->pdo->quote($lockName) . ")");
+            if ($rel) {
+                $rel->fetchColumn();
+                $rel->closeCursor();
+            }
+        }
+    }
+
+    /**
+     * Internal: run pending migrations (caller must hold advisory lock).
+     */
+    private function migrateUnlocked(string $moduleId): array
+    {
+        $pending = $this->getPending($moduleId);
+        if (empty($pending)) {
+            return [];
+        }
+
+        $batch = $this->getNextBatch($moduleId);
+        $executed = [];
+
+        foreach ($pending as $file) {
+            $sql = file_get_contents($file['path']);
+            if ($sql === false || trim($sql) === '') {
+                continue;
+            }
+
+            // Execute multi-statement SQL.
+            // Idempotent DDL errors (column/key/table already exists) are treated as
+            // success so that migrations applied manually outside the runner can still
+            // be recorded in the tracking table on the next run.
+            try {
+                $this->executeSql($sql);
+            } catch (\PDOException $e) {
+                $mysqlCode = isset($e->errorInfo[1]) ? (int)$e->errorInfo[1] : 0;
+                $idempotentCodes = [
+                    1060, // Duplicate column name  — ADD COLUMN on existing column
+                    1061, // Duplicate key name     — ADD INDEX on existing index
+                    1050, // Table already exists   — CREATE TABLE without IF NOT EXISTS
+                    1091, // Can't DROP index/key   — DROP INDEX on non-existent index
+                ];
+                if (!in_array($mysqlCode, $idempotentCodes, true)) {
+                    throw $e;
+                }
+            }
+
+            // Record in tracking table
+            $stmt = $this->pdo->prepare(
+                "INSERT IGNORE INTO `" . self::TABLE . "` (module, migration, batch) VALUES (?, ?, ?)"
+            );
+            $stmt->execute([$moduleId, $file['key'], $batch]);
+            $executed[] = $file['key'];
+        }
+
+        return $executed;
+    }
+
+    /**
+     * Backward-compatible runner for legacy CLI scripts.
+     *
+     * Accepts module migration directory paths (for example,
+     * /path/to/project/modules/daily-ledger/database/migrations)
+     * and maps them to module ids before calling migrate().
+     *
+     * @param array<int, string> $migrationDirs
+     * @return array<int, string>
+     */
+    public function run(array $migrationDirs): array
+    {
+        $executed = [];
+
+        foreach ($migrationDirs as $dir) {
+            if (!is_string($dir) || trim($dir) === '') {
+                continue;
+            }
+
+            $normalized = str_replace('\\', '/', rtrim($dir, '/'));
+
+            if (function_exists('\discoverModules')) {
+                foreach (\discoverModules() as $candidateId => $manifest) {
+                    $candidatePath = str_replace('\\', '/', rtrim((string)($manifest['_path'] ?? ''), '/'));
+                    if ($candidatePath !== '' && str_starts_with($normalized, $candidatePath . '/')) {
+                        $moduleExecuted = $this->migrate((string)$candidateId);
+                        foreach ($moduleExecuted as $migration) {
+                            $executed[] = $migration;
+                        }
+                        continue 2;
+                    }
+                }
+
+                if (preg_match('#/modules/(?:.+/)?([^/]+)/#', $normalized, $m)) {
+                    $moduleId = (string)($m[1] ?? '');
+                    if ($moduleId !== '') {
+                        $moduleExecuted = $this->migrate($moduleId);
+                        foreach ($moduleExecuted as $migration) {
+                            $executed[] = $migration;
+                        }
+                        continue;
+                    }
+                }
+            } elseif (preg_match('#/modules/(?:.+/)?([^/]+)/#', $normalized, $m)) {
+                $moduleId = (string)($m[1] ?? '');
+                if ($moduleId !== '') {
+                    $moduleExecuted = $this->migrate($moduleId);
+                    foreach ($moduleExecuted as $migration) {
+                        $executed[] = $migration;
+                    }
+                    continue;
+                }
+            }
+
+            throw new \RuntimeException(
+                "Unsupported migration directory '{$dir}'. Use module paths under modules/<module-id>/... or call migrate(<module-id>) directly."
+            );
+        }
+
+        return $executed;
+    }
+
+    /**
+     * Run pending migrations for ALL enabled modules + kernel.
+     * Returns ['module_id' => ['file1.sql', 'file2.sql'], ...]
+     */
+    public function migrateAll(): array
+    {
+        $results = [];
+
+        // Kernel migrations first
+        if (is_dir($this->kernelMigrationsPath)) {
+            $kernelResult = $this->migrate('_kernel');
+            if ($kernelResult) {
+                $results['_kernel'] = $kernelResult;
+            }
+        }
+
+        // Module migrations
+        if (!is_dir($this->modulesPath)) {
+            return $results;
+        }
+
+        foreach ($this->discoverModuleIds() as $moduleId) {
+            $moduleResult = $this->migrate($moduleId);
+            if ($moduleResult) {
+                $results[$moduleId] = $moduleResult;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Run a single migration SQL file that is not discovered by the regular
+     * directory scan (e.g. late post-module hardening scripts that must run
+     * after every module migration because they ALTER per-module tables).
+     *
+     * The file is recorded in the tracking table under $moduleId so it only
+     * runs once. Idempotent DDL errors are treated as success.
+     *
+     * @return array<int, string> executed filenames
+     */
+    public function migrateFile(string $moduleId, string $filePath): array
+    {
+        if (!is_file($filePath)) {
+            return [];
+        }
+
+        $base = basename($filePath);
+        if (isset($this->excludeMigrations[$base])) {
+            return [];
+        }
+
+        $appliedSet = [];
+        foreach ($this->getApplied($moduleId) as $row) {
+            $appliedSet[(string)($row['migration'] ?? '')] = true;
+        }
+        if (isset($appliedSet[$base])) {
+            return [];
+        }
+
+        $sql = file_get_contents($filePath);
+        if ($sql === false || trim($sql) === '') {
+            return [];
+        }
+
+        $batch = $this->getNextBatch($moduleId);
+
+        try {
+            $this->executeSql($sql);
+        } catch (\PDOException $e) {
+            $mysqlCode = isset($e->errorInfo[1]) ? (int)$e->errorInfo[1] : 0;
+            $idempotentCodes = [
+                1060, // Duplicate column name  — ADD COLUMN on existing column
+                1061, // Duplicate key name     — ADD INDEX on existing index
+                1050, // Table already exists   — CREATE TABLE without IF NOT EXISTS
+                1091, // Can't DROP index/key   — DROP INDEX on non-existent index
+            ];
+            if (!in_array($mysqlCode, $idempotentCodes, true)) {
+                throw $e;
+            }
+        }
+
+        $stmt = $this->pdo->prepare(
+            "INSERT IGNORE INTO `" . self::TABLE . "` (module, migration, batch) VALUES (?, ?, ?)"
+        );
+        $stmt->execute([$moduleId, $base, $batch]);
+
+        return [$base];
+    }
+
+    /**
+     * Rollback the last batch of migrations for a module.
+     * Requires companion .down.sql files.
+     * Returns array of rolled-back migration filenames.
+     */
+    public function rollback(string $moduleId, int $steps = 1): array
+    {
+        $lastBatch = $this->getLastBatch($moduleId);
+        if ($lastBatch === 0) {
+            return [];
+        }
+
+        $rolled = [];
+        $targetBatch = max(1, $lastBatch - $steps + 1);
+
+        // Get migrations in reverse order for the target batches
+        $stmt = $this->pdo->prepare(
+            "SELECT migration, batch FROM `" . self::TABLE . "` 
+             WHERE module = ? AND batch >= ? 
+             ORDER BY batch DESC, id DESC"
+        );
+        $stmt->execute([$moduleId, $targetBatch]);
+        $migrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $migrationsDir = $this->getMigrationsDir($moduleId);
+
+        foreach ($migrations as $row) {
+            $downFile = $migrationsDir . '/' . str_replace('.sql', '.down.sql', $row['migration']);
+            if (!is_file($downFile)) {
+                throw new \RuntimeException(
+                    "Rollback file not found: {$downFile}. Cannot rollback '{$row['migration']}' for module '{$moduleId}'."
+                );
+            }
+
+            $sql = file_get_contents($downFile);
+            if ($sql !== false && trim($sql) !== '') {
+                $this->executeSql($sql);
+            }
+
+            // Remove from tracking
+            $delStmt = $this->pdo->prepare(
+                "DELETE FROM `" . self::TABLE . "` WHERE module = ? AND migration = ?"
+            );
+            $delStmt->execute([$moduleId, $row['migration']]);
+            $rolled[] = $row['migration'];
+        }
+
+        return $rolled;
+    }
+
+    /**
+     * Get migration status for a module.
+     * Returns ['applied' => [...], 'pending' => [...]]
+     */
+    public function status(string $moduleId): array
+    {
+        $applied = $this->getApplied($moduleId);
+        $pending = $this->getPending($moduleId);
+
+        return [
+            'applied' => $applied,
+            'pending' => array_map(fn($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $pending),
+        ];
+    }
+
+    /**
+     * Get all pending migrations across all modules.
+     * Returns ['module_id' => ['file1.sql', ...], ...]
+     */
+    public function pending(): array
+    {
+        $result = [];
+
+        // Kernel
+        if (is_dir($this->kernelMigrationsPath)) {
+            $kernelPending = $this->getPending('_kernel');
+            if ($kernelPending) {
+                $result['_kernel'] = array_map(fn($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $kernelPending);
+            }
+        }
+
+        // Modules
+        if (is_dir($this->modulesPath)) {
+            foreach ($this->discoverModuleIds() as $moduleId) {
+                $modulePending = $this->getPending($moduleId);
+                if ($modulePending) {
+                    $result[$moduleId] = array_map(fn($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $modulePending);
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    // ── Internal ─────────────────────────────────────────────────────
+
+    /**
+     * Get list of applied migration names for a module.
+     */
+    private function getApplied(string $moduleId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT migration, batch, executed_at FROM `" . self::TABLE . "` WHERE module = ? ORDER BY id"
+        );
+        $stmt->execute([$moduleId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Get pending (unapplied) migration files for a module.
+     * Returns [['name' => '001_foo.sql', 'path' => '/full/path/001_foo.sql'], ...]
+     */
+    private function getPending(string $moduleId): array
+    {
+        $sources = $this->getMigrationSources($moduleId);
+        if (empty($sources)) {
+            return [];
+        }
+
+        // Get already-applied keys
+        $stmt = $this->pdo->prepare(
+            "SELECT migration FROM `" . self::TABLE . "` WHERE module = ?"
+        );
+        $stmt->execute([$moduleId]);
+        $applied = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $appliedSet = array_flip($applied);
+
+        // Scan migration files (only .sql, not .down.sql)
+        $files = [];
+        foreach ($sources as $src) {
+            if ($src['type'] === 'dir') {
+                $dir = $src['path'];
+                if (!is_dir($dir)) continue;
+                foreach (scandir($dir) as $file) {
+                    if (!str_ends_with($file, '.sql') || str_ends_with($file, '.down.sql')) {
+                        continue;
+                    }
+                    if (isset($this->excludeMigrations[$file])) {
+                        continue;
+                    }
+                    $migrationKey = $this->buildMigrationKey($moduleId, $file);
+                    if (isset($appliedSet[$migrationKey])) {
+                        continue;
+                    }
+                    $files[] = ['key' => $migrationKey, 'path' => $dir . '/' . $file];
+                }
+                continue;
+            }
+
+            if ($src['type'] === 'file') {
+                $filePath = $src['path'];
+                if (!is_file($filePath)) continue;
+                $base = basename($filePath);
+                if (!str_ends_with($base, '.sql') || str_ends_with($base, '.down.sql')) {
+                    continue;
+                }
+                if (isset($this->excludeMigrations[$base])) {
+                    continue;
+                }
+                $migrationKey = $this->buildMigrationKey($moduleId, $base);
+                if (isset($appliedSet[$migrationKey])) {
+                    continue;
+                }
+                $files[] = ['key' => $migrationKey, 'path' => $filePath];
+            }
+        }
+
+        // Dedupe (a migration can be discovered both via manifest-listed files and conventional dirs)
+        $deduped = [];
+        foreach ($files as $f) {
+            if (!is_array($f)) continue;
+            $k = (string)($f['key'] ?? '');
+            if ($k === '') continue;
+            if (isset($deduped[$k])) continue;
+            $deduped[$k] = $f;
+        }
+        $files = array_values($deduped);
+
+        // Sort by filename (which is why we use numeric prefixes)
+        usort($files, fn($a, $b) => strcmp($a['key'], $b['key']));
+
+        return $files;
+    }
+
+    /**
+     * Get migrations directory for a module.
+     */
+    private function getMigrationsDir(string $moduleId): string
+    {
+        if ($moduleId === '_kernel') {
+            return $this->kernelMigrationsPath;
+        }
+        if ($moduleId === '_control') {
+            return $this->controlMigrationsPath;
+        }
+        $modulePath = $this->resolveModulePath($moduleId);
+        return $modulePath . '/migrations';
+    }
+
+    /**
+     * Return migration sources for a module.
+     * - Kernel: single dir
+     * - Module: manifest-listed migrations (if present) + common fallback dirs
+     */
+    private function getMigrationSources(string $moduleId): array
+    {
+        if ($moduleId === '_kernel') {
+            return [['type' => 'dir', 'path' => $this->kernelMigrationsPath]];
+        }
+
+        if ($moduleId === '_control') {
+            return [['type' => 'dir', 'path' => $this->controlMigrationsPath]];
+        }
+
+        $sources = [];
+
+        $modulePath = $this->resolveModulePath($moduleId);
+        $manifestPath = $modulePath . '/module.json';
+        if (is_file($manifestPath)) {
+            $manifest = json_decode((string) file_get_contents($manifestPath), true);
+            if (is_array($manifest) && !empty($manifest['migrations']) && is_array($manifest['migrations'])) {
+                foreach ($manifest['migrations'] as $rel) {
+                    $rel = ltrim((string) $rel, '/');
+                    $sources[] = ['type' => 'file', 'path' => $modulePath . '/' . $rel];
+                }
+            }
+        }
+
+        // Back-compat / conventional directories
+        $sources[] = ['type' => 'dir', 'path' => $modulePath . '/migrations'];
+        $sources[] = ['type' => 'dir', 'path' => $modulePath . '/database/migrations'];
+
+        // Dedupe by path
+        $seen = [];
+        $out = [];
+        foreach ($sources as $s) {
+            $p = $s['path'];
+            if (isset($seen[$p])) continue;
+            $seen[$p] = true;
+            $out[] = $s;
+        }
+        return $out;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function discoverModuleIds(): array
+    {
+        if (function_exists('\discoverModules')) {
+            return array_keys(\discoverModules());
+        }
+
+        $moduleIds = [];
+        foreach (scandir($this->modulesPath) as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $manifestPath = $this->modulesPath . '/' . $entry . '/module.json';
+            if (!is_file($manifestPath)) {
+                continue;
+            }
+
+            $manifest = json_decode((string) file_get_contents($manifestPath), true);
+            $moduleIds[] = (string)($manifest['id'] ?? $entry);
+        }
+
+        return $moduleIds;
+    }
+
+    private function resolveModulePath(string $moduleId): string
+    {
+        if (function_exists('\modulePathForId')) {
+            $resolved = \modulePathForId($moduleId);
+            if (is_string($resolved) && $resolved !== '') {
+                return $resolved;
+            }
+        }
+
+        return $this->modulesPath . '/' . $moduleId;
+    }
+
+    /**
+     * Build the key stored in _migrations.migration.
+     * For modules we namespace by filename so manifest-listed migrations don't collide.
+     */
+    private function buildMigrationKey(string $moduleId, string $baseFilename): string
+    {
+        // For back-compat: store EXACTLY the base filename in _migrations.
+        // (Older installs used raw filenames like '001_initial.sql'.)
+        return $baseFilename;
+    }
+
+    /**
+     * Get the next batch number for a module.
+     */
+    private function getNextBatch(string $moduleId): int
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COALESCE(MAX(batch), 0) + 1 FROM `" . self::TABLE . "` WHERE module = ?"
+        );
+        $stmt->execute([$moduleId]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Get the last batch number for a module.
+     */
+    private function getLastBatch(string $moduleId): int
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COALESCE(MAX(batch), 0) FROM `" . self::TABLE . "` WHERE module = ?"
+        );
+        $stmt->execute([$moduleId]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Execute multi-statement SQL (handles statements separated by semicolons).
+     *
+     * Resets the session SQL mode to a permissive baseline before execution so
+     * migrations work across MySQL/MariaDB versions that differ in strictness.
+     * In particular, older servers reject `DEFAULT NULL` on TEXT/BLOB/JSON columns
+     * (error 1101) unless the strict blob-default enforcement is lifted.
+     */
+    private function executeSql(string $sql): void
+    {
+        $sql = preg_replace("/(['\"])SELECT\\s+1\\1/i", '$1DO 0$1', $sql) ?? $sql;
+
+        // Permissive baseline — mirrors what the Bluehost upgrade bundles use.
+        // This suppresses error 1101 (BLOB/TEXT column can't have a default) on
+        // older MySQL/MariaDB and allows the idempotent DDL patterns we rely on.
+        try {
+            $this->pdo->exec("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO'");
+        } catch (\Throwable $ignored) {
+            // Non-fatal: if SET SESSION fails (unlikely), proceed anyway.
+        }
+
+        // Split multi-statement SQL into individual statements and execute
+        // each separately.  PDO::exec() on multi-statement SQL can leave
+        // unconsumed result sets, causing "Cannot execute queries while
+        // other unbuffered queries are active" on the next query.
+        // PDO::query() doesn't support multi-statement SQL at all (MySQL
+        // server-side parsing rejects the second statement).
+        //
+        // Compound statements (CREATE PROCEDURE/FUNCTION/TRIGGER with
+        // BEGIN…END blocks) contain interior semicolons that must NOT be
+        // treated as statement boundaries.  We track nesting depth so the
+        // splitter emits the entire compound block as a single statement.
+        $statements = $this->splitStatements($sql);
+        foreach ($statements as $statement) {
+            $statement = trim($statement);
+            if ($statement === '') {
+                continue;
+            }
+            $this->pdo->exec($statement);
+        }
+    }
+
+    /**
+     * Split a SQL string into individual executable statements, respecting
+     * compound BEGIN…END blocks (used by CREATE PROCEDURE/FUNCTION/TRIGGER).
+     *
+     * Interior semicolons inside compound blocks are preserved so the whole
+     * block is emitted as a single statement.
+     *
+     * @return list<string>
+     */
+    private function splitStatements(string $sql): array
+    {
+        // Strip single-line comments (-- …) while preserving line structure.
+        $sql = preg_replace('/--[^\r\n]*/', '', $sql);
+
+        $statements = [];
+        $current = '';
+        $depth = 0;
+
+        // Tokenise line-by-line to detect BEGIN / END boundaries.
+        $lines = preg_split('/\r?\n/', $sql);
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                $current .= "\n";
+                continue;
+            }
+
+            // Track compound nesting: BEGIN opens, bare END closes.
+            // Only the keyword at the start of a line (after optional whitespace) counts.
+            if (preg_match('/^\bBEGIN\b/i', $trimmed)) {
+                $depth++;
+            }
+            // Bare END (without IF/LOOP/WHILE/REPEAT/CASE qualifier) closes the compound block.
+            // "END IF;", "END LOOP;", etc. close control structures, NOT the BEGIN block.
+            if ($depth > 0 && preg_match('/^\bEND\b\s*;?\s*$/i', $trimmed)) {
+                $depth--;
+            }
+
+            $current .= $line . "\n";
+
+            // If we are NOT inside a compound block, a trailing semicolon ends the statement.
+            if ($depth === 0 && preg_match('/;\s*$/', $trimmed)) {
+                $stmt = trim($current);
+                // Remove the trailing semicolon for exec() compatibility.
+                $stmt = preg_replace('/;\s*$/', '', $stmt);
+                $stmt = trim($stmt);
+                if ($stmt !== '') {
+                    $statements[] = $stmt;
+                }
+                $current = '';
+            }
+        }
+
+        // Leftover (statement without trailing semicolon at EOF).
+        $leftover = trim($current);
+        $leftover = preg_replace('/;\s*$/', '', $leftover);
+        $leftover = trim($leftover);
+        if ($leftover !== '') {
+            $statements[] = $leftover;
+        }
+
+        return $statements;
+    }
+}
