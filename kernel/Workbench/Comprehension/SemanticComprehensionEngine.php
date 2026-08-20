@@ -4,26 +4,25 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Workbench\Comprehension;
 
+use Ikabud\Kernel\Workbench\AI\WorkbenchAiAnalyzer;
+use Ikabud\Kernel\Workbench\Comprehension\Analyzers\{
+    AiHypothesisGenerator,
+    AnomalyDetector,
+    BayesianReasoner,
+    CaseMemory,
+    CrossModuleAnalyzer,
+    EmbeddingScorer,
+    PatternClassifier,
+    ProviderCoverageScorer,
+    SemanticScorer,
+    SourceRetriever,
+    TemporalValidator,
+};
 use Ikabud\Kernel\Workbench\Comprehension\Contracts\{
-    ModuleComprehensionProvider,
     ActionContract,
     ChainLink,
+    ModuleComprehensionProvider,
 };
-
-use Ikabud\Kernel\Workbench\Comprehension\Analyzers\{
-    SemanticScorer,
-    EmbeddingScorer,
-    BayesianReasoner,
-    TemporalValidator,
-    PatternClassifier,
-    AnomalyDetector,
-    CrossModuleAnalyzer,
-    SourceRetriever,
-    AiHypothesisGenerator,
-    CaseMemory,
-    ProviderCoverageScorer,
-};
-use Ikabud\Kernel\Workbench\AI\WorkbenchAiAnalyzer;
 
 /**
  * Hybrid Semantic Comprehension Engine.
@@ -125,7 +124,7 @@ class SemanticComprehensionEngine
         $prop->setAccessible(true);
         $provider = $prop->getValue($this->deterministic);
 
-        return array_map(fn($a) => $a->id, $provider->actions());
+        return array_map(fn ($a) => $a->id, $provider->actions());
     }
 
     /**
@@ -193,7 +192,8 @@ class SemanticComprehensionEngine
                         continue;
                     }
                     $this->bayesian->recordOutcome(
-                        $this->moduleId, $actionId,
+                        $this->moduleId,
+                        $actionId,
                         $result['step'] ?? '?',
                         $result['ok'] ?? false,
                         $metadata
@@ -215,8 +215,8 @@ class SemanticComprehensionEngine
         $fullClassification = $this->classifier->classifyAll($this->runtimeEvidence);
 
         // Layer 5b: Anomaly detection
-        $declaredSteps = $action ? array_map(fn(ChainLink $l) => $l->step, $action->chain) : [];
-        $declaredCategories = $action ? array_map(fn(ChainLink $l) => $l->category, $action->chain) : [];
+        $declaredSteps = $action ? array_map(fn (ChainLink $l) => $l->step, $action->chain) : [];
+        $declaredCategories = $action ? array_map(fn (ChainLink $l) => $l->category, $action->chain) : [];
         $anomalies = $this->anomaly->detect($this->runtimeEvidence, $declaredSteps, $declaredCategories);
         $missingLinks = $this->anomaly->suggestMissingLinks($this->runtimeEvidence);
 
@@ -430,7 +430,7 @@ class SemanticComprehensionEngine
             'runtime' => $this->runtimeEvidence,
             'timestamps' => $this->timestamps,
             'bayesian_history' => $this->bayesian->actionHistory($this->moduleId, $actionId),
-            'similar_cases' => array_map(fn($c) => [
+            'similar_cases' => array_map(fn ($c) => [
                 'id' => $c['case']->id,
                 'summary' => $c['case']->summary,
                 'fix_summary' => $c['case']->fixSummary,
@@ -684,12 +684,12 @@ class SemanticComprehensionEngine
         // Deterministic chain completeness
         $chainResults = $deterministic['chain'] ?? [];
         $totalLinks = count($chainResults);
-        $observedLinks = count(array_filter($chainResults, fn($r) => ($r['observed'] ?? false) === true));
+        $observedLinks = count(array_filter($chainResults, fn ($r) => ($r['observed'] ?? false) === true));
         $factors['coverage'] = $totalLinks > 0 ? $observedLinks / $totalLinks : 0;
 
         // Embedding score quality (NLP-enhanced)
         if (!empty($embeddingScores)) {
-            $avgScore = array_sum(array_map(fn($s) => $s['score'] ?? 0, $embeddingScores)) / count($embeddingScores);
+            $avgScore = array_sum(array_map(fn ($s) => $s['score'] ?? 0, $embeddingScores)) / count($embeddingScores);
             $factors['semantic_quality'] = $avgScore;
         } else {
             $factors['semantic_quality'] = 0.5;

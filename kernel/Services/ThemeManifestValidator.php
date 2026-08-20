@@ -1,4 +1,5 @@
 <?php
+
 /**
  * ThemeManifestValidator — Kernel-governed theme manifest schema and validation.
  *

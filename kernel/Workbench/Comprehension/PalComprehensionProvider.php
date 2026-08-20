@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Ikabud\Kernel\Workbench\Comprehension;
 
 use Ikabud\Kernel\Workbench\Comprehension\Contracts\{
-    ModuleComprehensionProvider,
-    EntityContract,
-    WorkflowContract,
     ActionContract,
     ChainLink,
     EffectContract,
+    EntityContract,
     InvariantContract,
+    ModuleComprehensionProvider,
     ScenarioContract,
+    WorkflowContract,
 };
 
 /**
@@ -96,10 +96,18 @@ class PalComprehensionProvider implements ModuleComprehensionProvider
                     new ChainLink('http.request', 'POST request sent to status API endpoint', 'http'),
                     new ChainLink('http.response_ok', 'API returns HTTP 200 with {ok: true}', 'http'),
                     new ChainLink('workflow.transition', 'JobOrderWorkflow::apply() executes transition', 'service'),
-                    new ChainLink('db.status_change', 'Project status changes from draft to pending', 'db',
-                        probe: "SELECT status FROM pal_projects WHERE id=:id"),
-                    new ChainLink('approval.created', 'Approval request record created in pal_approvals', 'db',
-                        probe: "SELECT COUNT(*) FROM pal_approvals WHERE entity_type='project' AND entity_id=:id"),
+                    new ChainLink(
+                        'db.status_change',
+                        'Project status changes from draft to pending',
+                        'db',
+                        probe: "SELECT status FROM pal_projects WHERE id=:id"
+                    ),
+                    new ChainLink(
+                        'approval.created',
+                        'Approval request record created in pal_approvals',
+                        'db',
+                        probe: "SELECT COUNT(*) FROM pal_approvals WHERE entity_type='project' AND entity_id=:id"
+                    ),
                     new ChainLink('audit.created', 'Audit log entry created for status change', 'audit'),
                     new ChainLink('ui.status_updated', 'Detail page renders Pending status badge', 'verify'),
                     new ChainLink('approval_queue.updated', 'Approval queue page shows the project', 'verify'),
@@ -116,8 +124,12 @@ class PalComprehensionProvider implements ModuleComprehensionProvider
                     new ChainLink('button.visible', 'Create/Save button is visible', 'ui'),
                     new ChainLink('http.request', 'POST request sent to projects API', 'http'),
                     new ChainLink('http.response_ok', 'API returns {ok:true, id:N, redirect:...}', 'http'),
-                    new ChainLink('db.project_created', 'Project record created in pal_projects', 'db',
-                        probe: "SELECT id FROM pal_projects ORDER BY id DESC LIMIT 1"),
+                    new ChainLink(
+                        'db.project_created',
+                        'Project record created in pal_projects',
+                        'db',
+                        probe: "SELECT id FROM pal_projects ORDER BY id DESC LIMIT 1"
+                    ),
                     new ChainLink('ui.redirect', 'Browser redirects to project detail page', 'ui'),
                 ],
             ),

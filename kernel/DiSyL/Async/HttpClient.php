@@ -182,11 +182,15 @@ final class HttpClient
             throw new \RuntimeException('curl extension required');
         }
         $ch = curl_init($url);
-        if ($ch === false) return false;
+        if ($ch === false) {
+            return false;
+        }
 
         $timeoutMs = (int)($opts['timeout'] ?? 5000);
         $headers = [];
-        foreach (($opts['headers'] ?? []) as $k => $v) { $headers[] = "$k: $v"; }
+        foreach (($opts['headers'] ?? []) as $k => $v) {
+            $headers[] = "$k: $v";
+        }
 
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -206,7 +210,9 @@ final class HttpClient
     private function curlFetch(string $url, array $opts): array
     {
         $ch = $this->initCurl($url, $opts);
-        if ($ch === false) throw new \RuntimeException('curl_init failed');
+        if ($ch === false) {
+            throw new \RuntimeException('curl_init failed');
+        }
 
         $raw = curl_exec($ch);
         if ($raw === false) {
@@ -252,7 +258,9 @@ final class HttpClient
     private static function findTransferId($ch): ?int
     {
         foreach (self::$activeTransfers as $id => $t) {
-            if ($t['ch'] === $ch) return $id;
+            if ($t['ch'] === $ch) {
+                return $id;
+            }
         }
         return null;
     }

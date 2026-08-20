@@ -1,7 +1,8 @@
 <?php
+
 /**
  * DiSyL v11.0 Island Component
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Hydration
  * @version 11.0.0
  */
@@ -20,8 +21,9 @@ class Island
         public readonly HydrationStrategy $strategy = HydrationStrategy::LOAD,
         public readonly ?string $mediaQuery = null,
         public readonly ?string $fallback = null
-    ) {}
-    
+    ) {
+    }
+
     public function toManifestEntry(): array
     {
         return [

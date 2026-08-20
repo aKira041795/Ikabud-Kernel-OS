@@ -1,4 +1,5 @@
 <?php
+
 /**
  * API Key Authentication Service (Tier 3.8)
  *
@@ -78,7 +79,9 @@ class ApiKeyAuth
      */
     public function authenticate(string $rawKey): ?array
     {
-        if (strlen($rawKey) < 16) return null;
+        if (strlen($rawKey) < 16) {
+            return null;
+        }
 
         $prefix = substr($rawKey, 0, 8);
         $hash = hash('sha256', $rawKey);
@@ -92,7 +95,9 @@ class ApiKeyAuth
         );
         $stmt->execute([$prefix, $hash, $now]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        if (!$row) return null;
+        if (!$row) {
+            return null;
+        }
 
         // Update last_used_at
         $this->db->prepare(

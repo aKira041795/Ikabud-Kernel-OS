@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL v4 Parser
  *
@@ -652,7 +653,9 @@ final class Parser
         $parts = $this->splitCommaTopLevel($raw);
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '') { continue; }
+            if ($part === '') {
+                continue;
+            }
             if (str_contains($part, '=')) {
                 [$name, $default] = explode('=', $part, 2);
                 $params[trim($name)] = trim($default);
@@ -677,7 +680,8 @@ final class Parser
                     [],
                     'call',
                     ['name' => $m2[1], 'args' => []],
-                    null, null
+                    null,
+                    null
                 );
             }
             throw new \RuntimeException("Invalid {call} syntax in '{$inner}'");
@@ -691,7 +695,8 @@ final class Parser
             [],
             'call',
             ['name' => $name, 'args' => $args],
-            null, null
+            null,
+            null
         );
     }
 
@@ -705,7 +710,9 @@ final class Parser
         $parts = $this->splitCommaTopLevel($raw);
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '') { continue; }
+            if ($part === '') {
+                continue;
+            }
             $args[] = $part;
         }
         return $args;
@@ -727,12 +734,22 @@ final class Parser
                 $i++;
                 continue;
             }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $buf .= $ch; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $buf .= $ch; continue; }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $buf .= $ch;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $buf .= $ch;
+                continue;
+            }
             if (!$inSingle && !$inDouble) {
-                if ($ch === '(' || $ch === '[' || $ch === '{') { $depth++; }
-                elseif ($ch === ')' || $ch === ']' || $ch === '}') { $depth--; }
-                elseif ($ch === ',' && $depth === 0) {
+                if ($ch === '(' || $ch === '[' || $ch === '{') {
+                    $depth++;
+                } elseif ($ch === ')' || $ch === ']' || $ch === '}') {
+                    $depth--;
+                } elseif ($ch === ',' && $depth === 0) {
                     $parts[] = trim($buf);
                     $buf = '';
                     continue;
@@ -741,7 +758,9 @@ final class Parser
             $buf .= $ch;
         }
         $tail = trim($buf);
-        if ($tail !== '') { $parts[] = $tail; }
+        if ($tail !== '') {
+            $parts[] = $tail;
+        }
         return $parts;
     }
 
@@ -1000,7 +1019,9 @@ final class Parser
                 // Skip past nested {include} blocks to avoid false matches
                 if (substr($this->source, $scanPos, 9) === '{include ') {
                     $nestedEnd = strpos($this->source, '{/include}', $scanPos + 9);
-                    if ($nestedEnd === false) break;
+                    if ($nestedEnd === false) {
+                        break;
+                    }
                     $scanPos = $nestedEnd + 10;
                 } else {
                     $scanPos++;
@@ -1169,11 +1190,19 @@ final class Parser
             for ($i = 0; $i < $len - 1; $i++) {
                 $c = $content[$i];
                 if ($inQuote !== null) {
-                    if ($c === '\\') { $i++; continue; }
-                    if ($c === $inQuote) $inQuote = null;
+                    if ($c === '\\') {
+                        $i++;
+                        continue;
+                    }
+                    if ($c === $inQuote) {
+                        $inQuote = null;
+                    }
                     continue;
                 }
-                if ($c === '"' || $c === "'") { $inQuote = $c; continue; }
+                if ($c === '"' || $c === "'") {
+                    $inQuote = $c;
+                    continue;
+                }
                 if ($c === '?' && $content[$i + 1] === '?') {
                     $left  = trim(substr($content, 0, $i));
                     $right = trim(substr($content, $i + 2));
@@ -1438,8 +1467,14 @@ final class Parser
             $quote = $expr[0];
             $closeQuote = -1;
             for ($qi = 1, $ql = strlen($expr); $qi < $ql; $qi++) {
-                if ($expr[$qi] === '\\') { $qi++; continue; }
-                if ($expr[$qi] === $quote) { $closeQuote = $qi; break; }
+                if ($expr[$qi] === '\\') {
+                    $qi++;
+                    continue;
+                }
+                if ($expr[$qi] === $quote) {
+                    $closeQuote = $qi;
+                    break;
+                }
             }
             if ($closeQuote === strlen($expr) - 1) {
                 return new LiteralNode([], substr($expr, 1, -1));
@@ -1542,7 +1577,7 @@ final class Parser
             $base = trim(substr($expr, 0, $pipePos));
             $filterStr = trim(substr($expr, $pipePos + 1));
             $filterParts = $this->splitByPipe($filterStr);
-            $filters = array_map(fn($f) => $this->parseFilterSpec(trim($f)), $filterParts);
+            $filters = array_map(fn ($f) => $this->parseFilterSpec(trim($f)), $filterParts);
             $baseNode = $this->parsePrimaryExpr($base);
             return new ExpressionNode([], $baseNode, new FilterChain($filters), false);
         }
@@ -1623,11 +1658,30 @@ final class Parser
                 $cur .= $ch . $str[++$i];
                 continue;
             }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $cur .= $ch; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $cur .= $ch; continue; }
-            if ($inSingle || $inDouble)    { $cur .= $ch; continue; }
-            if ($ch === '(' || $ch === '[') { $depth++; $cur .= $ch; continue; }
-            if ($ch === ')' || $ch === ']') { $depth--; $cur .= $ch; continue; }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $cur .= $ch;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === '(' || $ch === '[') {
+                $depth++;
+                $cur .= $ch;
+                continue;
+            }
+            if ($ch === ')' || $ch === ']') {
+                $depth--;
+                $cur .= $ch;
+                continue;
+            }
             if ($ch === ',' && $depth === 0) {
                 $parts[] = trim($cur);
                 $cur     = '';
@@ -1788,15 +1842,34 @@ final class Parser
     private function findOuterSinglePipe(string $expr): int|false
     {
         $len = strlen($expr);
-        $inSingle = false; $inDouble = false; $depth = 0;
+        $inSingle = false;
+        $inDouble = false;
+        $depth = 0;
         for ($i = 0; $i < $len; $i++) {
             $ch = $expr[$i];
-            if ($ch === '\\' && ($inSingle || $inDouble) && $i + 1 < $len) { $i++; continue; }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; continue; }
-            if ($inSingle || $inDouble) continue;
-            if ($ch === '(') { $depth++; continue; }
-            if ($ch === ')') { $depth--; continue; }
+            if ($ch === '\\' && ($inSingle || $inDouble) && $i + 1 < $len) {
+                $i++;
+                continue;
+            }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                continue;
+            }
+            if ($ch === '(') {
+                $depth++;
+                continue;
+            }
+            if ($ch === ')') {
+                $depth--;
+                continue;
+            }
             if ($depth === 0 && $ch === '|') {
                 $prev = $i > 0 ? $expr[$i - 1] : '';
                 $next = $i + 1 < $len ? $expr[$i + 1] : '';
@@ -1874,7 +1947,7 @@ final class Parser
     private function findLastBinaryOp(string $expr, array $ops, bool $checkBinaryContext = false): array|false
     {
         // Sort by length descending to prefer longer matches
-        usort($ops, fn($a, $b) => strlen($b) - strlen($a));
+        usort($ops, fn ($a, $b) => strlen($b) - strlen($a));
 
         $best = false;
         $bestPos = -1;

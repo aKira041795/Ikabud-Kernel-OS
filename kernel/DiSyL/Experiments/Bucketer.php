@@ -37,7 +37,9 @@ final class Bucketer
         $this->root = $root
             ?? (defined('STORAGE_PATH') ? STORAGE_PATH : __DIR__ . '/../../../storage')
                 . '/cache/disyl-experiments';
-        if (!is_dir($this->root)) @mkdir($this->root, 0775, true);
+        if (!is_dir($this->root)) {
+            @mkdir($this->root, 0775, true);
+        }
     }
 
     /**
@@ -72,7 +74,9 @@ final class Bucketer
     public function expose(string $experimentId, string $subjectId, string $requestId, string $variant): void
     {
         $dedupe = $experimentId . '|' . $subjectId . '|' . $requestId;
-        if (isset($this->exposureSeen[$dedupe])) return;
+        if (isset($this->exposureSeen[$dedupe])) {
+            return;
+        }
         $this->exposureSeen[$dedupe] = true;
         $this->append('exposures', [
             'experiment' => $experimentId,
@@ -119,7 +123,9 @@ final class Bucketer
     {
         $assignments = $this->loadAssignments();
         $key = $experimentId . '|' . $subjectId;
-        if (isset($assignments[$key])) return;
+        if (isset($assignments[$key])) {
+            return;
+        }
         $assignments[$key] = $variant;
         @file_put_contents($this->root . '/assignments.json', json_encode($assignments), LOCK_EX);
     }
@@ -128,7 +134,9 @@ final class Bucketer
     private function loadAssignments(): array
     {
         $f = $this->root . '/assignments.json';
-        if (!is_file($f)) return [];
+        if (!is_file($f)) {
+            return [];
+        }
         $raw = @file_get_contents($f);
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
         return is_array($decoded) ? $decoded : [];
@@ -142,7 +150,9 @@ final class Bucketer
         if (is_file($f)) {
             $raw = @file_get_contents($f);
             $decoded = is_string($raw) ? json_decode($raw, true) : null;
-            if (is_array($decoded)) $rows = $decoded;
+            if (is_array($decoded)) {
+                $rows = $decoded;
+            }
         }
         $rows[] = $row;
         @file_put_contents($f, json_encode($rows), LOCK_EX);
@@ -152,7 +162,9 @@ final class Bucketer
     public function readEvents(string $kind): array
     {
         $f = $this->root . '/' . $kind . '.json';
-        if (!is_file($f)) return [];
+        if (!is_file($f)) {
+            return [];
+        }
         $raw = @file_get_contents($f);
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
         return is_array($decoded) ? $decoded : [];

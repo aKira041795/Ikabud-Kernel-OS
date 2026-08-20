@@ -1,27 +1,28 @@
 <?php
+
 /**
  * DiSyL v4.0 Single-File Component
- * 
+ *
  * Parses and manages single-file components (.disyl files with embedded metadata).
- * 
+ *
  * Format:
  * {# @component ComponentName #}
  * {# @prop propName: type = default #}
  * {# @slot slotName #}
- * 
+ *
  * <template content>
- * 
+ *
  * {# @style scoped #}
  * <style>...</style>
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Component
  * @version 4.0.0
  */
 
 namespace Ikabud\Kernel\DiSyL\Component;
 
-use Ikabud\Kernel\DiSyL\v4\Parser;
 use Ikabud\Kernel\DiSyL\v4\AST\DocumentNode;
+use Ikabud\Kernel\DiSyL\v4\Parser;
 
 /**
  * Single-file component definition
@@ -36,7 +37,7 @@ class SingleFileComponent
     private ?string $style = null;
     private bool $scopedStyle = false;
     private string $scopeId;
-    
+
     public function __construct(string $name, string $source)
     {
         $this->name = $name;
@@ -44,7 +45,7 @@ class SingleFileComponent
         $this->scopeId = 'disyl-' . substr(md5($name), 0, 8);
         $this->parse();
     }
-    
+
     /**
      * Parse component source
      */
@@ -55,14 +56,14 @@ class SingleFileComponent
         $styleLines = [];
         $inStyle = false;
         $styleScoped = false;
-        
+
         foreach ($lines as $line) {
             // Check for component directive
             if (preg_match('/\{#\s*@component\s+(\w+)\s*#\}/', $line, $matches)) {
                 $this->name = $matches[1];
                 continue;
             }
-            
+
             // Check for prop directive
             if (preg_match('/\{#\s*@prop\s+(\w+)\s*:\s*(\w+)(?:\s*=\s*(.+?))?\s*#\}/', $line, $matches)) {
                 $this->props[$matches[1]] = [
@@ -72,20 +73,20 @@ class SingleFileComponent
                 ];
                 continue;
             }
-            
+
             // Check for slot directive
             if (preg_match('/\{#\s*@slot\s+(\w+)\s*#\}/', $line, $matches)) {
                 $this->slots[] = $matches[1];
                 continue;
             }
-            
+
             // Check for style directive
             if (preg_match('/\{#\s*@style(?:\s+(scoped))?\s*#\}/', $line, $matches)) {
                 $inStyle = true;
                 $styleScoped = isset($matches[1]);
                 continue;
             }
-            
+
             // Collect style or template content
             if ($inStyle) {
                 // Check for end of style block
@@ -102,9 +103,9 @@ class SingleFileComponent
                 $templateLines[] = $line;
             }
         }
-        
+
         $this->scopedStyle = $styleScoped;
-        
+
         // Process style
         if (!empty($styleLines)) {
             $this->style = implode("\n", $styleLines);
@@ -112,43 +113,51 @@ class SingleFileComponent
                 $this->style = $this->scopeStyles($this->style);
             }
         }
-        
+
         // Parse template
         $templateSource = implode("\n", $templateLines);
         $parser = new Parser();
         $this->ast = $parser->parse($templateSource, $this->name . '.disyl');
     }
-    
+
     /**
      * Parse default value from string
      */
     private function parseDefaultValue(string $value): mixed
     {
         $value = trim($value);
-        
+
         // String (quoted)
         if (preg_match('/^["\'](.*)["\']\s*$/', $value, $matches)) {
             return $matches[1];
         }
-        
+
         // Boolean
-        if ($value === 'true') return true;
-        if ($value === 'false') return false;
-        
+        if ($value === 'true') {
+            return true;
+        }
+        if ($value === 'false') {
+            return false;
+        }
+
         // Null
-        if ($value === 'null') return null;
-        
+        if ($value === 'null') {
+            return null;
+        }
+
         // Number
         if (is_numeric($value)) {
             return strpos($value, '.') !== false ? (float)$value : (int)$value;
         }
-        
+
         // Array (simple)
-        if ($value === '[]') return [];
-        
+        if ($value === '[]') {
+            return [];
+        }
+
         return $value;
     }
-    
+
     /**
      * Scope CSS selectors
      */
@@ -173,7 +182,7 @@ class SingleFileComponent
             $css
         );
     }
-    
+
     /**
      * Get component name
      */
@@ -181,7 +190,7 @@ class SingleFileComponent
     {
         return $this->name;
     }
-    
+
     /**
      * Get parsed AST
      */
@@ -189,7 +198,7 @@ class SingleFileComponent
     {
         return $this->ast;
     }
-    
+
     /**
      * Get prop definitions
      */
@@ -197,7 +206,7 @@ class SingleFileComponent
     {
         return $this->props;
     }
-    
+
     /**
      * Get slot names
      */
@@ -205,7 +214,7 @@ class SingleFileComponent
     {
         return $this->slots;
     }
-    
+
     /**
      * Get scoped style CSS
      */
@@ -213,7 +222,7 @@ class SingleFileComponent
     {
         return $this->style;
     }
-    
+
     /**
      * Check if style is scoped
      */
@@ -221,7 +230,7 @@ class SingleFileComponent
     {
         return $this->scopedStyle;
     }
-    
+
     /**
      * Get scope ID for data attribute
      */
@@ -229,26 +238,26 @@ class SingleFileComponent
     {
         return $this->scopeId;
     }
-    
+
     /**
      * Validate props against definitions
      */
     public function validateProps(array $props): array
     {
         $errors = [];
-        
+
         foreach ($this->props as $name => $def) {
             // Check required
             if ($def['required'] && !isset($props[$name])) {
                 $errors[] = "Missing required prop: {$name}";
                 continue;
             }
-            
+
             // Type check
             if (isset($props[$name])) {
                 $value = $props[$name];
                 $type = $def['type'];
-                
+
                 $valid = match ($type) {
                     'string' => is_string($value),
                     'number', 'int', 'integer' => is_numeric($value),
@@ -258,23 +267,23 @@ class SingleFileComponent
                     'any' => true,
                     default => true,
                 };
-                
+
                 if (!$valid) {
                     $errors[] = "Prop '{$name}' expected {$type}, got " . gettype($value);
                 }
             }
         }
-        
+
         return $errors;
     }
-    
+
     /**
      * Get props with defaults applied
      */
     public function resolveProps(array $props): array
     {
         $resolved = [];
-        
+
         foreach ($this->props as $name => $def) {
             if (isset($props[$name])) {
                 $resolved[$name] = $props[$name];
@@ -282,14 +291,14 @@ class SingleFileComponent
                 $resolved[$name] = $def['default'];
             }
         }
-        
+
         // Include any extra props passed
         foreach ($props as $name => $value) {
             if (!isset($resolved[$name])) {
                 $resolved[$name] = $value;
             }
         }
-        
+
         return $resolved;
     }
 }

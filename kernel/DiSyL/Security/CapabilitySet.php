@@ -34,7 +34,9 @@ final class CapabilitySet
     {
         $map = [];
         foreach ($allowed as $tag) {
-            if (in_array($tag, self::ALL_TAGS, true)) $map[$tag] = true;
+            if (in_array($tag, self::ALL_TAGS, true)) {
+                $map[$tag] = true;
+            }
         }
         $this->allowed = $map;
     }

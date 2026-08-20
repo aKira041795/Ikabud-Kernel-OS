@@ -1,14 +1,15 @@
 <?php
+
 /**
  * DiSyL Slot System v1.0.0
- * 
+ *
  * Handles slot content distribution for components.
- * 
+ *
  * Slot Types:
  * - Default slot: {slot} or {slot /}
  * - Named slots: {slot header} ... {/slot}
  * - Scoped slots: {slot item(data)} ... {/slot}
- * 
+ *
  * Usage in components:
  *   {component Card}
  *     {slots}
@@ -24,14 +25,14 @@
  *       </div>
  *     {/template}
  *   {/component}
- * 
+ *
  * Usage when consuming:
  *   {Card}
  *     {#header}Card Title{/header}
  *     Main content goes here
  *     {#footer}Footer content{/footer}
  *   {/Card}
- * 
+ *
  * @version 1.0.0
  */
 
@@ -46,16 +47,16 @@ class SlotDefinition implements \JsonSerializable
 {
     /** @var string Slot name */
     public readonly string $name;
-    
+
     /** @var array Slot parameters for scoped slots */
     public readonly array $parameters;
-    
+
     /** @var array|null Default content AST */
     public ?array $defaultContent = null;
-    
+
     /** @var bool Whether slot is required */
     public bool $required = false;
-    
+
     public function __construct(
         string $name = 'default',
         array $parameters = [],
@@ -67,7 +68,7 @@ class SlotDefinition implements \JsonSerializable
         $this->defaultContent = $defaultContent;
         $this->required = $required;
     }
-    
+
     /**
      * Check if this is a scoped slot
      */
@@ -75,7 +76,7 @@ class SlotDefinition implements \JsonSerializable
     {
         return !empty($this->parameters);
     }
-    
+
     /**
      * Convert to array
      */
@@ -117,16 +118,16 @@ class SlotContent
 {
     /** @var string Slot name */
     public readonly string $name;
-    
+
     /** @var array Content AST nodes */
     public readonly array $content;
-    
+
     /** @var array Props passed to slot */
     public readonly array $props;
-    
+
     /** @var string|null Scoped variable name for slot props */
     public readonly ?string $scopeVariable;
-    
+
     public function __construct(
         string $name = 'default',
         array $content = [],
@@ -138,7 +139,7 @@ class SlotContent
         $this->props = $props;
         $this->scopeVariable = $scopeVariable;
     }
-    
+
     /**
      * Check if content is empty
      */
@@ -146,7 +147,7 @@ class SlotContent
     {
         return empty($this->content);
     }
-    
+
     /**
      * Convert to array
      */
@@ -168,13 +169,13 @@ class SlotContext
 {
     /** @var array<string, SlotContent> Named slot contents */
     private array $slots = [];
-    
+
     /** @var SlotContent|null Default slot content */
     private ?SlotContent $defaultSlot = null;
-    
+
     /** @var array<string, SlotDefinition> Slot definitions from component */
     private array $definitions = [];
-    
+
     /**
      * Constructor
      */
@@ -186,7 +187,7 @@ class SlotContext
             }
         }
     }
-    
+
     /**
      * Add slot content
      */
@@ -198,7 +199,7 @@ class SlotContext
             $this->slots[$content->name] = $content;
         }
     }
-    
+
     /**
      * Get slot content by name
      */
@@ -209,7 +210,7 @@ class SlotContext
         }
         return $this->slots[$name] ?? null;
     }
-    
+
     /**
      * Check if slot has content
      */
@@ -218,7 +219,7 @@ class SlotContext
         $content = $this->getContent($name);
         return $content !== null && !$content->isEmpty();
     }
-    
+
     /**
      * Get slot definition
      */
@@ -226,7 +227,7 @@ class SlotContext
     {
         return $this->definitions[$name] ?? null;
     }
-    
+
     /**
      * Get all slot names with content
      */
@@ -238,39 +239,39 @@ class SlotContext
         }
         return $names;
     }
-    
+
     /**
      * Validate that required slots are filled
      */
     public function validate(): array
     {
         $errors = [];
-        
+
         foreach ($this->definitions as $name => $def) {
             if ($def->required && !$this->hasContent($name)) {
                 $errors[] = "Required slot '{$name}' is not provided";
             }
         }
-        
+
         return $errors;
     }
-    
+
     /**
      * Get content or default for a slot
      */
     public function getContentOrDefault(string $name = 'default'): ?array
     {
         $content = $this->getContent($name);
-        
+
         if ($content !== null && !$content->isEmpty()) {
             return $content->content;
         }
-        
+
         $def = $this->getDefinition($name);
         if ($def !== null && $def->defaultContent !== null) {
             return $def->defaultContent;
         }
-        
+
         return null;
     }
 }
@@ -282,7 +283,7 @@ class SlotParser
 {
     /**
      * Parse children nodes into slot contents
-     * 
+     *
      * Children can be:
      * - Plain content (goes to default slot)
      * - Named slot blocks: {#slotName}...{/slotName}
@@ -292,24 +293,24 @@ class SlotParser
     {
         $context = new SlotContext();
         $defaultContent = [];
-        
+
         foreach ($children as $child) {
             $type = $child['type'] ?? '';
-            
+
             // Named slot content: {#header}...{/header}
             if ($type === 'SlotContent' || $type === 'slot_content') {
                 $name = $child['name'] ?? 'default';
                 $content = $child['content'] ?? $child['children'] ?? [];
                 $props = $child['props'] ?? [];
                 $scopeVar = $child['scopeVariable'] ?? $child['as'] ?? null;
-                
+
                 $context->addContent(new SlotContent($name, $content, $props, $scopeVar));
             }
             // Tag with slot attribute
             elseif ($type === 'tag' && isset($child['attrs']['slot'])) {
                 $name = $child['attrs']['slot'];
                 unset($child['attrs']['slot']);
-                
+
                 $context->addContent(new SlotContent($name, [$child]));
             }
             // Everything else goes to default slot
@@ -317,35 +318,35 @@ class SlotParser
                 $defaultContent[] = $child;
             }
         }
-        
+
         // Add default slot content if any
         if (!empty($defaultContent)) {
             $context->addContent(new SlotContent('default', $defaultContent));
         }
-        
+
         return $context;
     }
-    
+
     /**
      * Parse slot definitions from component's slots block
      */
     public function parseDefinitions(array $slotsBlock): array
     {
         $definitions = [];
-        
+
         foreach ($slotsBlock as $slotNode) {
             $type = $slotNode['type'] ?? '';
-            
+
             if ($type === 'SlotDeclaration' || $type === 'slot_decl') {
                 $name = $slotNode['name'] ?? 'default';
                 $params = $slotNode['parameters'] ?? $slotNode['params'] ?? [];
                 $defaultContent = $slotNode['default'] ?? $slotNode['defaultContent'] ?? null;
                 $required = $slotNode['required'] ?? false;
-                
+
                 $definitions[$name] = new SlotDefinition($name, $params, $defaultContent, $required);
             }
         }
-        
+
         return $definitions;
     }
 }
@@ -357,19 +358,19 @@ class SlotRenderer
 {
     /** @var callable Render function for AST nodes */
     private $renderFn;
-    
+
     /** @var callable Context merger function */
     private $contextMerger;
-    
+
     public function __construct(callable $renderFn, ?callable $contextMerger = null)
     {
         $this->renderFn = $renderFn;
-        $this->contextMerger = $contextMerger ?? fn($ctx, $add) => array_merge($ctx, $add);
+        $this->contextMerger = $contextMerger ?? fn ($ctx, $add) => array_merge($ctx, $add);
     }
-    
+
     /**
      * Render a slot
-     * 
+     *
      * @param SlotContext $slotContext The slot context
      * @param string $name Slot name
      * @param array $slotProps Props to pass to scoped slot
@@ -383,17 +384,17 @@ class SlotRenderer
         array $parentContext = []
     ): string {
         $content = $slotContext->getContentOrDefault($name);
-        
+
         if ($content === null) {
             return '';
         }
-        
+
         $slotContent = $slotContext->getContent($name);
         $definition = $slotContext->getDefinition($name);
-        
+
         // Build render context
         $renderContext = $parentContext;
-        
+
         // For scoped slots, add slot props to context
         if ($slotContent !== null && $slotContent->scopeVariable !== null) {
             // Scoped slot: {#items as item}
@@ -409,27 +410,27 @@ class SlotRenderer
                 }
             }
         }
-        
+
         // Merge any explicit props
         if ($slotContent !== null && !empty($slotContent->props)) {
             $renderContext = ($this->contextMerger)($renderContext, $slotContent->props);
         }
-        
+
         // Render content
         $html = '';
         foreach ($content as $node) {
             $html .= ($this->renderFn)($node, $renderContext);
         }
-        
+
         return $html;
     }
-    
+
     /**
      * Check if slot has content
      */
     public function hasContent(SlotContext $slotContext, string $name = 'default'): bool
     {
-        return $slotContext->hasContent($name) || 
+        return $slotContext->hasContent($name) ||
                ($slotContext->getDefinition($name)?->defaultContent !== null);
     }
 }
@@ -446,7 +447,7 @@ class SlotFallback
     {
         return new SlotDefinition($name, [], $defaultContent, false);
     }
-    
+
     /**
      * Create a required slot definition
      */
@@ -454,7 +455,7 @@ class SlotFallback
     {
         return new SlotDefinition($name, $parameters, null, true);
     }
-    
+
     /**
      * Create a scoped slot definition
      */

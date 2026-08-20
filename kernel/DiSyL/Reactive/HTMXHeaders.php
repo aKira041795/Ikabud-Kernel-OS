@@ -1,7 +1,8 @@
 <?php
+
 /**
  * DiSyL v11.0 HTMX Headers
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Reactive
  * @version 11.0.0
  */

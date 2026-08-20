@@ -1,9 +1,10 @@
 <?php
+
 /**
  * DiSyL v4.0 Component Loader
- * 
+ *
  * Loads and caches single-file components from the filesystem.
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Component
  * @version 4.0.0
  */
@@ -17,13 +18,13 @@ class ComponentLoader
 {
     /** @var array<string, string> Component directories */
     private array $directories = [];
-    
+
     /** @var array<string, SingleFileComponent> Loaded components */
     private array $components = [];
-    
+
     /** @var array<string, string> Collected styles */
     private array $styles = [];
-    
+
     /**
      * Add a component directory
      */
@@ -31,7 +32,7 @@ class ComponentLoader
     {
         $this->directories[$namespace] = rtrim($path, '/');
     }
-    
+
     /**
      * Load a component by name
      */
@@ -53,28 +54,28 @@ class ComponentLoader
         if (isset($this->components[$name])) {
             return $this->components[$name];
         }
-        
+
         // Find component file
         $path = $this->findComponent($name);
         if ($path === null) {
             return null;
         }
-        
+
         // Load and parse
         $source = file_get_contents($path);
         $component = new SingleFileComponent($name, $source);
-        
+
         // Cache
         $this->components[$name] = $component;
-        
+
         // Collect styles
         if ($component->getStyle()) {
             $this->styles[$name] = $component->getStyle();
         }
-        
+
         return $component;
     }
-    
+
     /**
      * Check if component exists
      */
@@ -85,7 +86,7 @@ class ComponentLoader
         }
         return $this->findComponent($name) !== null;
     }
-    
+
     /**
      * Find component file path
      */
@@ -95,37 +96,37 @@ class ComponentLoader
         $parts = explode('/', $name);
         $namespace = '';
         $componentName = $name;
-        
+
         if (count($parts) > 1) {
             $namespace = $parts[0];
             $componentName = implode('/', array_slice($parts, 1));
         }
-        
+
         // Search in directories
         foreach ($this->directories as $ns => $dir) {
             if ($namespace !== '' && $ns !== $namespace) {
                 continue;
             }
-            
+
             $searchName = $namespace !== '' ? $componentName : $name;
-            
+
             // Try different file patterns
             $patterns = [
                 "{$dir}/{$searchName}.disyl",
                 "{$dir}/{$searchName}/index.disyl",
                 "{$dir}/" . ucfirst($searchName) . ".disyl",
             ];
-            
+
             foreach ($patterns as $path) {
                 if (file_exists($path)) {
                     return $path;
                 }
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Get all collected styles
      */
@@ -133,7 +134,7 @@ class ComponentLoader
     {
         return implode("\n\n", $this->styles);
     }
-    
+
     /**
      * Get style for specific component
      */
@@ -141,7 +142,7 @@ class ComponentLoader
     {
         return $this->styles[$name] ?? null;
     }
-    
+
     /**
      * Clear component cache
      */
@@ -150,7 +151,7 @@ class ComponentLoader
         $this->components = [];
         $this->styles = [];
     }
-    
+
     /**
      * Get all loaded component names
      */
@@ -158,14 +159,14 @@ class ComponentLoader
     {
         return array_keys($this->components);
     }
-    
+
     /**
      * Preload all components from directories
      */
     public function preloadAll(): int
     {
         $count = 0;
-        
+
         foreach ($this->directories as $dir) {
             $files = glob($dir . '/*.disyl');
             foreach ($files as $file) {
@@ -174,7 +175,7 @@ class ComponentLoader
                     $count++;
                 }
             }
-            
+
             // Also check subdirectories
             $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
             foreach ($subdirs as $subdir) {
@@ -187,7 +188,7 @@ class ComponentLoader
                 }
             }
         }
-        
+
         return $count;
     }
 }

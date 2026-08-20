@@ -18,14 +18,18 @@ final class EvidenceNormalizer
 
         if (is_array($payload['observations'] ?? null)) {
             foreach ($payload['observations'] as $raw) {
-                if (is_array($raw)) $observations[] = $this->make($raw, $moduleId, $defaultAction, $runId, count($observations) + 1);
+                if (is_array($raw)) {
+                    $observations[] = $this->make($raw, $moduleId, $defaultAction, $runId, count($observations) + 1);
+                }
             }
             return $observations;
         }
 
         if (is_array($payload['steps'] ?? null)) {
             foreach ($payload['steps'] as $raw) {
-                if (!is_array($raw)) continue;
+                if (!is_array($raw)) {
+                    continue;
+                }
                 $raw['outcome'] ??= $this->outcomeFrom($raw);
                 $observations[] = $this->make($raw, $moduleId, $defaultAction, $runId, count($observations) + 1);
             }
@@ -33,7 +37,9 @@ final class EvidenceNormalizer
         }
 
         foreach ($payload as $step => $value) {
-            if (str_starts_with((string)$step, '_')) continue;
+            if (str_starts_with((string)$step, '_')) {
+                continue;
+            }
             $observations[] = $this->make([
                 'step' => (string)$step,
                 'actual' => $value,
@@ -49,7 +55,9 @@ final class EvidenceNormalizer
     {
         $result = [];
         foreach ($observations as $observation) {
-            if (($observation['action_id'] ?? '') !== $actionId) continue;
+            if (($observation['action_id'] ?? '') !== $actionId) {
+                continue;
+            }
             $step = (string)$observation['step_id'];
             $outcome = (string)$observation['outcome'];
             $result[$step] = match ($outcome) {
@@ -66,7 +74,9 @@ final class EvidenceNormalizer
         $action = trim((string)($raw['action_id'] ?? $raw['action'] ?? $defaultAction)) ?: $defaultAction;
         $step = trim((string)($raw['step_id'] ?? $raw['step'] ?? 'unknown')) ?: 'unknown';
         $outcome = (string)($raw['outcome'] ?? $this->outcomeFrom($raw));
-        if (!in_array($outcome, self::OUTCOMES, true)) $outcome = 'unobserved';
+        if (!in_array($outcome, self::OUTCOMES, true)) {
+            $outcome = 'unobserved';
+        }
         $source = (string)($raw['source'] ?? 'browser');
         $idMaterial = [$runId, $moduleId, $action, $step, $attempt, $outcome, $raw['detail'] ?? ''];
         return [
@@ -92,10 +102,16 @@ final class EvidenceNormalizer
 
     private function outcomeFrom(array $raw): string
     {
-        if (isset($raw['success'])) return $raw['success'] ? 'passed' : 'failed';
+        if (isset($raw['success'])) {
+            return $raw['success'] ? 'passed' : 'failed';
+        }
         $value = $raw['value'] ?? $raw['actual'] ?? null;
-        if ($value === true || $value === 1 || $value === '1') return 'passed';
-        if ($value === false || $value === 0 || $value === '0') return 'failed';
+        if ($value === true || $value === 1 || $value === '1') {
+            return 'passed';
+        }
+        if ($value === false || $value === 0 || $value === '0') {
+            return 'failed';
+        }
         return $value === null ? 'unobserved' : 'passed';
     }
 }

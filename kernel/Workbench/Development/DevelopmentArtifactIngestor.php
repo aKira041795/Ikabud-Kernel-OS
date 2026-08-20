@@ -114,7 +114,7 @@ final class DevelopmentArtifactIngestor
     private function baselineForContract(array $contract): array
     {
         $declared = array_values(array_filter(array_map(
-            static fn(array $e): string => (string) ($e['path'] ?? ''),
+            static fn (array $e): string => (string) ($e['path'] ?? ''),
             (array) ($contract['baseline_scope'] ?? [])
         )));
         $entries = $declared;
@@ -134,7 +134,7 @@ final class DevelopmentArtifactIngestor
             if ($dirty !== null) {
                 $covered = array_values(array_filter(
                     $dirty,
-                    static fn(string $p): bool => GitEvidenceResolver::isWithinBaseline($p, $entries)
+                    static fn (string $p): bool => GitEvidenceResolver::isWithinBaseline($p, $entries)
                 ));
             }
         }
@@ -230,7 +230,7 @@ final class DevelopmentArtifactIngestor
             }
             $taskChanged = array_values(array_filter(
                 $resolvedPaths,
-                static fn(string $p): bool => !isset($unchangedBaseline[$p])
+                static fn (string $p): bool => !isset($unchangedBaseline[$p])
             ));
             $gitEvidence = [
                 'base' => self::sanitizeBase((string) ($envelope['git']['base'] ?? '')),
@@ -245,7 +245,7 @@ final class DevelopmentArtifactIngestor
             $changedPaths = $taskChanged;
         } else {
             $changedPaths = array_values(array_filter(array_map(
-                static fn($p) => is_string($p) ? $p : '',
+                static fn ($p) => is_string($p) ? $p : '',
                 (array) ($envelope['git']['changed_paths'] ?? [])
             )));
         }
@@ -774,7 +774,7 @@ final class DevelopmentArtifactIngestor
         if ($layers === []) {
             return 'NOT_RUN';
         }
-        $statuses = array_map(static fn(array $l): string => (string) ($l['status'] ?? 'NOT_RUN'), $layers);
+        $statuses = array_map(static fn (array $l): string => (string) ($l['status'] ?? 'NOT_RUN'), $layers);
         if (in_array('FAIL', $statuses, true)) {
             return 'FAIL';
         }
@@ -787,7 +787,7 @@ final class DevelopmentArtifactIngestor
         if (in_array('NOT_RUN', $statuses, true)) {
             return 'NOT_RUN';
         }
-        if (count($statuses) === count(array_filter($statuses, static fn(string $s): bool => $s === 'NOT_REQUIRED'))) {
+        if (count($statuses) === count(array_filter($statuses, static fn (string $s): bool => $s === 'NOT_REQUIRED'))) {
             return 'NOT_REQUIRED';
         }
 

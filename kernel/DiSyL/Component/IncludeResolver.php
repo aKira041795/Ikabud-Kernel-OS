@@ -87,7 +87,9 @@ final class IncludeResolver
 
         while ($pos < $len) {
             // Look for {include "..."
-            if ($pos + 9 > $len) break;
+            if ($pos + 9 > $len) {
+                break;
+            }
 
             $brace = strpos($content, '{include ', $pos);
             if ($brace === false) {
@@ -282,7 +284,9 @@ final class IncludeResolver
             while ($i < $len && ($str[$i] === ' ' || $str[$i] === "\t" || $str[$i] === "\n")) {
                 $i++;
             }
-            if ($i >= $len) break;
+            if ($i >= $len) {
+                break;
+            }
 
             // Read key (up to '=')
             $keyStart = $i;
@@ -290,20 +294,26 @@ final class IncludeResolver
                 $i++;
             }
             $key = substr($str, $keyStart, $i - $keyStart);
-            if ($key === '') break;
+            if ($key === '') {
+                break;
+            }
 
             // Skip whitespace before '='
             while ($i < $len && ($str[$i] === ' ' || $str[$i] === "\t")) {
                 $i++;
             }
-            if ($i >= $len || $str[$i] !== '=') break;
+            if ($i >= $len || $str[$i] !== '=') {
+                break;
+            }
             $i++; // skip '='
 
             // Skip whitespace after '='
             while ($i < $len && ($str[$i] === ' ' || $str[$i] === "\t")) {
                 $i++;
             }
-            if ($i >= $len) break;
+            if ($i >= $len) {
+                break;
+            }
 
             // Read value — scan until unquoted/unbraced space or end
             $valStart = $i;
@@ -315,7 +325,8 @@ final class IncludeResolver
 
                 if ($quote !== null) {
                     if ($c === '\\' && $i + 1 < $len) {
-                        $i += 2; continue;
+                        $i += 2;
+                        continue;
                     }
                     if ($c === $quote) {
                         $quote = null;
@@ -348,7 +359,9 @@ final class IncludeResolver
                 }
 
                 if ($c === ' ' || $c === "\t" || $c === "\n") {
-                    if ($depth === 0) break;
+                    if ($depth === 0) {
+                        break;
+                    }
                 }
 
                 $i++;

@@ -141,7 +141,7 @@ final class ExtendsProcessor
         for ($pass = 0; $pass < self::MAX_BLOCK_MERGE_PASSES; $pass++) {
             $new = preg_replace_callback(
                 '/\{block\s+(?:"?(\w+)"?)\}(.*?)\{\/block\}/s',
-                fn($m) => $allBlocks[$m[1]] ?? $m[2],
+                fn ($m) => $allBlocks[$m[1]] ?? $m[2],
                 $result
             );
             if ($new === $result) {

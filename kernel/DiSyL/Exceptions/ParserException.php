@@ -1,9 +1,10 @@
 <?php
+
 /**
  * DiSyL Parser Exception
- * 
+ *
  * Thrown when parsing encounters an error
- * 
+ *
  * @version 0.1.0
  */
 
@@ -17,7 +18,7 @@ class ParserException extends Exception
     private int $parserColumn;
     private int $parserPosition;
     private ?string $tokenType;
-    
+
     /**
      * Constructor
      */
@@ -32,7 +33,7 @@ class ParserException extends Exception
         $this->parserColumn = $column;
         $this->parserPosition = $position;
         $this->tokenType = $tokenType;
-        
+
         $fullMessage = sprintf(
             '%s at line %d, column %d (position %d)',
             $message,
@@ -40,14 +41,14 @@ class ParserException extends Exception
             $column,
             $position
         );
-        
+
         if ($tokenType !== null) {
             $fullMessage .= sprintf(' [token: %s]', $tokenType);
         }
-        
+
         parent::__construct($fullMessage);
     }
-    
+
     /**
      * Get parser line number
      */
@@ -55,7 +56,7 @@ class ParserException extends Exception
     {
         return $this->parserLine;
     }
-    
+
     /**
      * Get parser column number
      */
@@ -63,7 +64,7 @@ class ParserException extends Exception
     {
         return $this->parserColumn;
     }
-    
+
     /**
      * Get parser position
      */
@@ -71,7 +72,7 @@ class ParserException extends Exception
     {
         return $this->parserPosition;
     }
-    
+
     /**
      * Get token type that caused the error
      */

@@ -20,7 +20,7 @@ function routePatternSegments(string $pattern): array
     if ($trimmed === '') {
         return [];
     }
-    return array_values(array_filter(explode('/', $trimmed), static fn($seg) => $seg !== ''));
+    return array_values(array_filter(explode('/', $trimmed), static fn ($seg) => $seg !== ''));
 }
 
 function routeSegmentIsDynamic(string $segment): bool
@@ -185,7 +185,9 @@ function loadModuleRoutes(array $routes): array
 
             foreach ($capCheck['exposes'] as $exp) {
                 $capId = (string)($exp['id'] ?? '');
-                if ($capId === '') continue;
+                if ($capId === '') {
+                    continue;
+                }
 
                 $priority = (int)($exp['priority'] ?? 10);
                 $modes = is_array($exp['modes'] ?? null) ? $exp['modes'] : ['first'];
@@ -329,10 +331,14 @@ function loadModuleRoutes(array $routes): array
         $entitySources = $module['entity_sources'] ?? [];
         if (!empty($entitySources) && is_array($entitySources)) {
             foreach ($entitySources as $entityType => $sourceDef) {
-                if (!is_array($sourceDef)) continue;
+                if (!is_array($sourceDef)) {
+                    continue;
+                }
 
                 $entityType  = (string) $entityType;
-                if ($entityType === '') continue;
+                if ($entityType === '') {
+                    continue;
+                }
 
                 $qualifiers  = is_array($sourceDef['qualifiers'] ?? null) ? $sourceDef['qualifiers'] : [];
                 $getCap      = (string)($sourceDef['get_capability'] ?? '');
@@ -343,7 +349,9 @@ function loadModuleRoutes(array $routes): array
                 if (is_array($views) && method_exists(app(), 'entityViews')) {
                     $entityViews = app()->entityViews();
                     foreach ($views as $viewName => $viewDef) {
-                        if (!is_array($viewDef)) continue;
+                        if (!is_array($viewDef)) {
+                            continue;
+                        }
                         $entityViews->registerView($entityType, (string)$viewName, $viewDef, $moduleId);
                     }
                 }
@@ -374,14 +382,18 @@ function loadModuleRoutes(array $routes): array
                             $first = !empty($qualifiers) ? reset($qualifiers) : null;
                             $capability = is_array($first) ? (string)($first['capability'] ?? '') : '';
                             $resultKey  = is_array($first) ? (string)($first['result_path'] ?? '') : '';
-                            if ($capability === '') return null;
+                            if ($capability === '') {
+                                return null;
+                            }
                         }
 
                         $result = \app()->cap()->call($capability, $payload, [
                             'caller'    => ['module' => $moduleId],
                             'timeout_ms' => 10000,
                         ]);
-                        if (!is_array($result)) return null;
+                        if (!is_array($result)) {
+                            return null;
+                        }
 
                         $rows = $result;
                         if ($resultKey !== '' && isset($result[$resultKey]) && is_array($result[$resultKey])) {
@@ -394,7 +406,11 @@ function loadModuleRoutes(array $routes): array
                         return ['rows' => $rows, 'total' => count($rows)];
                     };
                     app()->capabilities()->register(
-                        $listCapId, $moduleId, $autoListHandler, 90, ['first'],
+                        $listCapId,
+                        $moduleId,
+                        $autoListHandler,
+                        90,
+                        ['first'],
                         ['origin' => ['type' => 'entity_source', 'module' => $moduleId, 'entity_type' => $entityType]]
                     );
                 }
@@ -410,7 +426,11 @@ function loadModuleRoutes(array $routes): array
                             ]);
                         };
                         app()->capabilities()->register(
-                            $getCapId, $moduleId, $autoGetHandler, 90, ['first'],
+                            $getCapId,
+                            $moduleId,
+                            $autoGetHandler,
+                            90,
+                            ['first'],
                             ['origin' => ['type' => 'entity_source', 'module' => $moduleId, 'entity_type' => $entityType]]
                         );
                     }

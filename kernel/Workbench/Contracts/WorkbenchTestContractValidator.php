@@ -14,8 +14,12 @@ final class WorkbenchTestContractValidator
         $checks = [];
         $check = static function (bool $ok, string $id, string $detail, bool $warning = false) use (&$errors, &$warnings, &$checks): void {
             $checks[] = ['id' => $id, 'passed' => $ok, 'detail' => $detail, 'severity' => $warning ? 'warning' : 'error'];
-            if (!$ok && $warning) $warnings[] = ['code' => $id, 'message' => $detail];
-            if (!$ok && !$warning) $errors[] = ['code' => $id, 'message' => $detail];
+            if (!$ok && $warning) {
+                $warnings[] = ['code' => $id, 'message' => $detail];
+            }
+            if (!$ok && !$warning) {
+                $errors[] = ['code' => $id, 'message' => $detail];
+            }
         };
 
         $check(($contract['schema'] ?? null) === WorkbenchTestContract::SCHEMA, 'schema', 'schema must be ' . WorkbenchTestContract::SCHEMA);
@@ -41,7 +45,7 @@ final class WorkbenchTestContractValidator
                 $check($found, 'route-claim', strtoupper((string) $method) . " {$path} must exist in module routes");
             }
         }
-        $exposed = array_values(array_filter(array_map(static fn($cap): string => is_array($cap) ? (string) ($cap['id'] ?? '') : '', (array) ($manifest['capabilities']['exposes'] ?? []))));
+        $exposed = array_values(array_filter(array_map(static fn ($cap): string => is_array($cap) ? (string) ($cap['id'] ?? '') : '', (array) ($manifest['capabilities']['exposes'] ?? []))));
         foreach ((array) ($contract['ownership']['capabilities'] ?? []) as $capability) {
             $check(in_array($capability, $exposed, true), 'capability-claim', "{$capability} must be exposed by module.json");
         }
@@ -62,7 +66,7 @@ final class WorkbenchTestContractValidator
                 }
             }
         }
-        $passed = count(array_filter($checks, static fn(array $c): bool => $c['passed']));
+        $passed = count(array_filter($checks, static fn (array $c): bool => $c['passed']));
         return [
             'ok' => $errors === [],
             'schema' => WorkbenchTestContract::SCHEMA,
@@ -86,10 +90,16 @@ final class WorkbenchTestContractValidator
     private function routes(string $path): array
     {
         $routes = ['GET' => [], 'POST' => [], 'PUT' => [], 'PATCH' => [], 'DELETE' => []];
-        if (!is_file($path)) return $routes;
+        if (!is_file($path)) {
+            return $routes;
+        }
         $loaded = include $path;
-        if (!is_array($loaded)) return $routes;
-        foreach ($routes as $method => $_) $routes[$method] = array_keys(is_array($loaded[$method] ?? null) ? $loaded[$method] : []);
+        if (!is_array($loaded)) {
+            return $routes;
+        }
+        foreach ($routes as $method => $_) {
+            $routes[$method] = array_keys(is_array($loaded[$method] ?? null) ? $loaded[$method] : []);
+        }
         return $routes;
     }
 

@@ -15,26 +15,52 @@ final class ScenarioContract
     {
         $errors = [];
         foreach (['scenario_id', 'module', 'title', 'fronts', 'directions', 'questions', 'data'] as $key) {
-            if (!array_key_exists($key, $scenario)) $errors[] = "missing:{$key}";
+            if (!array_key_exists($key, $scenario)) {
+                $errors[] = "missing:{$key}";
+            }
         }
-        if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,79}$/', (string)($scenario['scenario_id'] ?? ''))) $errors[] = 'invalid:scenario_id';
-        if (!preg_match('/^[a-z0-9][a-z0-9._-]*$/', (string)($scenario['module'] ?? ''))) $errors[] = 'invalid:module';
-        if (trim((string)($scenario['title'] ?? '')) === '') $errors[] = 'invalid:title';
-        foreach ((array)($scenario['fronts'] ?? []) as $front) if (!in_array($front, self::FRONTS, true)) $errors[] = "invalid:front:{$front}";
+        if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,79}$/', (string)($scenario['scenario_id'] ?? ''))) {
+            $errors[] = 'invalid:scenario_id';
+        }
+        if (!preg_match('/^[a-z0-9][a-z0-9._-]*$/', (string)($scenario['module'] ?? ''))) {
+            $errors[] = 'invalid:module';
+        }
+        if (trim((string)($scenario['title'] ?? '')) === '') {
+            $errors[] = 'invalid:title';
+        }
+        foreach ((array)($scenario['fronts'] ?? []) as $front) {
+            if (!in_array($front, self::FRONTS, true)) {
+                $errors[] = "invalid:front:{$front}";
+            }
+        }
         foreach ((array)($scenario['directions'] ?? []) as $i => $direction) {
-            if (!is_array($direction) || !in_array($direction['check'] ?? '', self::CHECKS, true)) $errors[] = "invalid:direction:{$i}";
-            if (trim((string)($direction['statement'] ?? '')) === '') $errors[] = "missing:direction_statement:{$i}";
-            if (isset($direction['route']) && !str_starts_with((string)$direction['route'], '/')) $errors[] = "invalid:route:{$i}";
+            if (!is_array($direction) || !in_array($direction['check'] ?? '', self::CHECKS, true)) {
+                $errors[] = "invalid:direction:{$i}";
+            }
+            if (trim((string)($direction['statement'] ?? '')) === '') {
+                $errors[] = "missing:direction_statement:{$i}";
+            }
+            if (isset($direction['route']) && !str_starts_with((string)$direction['route'], '/')) {
+                $errors[] = "invalid:route:{$i}";
+            }
         }
-        foreach ((array)($scenario['questions'] ?? []) as $i => $question) if (trim((string)$question) === '') $errors[] = "invalid:question:{$i}";
-        if (!is_array($scenario['data'] ?? null)) $errors[] = 'invalid:data';
+        foreach ((array)($scenario['questions'] ?? []) as $i => $question) {
+            if (trim((string)$question) === '') {
+                $errors[] = "invalid:question:{$i}";
+            }
+        }
+        if (!is_array($scenario['data'] ?? null)) {
+            $errors[] = 'invalid:data';
+        }
 
         // Validate fixture declaration fields if present
         $fixtureData = (array)($scenario['data']['fixture'] ?? $scenario['fixture'] ?? []);
         if ($fixtureData !== []) {
             $fixtureDecl = new ScenarioFixtureDeclaration($fixtureData + ['module' => (string)($scenario['module'] ?? '')]);
             $fixtureValidation = $fixtureDecl->validate();
-            foreach ($fixtureValidation['errors'] as $fe) $errors[] = "fixture:{$fe}";
+            foreach ($fixtureValidation['errors'] as $fe) {
+                $errors[] = "fixture:{$fe}";
+            }
         }
 
         return ['valid' => $errors === [], 'errors' => array_values(array_unique($errors))];
@@ -49,7 +75,9 @@ final class ScenarioCompiler
         $title = trim((string)($input['title'] ?? 'Human-guided investigation'));
         $directions = [];
         foreach ((array)($input['directions'] ?? []) as $i => $direction) {
-            if (is_string($direction)) $direction = ['statement' => $direction, 'check' => 'question'];
+            if (is_string($direction)) {
+                $direction = ['statement' => $direction, 'check' => 'question'];
+            }
             $directions[] = [
                 'direction_id' => (string)($direction['direction_id'] ?? 'direction-' . ($i + 1)),
                 'front' => (string)($direction['front'] ?? 'logic'),
@@ -62,7 +90,9 @@ final class ScenarioCompiler
         }
         $questions = array_values(array_filter(array_map('trim', (array)($input['questions'] ?? []))));
         $fronts = array_values(array_unique((array)($input['fronts'] ?? array_column($directions, 'front'))));
-        if ($fronts === []) $fronts = ['design', 'logic', 'semantics'];
+        if ($fronts === []) {
+            $fronts = ['design', 'logic', 'semantics'];
+        }
         $identity = $module . '|' . $title . '|' . json_encode([$directions, $questions, $input['data'] ?? []]);
         return [
             'schema' => 'ark.scenario.v1',
@@ -93,7 +123,9 @@ interface ScenarioDataProvider
 final class CapabilityScenarioDataProvider implements ScenarioDataProvider
 {
     /** @param callable(string,array,array):array $caller */
-    public function __construct(private $caller, private readonly string $module) {}
+    public function __construct(private $caller, private readonly string $module)
+    {
+    }
 
     public function describe(): array
     {
@@ -118,19 +150,25 @@ final class CapabilityScenarioDataProvider implements ScenarioDataProvider
     private function call(string $capability, array $payload): array
     {
         $result = ($this->caller)($capability, $payload, ['caller_module' => 'kernel.workbench']);
-        if (!is_array($result) || ($result['ok'] ?? true) === false) throw new RuntimeException('Scenario capability rejected: ' . $capability);
+        if (!is_array($result) || ($result['ok'] ?? true) === false) {
+            throw new RuntimeException('Scenario capability rejected: ' . $capability);
+        }
         return $result;
     }
 }
 
 final class JsonSandboxDataProvider implements ScenarioDataProvider
 {
-    public function __construct(private readonly string $root) {}
+    public function __construct(private readonly string $root)
+    {
+    }
 
     public function prepare(array $scenario, string $runId): array
     {
         $dir = $this->path($runId);
-        if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) throw new RuntimeException('Unable to create scenario sandbox');
+        if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) {
+            throw new RuntimeException('Unable to create scenario sandbox');
+        }
         $entities = [];
         foreach ((array)($scenario['data']['entities'] ?? []) as $type => $records) {
             $records = array_is_list((array)$records) ? $records : [$records];
@@ -160,28 +198,38 @@ final class JsonSandboxDataProvider implements ScenarioDataProvider
         $file = (string)($receipt['file'] ?? '');
         $removed = $file !== '' && is_file($file) ? unlink($file) : false;
         $dir = $file !== '' ? dirname($file) : '';
-        if ($dir !== '' && is_dir($dir) && count(scandir($dir) ?: []) === 2) @rmdir($dir);
+        if ($dir !== '' && is_dir($dir) && count(scandir($dir) ?: []) === 2) {
+            @rmdir($dir);
+        }
         return ['clean' => !is_file($file), 'removed' => $removed, 'cleaned_at' => gmdate(DATE_ATOM)];
     }
 
     private function path(string $runId): string
     {
-        if (!preg_match('/^[a-zA-Z0-9._-]+$/', $runId)) throw new RuntimeException('Invalid run ID');
+        if (!preg_match('/^[a-zA-Z0-9._-]+$/', $runId)) {
+            throw new RuntimeException('Invalid run ID');
+        }
         return rtrim($this->root, '/') . '/' . $runId;
     }
 }
 
 final class ScenarioEngine
 {
-    public function __construct(private readonly ScenarioDataProvider $provider, private readonly ?ScenarioContract $contract = null) {}
+    public function __construct(private readonly ScenarioDataProvider $provider, private readonly ?ScenarioContract $contract = null)
+    {
+    }
 
     public function prepare(array $scenario, string $runId): array
     {
         $validation = ($this->contract ?? new ScenarioContract())->validate($scenario);
-        if (!$validation['valid']) throw new RuntimeException('Invalid scenario: ' . implode(', ', $validation['errors']));
+        if (!$validation['valid']) {
+            throw new RuntimeException('Invalid scenario: ' . implode(', ', $validation['errors']));
+        }
         $receipt = $this->provider->prepare($scenario, $runId);
         $preconditions = $this->provider->verify($scenario, $receipt);
-        if (!$preconditions['valid']) $this->provider->cleanup($scenario, $receipt);
+        if (!$preconditions['valid']) {
+            $this->provider->cleanup($scenario, $receipt);
+        }
         return ['schema' => 'ark.scenario-run.v1', 'run_id' => $runId, 'scenario' => $scenario, 'seed_receipt' => $receipt, 'preconditions' => $preconditions, 'status' => $preconditions['valid'] ? 'ready' : 'blocked'];
     }
 
@@ -197,14 +245,20 @@ final class ScenarioEngine
 
 final class ScenarioStore
 {
-    public function __construct(private readonly string $root) {}
+    public function __construct(private readonly string $root)
+    {
+    }
 
     public function save(array $scenario): string
     {
-        if (!(new ScenarioContract())->validate($scenario)['valid']) throw new RuntimeException('Refusing invalid scenario');
+        if (!(new ScenarioContract())->validate($scenario)['valid']) {
+            throw new RuntimeException('Refusing invalid scenario');
+        }
         $module = $scenario['module'];
         $dir = rtrim($this->root, '/') . '/' . $module;
-        if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) throw new RuntimeException('Unable to create scenario store');
+        if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) {
+            throw new RuntimeException('Unable to create scenario store');
+        }
         $file = $dir . '/' . $scenario['scenario_id'] . '.json';
         $tmp = $file . '.' . getmypid() . '.tmp';
         file_put_contents($tmp, json_encode($scenario, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), LOCK_EX);
@@ -214,9 +268,13 @@ final class ScenarioStore
 
     public function load(string $module, string $id): array
     {
-        if (!preg_match('/^[a-z0-9][a-z0-9._-]*$/', $module) || !preg_match('/^[a-z0-9][a-z0-9._-]*$/', $id)) throw new RuntimeException('Invalid scenario reference');
+        if (!preg_match('/^[a-z0-9][a-z0-9._-]*$/', $module) || !preg_match('/^[a-z0-9][a-z0-9._-]*$/', $id)) {
+            throw new RuntimeException('Invalid scenario reference');
+        }
         $file = rtrim($this->root, '/') . '/' . $module . '/' . $id . '.json';
-        if (!is_file($file)) throw new RuntimeException('Scenario not found');
+        if (!is_file($file)) {
+            throw new RuntimeException('Scenario not found');
+        }
         $value = json_decode((string)file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
         return is_array($value) ? $value : [];
     }

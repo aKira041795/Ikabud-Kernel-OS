@@ -13,5 +13,6 @@ class EntityContract
         public readonly array $fields = [],
         public readonly array $relationships = [],
         public readonly array $statuses = [],
-    ) {}
+    ) {
+    }
 }

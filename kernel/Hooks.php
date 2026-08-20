@@ -1,15 +1,16 @@
 <?php
+
 /**
  * Ikabud Kernel Hook System
- * 
+ *
  * Provides a clean decoupling layer between the kernel OS and userland (modules).
  * The kernel never calls module functions directly — it fires hooks.
  * Modules register listeners during their bootstrap phase.
- * 
+ *
  * Hook types:
  *   filter  — transforms a value through a chain of callbacks (null means no change)
  *   action  — fires side-effect callbacks (returns nothing)
- * 
+ *
  * The kernel defines well-known hooks it fires:
  *   'kernel.nav_items'       (filter)  — build navigation items for the current user
  *   'kernel.gui_context'     (filter)  — merge GUI settings into the theme context
@@ -42,7 +43,9 @@ final class Hooks
     /** @var array<string, bool> */
     private array $listenerSortDirty = [];
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     public static function getInstance(): self
     {
@@ -82,7 +85,7 @@ final class Hooks
         }
 
         if (!empty($this->listenerSortDirty[$hook])) {
-            usort($this->listeners[$hook], fn($a, $b) => $a['priority'] <=> $b['priority']);
+            usort($this->listeners[$hook], fn ($a, $b) => $a['priority'] <=> $b['priority']);
             $this->listenerSortDirty[$hook] = false;
         }
 

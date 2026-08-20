@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Ikabud Kernel — Log Contract
- * 
+ *
  * Modules consume this interface for logging.
  * They never write directly to log files or audit_logs table.
- * 
+ *
  * @package Ikabud\Kernel\Contracts
  */
 

@@ -18,7 +18,7 @@ function kernelUpdatesEnabled(): bool
 function kernelUpdatesRepo(): string
 {
     $repo = trim((string) (kernelUpdatesConfig()['github_repo'] ?? ''));
-    return preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repo) === 1 ? $repo : 'aKira041795/Ikabud-CMS-Kernel';
+    return preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repo) === 1 ? $repo : 'aKira041795/Ikabud-Kernel-OS';
 }
 
 function kernelUpdatesTimeoutSeconds(): int
@@ -363,7 +363,7 @@ function kernelUpdatesSyncCatalog(?array $actor = null): array
         return ['ok' => false, 'error' => $error, 'status' => (int) ($response['status'] ?? 0)];
     }
 
-    $releases = array_values(array_filter($response['data'], static fn($release) => is_array($release)));
+    $releases = array_values(array_filter($response['data'], static fn ($release) => is_array($release)));
     if (empty($releases)) {
         $releases = kernelUpdatesFetchTags($repo, $limit, $apiBase);
     }
@@ -576,7 +576,7 @@ function kernelUpdatesBuildSummary(): array
             'published_at' => $latestKernel['published_at'] ?? '',
         ],
         'modules' => $installedModules,
-        'module_updates_count' => count(array_filter($installedModules, static fn($module) => !empty($module['update_available']))),
+        'module_updates_count' => count(array_filter($installedModules, static fn ($module) => !empty($module['update_available']))),
         'manifest_support' => count($latestModules) > 0,
     ];
 }

@@ -13,5 +13,6 @@ class WorkflowContract
         public readonly array $states,
         /** @param array<int, array{from: string, to: string, action: string, capability?: string}> $transitions */
         public readonly array $transitions = [],
-    ) {}
+    ) {
+    }
 }

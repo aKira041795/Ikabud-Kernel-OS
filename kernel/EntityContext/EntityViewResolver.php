@@ -198,7 +198,9 @@ final class EntityViewResolver
         // Exact match
         if (isset($this->viewContracts[$key])) {
             $ctx = ResolvedEntityContext::fromContract(
-                $entityType, $view, $this->viewContracts[$key],
+                $entityType,
+                $view,
+                $this->viewContracts[$key],
                 $this->viewContracts[$key]['_provenance'] ?? null
             );
             $this->resolvedCache[$key] = $ctx;
@@ -209,7 +211,9 @@ final class EntityViewResolver
         $fallbackKey = $this->viewKey($entityType, 'default');
         if (isset($this->viewContracts[$fallbackKey])) {
             $ctx = ResolvedEntityContext::fromContract(
-                $entityType, $view, $this->viewContracts[$fallbackKey],
+                $entityType,
+                $view,
+                $this->viewContracts[$fallbackKey],
                 $this->viewContracts[$fallbackKey]['_provenance'] ?? null
             );
             $this->resolvedCache[$key] = $ctx;
@@ -306,8 +310,12 @@ final class EntityViewResolver
             'filters' => $filters,
             'fields' => $queryFields,
         ];
-        if ($cursor !== null) { $capabilityArgs['cursor'] = $cursor; }
-        if ($prevCursor !== null) { $capabilityArgs['prev_cursor'] = $prevCursor; }
+        if ($cursor !== null) {
+            $capabilityArgs['cursor'] = $cursor;
+        }
+        if ($prevCursor !== null) {
+            $capabilityArgs['prev_cursor'] = $prevCursor;
+        }
 
         // Attempt to fetch via the capability bus
         // Normalize entity type: dots → underscores for capability IDs
@@ -763,8 +771,12 @@ final class EntityViewResolver
      */
     private function isListOfAssocArrays(mixed $value): bool
     {
-        if (!is_array($value) || empty($value)) return false;
-        if (!isset($value[0]) || !is_array($value[0])) return false;
+        if (!is_array($value) || empty($value)) {
+            return false;
+        }
+        if (!isset($value[0]) || !is_array($value[0])) {
+            return false;
+        }
         // Must be a sequential array (0-indexed)
         return array_keys($value) === range(0, count($value) - 1);
     }

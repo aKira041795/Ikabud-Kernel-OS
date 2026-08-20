@@ -1,7 +1,8 @@
 <?php
+
 /**
  * DiSyL v11.0 HTMX Swap Strategy
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Reactive
  * @version 11.0.0
  */

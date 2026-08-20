@@ -1,7 +1,8 @@
 <?php
+
 /**
  * DiSyL v11.0 HTMX Request
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Reactive
  * @version 11.0.0
  */
@@ -21,11 +22,11 @@ class HTMXRequest
     private ?string $target;
     private ?string $triggerName;
     private ?string $triggerId;
-    
+
     public function __construct(array $headers = [])
     {
         $headers = array_change_key_case($headers, CASE_LOWER);
-        
+
         $this->isHtmx = isset($headers['hx-request']) && $headers['hx-request'] === 'true';
         $this->isBoosted = isset($headers['hx-boosted']) && $headers['hx-boosted'] === 'true';
         $this->currentUrl = $headers['hx-current-url'] ?? null;
@@ -35,7 +36,7 @@ class HTMXRequest
         $this->triggerName = $headers['hx-trigger-name'] ?? null;
         $this->triggerId = $headers['hx-trigger'] ?? null;
     }
-    
+
     public static function fromGlobals(): self
     {
         $headers = [];
@@ -47,42 +48,42 @@ class HTMXRequest
         }
         return new self($headers);
     }
-    
+
     public function isHtmxRequest(): bool
     {
         return $this->isHtmx;
     }
-    
+
     public function isBoosted(): bool
     {
         return $this->isBoosted;
     }
-    
+
     public function getCurrentUrl(): ?string
     {
         return $this->currentUrl;
     }
-    
+
     public function isHistoryRestoreRequest(): bool
     {
         return $this->historyRestoreRequest;
     }
-    
+
     public function getPrompt(): ?string
     {
         return $this->prompt;
     }
-    
+
     public function getTarget(): ?string
     {
         return $this->target;
     }
-    
+
     public function getTriggerName(): ?string
     {
         return $this->triggerName;
     }
-    
+
     public function getTriggerId(): ?string
     {
         return $this->triggerId;

@@ -54,11 +54,17 @@ final class FragmentStore
             }
         }
         $path = $this->path($key, $tenantId);
-        if (!is_file($path)) return null;
+        if (!is_file($path)) {
+            return null;
+        }
         $raw = @file_get_contents($path);
-        if (!is_string($raw)) return null;
+        if (!is_string($raw)) {
+            return null;
+        }
         $entry = json_decode($raw, true);
-        if (!is_array($entry) || !$this->valid($entry, $depsHash)) return null;
+        if (!is_array($entry) || !$this->valid($entry, $depsHash)) {
+            return null;
+        }
         if ($this->apcu) {
             \apcu_store($apcKey, $entry, max(0, ($entry['expires_at'] ?? 0) - time()));
         }
@@ -68,7 +74,9 @@ final class FragmentStore
     /** @param list<string> $deps */
     public function put(string $key, string $body, array $deps, int $ttl, string $tenantId = '_global'): void
     {
-        if ($ttl < 0) return;
+        if ($ttl < 0) {
+            return;
+        }
         $entry = [
             'body'       => $body,
             'expires_at' => $ttl > 0 ? time() + $ttl : 0,
@@ -98,7 +106,9 @@ final class FragmentStore
     public function flushAll(string $tenantId = '_global'): void
     {
         $glob = glob($this->root . '/' . $this->safe($tenantId) . '/*') ?: [];
-        foreach ($glob as $f) @unlink($f);
+        foreach ($glob as $f) {
+            @unlink($f);
+        }
         @rmdir($this->root . '/' . $this->safe($tenantId));
         if ($this->apcu && function_exists('apcu_clear_cache')) {
             // Only clears global; acceptable for tests.
@@ -109,14 +119,18 @@ final class FragmentStore
     private function valid(array $entry, string $depsHash): bool
     {
         $exp = $entry['expires_at'] ?? 0;
-        if ($exp !== 0 && $exp < time()) return false;
+        if ($exp !== 0 && $exp < time()) {
+            return false;
+        }
         return ($entry['deps_hash'] ?? '') === $depsHash;
     }
 
     /** @param list<string> $deps */
     private function depsHash(array $deps, string $tenantId): string
     {
-        if ($deps === []) return 'nodeps';
+        if ($deps === []) {
+            return 'nodeps';
+        }
         $versions = $this->loadDepVersions($tenantId);
         $parts = [];
         foreach ($deps as $tag) {
@@ -130,28 +144,38 @@ final class FragmentStore
     {
         if ($this->apcu) {
             $cached = \apcu_fetch($this->depApcKey($tenantId), $ok);
-            if ($ok && is_array($cached)) return $cached;
+            if ($ok && is_array($cached)) {
+                return $cached;
+            }
         }
         $file = $this->depFile($tenantId);
-        if (!is_file($file)) return [];
+        if (!is_file($file)) {
+            return [];
+        }
         $raw = @file_get_contents($file);
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
         $out = is_array($decoded) ? $decoded : [];
-        if ($this->apcu) \apcu_store($this->depApcKey($tenantId), $out, 60);
+        if ($this->apcu) {
+            \apcu_store($this->depApcKey($tenantId), $out, 60);
+        }
         return $out;
     }
 
     private function path(string $key, string $tenantId): string
     {
         $dir = $this->root . '/' . $this->safe($tenantId);
-        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
         return $dir . '/' . hash('sha256', $key) . '.json';
     }
 
     private function depFile(string $tenantId): string
     {
         $dir = $this->root . '/' . $this->safe($tenantId);
-        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
         return $dir . '/_dep_versions.json';
     }
 

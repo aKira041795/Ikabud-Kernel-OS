@@ -43,7 +43,7 @@ final class PrerequisiteClassifier
     /** @param list<array<string,mixed>> $issues @return list<array<string,mixed>> */
     public function classifyBatch(array $issues, ?ScenarioFixtureDeclaration $fixtureDecl = null): array
     {
-        return array_map(fn(array $issue): array => $this->classify($issue, $fixtureDecl), $issues);
+        return array_map(fn (array $issue): array => $this->classify($issue, $fixtureDecl), $issues);
     }
 
     /** @param list<array<string,mixed>> $classifications */

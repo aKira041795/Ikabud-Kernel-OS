@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace Ikabud\Kernel\Workbench\Comprehension;
 
 use Ikabud\Kernel\Workbench\Comprehension\Contracts\{
-    ModuleComprehensionProvider,
     ActionContract,
     ChainLink,
-    WorkflowContract,
     EntityContract,
-    EffectContract,
+    ModuleComprehensionProvider,
+    WorkflowContract,
 };
 
 /**
@@ -88,7 +87,9 @@ class ModuleComprehensionEngine
             $outcome = is_string($explicitOutcome) ? $explicitOutcome : null;
             $ok = $raw === true || (is_string($raw) && $raw !== '' && $raw !== 'false' && $raw !== '0')
                   || (is_numeric($raw) && (float)$raw > 0);
-            if ($outcome === null) $outcome = $ok ? 'passed' : 'failed';
+            if ($outcome === null) {
+                $outcome = $ok ? 'passed' : 'failed';
+            }
             $observed = in_array($outcome, ['passed', 'failed'], true);
 
             $chainResults[] = [
@@ -123,7 +124,9 @@ class ModuleComprehensionEngine
         // Confidence: higher when earlier links passed but later ones failed
         $passedCount = 0;
         foreach ($chainResults as $cr) {
-            if ($cr['ok']) $passedCount++;
+            if ($cr['ok']) {
+                $passedCount++;
+            }
         }
         $totalCount = count($chainResults);
         $confidence = $totalCount > 0 ? ($passedCount / $totalCount) : 0.5;
@@ -159,7 +162,7 @@ class ModuleComprehensionEngine
     public function buildGraph(): array
     {
         return [
-            'entities' => array_map(fn(EntityContract $e) => [
+            'entities' => array_map(fn (EntityContract $e) => [
                 'id' => $e->id,
                 'label' => $e->label,
                 'table' => $e->table,
@@ -167,20 +170,20 @@ class ModuleComprehensionEngine
                 'relationships' => $e->relationships,
                 'statuses' => $e->statuses,
             ], $this->provider->entities()),
-            'workflows' => array_map(fn(WorkflowContract $w) => [
+            'workflows' => array_map(fn (WorkflowContract $w) => [
                 'id' => $w->id,
                 'entity_type' => $w->entityType,
                 'states' => $w->states,
                 'transitions' => $w->transitions,
             ], $this->provider->workflows()),
-            'actions' => array_map(fn(ActionContract $a) => [
+            'actions' => array_map(fn (ActionContract $a) => [
                 'id' => $a->id,
                 'label' => $a->label,
                 'entity_type' => $a->entityType,
                 'route' => $a->route,
                 'method' => $a->method,
                 'requires' => $a->requires,
-                'chain' => array_map(fn(ChainLink $l) => [
+                'chain' => array_map(fn (ChainLink $l) => [
                     'step' => $l->step, 'description' => $l->description, 'category' => $l->category,
                 ], $a->chain),
             ], $this->provider->actions()),
@@ -196,9 +199,9 @@ class ModuleComprehensionEngine
     {
         return [
             'module' => [
-                'entities' => array_map(fn(EntityContract $e) => $e->id, $this->provider->entities()),
-                'workflows' => array_map(fn(WorkflowContract $w) => $w->id, $this->provider->workflows()),
-                'actions' => array_map(fn(ActionContract $a) => $a->id, $this->provider->actions()),
+                'entities' => array_map(fn (EntityContract $e) => $e->id, $this->provider->entities()),
+                'workflows' => array_map(fn (WorkflowContract $w) => $w->id, $this->provider->workflows()),
+                'actions' => array_map(fn (ActionContract $a) => $a->id, $this->provider->actions()),
             ],
             'analysis' => $analysisResult,
             'runtime' => $this->runtimeEvidence,

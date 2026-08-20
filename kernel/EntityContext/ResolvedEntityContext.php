@@ -62,7 +62,8 @@ final class ResolvedEntityContext
         public readonly array $actionLabels,
         public readonly ?string $keyField,
         public readonly ?array $provenance = null,
-    ) {}
+    ) {
+    }
 
     /**
      * Factory: build from a contract array (as returned by registerView / builtinDefaults).

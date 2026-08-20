@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL Template Manifest — JSON index of compiled template metadata.
  *
@@ -58,10 +59,10 @@ class TemplateManifest
             $components = array_merge($components, $compMatches[1]);
         }
         if (preg_match_all('/data-state="([^"]+)"/', $compiledOutput, $stateMatches)) {
-            $components = array_merge($components, array_map(fn($n) => "state:{$n}", $stateMatches[1]));
+            $components = array_merge($components, array_map(fn ($n) => "state:{$n}", $stateMatches[1]));
         }
         if (preg_match_all('/data-island="([^"]+)"/', $compiledOutput, $islandMatches)) {
-            $components = array_merge($components, array_map(fn($n) => "island:{$n}", $islandMatches[1]));
+            $components = array_merge($components, array_map(fn ($n) => "island:{$n}", $islandMatches[1]));
         }
 
         // Extract bridge requirements from compiled output
