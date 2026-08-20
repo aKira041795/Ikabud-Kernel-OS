@@ -605,6 +605,7 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 'version' => $m['version'] ?? '0.0.0',
                 'description' => $m['description'] ?? '',
                 'author' => $m['author'] ?? '',
+                'icon' => trim((string) ($m['icon'] ?? '')),
                 'enabled' => !empty($m['_enabled']),
                 'allow_kernel_admin' => (bool)($modSettings['allow_kernel_admin'] ?? false),
                 'nav_count' => count($m['nav'] ?? []),
