@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Ikabud\Kernel\Workbench\Benchmark;
@@ -10,7 +11,9 @@ final class CompetitiveBenchmark
 {
     private const IDENTITY_FIELDS = ['module_id', 'action_id', 'step_id', 'tenant_id', 'role', 'environment', 'outcome'];
 
-    public function __construct(private readonly PatternClassifier $classifier) {}
+    public function __construct(private readonly PatternClassifier $classifier)
+    {
+    }
 
     public function run(array $corpus): array
     {
@@ -62,7 +65,9 @@ final class CompetitiveBenchmark
     {
         $evaluated = [];
         foreach ($cases as $case) {
-            if (!is_array($case)) continue;
+            if (!is_array($case)) {
+                continue;
+            }
             $ranked = $this->classifier->classifyTop((string)($case['evidence_text'] ?? ''), 3);
             $categories = array_values(array_column($ranked, 'category'));
             $detected = $categories !== [];
@@ -75,7 +80,9 @@ final class CompetitiveBenchmark
     {
         $evaluated = [];
         foreach ($cases as $case) {
-            if (!is_array($case)) continue;
+            if (!is_array($case)) {
+                continue;
+            }
             $detected = in_array((string)($case['outcome'] ?? ''), ['failed', 'probe_error'], true);
             $evaluated[] = $this->result($case, $detected, []);
         }
@@ -108,17 +115,17 @@ final class CompetitiveBenchmark
 
     private function metrics(array $results): array
     {
-        $positive = array_values(array_filter($results, static fn(array $r): bool => $r['expected_detected']));
-        $negative = array_values(array_filter($results, static fn(array $r): bool => !$r['expected_detected']));
-        $critical = array_values(array_filter($positive, static fn(array $r): bool => $r['severity'] === 'critical'));
-        $top3 = count(array_filter($positive, static fn(array $r): bool => $r['top3_match']));
-        $falsePositives = count(array_filter($negative, static fn(array $r): bool => $r['detected']));
-        $criticalDetected = count(array_filter($critical, static fn(array $r): bool => $r['detected']));
-        $complete = count(array_filter($results, static fn(array $r): bool => $r['identity_complete']));
+        $positive = array_values(array_filter($results, static fn (array $r): bool => $r['expected_detected']));
+        $negative = array_values(array_filter($results, static fn (array $r): bool => !$r['expected_detected']));
+        $critical = array_values(array_filter($positive, static fn (array $r): bool => $r['severity'] === 'critical'));
+        $top3 = count(array_filter($positive, static fn (array $r): bool => $r['top3_match']));
+        $falsePositives = count(array_filter($negative, static fn (array $r): bool => $r['detected']));
+        $criticalDetected = count(array_filter($critical, static fn (array $r): bool => $r['detected']));
+        $complete = count(array_filter($results, static fn (array $r): bool => $r['identity_complete']));
 
         return [
             'cases' => count($results),
-            'detected' => count(array_filter($results, static fn(array $r): bool => $r['detected'])),
+            'detected' => count(array_filter($results, static fn (array $r): bool => $r['detected'])),
             'critical_detection_rate' => $this->rate($criticalDetected, count($critical)),
             'root_cause_top3_accuracy' => $this->rate($top3, count($positive)),
             'false_positive_rate' => $this->rate($falsePositives, count($negative)),

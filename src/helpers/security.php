@@ -1,7 +1,8 @@
 <?php
+
 /**
  * Security helpers — thin wrappers that delegate to kernel methods.
- * 
+ *
  * These exist so that legacy code calling csrfToken() / csrfField() / csrfEnforce()
  * still works, but the actual implementation lives in the kernel (App.php).
  */

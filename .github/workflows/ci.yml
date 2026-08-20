@@ -17,13 +17,19 @@ concurrency:
 #    • module-manifest + route contracts (gui-settings is the bundled module)
 #    • DiSyL template lint
 #    • architecture boundaries
-#    • the kernel test suite
+#    • the kernel test suite across MySQL 8 / MySQL 5.7 / MariaDB 10.6
+#    • PHPStan static analysis (gated on new errors via baseline)
+#    • PHP-CS-Fixer coding standards (kernel/)
 #
 #  Test discovery is automatic: scripts/run-tests.php runs every
 #  tests/**/*_test.php. Add a new kernel test under tests/ and it is
 #  picked up here with no workflow change. When a module is added to
 #  this installer, copy its tests under tests/ (and its seeds under
 #  database/seeds/) and they will run in the same pipeline.
+#
+#  Required status checks (branch protection, see BRANCH-PROTECTION.md):
+#    test (mysql-8), test (mysql-5.7), test (mariadb-10.6),
+#    static-analysis, coding-standards
 # ══════════════════════════════════════════════════════════════════════
 
 jobs:
@@ -57,14 +63,27 @@ jobs:
         run: php ikabud architecture:check
 
   test:
-    name: Kernel test suite (MySQL 8)
+    name: test (${{ matrix.db }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: mysql-8
+            image: mysql:8.0
+          - db: mysql-5.7
+            image: mysql:5.7
+          - db: mariadb-10.6
+            image: mariadb:10.6
+
     services:
       mysql:
-        image: mysql:8.0
+        image: ${{ matrix.image }}
         env:
           MYSQL_ROOT_PASSWORD: ci_root_pass
           MYSQL_DATABASE: ikabudsix_ci
+          MARIADB_ROOT_PASSWORD: ci_root_pass
+          MARIADB_DATABASE: ikabudsix_ci
         ports:
           - 3306:3306
         options: >-
@@ -107,3 +126,35 @@ jobs:
 
       - name: Run kernel test suite
         run: composer test
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, json, openssl
+          coverage: none
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: PHPStan static analysis
+        run: composer analyse
+
+  coding-standards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, json, openssl
+          coverage: none
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: PHP-CS-Fixer (dry-run)
+        run: composer lint

@@ -321,7 +321,9 @@ class EmbeddingScorer
     private function tokenize(string $text): array
     {
         $words = preg_split('/\W+/', mb_strtolower($text));
-        return array_values(array_filter($words, fn(string $w) =>
+        return array_values(array_filter(
+            $words,
+            fn (string $w) =>
             strlen($w) > 2 && !in_array($w, self::STOP_WORDS, true)
         ));
     }

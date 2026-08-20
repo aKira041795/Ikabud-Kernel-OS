@@ -1,11 +1,12 @@
 <?php
+
 /**
  * Ikabud Kernel — Migration Runner
- * 
+ *
  * Tracks per-module migration state in a `_migrations` table.
  * Migrations are SQL files in each module's `migrations/` directory,
  * executed in filename order (e.g. 001_create_tables.sql, 002_add_index.sql).
- * 
+ *
  * Features:
  *   - Per-module tracking (knows which module ran which migration)
  *   - Ordered execution (sorted by filename)
@@ -13,7 +14,7 @@
  *   - Rollback support via companion _down files (001_create_tables.down.sql)
  *   - Dry-run mode for previewing pending migrations
  *   - Kernel-level migrations in migrations/ (module = '_kernel')
- * 
+ *
  * Usage:
  *   $runner = new MigrationRunner($pdo);
  *   $runner->migrate('sms');                    // Run pending for one module
@@ -21,7 +22,7 @@
  *   $runner->rollback('sms');                   // Rollback last batch for module
  *   $runner->status('sms');                     // Get migration status
  *   $runner->pending();                         // List all pending migrations
- * 
+ *
  * @package Ikabud\Kernel\Database
  * @version 1.0.0
  */
@@ -376,7 +377,7 @@ class MigrationRunner
 
         return [
             'applied' => $applied,
-            'pending' => array_map(fn($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $pending),
+            'pending' => array_map(fn ($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $pending),
         ];
     }
 
@@ -392,7 +393,7 @@ class MigrationRunner
         if (is_dir($this->kernelMigrationsPath)) {
             $kernelPending = $this->getPending('_kernel');
             if ($kernelPending) {
-                $result['_kernel'] = array_map(fn($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $kernelPending);
+                $result['_kernel'] = array_map(fn ($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $kernelPending);
             }
         }
 
@@ -401,7 +402,7 @@ class MigrationRunner
             foreach ($this->discoverModuleIds() as $moduleId) {
                 $modulePending = $this->getPending($moduleId);
                 if ($modulePending) {
-                    $result[$moduleId] = array_map(fn($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $modulePending);
+                    $result[$moduleId] = array_map(fn ($f) => is_array($f) ? basename((string)($f['path'] ?? '')) : '', $modulePending);
                 }
             }
         }
@@ -447,7 +448,9 @@ class MigrationRunner
         foreach ($sources as $src) {
             if ($src['type'] === 'dir') {
                 $dir = $src['path'];
-                if (!is_dir($dir)) continue;
+                if (!is_dir($dir)) {
+                    continue;
+                }
                 foreach (scandir($dir) as $file) {
                     if (!str_ends_with($file, '.sql') || str_ends_with($file, '.down.sql')) {
                         continue;
@@ -466,7 +469,9 @@ class MigrationRunner
 
             if ($src['type'] === 'file') {
                 $filePath = $src['path'];
-                if (!is_file($filePath)) continue;
+                if (!is_file($filePath)) {
+                    continue;
+                }
                 $base = basename($filePath);
                 if (!str_ends_with($base, '.sql') || str_ends_with($base, '.down.sql')) {
                     continue;
@@ -485,16 +490,22 @@ class MigrationRunner
         // Dedupe (a migration can be discovered both via manifest-listed files and conventional dirs)
         $deduped = [];
         foreach ($files as $f) {
-            if (!is_array($f)) continue;
+            if (!is_array($f)) {
+                continue;
+            }
             $k = (string)($f['key'] ?? '');
-            if ($k === '') continue;
-            if (isset($deduped[$k])) continue;
+            if ($k === '') {
+                continue;
+            }
+            if (isset($deduped[$k])) {
+                continue;
+            }
             $deduped[$k] = $f;
         }
         $files = array_values($deduped);
 
         // Sort by filename (which is why we use numeric prefixes)
-        usort($files, fn($a, $b) => strcmp($a['key'], $b['key']));
+        usort($files, fn ($a, $b) => strcmp($a['key'], $b['key']));
 
         return $files;
     }
@@ -552,7 +563,9 @@ class MigrationRunner
         $out = [];
         foreach ($sources as $s) {
             $p = $s['path'];
-            if (isset($seen[$p])) continue;
+            if (isset($seen[$p])) {
+                continue;
+            }
             $seen[$p] = true;
             $out[] = $s;
         }

@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Security Headers Manager
- * 
+ *
  * Applies HTTP security headers for the Ikabud Kernel System.
  * Handles CSP, X-Frame-Options, HSTS, and PHP session hardening.
- * 
+ *
  * @package Ikabud\Kernel\Http
  * @version 2.0.0
  */
@@ -34,47 +35,47 @@ final class SecurityHeaders
         'https://maps.gstatic.com',
         'https://fonts.gstatic.com',
     ];
-    
+
     /** @var string|null Current request URI */
     private ?string $requestUri;
-    
+
     /** @var string|null Current host */
     private ?string $currentHost;
-    
+
     /** @var bool Whether this is a static asset request */
     private bool $isStaticAsset = false;
-    
+
     public function __construct(?string $requestUri = null, ?string $currentHost = null)
     {
         $this->requestUri = $requestUri ?? ($_SERVER['REQUEST_URI'] ?? '');
         $this->currentHost = $currentHost ?? ($_SERVER['HTTP_HOST'] ?? '');
-        
+
         $this->detectStaticAsset();
     }
-    
+
     /**
      * Detect if request is for a static asset
      */
     private function detectStaticAsset(): void
     {
         $uriPath = strtolower(parse_url($this->requestUri, PHP_URL_PATH) ?? '');
-        
+
         foreach (self::STATIC_EXTENSIONS as $ext) {
             if (str_ends_with($uriPath, $ext)) {
                 $this->isStaticAsset = true;
                 return;
             }
         }
-        
+
         // Asset directories
         if (str_contains($uriPath, '/assets/')) {
             $this->isStaticAsset = true;
         }
     }
-    
+
     /**
      * Apply security headers to the response
-     * 
+     *
      * @return bool True if headers were applied, false if skipped
      */
     public function apply(): bool
@@ -120,10 +121,10 @@ final class SecurityHeaders
 
         return $headers;
     }
-    
+
     /**
      * Apply Content Security Policy header
-     * 
+     *
      * Allows CDN resources used by the app (Tailwind, HTMX, Alpine, Font Awesome)
      */
     private function buildCspHeaderValue(): string
@@ -137,14 +138,14 @@ final class SecurityHeaders
         // 'unsafe-eval' is required by:
         //   - Alpine.js v3 (CDN build uses new Function() for expression evaluation)
         //   - Tailwind CSS CDN (JIT mode generates styles via eval-based class scanning)
-        $scriptSrc = ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://cdn.tailwindcss.com', 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://maps.googleapis.com'];      
+        $scriptSrc = ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://cdn.tailwindcss.com', 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://maps.googleapis.com'];
 
         // CSP nonce transition: when CSP_NONCE_MODE is enabled, replace
         // 'unsafe-inline' with the per-request nonce. Templates must carry
         // nonce="{csp_nonce}" on every inline <script> tag before enabling.
         if (function_exists('csp_nonce_mode_enabled') && csp_nonce_mode_enabled()
             && function_exists('csp_nonce') && csp_nonce() !== '') {
-            $scriptSrc = array_values(array_filter($scriptSrc, fn($s) => $s !== "'unsafe-inline'"));
+            $scriptSrc = array_values(array_filter($scriptSrc, fn ($s) => $s !== "'unsafe-inline'"));
             $scriptSrc[] = "'nonce-" . csp_nonce() . "'";
         }
 
@@ -163,7 +164,7 @@ final class SecurityHeaders
 
         return $csp;
     }
-    
+
     /**
      * Apply PHP security settings for sessions
      */
@@ -175,7 +176,7 @@ final class SecurityHeaders
         }
 
         ini_set('session.cookie_httponly', '1');
-        
+
         if ($this->isHttps()) {
             ini_set('session.cookie_secure', '1');
             ini_set('session.cookie_samesite', 'Strict');
@@ -184,7 +185,7 @@ final class SecurityHeaders
             ini_set('session.cookie_samesite', 'Lax');
         }
     }
-    
+
     /**
      * Check if current connection is HTTPS
      */
@@ -194,7 +195,7 @@ final class SecurityHeaders
             || (($_SERVER['SERVER_PORT'] ?? 80) == 443)
             || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
     }
-    
+
     /**
      * Check if current request is for a static asset
      */

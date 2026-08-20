@@ -26,5 +26,6 @@ final class CellRenderResult
         public readonly string $text = '',
         public readonly mixed $exportValue = null,
         public readonly ?string $ariaLabel = null,
-    ) {}
+    ) {
+    }
 }

@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Services;
 
-use Ikabud\Kernel\Contracts\ThemeCustomizerProvider;
-use Ikabud\Kernel\Contracts\ThemeCustomizerDefinition;
-use Ikabud\Kernel\Contracts\ThemeCustomizationScope;
-use Ikabud\Kernel\Contracts\SectionDefinition;
 use Ikabud\Kernel\Contracts\ControlDefinition;
+use Ikabud\Kernel\Contracts\SectionDefinition;
+use Ikabud\Kernel\Contracts\ThemeCustomizerDefinition;
 
 /**
  * Loads a theme's customizer definition from its declarative files.

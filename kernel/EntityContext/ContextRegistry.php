@@ -266,7 +266,7 @@ final class ContextRegistry
         }
 
         $data = $profile->toArray();
-        $data['providers'] = array_values(array_map(static fn(array $entry): string => $entry['provider'], $entries));
+        $data['providers'] = array_values(array_map(static fn (array $entry): string => $entry['provider'], $entries));
         return $data;
     }
 
@@ -290,7 +290,7 @@ final class ContextRegistry
             $definition = array_replace_recursive($definition, $entry['definition']);
         }
 
-        $definition['providers'] = array_values(array_map(static fn(array $entry): string => $entry['provider'], $entries));
+        $definition['providers'] = array_values(array_map(static fn (array $entry): string => $entry['provider'], $entries));
 
         return $definition;
     }
@@ -325,7 +325,7 @@ final class ContextRegistry
             }
         }
 
-        $binding['providers'] = array_values(array_map(static fn(array $entry): string => $entry['provider'], $entries));
+        $binding['providers'] = array_values(array_map(static fn (array $entry): string => $entry['provider'], $entries));
 
         return $binding;
     }
@@ -721,7 +721,7 @@ final class ContextRegistry
     {
         return $this->profiles;
     }
-    
+
     /**
      * Phase 3B: Expose all registered modes for introspection and debugging.
      */

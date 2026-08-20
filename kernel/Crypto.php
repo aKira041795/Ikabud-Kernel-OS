@@ -50,7 +50,9 @@ class Crypto
         foreach ($_ENV as $envKey => $envValue) {
             if (preg_match('/^APP_ENCRYPTION_KEY_(\w+)$/i', $envKey, $m)) {
                 $keyId = strtolower($m[1]);
-                if ($keyId === 'default' || $keyId === '') continue;
+                if ($keyId === 'default' || $keyId === '') {
+                    continue;
+                }
                 $decoded = base64_decode((string)$envValue, true);
                 $rawKey = $decoded !== false ? $decoded : (string)$envValue;
                 if (strlen($rawKey) >= 32) {
@@ -112,7 +114,9 @@ class Crypto
         if ($plaintext === false && count($this->keyRing) > 1) {
             foreach ($this->keyRing as $id => $ringKey) {
                 $plaintext = openssl_decrypt($ciphertext, 'aes-256-gcm', $ringKey, OPENSSL_RAW_DATA, $iv, $tag);
-                if ($plaintext !== false) break;
+                if ($plaintext !== false) {
+                    break;
+                }
             }
         }
 

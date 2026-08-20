@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Alpine.js Bridge
  *

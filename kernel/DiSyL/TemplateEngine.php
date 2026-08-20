@@ -1,10 +1,11 @@
 <?php
+
 /**
  * DiSyL Template Engine v3.0 - Robust Token-Based Implementation
- * 
+ *
  * A declarative template engine with proper handling of nested structures,
  * comprehensive error handling, output caching, and auto-escaping.
- * 
+ *
  * v4.0.0 changes:
  * - {verbatim}...{/verbatim}: truly inert block, extracted before all processing
  * - {literal} fixed: now extracted per-compile() call so it works inside loops
@@ -12,7 +13,7 @@
  *   not just variable resolution. JS curly braces protected via temporary markers.
  * - |json filter: outputs raw by default (no HTML-escaping)
  * - |default filter: correctly handles null from unresolved nested dot paths while preserving explicit false
- * 
+ *
  * v3.0.0 changes:
  * - Arithmetic expressions: {page + 1}, {total - count}, {price * qty}, {x / y}, {x % y}
  * - Ternary expressions: {condition ? 'yes' : 'no'} in variable output
@@ -20,14 +21,14 @@
  * - Fixed parseIfBranches to correctly skip nested {if} blocks
  * - Fixed quoted string regex in evaluateCondition
  * - Arithmetic in conditions: {if page + 1 > total}, {if count - 1 == 0}
- * 
+ *
  * v2.2.0 changes:
  * - Script-aware compilation: <script> blocks auto-extracted before control
  *   structure processing. Template {variables} inside scripts still resolve.
- * 
+ *
  * v2.1.0 changes:
  * - Output caching, auto-escape, per-request in-memory cache
- * 
+ *
  * @package Ikabud\Kernel\DiSyL
  * @version 4.0.0
  */
@@ -43,12 +44,11 @@ require_once __DIR__ . '/Component/ExtendsProcessor.php';
 require_once __DIR__ . '/Cache/SourceCache.php';
 require_once __DIR__ . '/Renderer/TemplateRenderer.php';
 
-use Ikabud\Kernel\DiSyL\Bridge\BridgeManager;
 use Ikabud\Kernel\DiSyL\Cache\SourceCache;
 use Ikabud\Kernel\DiSyL\Component\ComponentRenderer;
-use Ikabud\Kernel\DiSyL\Component\MacroProcessor;
-use Ikabud\Kernel\DiSyL\Component\IncludeResolver;
 use Ikabud\Kernel\DiSyL\Component\ExtendsProcessor;
+use Ikabud\Kernel\DiSyL\Component\IncludeResolver;
+use Ikabud\Kernel\DiSyL\Component\MacroProcessor;
 use Ikabud\Kernel\DiSyL\Renderer\TemplateRenderer;
 use Ikabud\Kernel\DiSyL\v4\RenderContext;
 
@@ -123,7 +123,7 @@ class TemplateEngine
 
     /** @var array<string, string> Component namespace => directory path */
     private array $componentDirs = [];
-    
+
     /** @var ExpressionEvaluator Lazy-instantiated expression evaluator */
     private ?ExpressionEvaluator $evaluator = null;
 
@@ -240,12 +240,12 @@ class TemplateEngine
     {
         return $this->compiledMode && $this->compiledCache !== null;
     }
-    
+
     public function getErrors(): array
     {
         return $this->errors;
     }
-    
+
     public function setGlobals(array $globals): void
     {
         $this->globals = array_merge($this->globals, $globals);
@@ -341,7 +341,7 @@ class TemplateEngine
 
         return $count;
     }
-    
+
     /** @var array{file:string, errors:array}[]|null Last loadViewConfigs result with per-file errors */
     private static ?array $lastLoadErrors = null;
 
@@ -358,12 +358,12 @@ class TemplateEngine
 
     /** Maximum output size in bytes (5 MB default — prevents runaway templates) */
     private const MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
-    
+
     public function render(string $template, array $context = []): string
     {
         $this->errors = [];
         $templatePath = $this->resolveTemplatePath($template);
-        
+
         if (!file_exists($templatePath)) {
             $this->logError("Template not found: {$template}");
             throw new \RuntimeException("Template not found: {$template}");
@@ -408,8 +408,8 @@ class TemplateEngine
         if ($this->compiledMode && $this->compiledCache !== null && $this->isCompiledEligibleTemplate($templatePath)) {
             try {
                 $compiled = $this->compiledCache->get($templatePath);
-                
-                $loader = function(string $tmpl) use (&$loader) {
+
+                $loader = function (string $tmpl) use (&$loader) {
                     $path = $this->resolveTemplatePath($tmpl);
                     // Guard against empty/invalid resolved paths from blank includes
                     if ($path === '' || !file_exists($path)) {
@@ -431,7 +431,7 @@ class TemplateEngine
                     $c->setFilters($registry);
                     return $c;
                 };
-                
+
                 $registry = new \Ikabud\Kernel\DiSyL\v4\FilterRegistry();
                 foreach ($this->filters as $name => $f) {
                     $registry->register($name, $f);
@@ -439,7 +439,7 @@ class TemplateEngine
                 $compiled->setTemplateLoader($loader);
                 $compiled->setErrorHandler(\Closure::fromCallable([$this, 'logError']));
                 $compiled->setFilters($registry);
-                
+
                 $ctx_obj = new RenderContext($context);
                 $result = $compiled->executeRaw($ctx_obj);
                 // Handle {extends} chain: child registers blocks, parent reads them
@@ -476,7 +476,7 @@ class TemplateEngine
                 }
             }
         }
-        
+
         // Interpreted pipeline deprecation notice (production observability).
         // The interpreted path is legacy — kept as a fallback for
         // interpreted-only component tags. New templates should use
@@ -506,7 +506,7 @@ class TemplateEngine
         // Track current template path for cross-request extends cache
         $prevTemplatePath = $this->currentTemplatePath;
         $this->currentTemplatePath = $templatePath;
-        
+
         // In-memory cache for repeated renders within same request (e.g., HTMX partials)
         if ($this->cacheEnabled) {
             $memKey = $this->templateRenderer()->buildOutputCacheKey($templatePath, $context);
@@ -514,7 +514,7 @@ class TemplateEngine
                 $this->currentTemplatePath = $prevTemplatePath;
                 return $this->templateRenderer()->outputCacheGet($memKey);
             }
-            
+
             $result = $this->compile($content, $context);
             if (function_exists('log_timing')) {
                 log_timing('disyl.render.breakdown', $sourceReadStart, [
@@ -541,7 +541,7 @@ class TemplateEngine
             $this->templateRenderer()->logCacheMetricsPeriodic();
             return $result;
         }
-        
+
         $result = $this->compile($content, $context);
 
         $this->currentTemplatePath = $prevTemplatePath;
@@ -600,14 +600,14 @@ class TemplateEngine
     {
         return $this->templateRenderer ??= new TemplateRenderer();
     }
-    
+
     public function renderString(string $content, array $context = []): string
     {
         $this->errors = [];
         $context = array_merge($this->globals, $context);
         return $this->compile($content, $context);
     }
-    
+
     /**
      * Main compilation pipeline
      */
@@ -640,19 +640,19 @@ class TemplateEngine
         // 0. Extract {verbatim}...{/verbatim} blocks — truly inert, restored last
         $verbatims = [];
         if (str_contains($content, '{verbatim')) {
-            $content = preg_replace_callback('/\{verbatim\}(.*?)\{\/verbatim\}/s', function($match) use (&$verbatims) {
+            $content = preg_replace_callback('/\{verbatim\}(.*?)\{\/verbatim\}/s', function ($match) use (&$verbatims) {
                 $key = '___VERBATIM_' . count($verbatims) . '___';
                 $verbatims[$key] = $match[1];
                 return $key;
             }, $content);
         }
-        
+
         // 0a. Extract {@var type $name} declarations — register variable types,
         //     then remove from output (produce no HTML).
         if (str_contains($content, '{@var ')) {
             $content = preg_replace_callback(
                 '/\{@var\s+(\??\w+(?:<[^>]+>)?)\s+\$([a-zA-Z_]\w*)\s*\}/',
-                function($match) {
+                function ($match) {
                     $type = $match[1];
                     $name = $match[2];
                     $this->declaredVars[$name] = $type;
@@ -664,12 +664,12 @@ class TemplateEngine
                 $content
             );
         }
-        
+
         // 1. Remove comments first
         if (str_contains($content, '{!--') || str_contains($content, '{*') || str_contains($content, '{#')) {
             $content = $this->removeComments($content);
         }
-        
+
         // 1.5. Pre-extends macro extraction — catch {macro} definitions in
         //      the child template that live OUTSIDE {block} tags.  These
         //      would be discarded by processExtends() since only {block}
@@ -692,7 +692,7 @@ class TemplateEngine
             if (str_contains($content, '{@var ')) {
                 $content = preg_replace_callback(
                     '/\{@var\s+(\??\w+(?:<[^>]+>)?)\s+\$([a-zA-Z_]\w*)\s*\}/',
-                    function($match) {
+                    function ($match) {
                         $type = $match[1];
                         $name = $match[2];
                         $this->declaredVars[$name] = $type;
@@ -716,88 +716,88 @@ class TemplateEngine
             $this->macroProcessor()->reset();
             $content = $this->extractMacros($content);
         }
-        
+
         // 3. Remove comments again (layout may have comments)
         if (str_contains($content, '{!--') || str_contains($content, '{*') || str_contains($content, '{#')) {
             $content = $this->removeComments($content);
         }
-        
+
         // 4. Process blocks (standalone)
         if (str_contains($content, '{block ')) {
             $content = $this->processBlocks($content, $context);
         }
-        
+
         // 4b. Extract <script> blocks — process DiSyL variables inside script bodies
         $scripts = [];
         if (stripos($content, '<script') !== false) {
             $t = microtime(true);
-            $content = preg_replace_callback('/<script\b([^>]*)>(.*?)<\/script>/si', function($match) use (&$scripts, $context) {
+            $content = preg_replace_callback('/<script\b([^>]*)>(.*?)<\/script>/si', function ($match) use (&$scripts, $context) {
                 $attrs = $match[1];
                 $body = $match[2];
-                
+
                 // Resolve DiSyL variables in tag attributes only (e.g. src="{base_url}/...")
                 $attrs = $this->processVariables($attrs, $context);
-                
+
                 // Resolve DiSyL variables inside script body — protects JS curly braces
                 // from being mistaken for DiSyL tags, then resolves {variable} references.
                 $body = $this->compileScriptBody($body, $context);
-                
+
                 $key = '___SCRIPT_' . count($scripts) . '___';
                 $scripts[$key] = '<script' . $attrs . '>' . $body . '</script>';
                 return $key;
             }, $content);
             $phases['scripts_ms'] = round((microtime(true) - $t) * 1000, 2);
         }
-        
+
         // 4c. Extract <style> blocks — process DiSyL tags inside style bodies
         //     (same approach as <script> blocks at 4b).
         $styles = [];
         if (stripos($content, '<style') !== false) {
             $t = microtime(true);
-            $content = preg_replace_callback('/<style\b([^>]*)>(.*?)<\/style>/si', function($match) use (&$styles, $context) {
+            $content = preg_replace_callback('/<style\b([^>]*)>(.*?)<\/style>/si', function ($match) use (&$styles, $context) {
                 $attrs = $this->processVariables($match[1], $context);
                 $body = $match[2];
-                
+
                 // Process DiSyL tags inside style body — protects CSS curly braces
                 // from being mistaken for DiSyL tags, then resolves {variable} references,
                 // {if} conditionals, {set} assignments, and {include} directives.
                 $body = $this->compileStyleBody($body, $context);
-                
+
                 $key = '___STYLE_' . count($styles) . '___';
                 $styles[$key] = '<style' . $attrs . '>' . $body . '</style>';
                 return $key;
             }, $content);
             $phases['styles_ms'] = round((microtime(true) - $t) * 1000, 2);
         }
-        
+
         // 5. Extract {literal}...{/literal} blocks — after extends/blocks but before
         //    control structures, so they work correctly inside loop bodies
         $literals = [];
         if (str_contains($content, '{literal')) {
-            $content = preg_replace_callback('/\{literal\}(.*?)\{\/literal\}/s', function($match) use (&$literals) {
+            $content = preg_replace_callback('/\{literal\}(.*?)\{\/literal\}/s', function ($match) use (&$literals) {
                 $key = '___LITERAL_' . count($literals) . '___';
                 $literals[$key] = $match[1];
                 return $key;
             }, $content);
         }
-        
+
         // 6. Process {set var = expr} assignments (mutates context)
         if (str_contains($content, '{set ')) {
             $content = $this->processSetStatements($content, $context);
         }
-        
+
         // 7. Process control structures (if/for/foreach) - token-based for proper nesting
         $t = microtime(true);
         $content = $this->processControlStructures($content, $context);
         $phases['control_ms'] = round((microtime(true) - $t) * 1000, 2);
-        
+
         // 8. Process includes
         if (str_contains($content, '{include ')) {
             $t = microtime(true);
             $content = $this->processIncludes($content, $context);
             $phases['includes_ms'] = round((microtime(true) - $t) * 1000, 2);
         }
-        
+
         // 8.5. Auto-convert HTML-style <ikb_ tags to DiSyL {ikb_...} syntax
         //     When autoConvertHtmlTags is enabled, converts in place so templates
         //     using HTML-style tags render without manual edits. When disabled,
@@ -864,22 +864,22 @@ class TemplateEngine
         if ($this->macroProcessor()->hasMacros() && str_contains($content, '{call ')) {
             $content = $this->expandMacroCalls($content, $context);
         }
-        
+
         // 11. Restore {literal} blocks (raw, no processing)
         if (!empty($literals)) {
             $content = str_replace(array_keys($literals), array_values($literals), $content);
         }
-        
+
         // 12. Restore <script> blocks (raw passthrough)
         if (!empty($scripts)) {
             $content = str_replace(array_keys($scripts), array_values($scripts), $content);
         }
-        
+
         // 12b. Restore <style> blocks (raw passthrough)
         if (!empty($styles)) {
             $content = str_replace(array_keys($styles), array_values($styles), $content);
         }
-        
+
         // 13. Restore {verbatim} blocks last (completely raw)
         if (!empty($verbatims)) {
             $content = str_replace(array_keys($verbatims), array_values($verbatims), $content);
@@ -914,7 +914,7 @@ class TemplateEngine
         $this->compileDepth--;
         return $content;
     }
-    
+
     /**
      * Compile a <script> body with full DiSyL support.
      *
@@ -939,14 +939,14 @@ class TemplateEngine
             . '|else\}'                       // {else}
             . '|[a-zA-Z_][\w.]*'              // Variables: {name}, {user.email}
             . ')/s';
-        
+
         // Step 1: Protect JS curly braces in a single pass without repeatedly
         // mutating the string, which avoids O(n^2) behavior on script-heavy templates.
         $jsMarkers = [];
         $markerCount = 0;
         $chunks = [];
         $insideDisylTag = false;
-        
+
         $len = strlen($body);
         $i = 0;
         while ($i < $len) {
@@ -983,48 +983,48 @@ class TemplateEngine
         }
 
         $body = implode('', $chunks);
-        
+
         // Step 2: Run full compilation (control structures + variables)
         //         Variables are output raw by default in script context.
         $this->scriptContext = true;
-        
+
         // Process {literal} blocks within the script
         $scriptLiterals = [];
-        $body = preg_replace_callback('/\{literal\}(.*?)\{\/literal\}/s', function($match) use (&$scriptLiterals) {
+        $body = preg_replace_callback('/\{literal\}(.*?)\{\/literal\}/s', function ($match) use (&$scriptLiterals) {
             $key = '___SCRIPTLIT_' . count($scriptLiterals) . '___';
             $scriptLiterals[$key] = $match[1];
             return $key;
         }, $body);
-        
+
         // Process set statements
         $body = $this->processSetStatements($body, $context);
-        
+
         // Process control structures
         $body = $this->processControlStructures($body, $context);
-        
+
         // Process includes
         if (str_contains($body, '{include ')) {
             $body = $this->processIncludes($body, $context);
         }
-        
+
         // Process variables (raw output in script context)
         $body = $this->processScriptVariables($body, $context);
-        
+
         // Restore script literals
         if (!empty($scriptLiterals)) {
             $body = str_replace(array_keys($scriptLiterals), array_values($scriptLiterals), $body);
         }
-        
+
         $this->scriptContext = false;
-        
+
         // Step 3: Restore JS curly braces
         if (!empty($jsMarkers)) {
             $body = str_replace(array_keys($jsMarkers), array_values($jsMarkers), $body);
         }
-        
+
         return $body;
     }
-    
+
     /**
      * Compile DiSyL tags inside a <style> block body while protecting CSS curly braces.
      *
@@ -1045,13 +1045,13 @@ class TemplateEngine
             . '|else\}'
             . '|[a-zA-Z_][\w.]*'
             . ')/s';
-        
+
         // Step 1: Protect CSS curly braces that aren't DiSyL tags
         $cssMarkers = [];
         $markerCount = 0;
         $chunks = [];
         $insideDisylTag = false;
-        
+
         $len = strlen($body);
         $i = 0;
         while ($i < $len) {
@@ -1087,53 +1087,53 @@ class TemplateEngine
         }
 
         $body = implode('', $chunks);
-        
+
         // Step 2: Run full DiSyL compilation (same pipeline as script bodies)
         $this->scriptContext = true; // raw output, no HTML escaping
-        
+
         // Process {literal} blocks within the style
         $styleLiterals = [];
-        $body = preg_replace_callback('/\{literal\}(.*?)\{\/literal\}/s', function($match) use (&$styleLiterals) {
+        $body = preg_replace_callback('/\{literal\}(.*?)\{\/literal\}/s', function ($match) use (&$styleLiterals) {
             $key = '___STYLELIT_' . count($styleLiterals) . '___';
             $styleLiterals[$key] = $match[1];
             return $key;
         }, $body);
-        
+
         // Process set statements
         $body = $this->processSetStatements($body, $context);
-        
+
         // Process control structures
         $body = $this->processControlStructures($body, $context);
-        
+
         // Process includes
         if (str_contains($body, '{include ')) {
             $body = $this->processIncludes($body, $context);
         }
-        
+
         // Process variables (raw output — no HTML escaping in CSS context)
         $body = $this->processScriptVariables($body, $context);
-        
+
         // Restore style literals
         if (!empty($styleLiterals)) {
             $body = str_replace(array_keys($styleLiterals), array_values($styleLiterals), $body);
         }
-        
+
         $this->scriptContext = false;
-        
+
         // Step 3: Restore CSS curly braces
         if (!empty($cssMarkers)) {
             $body = str_replace(array_keys($cssMarkers), array_values($cssMarkers), $body);
         }
-        
+
         return $body;
     }
-    
+
     /** @var bool Whether we're compiling inside a <script> context (raw output) */
     private bool $scriptContext = false;
-    
+
     /**
      * Process DiSyL variables inside <script> blocks.
-     * 
+     *
      * Resolves {variable} and {variable | filter} expressions.
      * Variables inside <script> are output raw by default (no HTML-escaping)
      * unless an explicit escape filter is used, because script content is
@@ -1171,18 +1171,18 @@ class TemplateEngine
         if (str_contains($content, '?') && str_contains($content, ':')) {
             $content = preg_replace_callback(
                 '/\{([^}]+\?[^}]+:[^}]+)\}/',
-                function($match) use ($context) {
+                function ($match) use ($context) {
                     return $this->evaluateTernary(trim($match[1]), $context);
                 },
                 $content
             );
         }
-        
+
         // Second pass: arithmetic (including parenthesized and chained expressions)
         if (strpbrk($content, '+-*/%()') !== false) {
             $content = preg_replace_callback(
                 '/\{((?:[a-zA-Z_(]|\d)[^}]*[+\-*\/%][^}]*)\}/',
-                function($match) use ($context) {
+                function ($match) use ($context) {
                     $result = $this->evaluateArithmetic(trim($match[1]), $context);
                     if ($result !== null) {
                         return (string) $result;
@@ -1192,11 +1192,11 @@ class TemplateEngine
                 $content
             );
         }
-        
+
         // Third pass: variables with filters
         return preg_replace_callback(
             '/(?<!\$)\{([a-zA-Z_][\w.]*(?:\s*\|\s*[^}]+)?)\}/',
-            function($match) use ($context) {
+            function ($match) use ($context) {
                 $expr = trim($match[1]);
                 if (!str_contains($expr, '|')) {
                     $value = $this->resolveValue($expr, $context);
@@ -1215,17 +1215,19 @@ class TemplateEngine
                 // Split filters
                 $filters = $this->splitByPipe($expr);
                 $varPath = trim(array_shift($filters));
-                
+
                 // Resolve the value
                 $value = $this->resolveValue($varPath, $context);
-                
+
                 // Apply any explicit filters
                 foreach ($filters as $filter) {
                     $filter = trim($filter);
-                    if ($filter === 'raw') continue; // raw is default in script context
+                    if ($filter === 'raw') {
+                        continue;
+                    } // raw is default in script context
                     $value = $this->applyFilter($filter, $value, $context);
                 }
-                
+
                 if (!is_scalar($value)) {
                     // Dot-path variables (e.g. user.name, cms_settings.site_tagline)
                     // are always template expressions — never valid JS identifiers.
@@ -1238,13 +1240,13 @@ class TemplateEngine
                     // preserve the original token to avoid breaking JS destructuring.
                     return $match[0];
                 }
-                
+
                 return (string) $value;
             },
             $content
         );
     }
-    
+
     /**
      * Process {set var = expression} statements.
      *
@@ -1356,20 +1358,36 @@ class TemplateEngine
             $ch = $content[$i];
 
             if ($ch === '\\' && ($inSingle || $inDouble)) {
-                $i++; continue;
+                $i++;
+                continue;
             }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; continue; }
-            if ($inSingle || $inDouble) continue;
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                continue;
+            }
+            if ($inSingle || $inDouble) {
+                continue;
+            }
 
-            if ($ch === '{' || $ch === '[' || $ch === '(') { $depth++; continue; }
+            if ($ch === '{' || $ch === '[' || $ch === '(') {
+                $depth++;
+                continue;
+            }
             if ($ch === '}') {
-                if ($depth === 0) return $i;
+                if ($depth === 0) {
+                    return $i;
+                }
                 $depth--;
                 continue;
             }
             if ($ch === ']' || $ch === ')') {
-                if ($depth > 0) $depth--;
+                if ($depth > 0) {
+                    $depth--;
+                }
                 continue;
             }
         }
@@ -1455,7 +1473,10 @@ class TemplateEngine
         }
         $quote = $expr[0];
         for ($i = 1; $i < $len; $i++) {
-            if ($expr[$i] === '\\') { $i++; continue; }
+            if ($expr[$i] === '\\') {
+                $i++;
+                continue;
+            }
             if ($expr[$i] === $quote) {
                 return trim(substr($expr, $i + 1)) === '';
             }
@@ -1486,7 +1507,7 @@ class TemplateEngine
     {
         return $this->evaluator()->evaluateComparison($expr, $context);
     }
-    
+
     /**
      * Evaluate arithmetic expressions: var + num, var - num, var * num, var / num, var % num
      * Returns null if the expression is not arithmetic.
@@ -1553,7 +1574,7 @@ class TemplateEngine
         $content = preg_replace('/\{types\s*\}.*?\{\/types\s*\}/s', '', $content);
         return $content;
     }
-    
+
     /**
      * Process template extends with HTMX partial support.
      * Supports multi-level inheritance (grandchild → parent → grandparent).
@@ -1591,7 +1612,7 @@ class TemplateEngine
 
     // ── v4.8: User-defined macros ──────────────────────────────────
 
-        /**
+    /**
      * Extract {macro} definitions (delegated to MacroProcessor — D8).
      */
     private function extractMacros(string $content, bool $merge = false): string
@@ -1751,7 +1772,7 @@ class TemplateEngine
             'each'    => $this->evaluateEachBody($tag['expr'], $innerContent, $context),
             'while'   => $this->evaluateWhileBody($tag['expr'], $innerContent, $context),
             'break'   => self::LOOP_BREAK_MARKER,
-            'continue'=> self::LOOP_CONTINUE_MARKER,
+            'continue' => self::LOOP_CONTINUE_MARKER,
             'match'      => $this->evaluateMatchBody($tag['expr'], $innerContent, $context),
             'trans'      => $this->evaluateTransBody($tag['expr'], $innerContent, $context),
             'cache'      => $this->evaluateCacheBody($tag['expr'], $innerContent, $context),
@@ -2327,13 +2348,22 @@ class TemplateEngine
     }
 
     /** Tenant id used for cache key namespacing. */
-    public function setTenantId(?string $tenantId): void { $this->tenantId = $tenantId; }
+    public function setTenantId(?string $tenantId): void
+    {
+        $this->tenantId = $tenantId;
+    }
 
     /** Subject id used for sticky bucketing. */
-    public function setSubjectId(?string $subjectId): void { $this->subjectId = $subjectId; }
+    public function setSubjectId(?string $subjectId): void
+    {
+        $this->subjectId = $subjectId;
+    }
 
     /** Request id used for exposure dedupe. */
-    public function setRequestId(?string $requestId): void { $this->requestId = $requestId; }
+    public function setRequestId(?string $requestId): void
+    {
+        $this->requestId = $requestId;
+    }
 
     public function fragmentStore(): \Ikabud\Kernel\DiSyL\Cache\FragmentStore
     {
@@ -2360,7 +2390,9 @@ class TemplateEngine
     private function processInlineSideEffectTags(string $content, array $context): string
     {
         $content = preg_replace_callback('/\{invalidate\s+([^}]+)\}/', function (array $m) use ($context): string {
-            if (!$this->sandbox()->require('cache.invalidate', '{invalidate}', $m[0])) return '';
+            if (!$this->sandbox()->require('cache.invalidate', '{invalidate}', $m[0])) {
+                return '';
+            }
             $tags = $this->splitInlineArgs($m[1], $context);
             if ($tags !== []) {
                 $this->fragmentStore()->invalidate($tags, $this->tenantId ?? '_global');
@@ -2369,15 +2401,21 @@ class TemplateEngine
         }, $content) ?? $content;
 
         $content = preg_replace_callback('/\{convert\s+([^}]+)\}/', function (array $m) use ($context): string {
-            if (!$this->sandbox()->require('experiment', '{convert}', $m[0])) return '';
+            if (!$this->sandbox()->require('experiment', '{convert}', $m[0])) {
+                return '';
+            }
             $expr = trim($m[1]);
             $expId = $this->parseFirstQuoted($expr, $rest);
-            if ($expId === null) return '';
+            if ($expId === null) {
+                return '';
+            }
             $goal = null;
             if (preg_match('/goal\s*=\s*([\'"])(.*?)\1/', $rest, $gm)) {
                 $goal = $gm[2];
             }
-            if ($goal === null) return '';
+            if ($goal === null) {
+                return '';
+            }
             $subject = $this->subjectId ?? '_anon';
             $this->bucketer()->convert($expId, $subject, $goal);
             return '';
@@ -2410,7 +2448,9 @@ class TemplateEngine
         $bodyForRender = preg_replace_callback(
             '/\{depends_on\s+([^}]+)\}/',
             function (array $m) use (&$deps, $context): string {
-                foreach ($this->splitInlineArgs($m[1], $context) as $tag) $deps[] = $tag;
+                foreach ($this->splitInlineArgs($m[1], $context) as $tag) {
+                    $deps[] = $tag;
+                }
                 return '';
             },
             $innerContent
@@ -2419,7 +2459,9 @@ class TemplateEngine
         $store = $this->fragmentStore();
         $tenant = $this->tenantId ?? '_global';
         $hit = $store->tryGet($key, $deps, $tenant);
-        if ($hit !== null) return $hit;
+        if ($hit !== null) {
+            return $hit;
+        }
 
         $rendered = $this->compile($bodyForRender, $context);
         $store->put($key, $rendered, $deps, $ttl, $tenant);
@@ -2479,7 +2521,9 @@ class TemplateEngine
         $out = [];
         if (!preg_match_all(
             '/\{variant\s+([\'"])(.*?)\1(?:\s+weight\s*=\s*(\d+))?\s*\}/',
-            $content, $m, PREG_OFFSET_CAPTURE
+            $content,
+            $m,
+            PREG_OFFSET_CAPTURE
         )) {
             return $out;
         }
@@ -2508,20 +2552,32 @@ class TemplateEngine
         while ($rest !== '' && preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*/', $rest, $m)) {
             $name = $m[1];
             $rest = substr($rest, strlen($m[0]));
-            if ($rest === '') break;
+            if ($rest === '') {
+                break;
+            }
             if ($rest[0] === "'" || $rest[0] === '"') {
                 $q = $rest[0];
                 $end = -1;
                 $len = strlen($rest);
                 for ($j = 1; $j < $len; $j++) {
-                    if ($rest[$j] === '\\' && $j + 1 < $len) { $j++; continue; }
-                    if ($rest[$j] === $q) { $end = $j; break; }
+                    if ($rest[$j] === '\\' && $j + 1 < $len) {
+                        $j++;
+                        continue;
+                    }
+                    if ($rest[$j] === $q) {
+                        $end = $j;
+                        break;
+                    }
                 }
-                if ($end < 0) break;
+                if ($end < 0) {
+                    break;
+                }
                 $out[$name] = substr($rest, 1, $end - 1);
                 $rest = ltrim(substr($rest, $end + 1));
             } else {
-                if (!preg_match('/^(\S+)/', $rest, $vm)) break;
+                if (!preg_match('/^(\S+)/', $rest, $vm)) {
+                    break;
+                }
                 $raw = $vm[1];
                 // Bracketed list literal: capture the full [...] before splitting
                 if ($raw !== '' && $raw[0] === '[') {
@@ -2559,27 +2615,49 @@ class TemplateEngine
         $buf = '';
         while ($i < $len) {
             $ch = $expr[$i];
-            if ($ch === ',') { $out[] = trim($buf); $buf = ''; $i++; continue; }
-            if ($ch === "'" || $ch === '"') {
-                $q = $ch; $buf .= $ch; $i++;
-                while ($i < $len && $expr[$i] !== $q) {
-                    if ($expr[$i] === '\\' && $i + 1 < $len) { $buf .= $expr[$i] . $expr[$i + 1]; $i += 2; continue; }
-                    $buf .= $expr[$i]; $i++;
-                }
-                if ($i < $len) { $buf .= $expr[$i]; $i++; }
+            if ($ch === ',') {
+                $out[] = trim($buf);
+                $buf = '';
+                $i++;
                 continue;
             }
-            $buf .= $ch; $i++;
+            if ($ch === "'" || $ch === '"') {
+                $q = $ch;
+                $buf .= $ch;
+                $i++;
+                while ($i < $len && $expr[$i] !== $q) {
+                    if ($expr[$i] === '\\' && $i + 1 < $len) {
+                        $buf .= $expr[$i] . $expr[$i + 1];
+                        $i += 2;
+                        continue;
+                    }
+                    $buf .= $expr[$i];
+                    $i++;
+                }
+                if ($i < $len) {
+                    $buf .= $expr[$i];
+                    $i++;
+                }
+                continue;
+            }
+            $buf .= $ch;
+            $i++;
         }
-        if (trim($buf) !== '') $out[] = trim($buf);
+        if (trim($buf) !== '') {
+            $out[] = trim($buf);
+        }
         $resolved = [];
         foreach ($out as $token) {
-            if ($token === '') continue;
+            if ($token === '') {
+                continue;
+            }
             if (($token[0] === "'" || $token[0] === '"') && substr($token, -1) === $token[0]) {
                 $resolved[] = substr($token, 1, -1);
             } else {
                 $val = $this->resolveValue($token, $context);
-                if (is_scalar($val)) $resolved[] = (string) $val;
+                if (is_scalar($val)) {
+                    $resolved[] = (string) $val;
+                }
             }
         }
         return $resolved;
@@ -2591,12 +2669,19 @@ class TemplateEngine
     private function parseFirstQuoted(string $expr, ?string &$rest = null): ?string
     {
         $rest = '';
-        if ($expr === '') return null;
+        if ($expr === '') {
+            return null;
+        }
         $q = $expr[0];
-        if ($q !== "'" && $q !== '"') return null;
+        if ($q !== "'" && $q !== '"') {
+            return null;
+        }
         $len = strlen($expr);
         for ($i = 1; $i < $len; $i++) {
-            if ($expr[$i] === '\\' && $i + 1 < $len) { $i++; continue; }
+            if ($expr[$i] === '\\' && $i + 1 < $len) {
+                $i++;
+                continue;
+            }
             if ($expr[$i] === $q) {
                 $rest = ltrim(substr($expr, $i + 1));
                 return substr($expr, 1, $i - 1);
@@ -2661,15 +2746,25 @@ class TemplateEngine
      */
     private function normalizeListAttr(mixed $val): array
     {
-        if ($val === null) return [];
+        if ($val === null) {
+            return [];
+        }
         if (is_array($val)) {
             $out = [];
-            foreach ($val as $v) if (is_scalar($v)) $out[] = (string) $v;
+            foreach ($val as $v) {
+                if (is_scalar($v)) {
+                    $out[] = (string) $v;
+                }
+            }
             return $out;
         }
-        if (!is_string($val)) return [];
+        if (!is_string($val)) {
+            return [];
+        }
         $val = trim($val);
-        if ($val === '') return [];
+        if ($val === '') {
+            return [];
+        }
         // Strip surrounding [] if present.
         if ($val[0] === '[' && substr($val, -1) === ']') {
             $val = substr($val, 1, -1);
@@ -2678,7 +2773,9 @@ class TemplateEngine
         $out = [];
         foreach ($parts as $p) {
             $p = trim($p, " \t\n'\"");
-            if ($p !== '') $out[] = $p;
+            if ($p !== '') {
+                $out[] = $p;
+            }
         }
         return $out;
     }
@@ -2728,7 +2825,9 @@ class TemplateEngine
         }
         require_once __DIR__ . '/Async/Scheduler.php';
         $sched = new \Ikabud\Kernel\DiSyL\Async\Scheduler();
-        foreach ($tasks as $factory) { $sched->add($factory); }
+        foreach ($tasks as $factory) {
+            $sched->add($factory);
+        }
         $results = $sched->run();
 
         $out = '';
@@ -2779,7 +2878,7 @@ class TemplateEngine
             try {
                 require_once __DIR__ . '/Async/Scheduler.php';
                 $sched = new \Ikabud\Kernel\DiSyL\Async\Scheduler();
-                $sched->add(fn() => $resolved);
+                $sched->add(fn () => $resolved);
                 $results = $sched->run();
                 $result = $results[0] ?? ['error' => new \RuntimeException('no result')];
                 return $this->renderAwaitResult($info, $result, $context);
@@ -2827,7 +2926,9 @@ class TemplateEngine
             $tag = $this->findNextOpeningControlTag($body, $offset, ['await']);
             if ($tag === null) {
                 $rest = substr($body, $offset);
-                if ($rest !== '') $segments[] = ['type' => 'static', 'content' => $rest];
+                if ($rest !== '') {
+                    $segments[] = ['type' => 'static', 'content' => $rest];
+                }
                 break;
             }
             if ($tag['pos'] > $offset) {
@@ -2853,7 +2954,11 @@ class TemplateEngine
      */
     private function parseAwaitArms(string $expr, string $innerContent): array
     {
-        $thenBody = null; $loading = null; $catch = null; $catchLet = null; $let = null;
+        $thenBody = null;
+        $loading = null;
+        $catch = null;
+        $catchLet = null;
+        $let = null;
         $body = $innerContent;
 
         // Extract {then}...{/then} block (v4.8)
@@ -2919,7 +3024,9 @@ class TemplateEngine
         }
         return function () use ($src) {
             require_once __DIR__ . '/Async/Promise.php';
-            if ($src instanceof \Ikabud\Kernel\DiSyL\Async\Promise) return $src;
+            if ($src instanceof \Ikabud\Kernel\DiSyL\Async\Promise) {
+                return $src;
+            }
             return \Ikabud\Kernel\DiSyL\Async\Promise::resolved($src);
         };
     }
@@ -2939,7 +3046,9 @@ class TemplateEngine
     private function renderAwaitResult(array $info, array $result, array $context): string
     {
         $let = $this->extractLetIdentifier($info['expr']);
-        if ($let === '') $let = '_';
+        if ($let === '') {
+            $let = '_';
+        }
         if (array_key_exists('value', $result)) {
             $childCtx = $context;
             $childCtx[$let] = $result['value'];
@@ -2960,7 +3069,10 @@ class TemplateEngine
 
     // ------------------------------------------------------------------ 4.6 --
 
-    public function setServiceRegistry(\Ikabud\Kernel\DiSyL\Federation\ServiceRegistry $r): void { $this->serviceRegistry = $r; }
+    public function setServiceRegistry(\Ikabud\Kernel\DiSyL\Federation\ServiceRegistry $r): void
+    {
+        $this->serviceRegistry = $r;
+    }
 
     public function serviceRegistry(): \Ikabud\Kernel\DiSyL\Federation\ServiceRegistry
     {
@@ -2971,7 +3083,10 @@ class TemplateEngine
         return $this->serviceRegistry;
     }
 
-    public function setAiProvider(\Ikabud\Kernel\DiSyL\AI\AiProvider $p): void { $this->aiProvider = $p; }
+    public function setAiProvider(\Ikabud\Kernel\DiSyL\AI\AiProvider $p): void
+    {
+        $this->aiProvider = $p;
+    }
 
     public function aiProvider(): \Ikabud\Kernel\DiSyL\AI\AiProvider
     {
@@ -2983,7 +3098,10 @@ class TemplateEngine
         return $this->aiProvider;
     }
 
-    public function setAiPolicy(\Ikabud\Kernel\DiSyL\AI\Policy $p): void { $this->aiPolicy = $p; }
+    public function setAiPolicy(\Ikabud\Kernel\DiSyL\AI\Policy $p): void
+    {
+        $this->aiPolicy = $p;
+    }
 
     public function aiPolicy(): \Ikabud\Kernel\DiSyL\AI\Policy
     {
@@ -3015,7 +3133,9 @@ class TemplateEngine
         $len = strlen($innerContent);
         while ($offset < $len) {
             $tag = $this->findNextOpeningControlTag($innerContent, $offset, ['remote', 'aggregate']);
-            if ($tag === null) break;
+            if ($tag === null) {
+                break;
+            }
             if ($tag['type'] === 'remote') {
                 // {remote ...} is self-closing in our grammar (no body).
                 $remotes[] = $tag['expr'];
@@ -3023,7 +3143,10 @@ class TemplateEngine
             } else { // aggregate has body
                 $contentStart = $tag['pos'] + $tag['len'];
                 $closePos = $this->findMatchingClose($innerContent, $contentStart, 'aggregate');
-                if ($closePos === false) { $offset = $contentStart; continue; }
+                if ($closePos === false) {
+                    $offset = $contentStart;
+                    continue;
+                }
                 $aggregate = ['expr' => $tag['expr'], 'body' => substr($innerContent, $contentStart, $closePos - $contentStart)];
                 $offset = $closePos + strlen('{/aggregate}');
             }
@@ -3037,7 +3160,9 @@ class TemplateEngine
             $query   = (string) ($rattrs['query']   ?? '');
             $let     = $this->extractLetIdentifier($rexpr);
             $fallback = $rattrs['fallback'] ?? null;
-            if ($let === '') continue;
+            if ($let === '') {
+                continue;
+            }
             try {
                 $bound[$let] = $registry->resolve($service, $query, $context);
             } catch (\Throwable $e) {
@@ -3111,13 +3236,17 @@ class TemplateEngine
         // For ai_query with schema, attempt JSON decode.
         if ($kind === 'ai_query') {
             $decoded = json_decode($value, true);
-            if (is_array($decoded)) $value = $decoded;
+            if (is_array($decoded)) {
+                $value = $decoded;
+            }
         }
 
         $let = $this->extractLetIdentifier($expr);
         if ($let === '') {
             // No binding: emit value directly (escaped scalar) or nothing for arrays.
-            if (is_scalar($value)) return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+            if (is_scalar($value)) {
+                return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+            }
             return '';
         }
         // ai_generate with let= and a body: body was the prompt; emit nothing,
@@ -3133,9 +3262,15 @@ class TemplateEngine
     private array $aiLetSink = [];
 
     /** Public accessor for tests to read AI bindings produced during render. */
-    public function aiBindings(): array { return $this->aiLetSink; }
+    public function aiBindings(): array
+    {
+        return $this->aiLetSink;
+    }
 
-    public function clearAiBindings(): void { $this->aiLetSink = []; }
+    public function clearAiBindings(): void
+    {
+        $this->aiLetSink = [];
+    }
 
     // ------------------------------------------------------------- /4.6 --
 
@@ -3617,10 +3752,10 @@ class TemplateEngine
 
         return null;
     }
-    
+
     /**
      * Parse if/elseif/else branches.
-     * 
+     *
      * Correctly skips nested {if}...{/if} blocks so that an {elseif} or {else}
      * inside a nested block is not mistaken for one belonging to the outer {if}.
      */
@@ -3630,30 +3765,38 @@ class TemplateEngine
         $currentContent = '';
         $currentCondition = $initialCondition;
         $currentType = 'if';
-        
+
         $pos = 0;
         $len = strlen($content);
         $depth = 0; // Track nested {if} depth
-        
+
         while ($pos < $len) {
             // Find the next relevant tag: {if, {/if}, {elseif, {else}
             $nextIf = strpos($content, '{if ', $pos);
             $nextEndIf = strpos($content, '{/if}', $pos);
             $nextElseIf = ($depth === 0) ? $this->findElseIfAt($content, $pos) : false;
             $nextElse = ($depth === 0) ? $this->findElseAt($content, $pos) : false;
-            
+
             // Find the earliest tag
             $candidates = [];
-            if ($nextIf !== false) $candidates['if'] = $nextIf;
-            if ($nextEndIf !== false) $candidates['endif'] = $nextEndIf;
-            if ($nextElseIf !== false) $candidates['elseif'] = $nextElseIf;
-            if ($nextElse !== false) $candidates['else'] = $nextElse;
-            
+            if ($nextIf !== false) {
+                $candidates['if'] = $nextIf;
+            }
+            if ($nextEndIf !== false) {
+                $candidates['endif'] = $nextEndIf;
+            }
+            if ($nextElseIf !== false) {
+                $candidates['elseif'] = $nextElseIf;
+            }
+            if ($nextElse !== false) {
+                $candidates['else'] = $nextElse;
+            }
+
             if (empty($candidates)) {
                 $currentContent .= substr($content, $pos);
                 break;
             }
-            
+
             $nextType = '';
             $nextPos = PHP_INT_MAX;
             foreach ($candidates as $type => $p) {
@@ -3662,7 +3805,7 @@ class TemplateEngine
                     $nextType = $type;
                 }
             }
-            
+
             if ($nextType === 'if') {
                 // Entering a nested {if} — add content up to here and increase depth
                 $tagEnd = strpos($content, '}', $nextIf);
@@ -3684,7 +3827,7 @@ class TemplateEngine
                 // Top-level {elseif} — split branch
                 $currentContent .= substr($content, $pos, $nextPos - $pos);
                 $branches[] = ['type' => $currentType, 'condition' => $currentCondition, 'content' => $currentContent];
-                
+
                 // Extract the condition from {elseif cond} or {else if cond}
                 preg_match('/\{else(?:\s+if|if)\s+([^}]+)\}/', $content, $m, 0, $nextPos);
                 $currentType = 'elseif';
@@ -3695,7 +3838,7 @@ class TemplateEngine
                 // Top-level {else} — split branch
                 $currentContent .= substr($content, $pos, $nextPos - $pos);
                 $branches[] = ['type' => $currentType, 'condition' => $currentCondition, 'content' => $currentContent];
-                
+
                 $currentType = 'else';
                 $currentCondition = '';
                 $currentContent = '';
@@ -3706,13 +3849,13 @@ class TemplateEngine
                 $pos = $nextPos + 1;
             }
         }
-        
+
         // Add final branch
         $branches[] = ['type' => $currentType, 'condition' => $currentCondition, 'content' => $currentContent];
-        
+
         return $branches;
     }
-    
+
     /**
      * Find {elseif ...} at or after position, returning its start position or false.
      * Must not match inside a word (e.g. {elseifx}).
@@ -3722,11 +3865,15 @@ class TemplateEngine
         // Support both {elseif cond} and {else if cond}
         $a = strpos($content, '{elseif ', $pos);
         $b = strpos($content, '{else if ', $pos);
-        if ($a === false) return $b;
-        if ($b === false) return $a;
+        if ($a === false) {
+            return $b;
+        }
+        if ($b === false) {
+            return $a;
+        }
         return min($a, $b);
     }
-    
+
     /**
      * Find standalone {else} at or after position.
      * Must match exactly {else} not {elseif} or {else if}.
@@ -3750,7 +3897,7 @@ class TemplateEngine
         }
         return false;
     }
-    
+
     /**
      * Find matching closing tag, accounting for nesting
      */
@@ -3761,15 +3908,15 @@ class TemplateEngine
         $depth = 1;
         $pos = $start;
         $len = strlen($content);
-        
+
         while ($pos < $len && $depth > 0) {
             $nextOpen = strpos($content, $openTag, $pos);
             $nextClose = strpos($content, $closeTag, $pos);
-            
+
             if ($nextClose === false) {
                 return false; // No closing tag found
             }
-            
+
             if ($nextOpen !== false && $nextOpen < $nextClose) {
                 // Check if it's actually an opening tag (has space or } after tag name)
                 $afterTag = $nextOpen + strlen($openTag);
@@ -3785,10 +3932,10 @@ class TemplateEngine
                 $pos = $nextClose + 1;
             }
         }
-        
+
         return false;
     }
-    
+
     /** @var int Current component nesting depth (tracks compile()-within-compile() via component children) */
     private int $componentDepth = 0;
 
@@ -4010,27 +4157,27 @@ class TemplateEngine
 
         $maxIterations = 200;
         $iteration = 0;
-        
+
         while ($iteration < $maxIterations) {
             // Find component tag
             if (!preg_match('/\{(ikb_\w+|island|state)[\s}]/', $content, $match, PREG_OFFSET_CAPTURE)) {
                 break;
             }
-            
+
             $tagStart = $match[0][1];
             $componentName = $match[1][0];
-            
+
             // Find closing brace of opening tag (respecting quotes)
             $tagEnd = $this->findTagEnd($content, $tagStart);
             if ($tagEnd === false) {
                 $this->logError("Unclosed component tag: {$componentName}");
                 break;
             }
-            
+
             // Extract attribute string
             $tagContent = substr($content, $tagStart + 1, $tagEnd - $tagStart - 1);
             $attrString = substr($tagContent, strlen($componentName));
-            
+
             // Check if self-closing
             $isSelfClosing = preg_match('/\/\s*$/', $attrString);
             if ($isSelfClosing) {
@@ -4042,15 +4189,15 @@ class TemplateEngine
                 // Find closing tag
                 $closeTag = '{/' . $componentName . '}';
                 $closePos = $this->findComponentClose($content, $tagEnd + 1, $componentName);
-                
+
                 if ($closePos === false) {
                     $this->logError("Missing closing tag for: {$componentName}");
                     break;
                 }
-                
+
                 $children = substr($content, $tagEnd + 1, $closePos - $tagEnd - 1);
                 $attrs = $this->parseAttributes($attrString, $context);
-                
+
                 // Compile children with nesting depth guard.
                 // Config-only components (ikb_entity_view) keep children raw
                 // to preserve {field} and {action} sub-tags as-is.
@@ -4066,16 +4213,16 @@ class TemplateEngine
                     $this->componentDepth--;
                 }
                 $replacement = $this->renderComponent($componentName, $attrs, $compiledChildren, $context);
-                
+
                 $content = substr($content, 0, $tagStart) . $replacement . substr($content, $closePos + strlen($closeTag));
             }
-            
+
             $iteration++;
         }
-        
+
         return $content;
     }
-    
+
     /**
      * Find the end of a tag, respecting quotes
      */
@@ -4084,11 +4231,11 @@ class TemplateEngine
         $len = strlen($content);
         $inQuote = false;
         $quoteChar = '';
-        
+
         for ($i = $start; $i < $len; $i++) {
             $char = $content[$i];
             $prevChar = $i > 0 ? $content[$i - 1] : '';
-            
+
             if (!$inQuote && ($char === '"' || $char === "'")) {
                 $inQuote = true;
                 $quoteChar = $char;
@@ -4099,10 +4246,10 @@ class TemplateEngine
                 return $i;
             }
         }
-        
+
         return false;
     }
-    
+
     /**
      * Find component closing tag, handling nested same-name components
      */
@@ -4113,15 +4260,15 @@ class TemplateEngine
         $depth = 1;
         $pos = $start;
         $len = strlen($content);
-        
+
         while ($pos < $len && $depth > 0) {
             $nextOpen = strpos($content, $openPattern, $pos);
             $nextClose = strpos($content, $closeTag, $pos);
-            
+
             if ($nextClose === false) {
                 return false;
             }
-            
+
             // Check if nextOpen is actually an opening tag (followed by space or })
             $isRealOpen = false;
             if ($nextOpen !== false) {
@@ -4131,7 +4278,7 @@ class TemplateEngine
                     $isRealOpen = ctype_space($nextChar) || $nextChar === '}';
                 }
             }
-            
+
             if ($isRealOpen && $nextOpen < $nextClose) {
                 $depth++;
                 $pos = $nextOpen + 1;
@@ -4143,7 +4290,7 @@ class TemplateEngine
                 $pos = $nextClose + 1;
             }
         }
-        
+
         return false;
     }
 
@@ -4259,7 +4406,7 @@ class TemplateEngine
     /**
      * Process variables with filters, arithmetic, and ternary expressions.
      * Skips JavaScript template literals (${...}).
-     * 
+     *
      * Single-pass implementation: one regex scan classifies each {expression}
      * as ternary, arithmetic, or standard variable. A per-call resolution
      * cache avoids re-resolving the same variable path multiple times.
@@ -4275,7 +4422,7 @@ class TemplateEngine
 
         $content = preg_replace_callback(
             '/(?<!\$)\{((?:[a-zA-Z_([\d])[^{}]*)\}/',
-            function($match) use ($context, &$resolveCache) {
+            function ($match) use ($context, &$resolveCache) {
                 $expr = trim($match[1]);
 
                 // Parenthesized pipe expression: {('literal'|filter:arg)} or
@@ -4289,8 +4436,15 @@ class TemplateEngine
                     $pDepth = 0;
                     $pBalanced = true;
                     for ($pi = 0, $pl = strlen($inner); $pi < $pl; $pi++) {
-                        if ($inner[$pi] === '(') { $pDepth++; }
-                        elseif ($inner[$pi] === ')') { $pDepth--; if ($pDepth < 0) { $pBalanced = false; break; } }
+                        if ($inner[$pi] === '(') {
+                            $pDepth++;
+                        } elseif ($inner[$pi] === ')') {
+                            $pDepth--;
+                            if ($pDepth < 0) {
+                                $pBalanced = false;
+                                break;
+                            }
+                        }
                     }
                     if ($pBalanced && $pDepth === 0) {
                         return $this->processVariables('{' . $inner . '}', $context);
@@ -4310,11 +4464,19 @@ class TemplateEngine
                     for ($i = 0; $i < $len - 1; $i++) {
                         $c = $expr[$i];
                         if ($inQuote !== null) {
-                            if ($c === '\\') { $i++; continue; }
-                            if ($c === $inQuote) $inQuote = null;
+                            if ($c === '\\') {
+                                $i++;
+                                continue;
+                            }
+                            if ($c === $inQuote) {
+                                $inQuote = null;
+                            }
                             continue;
                         }
-                        if ($c === '"' || $c === "'") { $inQuote = $c; continue; }
+                        if ($c === '"' || $c === "'") {
+                            $inQuote = $c;
+                            continue;
+                        }
                         if ($c === '?' && $expr[$i + 1] === '?') {
                             $left = trim(substr($expr, 0, $i));
                             $right = trim(substr($expr, $i + 2));
@@ -4343,13 +4505,20 @@ class TemplateEngine
                         $filterParts = $this->splitByPipe($filterPart);
                         foreach ($filterParts as $filter) {
                             $filter = trim($filter);
-                            if ($filter === '') continue;
+                            if ($filter === '') {
+                                continue;
+                            }
                             $filterName = trim(explode(':', $filter, 2)[0]);
-                            if ($filterName === 'raw') { $hasRaw = true; continue; }
+                            if ($filterName === 'raw') {
+                                $hasRaw = true;
+                                continue;
+                            }
                             $filterNames[] = $filterName;
                             $value = $this->applyFilter($filter, $value, $context);
                         }
-                        if (!is_scalar($value)) return '';
+                        if (!is_scalar($value)) {
+                            return '';
+                        }
                         if (!$hasRaw && !$this->hasEscapeFilter($expr, $filterNames)) {
                             return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
                         }
@@ -4392,13 +4561,20 @@ class TemplateEngine
                                 $filterParts = $this->splitByPipe($filterPart);
                                 foreach ($filterParts as $filter) {
                                     $filter = trim($filter);
-                                    if ($filter === '') continue;
+                                    if ($filter === '') {
+                                        continue;
+                                    }
                                     $filterName = trim(explode(':', $filter, 2)[0]);
-                                    if ($filterName === 'raw') { $hasRaw = true; continue; }
+                                    if ($filterName === 'raw') {
+                                        $hasRaw = true;
+                                        continue;
+                                    }
                                     $filterNames[] = $filterName;
                                     $value = $this->applyFilter($filter, $value, $context);
                                 }
-                                if (!is_scalar($value)) return '';
+                                if (!is_scalar($value)) {
+                                    return '';
+                                }
                                 if (!$hasRaw && !$this->hasEscapeFilter($expr, $filterNames)) {
                                     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
                                 }
@@ -4432,13 +4608,20 @@ class TemplateEngine
                                 $filterParts = $this->splitByPipe($filterPart);
                                 foreach ($filterParts as $filter) {
                                     $filter = trim($filter);
-                                    if ($filter === '') continue;
+                                    if ($filter === '') {
+                                        continue;
+                                    }
                                     $filterName = trim(explode(':', $filter, 2)[0]);
-                                    if ($filterName === 'raw') { $hasRaw = true; continue; }
+                                    if ($filterName === 'raw') {
+                                        $hasRaw = true;
+                                        continue;
+                                    }
                                     $filterNames[] = $filterName;
                                     $value = $this->applyFilter($filter, $value, $context);
                                 }
-                                if (!is_scalar($value)) return '';
+                                if (!is_scalar($value)) {
+                                    return '';
+                                }
                                 if (!$hasRaw && !$this->hasEscapeFilter($expr, $filterNames)) {
                                     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
                                 }
@@ -4602,10 +4785,10 @@ class TemplateEngine
     {
         return preg_match('/^[a-zA-Z_][\w.]*$/', $varPath) === 1;
     }
-    
+
     /**
      * Evaluate a ternary expression: condition ? trueValue : falseValue
-     * 
+     *
      * Examples:
      *   {active ? 'Yes' : 'No'}
      *   {count > 0 ? count : 'none'}
@@ -4615,7 +4798,7 @@ class TemplateEngine
     {
         return $this->evaluator()->evaluateTernary($expr, $context);
     }
-    
+
     /**
      * Find a character in a string that is not inside quotes.
      */
@@ -4623,7 +4806,7 @@ class TemplateEngine
     {
         return $this->evaluator()->findUnquotedChar($str, $char);
     }
-    
+
     /**
      * Check if expression already has an escape filter applied.
      * Accepts the already-parsed filter name list to avoid false positives
@@ -4633,7 +4816,7 @@ class TemplateEngine
     {
         return $this->evaluator()->hasEscapeFilter($expr, $parsedFilterNames);
     }
-    
+
     /**
      * Resolve a dotted path to a value
      */
@@ -4689,7 +4872,7 @@ class TemplateEngine
 
     /**
      * Evaluate a condition expression to a boolean.
-     * 
+     *
      * Supports: negation (!), AND/OR, comparison operators (==, !=, >, <, >=, <=, ===, !==),
      * arithmetic operands (page + 1 > total), quoted strings, variable paths, and truthy checks.
      */
@@ -4697,7 +4880,7 @@ class TemplateEngine
     {
         return $this->evaluator()->evaluateCondition($condition, $context);
     }
-    
+
     /**
      * Resolve one side of a condition comparison.
      * Handles: quoted strings, parenthesized filter expressions, arithmetic, variables with filters, numeric literals.
@@ -4706,7 +4889,7 @@ class TemplateEngine
     {
         return $this->evaluator()->resolveConditionOperand($raw, $context);
     }
-    
+
     /**
      * Parse attributes from a string
      */
@@ -4714,14 +4897,14 @@ class TemplateEngine
     {
         $attrs = [];
         $attrString = preg_replace('/\s+/', ' ', trim($attrString));
-        
+
         // Match key="value" or key='value' or key={var}
         $pattern = '/([\w-]+)=(?:"([^"]*)"|\'([^\']*)\'|\{([^}]+)\})/';
-        
+
         if (preg_match_all($pattern, $attrString, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $key = $match[1];
-                
+
                 if (!empty($match[4])) {
                     // Bare variable: key={variable}
                     $attrs[$key] = $this->resolveValueWithFilters($match[4], $context);
@@ -4729,13 +4912,13 @@ class TemplateEngine
                     // Quoted value - get from double-quote or single-quote capture group
                     // Note: $match[2] is double-quoted, $match[3] is single-quoted
                     $value = (isset($match[2]) && $match[2] !== '') ? $match[2] : ($match[3] ?? '');
-                    
+
                     // Only resolve template variables like {var.name}, not JSON like {"key": "value"}
                     // Template vars start with letter/underscore, JSON starts with quote
                     if (preg_match('/\{[a-zA-Z_]/', $value)) {
                         $value = preg_replace_callback(
                             '/\{([a-zA-Z_][\w.]*(?:\s*\|\s*[^}]+)?)\}/',
-                            fn($m) => $this->resolveValueWithFilters($m[1], $context) ?? '',
+                            fn ($m) => $this->resolveValueWithFilters($m[1], $context) ?? '',
                             $value
                         );
                     }
@@ -4743,7 +4926,7 @@ class TemplateEngine
                 }
             }
         }
-        
+
         // Boolean attributes
         if (preg_match_all('/(?:^|\s)(\w+)(?=\s|$)/', $attrString, $booleans)) {
             foreach ($booleans[1] as $attr) {
@@ -4752,10 +4935,10 @@ class TemplateEngine
                 }
             }
         }
-        
+
         return $attrs;
     }
-    
+
     /**
      * Parse inline object {key: value, key2: value2}
      */
@@ -4763,15 +4946,15 @@ class TemplateEngine
     {
         $result = [];
         $str = trim($str);
-        
+
         // Strip outer braces
         if (str_starts_with($str, '{') && str_ends_with($str, '}')) {
             $str = trim(substr($str, 1, -1));
         }
-        
+
         // Split by comma at the top level only (not inside nested braces)
         $pairs = $this->splitTopLevelPairs($str);
-        
+
         foreach ($pairs as $pair) {
             $pair = trim($pair);
             if ($pair === '') {
@@ -4783,7 +4966,7 @@ class TemplateEngine
             }
             $key = trim(substr($pair, 0, $colonPos));
             $rawValue = trim(substr($pair, $colonPos + 1));
-            
+
             // Handle nested object recursively
             if (str_starts_with($rawValue, '{') && str_ends_with($rawValue, '}')) {
                 $result[$key] = $this->parseInlineObject($rawValue, $context);
@@ -4797,10 +4980,10 @@ class TemplateEngine
                 $result[$key] = $this->resolveValueWithFilters($rawValue, $context);
             }
         }
-        
+
         return $result;
     }
-    
+
     /**
      * Split a string by commas at the top level, respecting nested braces and quotes.
      */
@@ -4811,10 +4994,10 @@ class TemplateEngine
         $inQuote = null;
         $current = '';
         $len = strlen($str);
-        
+
         for ($i = 0; $i < $len; $i++) {
             $c = $str[$i];
-            
+
             if ($inQuote !== null) {
                 if ($c === '\\') {
                     $current .= $c . ($i + 1 < $len ? $str[++$i] : '');
@@ -4826,41 +5009,41 @@ class TemplateEngine
                 $current .= $c;
                 continue;
             }
-            
+
             if ($c === '"' || $c === "'") {
                 $inQuote = $c;
                 $current .= $c;
                 continue;
             }
-            
+
             if ($c === '{') {
                 $depth++;
                 $current .= $c;
                 continue;
             }
-            
+
             if ($c === '}') {
                 $depth--;
                 $current .= $c;
                 continue;
             }
-            
+
             if ($c === ',' && $depth === 0) {
                 $parts[] = $current;
                 $current = '';
                 continue;
             }
-            
+
             $current .= $c;
         }
-        
+
         if ($current !== '') {
             $parts[] = $current;
         }
-        
+
         return $parts;
     }
-    
+
     /**
      * Split by pipe, respecting quotes
      */
@@ -4868,7 +5051,7 @@ class TemplateEngine
     {
         return $this->evaluator()->splitByPipe($expr);
     }
-    
+
     /**
      * Split by comma, respecting quotes
      */
@@ -4876,7 +5059,7 @@ class TemplateEngine
     {
         return $this->evaluator()->splitByComma($expr);
     }
-    
+
     /**
      * Generic split by character, respecting quotes
      */
@@ -4884,7 +5067,7 @@ class TemplateEngine
     {
         return $this->evaluator()->splitByChar($expr, $delimiter);
     }
-    
+
     /**
      * Apply a filter
      */
@@ -4897,7 +5080,7 @@ class TemplateEngine
     {
         return $this->evaluator()->applyFilter($filter, $value, $context);
     }
-    
+
     /**
      * Log an error
      */
@@ -4926,7 +5109,7 @@ class TemplateEngine
             ]);
         }
     }
-    
+
     public function registerFilter(string $name, callable $callback): void
     {
         $this->filters[$name] = $callback;
@@ -4934,18 +5117,18 @@ class TemplateEngine
             $this->evaluator->setFilters($this->filters);
         }
     }
-    
+
     public function registerComponent(string $name, callable $callback): void
     {
         $this->components[$name] = $callback;
     }
-    
+
     private function registerDefaultFilters(): void
     {
         $this->filters = [
-            'esc_html' => fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'),
-            'esc_attr' => fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'),
-            'esc_url' => function($v) {
+            'esc_html' => fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'),
+            'esc_attr' => fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'),
+            'esc_url' => function ($v) {
                 $url = filter_var((string) $v, FILTER_SANITIZE_URL);
                 // Reject protocol-relative URLs that resolve to external hosts (e.g. //evil.com)
                 if (str_starts_with($url, '//')) {
@@ -4958,65 +5141,70 @@ class TemplateEngine
                 }
                 return $url;
             },
-            'esc_js' => fn($v) => str_replace(
+            'esc_js' => fn ($v) => str_replace(
                 ['\\', "'", '"', "\n", "\r", '</', "\xe2\x80\xa8", "\xe2\x80\xa9"],
                 ['\\\\', "\\'", '\\"', '\\n', '\\r', '<\\/', '\\u2028', '\\u2029'],
                 (string) $v
             ),
-            'raw' => fn($v) => $v,
-            'upper' => fn($v) => strtoupper((string) $v),
-            'lower' => fn($v) => strtolower((string) $v),
-            'capitalize' => fn($v) => ucfirst((string) $v),
-            'title' => fn($v) => ucwords(str_replace('_', ' ', (string) $v)),
-            'trim' => fn($v) => trim((string) $v),
-            'truncate' => fn($v, $a, $n) => mb_strlen((string)$v) > (int)($n['length'] ?? ($a[0] ?? 100))
+            'raw' => fn ($v) => $v,
+            'upper' => fn ($v) => strtoupper((string) $v),
+            'lower' => fn ($v) => strtolower((string) $v),
+            'capitalize' => fn ($v) => ucfirst((string) $v),
+            'title' => fn ($v) => ucwords(str_replace('_', ' ', (string) $v)),
+            'trim' => fn ($v) => trim((string) $v),
+            'truncate' => fn ($v, $a, $n) => mb_strlen((string)$v) > (int)($n['length'] ?? ($a[0] ?? 100))
                 ? mb_substr((string)$v, 0, (int)($n['length'] ?? ($a[0] ?? 100))) . '...'
                 : (string)$v,
-            'nl2br' => fn($v) => nl2br(htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8')),
-            'json' => fn($v) => json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            'nl2br' => fn ($v) => nl2br(htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8')),
+            'json' => fn ($v) => json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             // json_attr: JSON-encode then HTML-escape for safe embedding in double-quoted HTML attributes.
             // Use {myArray | json_attr} in x-data="{raw: {myArray | json_attr}}" and similar Alpine/x-* attrs.
             // Browsers decode &quot; → " before passing the attribute value to JS, so Alpine.js sees correct JSON.
-            'json_attr' => fn($v) => htmlspecialchars(
+            'json_attr' => fn ($v) => htmlspecialchars(
                 json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
                 ENT_QUOTES,
                 'UTF-8'
             ),
-            'date' => fn($v, $a, $n) => $v ? date($n['format'] ?? ($a[0] ?? 'Y-m-d'), is_numeric($v) ? (int)$v : strtotime((string)$v)) : '',
-            'default' => fn($v, $a) => ($v !== null && $v !== '') ? $v : ($a[0] ?? ''),
-            'count' => fn($v) => is_countable($v) ? count($v) : 0,
-            'join' => fn($v, $a) => is_array($v) ? implode($a[0] ?? ', ', $v) : $v,
-            'first' => fn($v) => is_array($v) ? reset($v) : (is_string($v) ? mb_substr($v, 0, 1) : $v),
-            'last' => fn($v) => is_array($v) ? end($v) : $v,
-            'keys' => fn($v) => is_array($v) ? array_keys($v) : [],
-            'values' => fn($v) => is_array($v) ? array_values($v) : [],
-            'number_format' => fn($v, $a) => number_format((float)$v, (int)($a[0] ?? 0)),
-            'abs' => fn($v) => abs((float)$v),
-            'round' => fn($v, $a) => round((float)$v, (int)($a[0] ?? 0)),
-            'floor' => fn($v) => floor((float)$v),
-            'ceil' => fn($v) => ceil((float)$v),
-            'length' => fn($v) => is_array($v) ? count($v) : mb_strlen((string)$v),
-            'reverse' => fn($v) => is_array($v) ? array_reverse($v) : strrev((string)$v),
-            'sort' => function($v) { if (is_array($v)) { sort($v); return $v; } return $v; },
-            'unique' => fn($v) => is_array($v) ? array_unique($v) : $v,
-            'slice' => fn($v, $a) => is_array($v) 
+            'date' => fn ($v, $a, $n) => $v ? date($n['format'] ?? ($a[0] ?? 'Y-m-d'), is_numeric($v) ? (int)$v : strtotime((string)$v)) : '',
+            'default' => fn ($v, $a) => ($v !== null && $v !== '') ? $v : ($a[0] ?? ''),
+            'count' => fn ($v) => is_countable($v) ? count($v) : 0,
+            'join' => fn ($v, $a) => is_array($v) ? implode($a[0] ?? ', ', $v) : $v,
+            'first' => fn ($v) => is_array($v) ? reset($v) : (is_string($v) ? mb_substr($v, 0, 1) : $v),
+            'last' => fn ($v) => is_array($v) ? end($v) : $v,
+            'keys' => fn ($v) => is_array($v) ? array_keys($v) : [],
+            'values' => fn ($v) => is_array($v) ? array_values($v) : [],
+            'number_format' => fn ($v, $a) => number_format((float)$v, (int)($a[0] ?? 0)),
+            'abs' => fn ($v) => abs((float)$v),
+            'round' => fn ($v, $a) => round((float)$v, (int)($a[0] ?? 0)),
+            'floor' => fn ($v) => floor((float)$v),
+            'ceil' => fn ($v) => ceil((float)$v),
+            'length' => fn ($v) => is_array($v) ? count($v) : mb_strlen((string)$v),
+            'reverse' => fn ($v) => is_array($v) ? array_reverse($v) : strrev((string)$v),
+            'sort' => function ($v) {
+                if (is_array($v)) {
+                    sort($v);
+                    return $v;
+                } return $v;
+            },
+            'unique' => fn ($v) => is_array($v) ? array_unique($v) : $v,
+            'slice' => fn ($v, $a) => is_array($v)
                 ? array_slice($v, (int)($a[0] ?? 0), isset($a[1]) ? (int)$a[1] : null)
                 : mb_substr((string)$v, (int)($a[0] ?? 0), isset($a[1]) ? (int)$a[1] : null),
-            'split' => fn($v, $a) => explode($a[0] ?? ',', (string)$v),
-            'replace' => fn($v, $a) => str_replace($a[0] ?? '', $a[1] ?? '', (string)$v),
-            'strip_tags' => fn($v) => strip_tags((string)$v),
-            'url_encode' => fn($v) => urlencode((string)$v),
-            'base64' => fn($v) => base64_encode((string)$v),
-            'md5' => fn($v) => md5((string)$v),
-            'pluralize' => fn($v, $a) => (int)$v === 1 ? ($a[0] ?? '') : ($a[1] ?? (($a[0] ?? '') . 's')),
+            'split' => fn ($v, $a) => explode($a[0] ?? ',', (string)$v),
+            'replace' => fn ($v, $a) => str_replace($a[0] ?? '', $a[1] ?? '', (string)$v),
+            'strip_tags' => fn ($v) => strip_tags((string)$v),
+            'url_encode' => fn ($v) => urlencode((string)$v),
+            'base64' => fn ($v) => base64_encode((string)$v),
+            'md5' => fn ($v) => md5((string)$v),
+            'pluralize' => fn ($v, $a) => (int)$v === 1 ? ($a[0] ?? '') : ($a[1] ?? (($a[0] ?? '') . 's')),
         ];
     }
-    
+
     private function registerDefaultComponents(): void
     {
         // Custom components registered here
     }
-    
+
     private function resolveTemplatePath(string $template): string
     {
         // Guard against empty template names (resolve to .disyl otherwise)

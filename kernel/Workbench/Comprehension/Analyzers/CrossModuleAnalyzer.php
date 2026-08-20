@@ -109,7 +109,7 @@ class CrossModuleAnalyzer
         }
 
         return [
-            'cross_module' => count(array_filter($cascade, fn($c) => $c['severity'] === 'warning' || $c['severity'] === 'error')) > 0,
+            'cross_module' => count(array_filter($cascade, fn ($c) => $c['severity'] === 'warning' || $c['severity'] === 'error')) > 0,
             'cascade' => $cascade,
             'recommendations' => $recommendations,
         ];
@@ -125,10 +125,14 @@ class CrossModuleAnalyzer
         $cascades = [];
 
         foreach ($moduleResults as $moduleId => $results) {
-            if (!is_array($results)) continue;
+            if (!is_array($results)) {
+                continue;
+            }
 
             foreach ($results as $actionId => $analysis) {
-                if (!is_array($analysis)) continue;
+                if (!is_array($analysis)) {
+                    continue;
+                }
                 $breakCategory = $analysis['likely_area'] ?? '';
                 $breakpoint = $analysis['breakpoint'] ?? null;
 
@@ -151,7 +155,9 @@ class CrossModuleAnalyzer
     private function findAction(string $moduleId, string $actionId): mixed
     {
         $provider = $this->providers[$moduleId] ?? null;
-        if (!$provider) return null;
+        if (!$provider) {
+            return null;
+        }
 
         foreach ($provider->actions() as $action) {
             if ($action->id === $actionId) {

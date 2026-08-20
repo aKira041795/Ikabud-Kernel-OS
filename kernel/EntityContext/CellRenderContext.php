@@ -28,5 +28,6 @@ final class CellRenderContext
         public readonly string $view = 'table',
         public readonly string $outputTarget = 'html',
         public readonly array $options = [],
-    ) {}
+    ) {
+    }
 }

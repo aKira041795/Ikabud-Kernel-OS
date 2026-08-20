@@ -50,35 +50,44 @@ final class ModuleGraph
     }
 
     /** @return GraphNode[] */
-    public function nodes(): array { return $this->nodes; }
+    public function nodes(): array
+    {
+        return $this->nodes;
+    }
 
     /** @return GraphEdge[] */
-    public function edges(): array { return $this->edges; }
+    public function edges(): array
+    {
+        return $this->edges;
+    }
 
-    public function node(string $id): ?GraphNode { return $this->nodes[$id] ?? null; }
+    public function node(string $id): ?GraphNode
+    {
+        return $this->nodes[$id] ?? null;
+    }
 
     /** @return GraphNode[] */
     public function nodesOfType(string $type): array
     {
-        return array_filter($this->nodes, fn(GraphNode $n) => $n->type === $type);
+        return array_filter($this->nodes, fn (GraphNode $n) => $n->type === $type);
     }
 
     /** @return GraphNode[] */
     public function orphans(): array
     {
-        return array_filter($this->nodes, fn(GraphNode $n) => empty($n->edgesIn) && empty($n->edgesOut));
+        return array_filter($this->nodes, fn (GraphNode $n) => empty($n->edgesIn) && empty($n->edgesOut));
     }
 
     /** @return GraphNode[] */
     public function deadEnds(): array
     {
-        return array_filter($this->nodes, fn(GraphNode $n) => !empty($n->edgesIn) && empty($n->edgesOut));
+        return array_filter($this->nodes, fn (GraphNode $n) => !empty($n->edgesIn) && empty($n->edgesOut));
     }
 
     /** @return GraphNode[] */
     public function entryPoints(): array
     {
-        return array_filter($this->nodes, fn(GraphNode $n) => empty($n->edgesIn) && !empty($n->edgesOut));
+        return array_filter($this->nodes, fn (GraphNode $n) => empty($n->edgesIn) && !empty($n->edgesOut));
     }
 
     /** @return string[] */
@@ -86,8 +95,12 @@ final class ModuleGraph
     {
         $errors = [];
         foreach ($this->edges as $edge) {
-            if (!isset($this->nodes[$edge->from])) $errors[] = "Missing edge source: {$edge->from}";
-            if (!isset($this->nodes[$edge->to])) $errors[] = "Missing edge target: {$edge->to}";
+            if (!isset($this->nodes[$edge->from])) {
+                $errors[] = "Missing edge source: {$edge->from}";
+            }
+            if (!isset($this->nodes[$edge->to])) {
+                $errors[] = "Missing edge target: {$edge->to}";
+            }
         }
         return $errors;
     }
@@ -98,8 +111,8 @@ final class ModuleGraph
             'schema_version' => '1.0',
             'graph_id' => $graphId,
             'generated_at' => date('c'),
-            'nodes' => array_values(array_map(fn(GraphNode $n) => $n->toArray(), $this->nodes)),
-            'edges' => array_values(array_map(fn(GraphEdge $e) => $e->toArray(), $this->edges)),
+            'nodes' => array_values(array_map(fn (GraphNode $n) => $n->toArray(), $this->nodes)),
+            'edges' => array_values(array_map(fn (GraphEdge $e) => $e->toArray(), $this->edges)),
         ];
     }
 }
@@ -115,9 +128,13 @@ final class GraphNode
         public readonly string $id,
         public string $type,  // entity, route, handler, state, action, capability
         public array $meta = [],
-    ) {}
+    ) {
+    }
 
-    public function isType(string $type): bool { return $this->type === $type; }
+    public function isType(string $type): bool
+    {
+        return $this->type === $type;
+    }
 
     public function merge(string $type, array $meta): void
     {
@@ -150,7 +167,8 @@ final class GraphEdge
         public readonly string $to,
         public readonly string $type,  // calls, triggers, transitions, reads, writes, creates, updates, deletes
         public readonly array $meta = [],
-    ) {}
+    ) {
+    }
 
     public function toArray(): array
     {

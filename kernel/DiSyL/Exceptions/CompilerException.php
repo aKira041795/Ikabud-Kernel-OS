@@ -1,9 +1,10 @@
 <?php
+
 /**
  * DiSyL Compiler Exception
- * 
+ *
  * Thrown when compilation encounters an error
- * 
+ *
  * @version 0.1.0
  */
 
@@ -15,7 +16,7 @@ class CompilerException extends Exception
 {
     private ?string $componentName;
     private ?array $astNode;
-    
+
     /**
      * Constructor
      */
@@ -28,13 +29,13 @@ class CompilerException extends Exception
     ) {
         $this->componentName = $componentName;
         $this->astNode = $astNode;
-        
+
         $fullMessage = $message;
-        
+
         if ($componentName !== null) {
             $fullMessage .= sprintf(' [component: %s]', $componentName);
         }
-        
+
         if ($astNode !== null && isset($astNode['loc'])) {
             $fullMessage .= sprintf(
                 ' at line %d, column %d',
@@ -42,10 +43,10 @@ class CompilerException extends Exception
                 $astNode['loc']['column'] ?? 0
             );
         }
-        
+
         parent::__construct($fullMessage, $code, $previous);
     }
-    
+
     /**
      * Get component name that caused the error
      */
@@ -53,7 +54,7 @@ class CompilerException extends Exception
     {
         return $this->componentName;
     }
-    
+
     /**
      * Get AST node that caused the error
      */

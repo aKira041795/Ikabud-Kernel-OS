@@ -1,16 +1,17 @@
 <?php
+
 /**
  * DiSyL Client-Side Hydration Runtime v1.0.0
- * 
+ *
  * Provides server-side rendering (SSR) with client-side hydration support.
- * 
+ *
  * Features:
  * - Serialize component state for client hydration
  * - Generate hydration markers in HTML
  * - Client-side JavaScript runtime generation
  * - Progressive hydration support
  * - Selective hydration (islands architecture)
- * 
+ *
  * @version 1.0.0
  */
 
@@ -44,8 +45,9 @@ class HydrationData
         public readonly array $state,
         public readonly HydrationStrategy $strategy,
         public readonly array $options = []
-    ) {}
-    
+    ) {
+    }
+
     /**
      * Serialize to JSON for embedding in HTML
      */
@@ -60,7 +62,7 @@ class HydrationData
             'options' => $this->options,
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     }
-    
+
     /**
      * Generate script tag for hydration data
      */
@@ -81,16 +83,16 @@ class HydrationContext
 {
     /** @var array<string, HydrationData> Registered components */
     private array $components = [];
-    
+
     /** @var int Component ID counter */
     private int $idCounter = 0;
-    
+
     /** @var bool Whether hydration is enabled */
     private bool $enabled = true;
-    
+
     /** @var HydrationStrategy Default strategy */
     private HydrationStrategy $defaultStrategy = HydrationStrategy::IMMEDIATE;
-    
+
     /**
      * Generate unique component ID
      */
@@ -98,7 +100,7 @@ class HydrationContext
     {
         return sprintf('disyl-%s-%d', $this->slugify($componentName), ++$this->idCounter);
     }
-    
+
     /**
      * Register a component for hydration
      */
@@ -118,12 +120,12 @@ class HydrationContext
             $strategy ?? $this->defaultStrategy,
             $options
         );
-        
+
         $this->components[$componentId] = $data;
-        
+
         return $data;
     }
-    
+
     /**
      * Get all registered components
      */
@@ -131,7 +133,7 @@ class HydrationContext
     {
         return $this->components;
     }
-    
+
     /**
      * Get component by ID
      */
@@ -139,7 +141,7 @@ class HydrationContext
     {
         return $this->components[$id] ?? null;
     }
-    
+
     /**
      * Set default hydration strategy
      */
@@ -147,7 +149,7 @@ class HydrationContext
     {
         $this->defaultStrategy = $strategy;
     }
-    
+
     /**
      * Enable/disable hydration
      */
@@ -155,7 +157,7 @@ class HydrationContext
     {
         $this->enabled = $enabled;
     }
-    
+
     /**
      * Check if hydration is enabled
      */
@@ -163,7 +165,7 @@ class HydrationContext
     {
         return $this->enabled;
     }
-    
+
     /**
      * Reset context
      */
@@ -172,7 +174,7 @@ class HydrationContext
         $this->components = [];
         $this->idCounter = 0;
     }
-    
+
     /**
      * Generate all hydration scripts
      */
@@ -181,20 +183,20 @@ class HydrationContext
         if (!$this->enabled || empty($this->components)) {
             return '';
         }
-        
+
         $scripts = [];
-        
+
         // Add hydration data for each component
         foreach ($this->components as $data) {
             $scripts[] = $data->toScriptTag();
         }
-        
+
         // Add hydration runtime
         $scripts[] = $this->generateRuntimeScript();
-        
+
         return implode("\n", $scripts);
     }
-    
+
     /**
      * Generate the client-side hydration runtime
      */
@@ -421,7 +423,7 @@ class HydrationContext
 </script>
 JS;
     }
-    
+
     /**
      * Slugify component name for ID
      */
@@ -438,7 +440,7 @@ trait HydrationRendererTrait
 {
     /** @var HydrationContext|null */
     protected ?HydrationContext $hydrationContext = null;
-    
+
     /**
      * Set hydration context
      */
@@ -446,7 +448,7 @@ trait HydrationRendererTrait
     {
         $this->hydrationContext = $context;
     }
-    
+
     /**
      * Get hydration context
      */
@@ -454,7 +456,7 @@ trait HydrationRendererTrait
     {
         return $this->hydrationContext;
     }
-    
+
     /**
      * Wrap component output with hydration markers
      */
@@ -469,9 +471,9 @@ trait HydrationRendererTrait
         if ($this->hydrationContext === null || !$this->hydrationContext->isEnabled()) {
             return $html;
         }
-        
+
         $componentId = $this->hydrationContext->generateId($componentName);
-        
+
         $this->hydrationContext->registerComponent(
             $componentId,
             $componentName,
@@ -480,7 +482,7 @@ trait HydrationRendererTrait
             $strategy,
             $options
         );
-        
+
         // Wrap HTML with hydration marker
         return sprintf(
             '<div data-disyl-id="%s" data-disyl-component="%s">%s</div>',
@@ -489,7 +491,7 @@ trait HydrationRendererTrait
             $html
         );
     }
-    
+
     /**
      * Generate hydration scripts for page footer
      */
@@ -498,7 +500,7 @@ trait HydrationRendererTrait
         if ($this->hydrationContext === null) {
             return '';
         }
-        
+
         return $this->hydrationContext->generateHydrationScripts();
     }
 }
@@ -513,15 +515,15 @@ class ProgressiveHydration
 {
     /** @var array<Island> Islands to hydrate */
     private array $islands = [];
-    
+
     /** @var HydrationContext */
     private HydrationContext $context;
-    
+
     public function __construct(?HydrationContext $context = null)
     {
         $this->context = $context ?? new HydrationContext();
     }
-    
+
     /**
      * Add an island component
      */
@@ -530,7 +532,7 @@ class ProgressiveHydration
         $this->islands[] = $island;
         return $this;
     }
-    
+
     /**
      * Create island with immediate hydration
      */
@@ -540,7 +542,7 @@ class ProgressiveHydration
         $this->islands[] = $island;
         return $island;
     }
-    
+
     /**
      * Create island with idle hydration
      */
@@ -550,7 +552,7 @@ class ProgressiveHydration
         $this->islands[] = $island;
         return $island;
     }
-    
+
     /**
      * Create island with visible hydration
      */
@@ -560,7 +562,7 @@ class ProgressiveHydration
         $this->islands[] = $island;
         return $island;
     }
-    
+
     /**
      * Create island with interaction hydration
      */
@@ -570,7 +572,7 @@ class ProgressiveHydration
         $this->islands[] = $island;
         return $island;
     }
-    
+
     /**
      * Create static island (no hydration)
      */
@@ -580,7 +582,7 @@ class ProgressiveHydration
         $this->islands[] = $island;
         return $island;
     }
-    
+
     /**
      * Get hydration context
      */
@@ -588,7 +590,7 @@ class ProgressiveHydration
     {
         return $this->context;
     }
-    
+
     /**
      * Get all islands
      */

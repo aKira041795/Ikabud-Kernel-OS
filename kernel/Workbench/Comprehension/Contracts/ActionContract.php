@@ -22,7 +22,8 @@ class ActionContract
         public readonly string $method = 'POST',
         public readonly array $requires = [],
         public readonly array $chain = [],
-    ) {}
+    ) {
+    }
 }
 
 /**
@@ -35,5 +36,6 @@ class ChainLink
         public readonly string $description,   // Human-readable
         public readonly string $category,      // 'ui', 'http', 'service', 'db', 'event', 'audit'
         public readonly ?string $probe = null, // How to check: e.g. "SELECT status FROM pal_projects WHERE id=:id"
-    ) {}
+    ) {
+    }
 }

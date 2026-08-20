@@ -29,12 +29,12 @@ final class SyncContractRegistry
             'handler' => $handler,
         ];
     }
-    
+
     public function getContractsForEntity(string $entityType): array
     {
         return $this->contracts[$entityType] ?? [];
     }
-    
+
     public function reset(): void
     {
         $this->contracts = [];

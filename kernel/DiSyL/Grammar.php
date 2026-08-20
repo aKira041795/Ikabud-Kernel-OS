@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL Grammar v4.0.0
  *
@@ -19,7 +20,7 @@ class Grammar
 {
     // ========== Schema Version ==========
     public const SCHEMA_VERSION = '4.0.0';
-    
+
     // ========== Type Constants ==========
     public const TYPE_STRING = 'string';
     public const TYPE_INTEGER = 'integer';
@@ -49,7 +50,7 @@ class Grammar
     public const BRIDGE_ALPINE = 'alpine';
     public const BRIDGE_HTMX = 'htmx';
     public const BRIDGE_CUSTOM = 'custom';
-    
+
     // ========== Declaration Keywords ==========
     public const KEYWORD_VAR = '@var';  // {@var type $name} — variable type declaration (v4.9+)
 
@@ -136,7 +137,7 @@ class Grammar
     public const AI_KEYWORDS = [
         'ai_generate', 'ai_query', 'ai_complete', 'ai_optimize',
     ];
-    
+
     // ========== Component Categories ==========
     public const COMPONENT_CATEGORIES = [
         'structural',
@@ -150,7 +151,7 @@ class Grammar
         'navigation',
         'form',
     ];
-    
+
     // ========== Filter Categories ==========
     public const FILTER_CATEGORY_STRING = 'string';
     public const FILTER_CATEGORY_NUMBER = 'number';
@@ -158,7 +159,7 @@ class Grammar
     public const FILTER_CATEGORY_DATE = 'date';
     public const FILTER_CATEGORY_ESCAPE = 'escape';
     public const FILTER_CATEGORY_FORMAT = 'format';
-    
+
     /**
      * Get all declaration keywords
      */
@@ -213,7 +214,7 @@ class Grammar
     }
 
     // ========== Validation ==========
-    
+
     /**
      * Validate a value against a type. Supports nullable prefix `?`.
      */
@@ -241,7 +242,7 @@ class Grammar
             default => true,
         };
     }
-    
+
     /**
      * Get all valid types
      */
@@ -261,7 +262,7 @@ class Grammar
             self::TYPE_EXPRESSION,
         ];
     }
-    
+
     /**
      * Get all valid platforms
      */
@@ -277,7 +278,7 @@ class Grammar
             self::PLATFORM_STATIC,
         ];
     }
-    
+
     /**
      * Check if platform is valid
      */

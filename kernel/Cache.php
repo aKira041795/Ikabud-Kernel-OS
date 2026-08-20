@@ -1,19 +1,20 @@
 <?php
+
 namespace Ikabud\Kernel;
 
 /**
  * Kernel Cache Layer
- * 
+ *
  * File-based caching for the Ikabud Kernel System.
  * Used for template compilation cache, query results, and general-purpose caching.
- * 
+ *
  * Features:
  * - Atomic writes to prevent race conditions
  * - Compression for large cache entries (>1KB)
  * - APCu integration for faster reads (when available)
  * - LRU eviction when cache is full
  * - Tag-based invalidation
- * 
+ *
  * @version 2.0.0
  */
 class Cache
@@ -27,16 +28,16 @@ class Cache
         'errors' => 0,
         'compressed' => 0
     ];
-    
+
     /** @var int Compression threshold in bytes */
     private const COMPRESSION_THRESHOLD = 1024;
-    
+
     /** @var int Maximum cache size in MB (0 = unlimited) */
     private int $maxCacheSizeMB = 0;
-    
+
     /** @var bool Whether APCu is available */
     private static ?bool $apcuAvailable = null;
-    
+
     /** @var string Stats file path */
     private string $statsFile;
 
@@ -48,24 +49,24 @@ class Cache
 
     /** @var bool Whether routine cache invalidations should be logged */
     private bool $logInvalidations;
-    
+
     public function __construct(?string $cacheDir = null, int $maxCacheSizeMB = 0, bool $logInvalidations = false)
     {
         $this->cacheDir = $cacheDir ?? dirname(__DIR__) . '/storage/cache';
         $this->maxCacheSizeMB = $maxCacheSizeMB;
         $this->logInvalidations = $logInvalidations;
         $this->statsFile = $this->cacheDir . '/.cache_stats.json';
-        
+
         // Ensure cache directory exists
         if (!is_dir($this->cacheDir)) {
             mkdir($this->cacheDir, 0755, true);
         }
-        
+
         // Check APCu availability once
         if (self::$apcuAvailable === null) {
             self::$apcuAvailable = function_exists('apcu_fetch') && apcu_enabled();
         }
-        
+
         // Register shutdown handler to save stats at end of request
         register_shutdown_function([$this, 'saveStats']);
     }
@@ -78,7 +79,7 @@ class Cache
 
         error_log($message);
     }
-    
+
     /**
      * Load persisted stats from file or APCu
      */
@@ -92,7 +93,7 @@ class Cache
                 return;
             }
         }
-        
+
         // Fall back to file
         if (file_exists($this->statsFile)) {
             $data = @file_get_contents($this->statsFile);
@@ -115,7 +116,7 @@ class Cache
 
         $this->loadStats();
     }
-    
+
     /**
      * Persist stats to file and APCu
      * Called automatically on shutdown
@@ -142,11 +143,11 @@ class Cache
         if (self::$apcuAvailable) {
             apcu_store('guidance_cache_stats', $this->stats, 86400); // 24 hours
         }
-        
+
         // Also save to file (persistent across restarts)
         @file_put_contents($this->statsFile, json_encode($this->stats), LOCK_EX);
     }
-    
+
     /**
      * Increment a stat counter
      * Stats are saved on shutdown via register_shutdown_function
@@ -156,7 +157,7 @@ class Cache
         $this->ensureStatsLoaded();
         $this->stats[$key]++;
     }
-    
+
     /**
      * Get cache key for a URI (without instance - just the URI hash)
      */
@@ -167,7 +168,7 @@ class Cache
         // when cache writes happen on GET and invalidation happens on POST/CLI.
         return md5($uri);
     }
-    
+
     /**
      * Get instance cache directory (creates if needed)
      */
@@ -176,7 +177,7 @@ class Cache
         // Sanitize instance ID for filesystem safety
         $safeId = preg_replace('/[^a-zA-Z0-9_-]/', '_', $instanceId);
         $dir = $this->cacheDir . '/' . $safeId;
-        
+
         if (!is_dir($dir)) {
             @mkdir($dir, 0755, true);
         }
@@ -192,10 +193,10 @@ class Cache
                 @mkdir($dir, 0700, true);
             }
         }
-        
+
         return $dir;
     }
-    
+
     /**
      * Get cache file path for an instance and key
      */
@@ -203,7 +204,7 @@ class Cache
     {
         return $this->getInstanceDir($instanceId) . '/' . $key . '.cache';
     }
-    
+
     /**
      * Check if cached response exists and is valid
      */
@@ -211,31 +212,31 @@ class Cache
     {
         $key = $this->getCacheKey($uri);
         $file = $this->getCacheFile($instanceId, $key);
-        
+
         if (!file_exists($file)) {
             return false;
         }
-        
+
         // Check if cache is expired
         $age = time() - filemtime($file);
         if ($age > $this->ttl) {
             @unlink($file);
             return false;
         }
-        
+
         return true;
     }
-    
+
     /**
      * Get cached response
-     * 
+     *
      * Uses multi-tier lookup: APCu (fastest) -> File cache
      */
     public function get(string $instanceId, string $uri): ?array
     {
         $key = $this->getCacheKey($uri);
         $apcuKey = $instanceId . '_' . $key;
-        
+
         // Tier 1: Try APCu first (fastest)
         if (self::$apcuAvailable) {
             $cached = apcu_fetch('cache_' . $apcuKey, $success);
@@ -244,16 +245,16 @@ class Cache
                 return $cached;
             }
         }
-        
+
         // Tier 2: Check file cache
         if (!$this->has($instanceId, $uri)) {
             $this->incrementStat('misses');
             return null;
         }
-        
+
         try {
             $file = $this->getCacheFile($instanceId, $key);
-            
+
             $data = file_get_contents($file);
             if (!$data) {
                 // Corrupted cache file
@@ -261,7 +262,7 @@ class Cache
                 $this->incrementStat('errors');
                 return null;
             }
-            
+
             // Check if data is compressed (starts with GZ:)
             if (strpos($data, 'GZ:') === 0) {
                 $data = @gzuncompress(substr($data, 3));
@@ -272,7 +273,7 @@ class Cache
                 }
                 $this->incrementStat('compressed');
             }
-            
+
             $result = @unserialize($data, ['allowed_classes' => false]);
             if ($result === false && $data !== serialize(false)) {
                 // Unserialize failed - corrupted data
@@ -319,13 +320,13 @@ class Cache
             return null;
         }
     }
-    
+
     /**
      * Store response in cache
-     * 
+     *
      * Uses atomic writes and compression for reliability and performance.
      * Also stores in APCu for faster subsequent reads.
-     * 
+     *
      * @param string $instanceId Instance identifier
      * @param string $uri Cache key/URI
      * @param array $response Data to cache
@@ -338,7 +339,7 @@ class Cache
         $tempFile = $file . '.tmp.' . getmypid();
         $apcuKey = $instanceId . '_' . $key;
         $cacheTtl = $ttl ?? $this->ttl;
-        
+
         try {
             // Check cache size limit before writing
             if ($this->maxCacheSizeMB > 0) {
@@ -352,7 +353,7 @@ class Cache
             $response['_cache_expires_at'] = time() + $cacheTtl;
 
             $data = serialize($response);
-            
+
             // Compress if data is large
             if (strlen($data) > self::COMPRESSION_THRESHOLD) {
                 $compressed = @gzcompress($data, 6);
@@ -360,33 +361,33 @@ class Cache
                     $data = 'GZ:' . $compressed;
                 }
             }
-            
+
             // Atomic write: write to temp file, then rename
             $result = @file_put_contents($tempFile, $data, LOCK_EX);
-            
+
             if ($result === false) {
                 $this->incrementStat('errors');
                 return;
             }
-            
+
             // Atomic rename
             if (!@rename($tempFile, $file)) {
                 @unlink($tempFile);
                 $this->incrementStat('errors');
                 return;
             }
-            
+
             // Also store in APCu for faster reads
             if (self::$apcuAvailable) {
                 apcu_store('cache_' . $apcuKey, $response, $cacheTtl);
             }
-            
+
         } catch (\Exception $e) {
             @unlink($tempFile);
             $this->incrementStat('errors');
         }
     }
-    
+
     /**
      * Enforce cache size limit using LRU eviction
      */
@@ -394,29 +395,29 @@ class Cache
     {
         $maxBytes = $this->maxCacheSizeMB * 1024 * 1024;
         $files = $this->getAllCachedFiles();
-        
+
         // Calculate current size
         $currentSize = array_sum(array_column($files, 'size'));
-        
+
         if ($currentSize <= $maxBytes) {
             return;
         }
-        
+
         // Sort by age (oldest first) for LRU eviction
-        usort($files, fn($a, $b) => $b['age'] - $a['age']);
-        
+        usort($files, fn ($a, $b) => $b['age'] - $a['age']);
+
         // Delete oldest files until under limit
         foreach ($files as $fileInfo) {
             if ($currentSize <= $maxBytes * 0.9) { // Leave 10% headroom
                 break;
             }
-            
+
             if (@unlink($fileInfo['file'])) {
                 $currentSize -= $fileInfo['size'];
             }
         }
     }
-    
+
     /**
      * Store response in cache with tags for granular invalidation
      */
@@ -425,10 +426,10 @@ class Cache
         // Add tags to response metadata
         $response['cache_tags'] = $tags;
         $response['cache_uri'] = $uri;
-        
+
         // Store the cache file
         $this->set($instanceId, $uri, $response, $ttl);
-        
+
         // Create tag index files for quick lookup
         foreach ($tags as $tag) {
             $this->addToTagIndex($instanceId, $tag, $uri);
@@ -455,7 +456,7 @@ class Cache
             return [];
         }
 
-        return array_values(array_filter($uris, static fn($uri): bool => is_string($uri) && $uri !== ''));
+        return array_values(array_filter($uris, static fn ($uri): bool => is_string($uri) && $uri !== ''));
     }
 
     /**
@@ -488,7 +489,7 @@ class Cache
 
         return true;
     }
-    
+
     /**
      * Add URI to tag index for fast tag-based invalidation
      * Tag indexes are stored in the instance directory
@@ -500,14 +501,14 @@ class Cache
 
         // Read existing URIs for this tag
         $uris = $this->readTagIndex($tagFile);
-        
+
         // Add new URI if not already present
         if (!in_array($uri, $uris, true)) {
             $uris[] = $uri;
             $this->writeTagIndex($tagFile, $uris);
         }
     }
-    
+
     /**
      * Clear cache by tag (e.g., 'post-123', 'category-5')
      */
@@ -516,14 +517,14 @@ class Cache
         $cleared = 0;
         $instanceDir = $this->getInstanceDir($instanceId);
         $tagFile = $instanceDir . '/.tag_' . md5($tag) . '.idx';
-        
+
         if (!file_exists($tagFile)) {
             return 0;
         }
-        
+
         // Read URIs associated with this tag
         $uris = $this->readTagIndex($tagFile);
-        
+
         // Clear each cached URI
         foreach ($uris as $uri) {
             $key = $this->getCacheKey($uri);
@@ -537,14 +538,14 @@ class Cache
                 apcu_delete('cache_' . $instanceId . '_' . $key);
             }
         }
-        
+
         // Remove tag index file
         @unlink($tagFile);
-        
+
         $this->logInvalidationNotice("Ikabud Cache: Cleared $cleared files for tag '$tag' in instance $instanceId");
         return $cleared;
     }
-    
+
     /**
      * Clear cache by multiple tags
      */
@@ -556,7 +557,7 @@ class Cache
         }
         return $totalCleared;
     }
-    
+
     /**
      * Clear all cache for a specific instance
      */
@@ -564,7 +565,7 @@ class Cache
     {
         $cleared = 0;
         $instanceDir = $this->getInstanceDir($instanceId);
-        
+
         // Clear all cache files in instance directory
         $files = glob($instanceDir . '/*.cache');
         if ($files) {
@@ -574,7 +575,7 @@ class Cache
                 }
             }
         }
-        
+
         // Clear tag index files
         $tagFiles = glob($instanceDir . '/.tag_*.idx');
         if ($tagFiles) {
@@ -582,7 +583,7 @@ class Cache
                 @unlink($file);
             }
         }
-        
+
         // Clear APCu entries for this instance
         if (self::$apcuAvailable) {
             // APCu doesn't support prefix deletion, but we can iterate
@@ -595,11 +596,11 @@ class Cache
                 }
             }
         }
-        
+
         $this->logInvalidationNotice("Ikabud Cache: Cleared $cleared files for instance $instanceId");
         return $cleared;
     }
-    
+
     /**
      * Clear cache by pattern (alias for clearByUrlPattern for API compatibility)
      */
@@ -607,7 +608,7 @@ class Cache
     {
         return $this->clearByUrlPattern($instanceId, $pattern);
     }
-    
+
     /**
      * Clear cache by URL pattern (e.g., '/blog/*', '/category/*')
      */
@@ -616,39 +617,45 @@ class Cache
         $cleared = 0;
         $instanceDir = $this->getInstanceDir($instanceId);
         $files = glob($instanceDir . '/*.cache');
-        
+
         if (!$files) {
             return 0;
         }
-        
+
         // Convert pattern to regex
         $regex = $this->patternToRegex($urlPattern);
-        
+
         foreach ($files as $file) {
             // Read cache file to get URI
             $data = @file_get_contents($file);
-            if (!$data) continue;
-            
+            if (!$data) {
+                continue;
+            }
+
             // Handle compressed data
             if (strpos($data, 'GZ:') === 0) {
                 $data = @gzuncompress(substr($data, 3));
-                if ($data === false) continue;
+                if ($data === false) {
+                    continue;
+                }
             }
-            
+
             $cached = @unserialize($data, ['allowed_classes' => false]);
-            if (!$cached || !isset($cached['cache_uri'])) continue;
-            
+            if (!$cached || !isset($cached['cache_uri'])) {
+                continue;
+            }
+
             // Check if URI matches pattern
             if (preg_match($regex, $cached['cache_uri'])) {
                 @unlink($file);
                 $cleared++;
             }
         }
-        
+
         $this->logInvalidationNotice("Ikabud Cache: Cleared $cleared files matching pattern '$urlPattern' in instance $instanceId");
         return $cleared;
     }
-    
+
     /**
      * Convert URL pattern to regex
      */
@@ -660,14 +667,14 @@ class Cache
         $pattern = str_replace('\*', '.*', $pattern);
         return '/^' . $pattern . '$/';
     }
-    
+
     /**
      * Clear cache with dependencies (e.g., clear homepage when post updates)
      */
     public function clearWithDependencies(string $instanceId, string $uri, array $dependencies = []): int
     {
         $cleared = 0;
-        
+
         // Clear the main URI
         $key = $this->getCacheKey($uri);
         $file = $this->getCacheFile($instanceId, $key);
@@ -679,7 +686,7 @@ class Cache
                 apcu_delete('cache_' . $instanceId . '_' . $key);
             }
         }
-        
+
         // Clear dependent URIs
         foreach ($dependencies as $depUri) {
             $depKey = $this->getCacheKey($depUri);
@@ -692,10 +699,10 @@ class Cache
                 }
             }
         }
-        
+
         return $cleared;
     }
-    
+
     /**
      * Clear all cache artifacts stored under the cache directory.
      */
@@ -792,7 +799,7 @@ class Cache
 
         return $hasKeepFile;
     }
-    
+
     /**
      * Reset cache statistics
      */
@@ -807,14 +814,14 @@ class Cache
             'errors' => 0,
             'compressed' => 0
         ];
-        
+
         // Clear persisted stats
         if (self::$apcuAvailable) {
             apcu_delete('guidance_cache_stats');
         }
         @unlink($this->statsFile);
     }
-    
+
     /**
      * Check if request should be cached
      */
@@ -825,7 +832,7 @@ class Cache
             $this->incrementStat('bypasses');
             return false;
         }
-        
+
         // Don't cache API endpoints, auth pages, or installer
         $skipPaths = ['/api/', '/login', '/lock.php', '/logout'];
         foreach ($skipPaths as $path) {
@@ -834,7 +841,7 @@ class Cache
                 return false;
             }
         }
-        
+
         // Don't cache if user is authenticated (dynamic content)
         $cookieName = trim((string)($_ENV['APP_COOKIE_NAME'] ?? ''));
         if ($cookieName === '') {
@@ -849,10 +856,10 @@ class Cache
             $this->incrementStat('bypasses');
             return false;
         }
-        
+
         return true;
     }
-    
+
     /**
      * Set cache TTL
      */
@@ -860,14 +867,14 @@ class Cache
     {
         $this->ttl = $seconds;
     }
-    
+
     /**
      * Get all cached files with metadata (across all instances)
      */
     private function getAllCachedFiles(): array
     {
         $files = [];
-        
+
         // Get files from all instance directories
         $dirs = glob($this->cacheDir . '/*', GLOB_ONLYDIR);
         if ($dirs) {
@@ -886,7 +893,7 @@ class Cache
                 }
             }
         }
-        
+
         // Also check for legacy flat files
         $legacyFiles = glob($this->cacheDir . '/*.cache');
         if ($legacyFiles) {
@@ -900,10 +907,10 @@ class Cache
                 ];
             }
         }
-        
+
         return $files;
     }
-    
+
     /**
      * Get cache statistics (scans actual cache files)
      */
@@ -913,13 +920,13 @@ class Cache
         $files = $this->getAllCachedFiles();
         $totalFiles = count($files);
         $totalSize = array_sum(array_column($files, 'size'));
-        $expiredFiles = count(array_filter($files, fn($f) => $f['expired']));
+        $expiredFiles = count(array_filter($files, fn ($f) => $f['expired']));
         $activeFiles = $totalFiles - $expiredFiles;
-        
+
         // Calculate hit rate from in-memory stats
         $total = $this->stats['hits'] + $this->stats['misses'] + $this->stats['bypasses'];
         $hitRate = $total > 0 ? round(($this->stats['hits'] / $total) * 100, 2) : 0;
-        
+
         $stats = [
             'hits' => $this->stats['hits'],
             'misses' => $this->stats['misses'],
@@ -936,17 +943,17 @@ class Cache
             'max_size_mb' => $this->maxCacheSizeMB,
             'apcu_available' => self::$apcuAvailable ?? false,
         ];
-        
+
         // Add APCu stats if available
         if (self::$apcuAvailable) {
             $apcuInfo = apcu_cache_info(true);
             $stats['apcu_entries'] = $apcuInfo['num_entries'] ?? 0;
             $stats['apcu_memory_bytes'] = $apcuInfo['mem_size'] ?? 0;
         }
-        
+
         return $stats;
     }
-    
+
     /**
      * Get cache size for instance
      */
@@ -956,20 +963,20 @@ class Cache
         $files = glob($instanceDir . '/*.cache');
         $totalSize = 0;
         $fileCount = $files ? count($files) : 0;
-        
+
         if ($files) {
             foreach ($files as $file) {
                 $totalSize += filesize($file);
             }
         }
-        
+
         return [
             'files' => $fileCount,
             'size_bytes' => $totalSize,
             'size_mb' => round($totalSize / 1024 / 1024, 2)
         ];
     }
-    
+
     /**
      * List all cached instances
      */
@@ -977,17 +984,17 @@ class Cache
     {
         $instances = [];
         $dirs = glob($this->cacheDir . '/*', GLOB_ONLYDIR);
-        
+
         if ($dirs) {
             foreach ($dirs as $dir) {
                 $instanceId = basename($dir);
                 $instances[$instanceId] = $this->getSize($instanceId);
             }
         }
-        
+
         return $instances;
     }
-    
+
     /**
      * Warm cache by pre-generating pages
      */

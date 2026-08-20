@@ -55,7 +55,9 @@ final class Subtype
         // Union on the source: every member must assign.
         if ($source instanceof UnionType) {
             foreach ($source->members as $m) {
-                if (!self::assignable($m, $target, $env, $depth + 1)) return false;
+                if (!self::assignable($m, $target, $env, $depth + 1)) {
+                    return false;
+                }
             }
             return true;
         }
@@ -63,7 +65,9 @@ final class Subtype
         // Union on the target: at least one member must accept.
         if ($target instanceof UnionType) {
             foreach ($target->members as $m) {
-                if (self::assignable($source, $m, $env, $depth + 1)) return true;
+                if (self::assignable($source, $m, $env, $depth + 1)) {
+                    return true;
+                }
             }
             return false;
         }
@@ -101,7 +105,9 @@ final class Subtype
             foreach ($target->properties as $name => $tspec) {
                 $sspec = $source->properties[$name] ?? null;
                 if ($sspec === null) {
-                    if ($tspec['optional']) continue;
+                    if ($tspec['optional']) {
+                        continue;
+                    }
                     return false;
                 }
                 if (!self::assignable($sspec['type'], $tspec['type'], $env, $depth + 1)) {
@@ -122,8 +128,12 @@ final class Subtype
      */
     public static function resolve(TypeNode $node, array $env, int $depth = 0): TypeNode
     {
-        if ($depth > self::RECURSION_LIMIT) return $node;
-        if (!$node instanceof TypeRef) return $node;
+        if ($depth > self::RECURSION_LIMIT) {
+            return $node;
+        }
+        if (!$node instanceof TypeRef) {
+            return $node;
+        }
         $resolved = UtilityTypes::apply($node, $env, $depth + 1);
         if ($resolved !== null) {
             return self::resolve($resolved, $env, $depth + 1);

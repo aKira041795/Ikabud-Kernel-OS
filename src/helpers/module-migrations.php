@@ -753,7 +753,7 @@ function tenantApplySqlArtifact(PDO $db, string $moduleId, string $artifactName,
     // `SELECT 1` executed through PDO::exec() leaves MySQL unbuffered and makes
     // the next migration statement fail with error 2014.
     $sql = preg_replace("/(['\"])SELECT\\s+1\\1/i", '$1DO 0$1', $sql) ?? $sql;
-    $statements = array_filter(array_map('trim', explode(';', $sql)), static fn(string $statement): bool => $statement !== '');
+    $statements = array_filter(array_map('trim', explode(';', $sql)), static fn (string $statement): bool => $statement !== '');
     foreach ($statements as $statement) {
         try {
             $db->exec($statement);

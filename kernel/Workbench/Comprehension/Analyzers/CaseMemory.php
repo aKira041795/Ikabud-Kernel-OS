@@ -149,7 +149,7 @@ class CaseMemory
         }
 
         // Sort by similarity descending
-        usort($candidates, fn($a, $b) => $b['similarity'] <=> $a['similarity']);
+        usort($candidates, fn ($a, $b) => $b['similarity'] <=> $a['similarity']);
 
         return array_slice($candidates, 0, $maxResults);
     }
@@ -162,7 +162,7 @@ class CaseMemory
     public function listByModule(string $moduleId): array
     {
         $index = $this->getIndex();
-        return array_values(array_filter($index, fn($e) => $e['module_id'] === $moduleId));
+        return array_values(array_filter($index, fn ($e) => $e['module_id'] === $moduleId));
     }
 
     /**
@@ -284,7 +284,7 @@ class CaseMemory
             $index = $this->loadIndexForWriteUnlocked();
 
             // Remove existing entry with same ID
-            $index = array_values(array_filter($index, fn($e) => ($e['id'] ?? '') !== $entry->id));
+            $index = array_values(array_filter($index, fn ($e) => ($e['id'] ?? '') !== $entry->id));
 
             $index[] = [
                 'id' => $entry->id,
@@ -297,7 +297,7 @@ class CaseMemory
 
             // Trim to max
             if (count($index) > self::MAX_CASES) {
-                usort($index, fn($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+                usort($index, fn ($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
                 $index = array_slice($index, 0, self::MAX_CASES);
             }
 
@@ -366,7 +366,9 @@ class CaseMemory
         $this->indexCache = [];
         $files = glob($this->storagePath . '/*.json') ?: [];
         foreach ($files as $file) {
-            if (basename($file) === 'index.json' || basename($file) === 'index.lock') continue;
+            if (basename($file) === 'index.json' || basename($file) === 'index.lock') {
+                continue;
+            }
             $data = json_decode((string)file_get_contents($file), true);
             if (is_array($data) && isset($data['id'])) {
                 $this->indexCache[] = [
@@ -382,7 +384,7 @@ class CaseMemory
 
         // Trim to max
         if (count($this->indexCache) > self::MAX_CASES) {
-            usort($this->indexCache, fn($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
+            usort($this->indexCache, fn ($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
             $this->indexCache = array_slice($this->indexCache, 0, self::MAX_CASES);
         }
 

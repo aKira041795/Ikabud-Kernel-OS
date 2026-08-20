@@ -6,7 +6,9 @@ namespace Ikabud\Kernel\Workbench\Contracts;
 
 final class WorkbenchContractService
 {
-    public function __construct(private readonly string $projectRoot) {}
+    public function __construct(private readonly string $projectRoot)
+    {
+    }
 
     /** @return array<string,mixed> */
     public function initialize(string $moduleId, bool $force = false): array
@@ -65,9 +67,15 @@ final class WorkbenchContractService
 
             if (!$envReady) {
                 $missing = [];
-                if ($baseUrl === '') $missing[] = 'base_url (--url or TEST_BASE_URL)';
-                if ($adminUser === '') $missing[] = 'admin_user (--user or TEST_ADMIN_USER)';
-                if ($adminPass === '') $missing[] = 'admin_pass (--pass or TEST_ADMIN_PASS)';
+                if ($baseUrl === '') {
+                    $missing[] = 'base_url (--url or TEST_BASE_URL)';
+                }
+                if ($adminUser === '') {
+                    $missing[] = 'admin_user (--user or TEST_ADMIN_USER)';
+                }
+                if ($adminPass === '') {
+                    $missing[] = 'admin_pass (--pass or TEST_ADMIN_PASS)';
+                }
                 $report['warnings'][] = [
                     'code' => 'env-not-ready',
                     'message' => 'Browser tests unavailable — missing: ' . implode(', ', $missing),
@@ -163,12 +171,12 @@ final class WorkbenchContractService
 
             $hasFailure = count(array_filter(
                 $report['executions'],
-                static fn(array $execution): bool =>
+                static fn (array $execution): bool =>
                     $execution['exit_code'] !== 0 || $execution['timed_out']
             )) > 0;
             $hasTimeout = count(array_filter(
                 $report['executions'],
-                static fn(array $execution): bool =>
+                static fn (array $execution): bool =>
                     !empty($execution['timed_out'])
             )) > 0;
             if ($hasFailure) {

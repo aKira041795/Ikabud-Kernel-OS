@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL Grammar — TRULY PLANNED future features
  *

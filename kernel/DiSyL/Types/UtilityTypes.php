@@ -44,7 +44,9 @@ final class UtilityTypes
     private static function partial(TypeRef $ref, array $env, int $depth): ?TypeNode
     {
         $obj = self::firstObjectArg($ref, $env, $depth);
-        if ($obj === null) return null;
+        if ($obj === null) {
+            return null;
+        }
         $props = [];
         foreach ($obj->properties as $name => $spec) {
             $props[$name] = ['type' => $spec['type'], 'optional' => true, 'readonly' => $spec['readonly']];
@@ -56,7 +58,9 @@ final class UtilityTypes
     private static function required(TypeRef $ref, array $env, int $depth): ?TypeNode
     {
         $obj = self::firstObjectArg($ref, $env, $depth);
-        if ($obj === null) return null;
+        if ($obj === null) {
+            return null;
+        }
         $props = [];
         foreach ($obj->properties as $name => $spec) {
             $props[$name] = ['type' => $spec['type'], 'optional' => false, 'readonly' => $spec['readonly']];
@@ -68,7 +72,9 @@ final class UtilityTypes
     private static function readonly(TypeRef $ref, array $env, int $depth): ?TypeNode
     {
         $obj = self::firstObjectArg($ref, $env, $depth);
-        if ($obj === null) return null;
+        if ($obj === null) {
+            return null;
+        }
         $props = [];
         foreach ($obj->properties as $name => $spec) {
             $props[$name] = ['type' => $spec['type'], 'optional' => $spec['optional'], 'readonly' => true];
@@ -79,9 +85,13 @@ final class UtilityTypes
     /** @param array<string, TypeNode> $env */
     private static function pick(TypeRef $ref, array $env, int $depth): ?TypeNode
     {
-        if (count($ref->args) !== 2) return null;
+        if (count($ref->args) !== 2) {
+            return null;
+        }
         $obj = self::asObject(Subtype::resolve($ref->args[0], $env, $depth), $env, $depth);
-        if ($obj === null) return null;
+        if ($obj === null) {
+            return null;
+        }
         $keys = self::collectStringLiterals($ref->args[1]);
         $props = [];
         foreach ($obj->properties as $name => $spec) {
@@ -95,9 +105,13 @@ final class UtilityTypes
     /** @param array<string, TypeNode> $env */
     private static function omit(TypeRef $ref, array $env, int $depth): ?TypeNode
     {
-        if (count($ref->args) !== 2) return null;
+        if (count($ref->args) !== 2) {
+            return null;
+        }
         $obj = self::asObject(Subtype::resolve($ref->args[0], $env, $depth), $env, $depth);
-        if ($obj === null) return null;
+        if ($obj === null) {
+            return null;
+        }
         $keys = self::collectStringLiterals($ref->args[1]);
         $props = [];
         foreach ($obj->properties as $name => $spec) {
@@ -111,25 +125,33 @@ final class UtilityTypes
     /** @param array<string, TypeNode> $env */
     private static function firstObjectArg(TypeRef $ref, array $env, int $depth): ?ObjectType
     {
-        if (count($ref->args) !== 1) return null;
+        if (count($ref->args) !== 1) {
+            return null;
+        }
         return self::asObject(Subtype::resolve($ref->args[0], $env, $depth), $env, $depth);
     }
 
     /** @param array<string, TypeNode> $env */
     private static function asObject(TypeNode $node, array $env, int $depth): ?ObjectType
     {
-        if ($node instanceof ObjectType) return $node;
+        if ($node instanceof ObjectType) {
+            return $node;
+        }
         return null;
     }
 
     /** @return list<string> */
     private static function collectStringLiterals(TypeNode $node): array
     {
-        if ($node instanceof LiteralType && is_string($node->value)) return [$node->value];
+        if ($node instanceof LiteralType && is_string($node->value)) {
+            return [$node->value];
+        }
         if ($node instanceof UnionType) {
             $out = [];
             foreach ($node->members as $m) {
-                if ($m instanceof LiteralType && is_string($m->value)) $out[] = $m->value;
+                if ($m instanceof LiteralType && is_string($m->value)) {
+                    $out[] = $m->value;
+                }
             }
             return $out;
         }

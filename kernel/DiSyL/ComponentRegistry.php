@@ -1,13 +1,14 @@
 <?php
+
 /**
  * DiSyL Component Registry v0.2.0
- * 
+ *
  * Manages component definitions and schemas for DiSyL v1.2.0
  * Aligned with Grammar v1.2.0 for:
  * - Platform compatibility
  * - Slot definitions
  * - Rich prop schemas
- * 
+ *
  * @version 1.0.0
  */
 
@@ -28,15 +29,15 @@ class ComponentRegistry
     public const CATEGORY_INTERACTIVE = 'interactive';
     public const CATEGORY_NAVIGATION = 'navigation';
     public const CATEGORY_FORM = 'form';
-    
+
     /**
      * Registered components
      */
     private static array $components = [];
-    
+
     /**
      * Register a component
-     * 
+     *
      * @param string $name Component name (e.g., 'ikb_section')
      * @param array $definition Component definition
      */
@@ -54,10 +55,10 @@ class ComponentRegistry
             'version' => '1.0.0',
         ], $definition);
     }
-    
+
     /**
      * Get component definition
-     * 
+     *
      * @param string $name Component name
      * @return array|null Component definition or null if not found
      */
@@ -65,10 +66,10 @@ class ComponentRegistry
     {
         return self::$components[$name] ?? null;
     }
-    
+
     /**
      * Check if component exists
-     * 
+     *
      * @param string $name Component name
      * @return bool True if component is registered
      */
@@ -76,20 +77,20 @@ class ComponentRegistry
     {
         return isset(self::$components[$name]);
     }
-    
+
     /**
      * Get all registered components
-     * 
+     *
      * @return array All components
      */
     public static function all(): array
     {
         return self::$components;
     }
-    
+
     /**
      * Get components by category
-     * 
+     *
      * @param string $category Category name
      * @return array Components in category
      */
@@ -97,13 +98,13 @@ class ComponentRegistry
     {
         return array_filter(
             self::$components,
-            fn($component) => $component['category'] === $category
+            fn ($component) => $component['category'] === $category
         );
     }
-    
+
     /**
      * Get component attribute schemas
-     * 
+     *
      * @param string $name Component name
      * @return array Attribute schemas
      */
@@ -112,7 +113,7 @@ class ComponentRegistry
         $component = self::get($name);
         return $component ? $component['attributes'] : [];
     }
-    
+
     /**
      * Clear all registered components (for testing)
      */
@@ -120,10 +121,10 @@ class ComponentRegistry
     {
         self::$components = [];
     }
-    
+
     /**
      * List all components (for Visual Builder)
-     * 
+     *
      * @param string|null $platform Filter by platform
      * @param string|null $category Filter by category
      * @return array Component list with metadata
@@ -131,13 +132,13 @@ class ComponentRegistry
     public static function list(?string $platform = null, ?string $category = null): array
     {
         $result = [];
-        
+
         foreach (self::$components as $name => $def) {
             // Filter by category
             if ($category !== null && ($def['category'] ?? '') !== $category) {
                 continue;
             }
-            
+
             // Filter by platform
             if ($platform !== null && isset($def['platforms'])) {
                 $platforms = $def['platforms'];
@@ -146,7 +147,7 @@ class ComponentRegistry
                     continue;
                 }
             }
-            
+
             $result[] = [
                 'name' => $name,
                 'category' => $def['category'] ?? 'ui',
@@ -156,13 +157,13 @@ class ComponentRegistry
                 'version' => $def['version'] ?? '1.0.0',
             ];
         }
-        
+
         return $result;
     }
-    
+
     /**
      * Get component slots
-     * 
+     *
      * @param string $name Component name
      * @return array Slot definitions
      */
@@ -171,10 +172,10 @@ class ComponentRegistry
         $component = self::get($name);
         return $component ? ($component['slots'] ?? []) : [];
     }
-    
+
     /**
      * Check if component supports platform
-     * 
+     *
      * @param string $name Component name
      * @param string $platform Platform identifier
      * @return bool
@@ -185,12 +186,12 @@ class ComponentRegistry
         if (!$component) {
             return false;
         }
-        
+
         $platforms = $component['platforms'] ?? [Grammar::PLATFORM_UNIVERSAL];
         return in_array(Grammar::PLATFORM_UNIVERSAL, $platforms, true) ||
                in_array($platform, $platforms, true);
     }
-    
+
     /**
      * Validate all registered component definitions for common issues.
      *
@@ -326,7 +327,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // Structural: ikb_block
         self::register('ikb_block', [
             'category' => self::CATEGORY_STRUCTURAL,
@@ -383,7 +384,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // Structural: ikb_container
         self::register('ikb_container', [
             'category' => self::CATEGORY_STRUCTURAL,
@@ -403,7 +404,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // Structural: ikb_region (governed theme region)
         self::register('ikb_region', [
             'category' => self::CATEGORY_STRUCTURAL,
@@ -436,7 +437,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // Data: ikb_query
         self::register('ikb_query', [
             'category' => self::CATEGORY_DATA,
@@ -507,7 +508,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // UI: ikb_card
         self::register('ikb_card', [
             'category' => self::CATEGORY_UI,
@@ -537,7 +538,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // UI: ikb_image
         self::register('ikb_image', [
             'category' => self::CATEGORY_MEDIA,
@@ -578,7 +579,7 @@ class ComponentRegistry
             ],
             'leaf' => true
         ]);
-        
+
         // UI: ikb_text
         self::register('ikb_text', [
             'category' => self::CATEGORY_UI,
@@ -1063,7 +1064,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // Control: for
         self::register('for', [
             'category' => self::CATEGORY_CONTROL,
@@ -1082,7 +1083,7 @@ class ComponentRegistry
             ],
             'leaf' => false
         ]);
-        
+
         // Control: include
         self::register('include', [
             'category' => self::CATEGORY_CONTROL,

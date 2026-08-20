@@ -102,24 +102,47 @@ final class TypeChecker
         $i = 0;
         while ($i < $len) {
             $ch = $body[$i];
-            if ($ch === "\n") { $line++; $i++; continue; }
-            if ($ch !== '{') { $i++; continue; }
+            if ($ch === "\n") {
+                $line++;
+                $i++;
+                continue;
+            }
+            if ($ch !== '{') {
+                $i++;
+                continue;
+            }
 
             // Find tag end at the same nesting depth (no nesting in DiSyL tags).
             $end = strpos($body, '}', $i + 1);
-            if ($end === false) break;
+            if ($end === false) {
+                break;
+            }
             $raw = substr($body, $i + 1, $end - $i - 1);
             $i = $end + 1;
             $rawTrimmed = ltrim($raw);
 
             // Skip comments / verbatim / literal
-            if ($rawTrimmed === '' || $rawTrimmed[0] === '*' || $rawTrimmed[0] === '!' || $rawTrimmed[0] === '#') continue;
-            if (str_starts_with($rawTrimmed, '/')) continue;
-            if (str_starts_with($rawTrimmed, 'verbatim') || str_starts_with($rawTrimmed, 'literal')) continue;
-            if (str_starts_with($rawTrimmed, 'include') || str_starts_with($rawTrimmed, 'extends')) continue;
-            if (str_starts_with($rawTrimmed, 'block') || str_starts_with($rawTrimmed, 'slot')) continue;
-            if (str_starts_with($rawTrimmed, 'set ') || str_starts_with($rawTrimmed, 'set\t')) continue;
-            if (str_starts_with($rawTrimmed, 'trans ') || str_starts_with($rawTrimmed, 'when ') || $rawTrimmed === 'when' || $rawTrimmed === 'default') continue;
+            if ($rawTrimmed === '' || $rawTrimmed[0] === '*' || $rawTrimmed[0] === '!' || $rawTrimmed[0] === '#') {
+                continue;
+            }
+            if (str_starts_with($rawTrimmed, '/')) {
+                continue;
+            }
+            if (str_starts_with($rawTrimmed, 'verbatim') || str_starts_with($rawTrimmed, 'literal')) {
+                continue;
+            }
+            if (str_starts_with($rawTrimmed, 'include') || str_starts_with($rawTrimmed, 'extends')) {
+                continue;
+            }
+            if (str_starts_with($rawTrimmed, 'block') || str_starts_with($rawTrimmed, 'slot')) {
+                continue;
+            }
+            if (str_starts_with($rawTrimmed, 'set ') || str_starts_with($rawTrimmed, 'set\t')) {
+                continue;
+            }
+            if (str_starts_with($rawTrimmed, 'trans ') || str_starts_with($rawTrimmed, 'when ') || $rawTrimmed === 'when' || $rawTrimmed === 'default') {
+                continue;
+            }
 
             // Strip filter chain (`expr | filter`) — only check the head expr.
             $expr = $rawTrimmed;
@@ -153,14 +176,22 @@ final class TypeChecker
             }
 
             // Ignore literals, assignments, calls — only check dotted-path references.
-            if ($expr === '' || ctype_digit($expr[0]) || $expr[0] === "'" || $expr[0] === '"') continue;
-            if (str_contains($expr, '(') || str_contains($expr, '=')) continue;
+            if ($expr === '' || ctype_digit($expr[0]) || $expr[0] === "'" || $expr[0] === '"') {
+                continue;
+            }
+            if (str_contains($expr, '(') || str_contains($expr, '=')) {
+                continue;
+            }
 
             $paths = $this->extractDottedPaths($expr);
             foreach ($paths as $path) {
                 $head = $path[0];
-                if (in_array($head, $locals, true)) continue;
-                if (in_array($head, ['true', 'false', 'null', 'loop'], true)) continue;
+                if (in_array($head, $locals, true)) {
+                    continue;
+                }
+                if (in_array($head, ['true', 'false', 'null', 'loop'], true)) {
+                    continue;
+                }
                 $this->checkPath($path, $line);
             }
         }
@@ -173,14 +204,24 @@ final class TypeChecker
     {
         $locals = [];
         if (preg_match_all('/\{for\s+(\w+)\s+in\s+/', $body, $m)) {
-            foreach ($m[1] as $name) $locals[] = $name;
+            foreach ($m[1] as $name) {
+                $locals[] = $name;
+            }
         }
         if (preg_match_all('/\{foreach\s+\S.*?\s+as\s+(?:(\w+)\s*=>\s*)?(\w+)\s*\}/', $body, $m)) {
-            foreach ($m[1] as $k) if ($k !== '') $locals[] = $k;
-            foreach ($m[2] as $v) $locals[] = $v;
+            foreach ($m[1] as $k) {
+                if ($k !== '') {
+                    $locals[] = $k;
+                }
+            }
+            foreach ($m[2] as $v) {
+                $locals[] = $v;
+            }
         }
         if (preg_match_all('/\{set\s+(\w+)\s*=/', $body, $m)) {
-            foreach ($m[1] as $name) $locals[] = $name;
+            foreach ($m[1] as $name) {
+                $locals[] = $name;
+            }
         }
         return array_values(array_unique($locals));
     }
@@ -201,7 +242,10 @@ final class TypeChecker
             if ($ch === "'" || $ch === '"') {
                 $i++;
                 while ($i < $len && $expr[$i] !== $ch) {
-                    if ($expr[$i] === '\\' && $i + 1 < $len) { $i += 2; continue; }
+                    if ($expr[$i] === '\\' && $i + 1 < $len) {
+                        $i += 2;
+                        continue;
+                    }
                     $i++;
                 }
                 $i++;
@@ -209,11 +253,15 @@ final class TypeChecker
             }
             if (ctype_alpha($ch) || $ch === '_') {
                 $start = $i;
-                while ($i < $len && (ctype_alnum($expr[$i]) || $expr[$i] === '_' || $expr[$i] === '.')) $i++;
+                while ($i < $len && (ctype_alnum($expr[$i]) || $expr[$i] === '_' || $expr[$i] === '.')) {
+                    $i++;
+                }
                 $raw = substr($expr, $start, $i - $start);
                 $segs = explode('.', $raw);
-                $segs = array_values(array_filter($segs, static fn(string $s) => $s !== ''));
-                if ($segs !== []) $paths[] = $segs;
+                $segs = array_values(array_filter($segs, static fn (string $s) => $s !== ''));
+                if ($segs !== []) {
+                    $paths[] = $segs;
+                }
                 continue;
             }
             $i++;
@@ -226,7 +274,9 @@ final class TypeChecker
      */
     private function checkPath(array $path, int $line): void
     {
-        if ($this->contextType === null) return;
+        if ($this->contextType === null) {
+            return;
+        }
         $current = Subtype::resolve($this->contextType, $this->env);
         $consumed = [];
         foreach ($path as $segment) {
@@ -270,15 +320,23 @@ final class TypeChecker
         $depth = 0;
         for ($i = 0; $i < $len; $i++) {
             $c = $expr[$i];
-            if ($c === '(') $depth++;
-            elseif ($c === ')') $depth--;
-            elseif ($c === '|' && $depth === 0) {
-                if ($i + 1 < $len && $expr[$i + 1] === '|') { $i++; continue; }
+            if ($c === '(') {
+                $depth++;
+            } elseif ($c === ')') {
+                $depth--;
+            } elseif ($c === '|' && $depth === 0) {
+                if ($i + 1 < $len && $expr[$i + 1] === '|') {
+                    $i++;
+                    continue;
+                }
                 return $i;
             } elseif ($c === "'" || $c === '"') {
                 $i++;
                 while ($i < $len && $expr[$i] !== $c) {
-                    if ($expr[$i] === '\\' && $i + 1 < $len) { $i += 2; continue; }
+                    if ($expr[$i] === '\\' && $i + 1 < $len) {
+                        $i += 2;
+                        continue;
+                    }
                     $i++;
                 }
             }

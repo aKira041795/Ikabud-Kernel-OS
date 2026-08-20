@@ -69,17 +69,31 @@ final class Sandbox
         $this->auditRoot = $auditRoot
             ?? (defined('STORAGE_PATH') ? STORAGE_PATH : __DIR__ . '/../../../storage')
                 . '/cache/disyl-sandbox';
-        if (!is_dir($this->auditRoot)) @mkdir($this->auditRoot, 0750, true);
+        if (!is_dir($this->auditRoot)) {
+            @mkdir($this->auditRoot, 0750, true);
+        }
     }
 
-    public function setStrict(bool $strict): void { $this->strict = $strict; }
+    public function setStrict(bool $strict): void
+    {
+        $this->strict = $strict;
+    }
 
     /** @param array<string,mixed> $ctx */
-    public function setAuditContext(array $ctx): void { $this->auditContext = $ctx; }
+    public function setAuditContext(array $ctx): void
+    {
+        $this->auditContext = $ctx;
+    }
 
-    public function current(): CapabilitySet { return $this->stack[count($this->stack) - 1]; }
+    public function current(): CapabilitySet
+    {
+        return $this->stack[count($this->stack) - 1];
+    }
 
-    public function depth(): int { return count($this->stack); }
+    public function depth(): int
+    {
+        return count($this->stack);
+    }
 
     /** @param list<string> $deny @param list<string> $allow */
     public function pushSandbox(array $deny, array $allow = [], bool $policyStrict = false, float $cpuLimitS = 0, int $memLimitBytes = 0): void
@@ -128,7 +142,9 @@ final class Sandbox
         // since untrusted forces strict and child frames can't widen, an
         // untrusted region remains effectively in force until that frame pops.
         // Conservative recovery: only clear when we return to base.
-        if (count($this->stack) === 1) $this->untrustedActive = false;
+        if (count($this->stack) === 1) {
+            $this->untrustedActive = false;
+        }
 
         // ── 4.4.1: check resource limits on sandbox exit ──────────
         if ($this->resourceStack !== []) {
@@ -165,7 +181,9 @@ final class Sandbox
      */
     public function require(string $tag, string $op, string $sample = ''): bool
     {
-        if ($this->current()->allows($tag)) return true;
+        if ($this->current()->allows($tag)) {
+            return true;
+        }
         $this->record('SANDBOX_DENIED', $tag, $op, $sample);
         if ($this->strict) {
             throw new SandboxViolation("Sandbox denied: $tag ($op)");
@@ -189,7 +207,9 @@ final class Sandbox
         if (is_file($f)) {
             $raw = @file_get_contents($f);
             $decoded = is_string($raw) ? json_decode($raw, true) : null;
-            if (is_array($decoded)) $rows = $decoded;
+            if (is_array($decoded)) {
+                $rows = $decoded;
+            }
         }
         $rows[] = $row;
         @file_put_contents($f, json_encode($rows), LOCK_EX);
@@ -203,8 +223,12 @@ final class Sandbox
      */
     private function rotateAuditLogIfNeeded(string $f): void
     {
-        if (!is_file($f)) return;
-        if (filesize($f) < self::MAX_AUDIT_BYTES) return;
+        if (!is_file($f)) {
+            return;
+        }
+        if (filesize($f) < self::MAX_AUDIT_BYTES) {
+            return;
+        }
 
         $rotated = $this->auditRoot . '/violations-' . date('Ymd') . '.json';
         if (is_file($rotated)) {
@@ -221,7 +245,9 @@ final class Sandbox
     private function pruneOldAuditLogs(): void
     {
         $cutoff = strtotime('-' . self::AUDIT_RETENTION_DAYS . ' days');
-        if ($cutoff === false) return;
+        if ($cutoff === false) {
+            return;
+        }
         foreach (glob($this->auditRoot . '/violations-*.json') ?: [] as $file) {
             if (preg_match('/violations-(\d{8})\.json$/', $file, $m)) {
                 $ts = strtotime($m[1]);
@@ -246,7 +272,9 @@ final class Sandbox
     public function readViolations(): array
     {
         $f = $this->auditRoot . '/violations.json';
-        if (!is_file($f)) return [];
+        if (!is_file($f)) {
+            return [];
+        }
         $raw = @file_get_contents($f);
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
         return is_array($decoded) ? $decoded : [];

@@ -158,7 +158,9 @@ class LocaleResolver
 
     private function isActive(string $locale): bool
     {
-        if (!$this->isValid($locale)) return false;
+        if (!$this->isValid($locale)) {
+            return false;
+        }
         try {
             $db = app()->db();
             $stmt = $db->prepare("SELECT 1 FROM kernel_locales WHERE code = :c AND is_active = 1 LIMIT 1");

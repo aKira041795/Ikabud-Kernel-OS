@@ -32,7 +32,9 @@ final class Catalog
     /** @var array<string, array<string, mixed>> */
     private static array $cache = [];
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     /**
      * Resolve a translation. Returns null when the key is unknown so the

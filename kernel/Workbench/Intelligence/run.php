@@ -2,12 +2,17 @@
 
 declare(strict_types=1);
 
-if (PHP_SAPI !== 'cli') exit(1);
+if (PHP_SAPI !== 'cli') {
+    exit(1);
+}
 
 $base = dirname(__DIR__, 3);
 $runId = $argv[1] ?? '';
 $module = $argv[2] ?? 'unknown';
-if ($runId === '') { fwrite(STDERR, "Usage: run.php <run-id> <module>\n"); exit(1); }
+if ($runId === '') {
+    fwrite(STDERR, "Usage: run.php <run-id> <module>\n");
+    exit(1);
+}
 
 require_once $base . '/bootstrap.php';
 require_once $base . '/src/helpers/module-manager.php';
@@ -22,7 +27,9 @@ use Ikabud\Kernel\Workbench\Intelligence\ClaimContract;
 use Ikabud\Kernel\Workbench\Intelligence\PatternIntelligenceEngine;
 
 $read = static function (string $file): array {
-    if (!is_file($file)) return [];
+    if (!is_file($file)) {
+        return [];
+    }
     $value = json_decode((string)file_get_contents($file), true);
     return is_array($value) ? $value : [];
 };
@@ -83,7 +90,7 @@ $heuristic = [
 ];
 $knownIds = array_values(array_filter(array_merge(
     array_column($preliminary['final_evidence']['issues'] ?? [], 'fingerprint'),
-    array_map(fn($v) => is_array($v) ? (string)($v['id'] ?? '') : '', $preliminary['final_evidence']['successful_checks'] ?? [])
+    array_map(fn ($v) => is_array($v) ? (string)($v['id'] ?? '') : '', $preliminary['final_evidence']['successful_checks'] ?? [])
 )));
 $ai = new WorkbenchAiAnalyzer([
     'enabled' => $effective['allowed'] && $effective['authority_level'] >= 2,
@@ -130,9 +137,13 @@ $result = (new PatternIntelligenceEngine())->analyze([
 ]);
 $result['run_id'] = $runId;
 $result['generated_at'] = gmdate(DATE_ATOM);
-if ($scenarioGuidance !== []) $result['scenario_guidance'] = $scenarioGuidance;
+if ($scenarioGuidance !== []) {
+    $result['scenario_guidance'] = $scenarioGuidance;
+}
 
 $file = $browserDir . '/pattern-intelligence.json';
-if (!is_dir($browserDir)) mkdir($browserDir, 0770, true);
+if (!is_dir($browserDir)) {
+    mkdir($browserDir, 0770, true);
+}
 file_put_contents($file, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
 echo $file . "\n";

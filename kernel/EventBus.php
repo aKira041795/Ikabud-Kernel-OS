@@ -1,37 +1,38 @@
 <?php
+
 /**
  * Ikabud Kernel — Event Bus
- * 
+ *
  * Inter-module communication system for decoupled event-driven architecture.
  * Unlike Hooks (which are kernel→module), the EventBus is module→module.
- * 
+ *
  * Events carry typed payloads and are fire-and-forget (async-safe design).
  * Listeners are registered during module bootstrap, events are fired from
  * any module handler. The kernel never fires events — it uses Hooks.
- * 
+ *
  * Usage (listener — in module helpers.php):
  *   app()->events()->listen('employee.deactivated', function (array $payload) {
  *       // Revoke inventory access, send SMS, etc.
  *   });
- * 
+ *
  * Usage (emitter — in module handler):
  *   app()->events()->fire('employee.deactivated', [
  *       'user_id'  => 42,
  *       'reason'   => 'Resigned',
  *       'actor_id' => $currentUser['id'],
  *   ]);
- * 
+ *
  * Event naming convention:  <entity>.<past_tense_verb>
  *   employee.created, employee.deactivated, order.placed, order.cancelled,
  *   ledger.closed, sms.sent, appointment.confirmed
- * 
+ *
  * Wildcard listeners:
  *   app()->events()->listen('order.*', fn($payload, $event) => logEvent($event, $payload));
- * 
+ *
  * Deferred events:
  *   app()->events()->fireDeferred('order.placed', ['order_id' => 42]);
  *   // flushed automatically at shutdown or manually via flushDeferred()
- * 
+ *
  * @package Ikabud\Kernel
  * @version 1.0.0
  */
@@ -87,7 +88,7 @@ final class EventBus implements EventBusContract
 
     /**
      * Register an event listener.
-     * 
+     *
      * @param string   $event    Event name or wildcard pattern (e.g. 'order.*')
      * @param callable $callback Receives (array $payload, string $eventName)
      * @param int      $priority Lower runs first (default 10)
@@ -131,7 +132,7 @@ final class EventBus implements EventBusContract
         }
 
         if (!empty($this->listenerSortDirty[$event])) {
-            usort($this->listeners[$event], fn($a, $b) => $a['priority'] <=> $b['priority']);
+            usort($this->listeners[$event], fn ($a, $b) => $a['priority'] <=> $b['priority']);
             $this->listenerSortDirty[$event] = false;
         }
 
@@ -205,7 +206,7 @@ final class EventBus implements EventBusContract
 
     /**
      * Fire an event. All matching listeners (exact + wildcard) are called.
-     * 
+     *
      * @param string $event   Event name (e.g. 'order.placed')
      * @param array  $payload Event data
      * @param string $module  Source module ID for audit trail
@@ -242,7 +243,7 @@ final class EventBus implements EventBusContract
         }
 
         if (count($matchedWildcards) > 1) {
-            usort($matchedWildcards, fn($a, $b) => $a['priority'] <=> $b['priority']);
+            usort($matchedWildcards, fn ($a, $b) => $a['priority'] <=> $b['priority']);
         }
 
         $matched = $this->mergeListeners($this->listenersFor($event), $matchedWildcards);

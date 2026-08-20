@@ -66,7 +66,9 @@ final class ReadContractRegistry
      */
     private bool $driftChecked = false;
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     public static function getInstance(): self
     {

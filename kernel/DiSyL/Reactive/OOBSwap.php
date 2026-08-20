@@ -1,7 +1,8 @@
 <?php
+
 /**
  * DiSyL v11.0 HTMX Out-of-Band Swap
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Reactive
  * @version 11.0.0
  */
@@ -17,8 +18,9 @@ class OOBSwap
         public readonly string $targetId,
         public readonly string $content,
         public readonly SwapStrategy $strategy = SwapStrategy::OUTER_HTML
-    ) {}
-    
+    ) {
+    }
+
     public function render(): string
     {
         $swap = $this->strategy->value;

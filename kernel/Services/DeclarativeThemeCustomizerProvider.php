@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Services;
 
-use Ikabud\Kernel\Contracts\ThemeCustomizerProvider;
-use Ikabud\Kernel\Contracts\ThemeCustomizerDefinition;
-use Ikabud\Kernel\Contracts\ThemeCustomizationScope;
-use Ikabud\Kernel\Contracts\ThemeRenderContext;
 use Ikabud\Kernel\Contracts\ThemeCustomizationSubmission;
+use Ikabud\Kernel\Contracts\ThemeCustomizerDefinition;
+use Ikabud\Kernel\Contracts\ThemeCustomizerProvider;
+use Ikabud\Kernel\Contracts\ThemeRenderContext;
 use Ikabud\Kernel\Contracts\ThemeValidationResult;
 
 /**
@@ -74,7 +73,7 @@ class DeclarativeThemeCustomizerProvider implements ThemeCustomizerProvider
         }
 
         return new ThemeValidationResult(
-            valid: empty(array_filter($messages, fn($m) => $m['type'] === 'error')),
+            valid: empty(array_filter($messages, fn ($m) => $m['type'] === 'error')),
             correctedValues: $corrected,
             messages: $messages,
         );

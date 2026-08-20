@@ -40,7 +40,8 @@ final class EntityQueryState
         public readonly ?string $cursor = null,
         public readonly bool $hasMore = false,
         public readonly ?string $prevCursor = null,
-    ) {}
+    ) {
+    }
 
     /**
      * Check whether this state uses cursor-based pagination.

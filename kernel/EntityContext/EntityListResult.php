@@ -28,7 +28,8 @@ final class EntityListResult
         public readonly ?string $nextCursor = null,
         public readonly bool $hasMore = false,
         public readonly ?string $error = null,
-    ) {}
+    ) {
+    }
 
     /**
      * Create from a capability handler's return array.
