@@ -59,6 +59,17 @@ if ($files === false || count($files) === 0) {
 if ($subDir === null && getenv('RUN_LOAD_TEST') === false) {
     $files = array_values(array_filter($files, fn(string $f): bool => basename($f) !== 'load_test.php'));
 }
+
+// Exclude the full-app E2E suite from the default kernel baseline.
+// e2e_shared_hosting_test.php targets a full Ikabud application instance
+// (default E2E_BASE_URL http://cmsnew.test) and verifies app-level pages
+// (blog/shop/cart/ecommerce) that do NOT exist in the kernel-only installer.
+// It belongs to a full deployment, not the barebones OS, so it is opt-in:
+//   RUN_E2E_SHARED=1 php scripts/run-tests.php
+// (In CI it also self-skips when the target host does not resolve.)
+if ($subDir === null && getenv('RUN_E2E_SHARED') === false) {
+    $files = array_values(array_filter($files, fn(string $f): bool => basename($f) !== 'e2e_shared_hosting_test.php'));
+}
 sort($files);
 
 // Resolve display names relative to tests/
