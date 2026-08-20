@@ -18,7 +18,7 @@ function kernelUpdatesEnabled(): bool
 function kernelUpdatesRepo(): string
 {
     $repo = trim((string) (kernelUpdatesConfig()['github_repo'] ?? ''));
-    return preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repo) === 1 ? $repo : 'aKira041795/Ikabud-CMS-Kernel';
+    return preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repo) === 1 ? $repo : 'aKira041795/Ikabud-Kernel-OS';
 }
 
 function kernelUpdatesTimeoutSeconds(): int
