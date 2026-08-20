@@ -1,10 +1,11 @@
 <?php
+
 /**
  * Ikabud Kernel — Auth Contract
- * 
+ *
  * Modules consume this interface for authentication and authorization.
  * They never touch the JWT, session, or cookie layer directly.
- * 
+ *
  * @package Ikabud\Kernel\Contracts
  */
 

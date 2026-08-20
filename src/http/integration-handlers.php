@@ -69,7 +69,7 @@ if (!function_exists('kernelHandleApiKernelIntegrations')) {
                 $statusCode = !empty($validation['ok']) ? 200 : 422;
                 app()->json([
                     'ok' => !empty($validation['ok']),
-                    'errors' => array_values(array_filter($validation['errors'] ?? [], static fn(mixed $value): bool => is_string($value) && $value !== '')),
+                    'errors' => array_values(array_filter($validation['errors'] ?? [], static fn (mixed $value): bool => is_string($value) && $value !== '')),
                     'resolved_capability' => $validation['resolved_capability'] ?? null,
                     'available_vars' => $validation['available_vars'] ?? [],
                     'mapping_vars' => $validation['mapping_vars'] ?? [],
@@ -246,7 +246,7 @@ if (!function_exists('kernelHandleApiKernelIntegrations')) {
             if (empty($validation['ok'])) {
                 app()->json([
                     'ok' => false,
-                    'error' => implode(' ', array_values(array_filter($validation['errors'] ?? [], static fn(mixed $value): bool => is_string($value) && $value !== ''))),
+                    'error' => implode(' ', array_values(array_filter($validation['errors'] ?? [], static fn (mixed $value): bool => is_string($value) && $value !== ''))),
                     'errors' => $validation['errors'] ?? [],
                     'request_id' => request_id(),
                 ], 422);

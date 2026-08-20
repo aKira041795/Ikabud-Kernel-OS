@@ -38,7 +38,8 @@ final class ThemeRenderContext
         public readonly array $navigation,
         public readonly array $entityContext,
         public readonly array $slotContributions,
-    ) {}
+    ) {
+    }
 
     /**
      * Get settings for a specific section.

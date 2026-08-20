@@ -11,7 +11,8 @@ class InvariantContract
         public readonly string $type, // 'db', 'ui', 'capability'
         public readonly ?string $sql = null,
         public readonly ?string $capabilityId = null,
-    ) {}
+    ) {
+    }
 }
 
 class ScenarioContract
@@ -21,5 +22,6 @@ class ScenarioContract
         public readonly string $id,
         public readonly string $description,
         public readonly array $actionIds = [],
-    ) {}
+    ) {
+    }
 }

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Ikabud\Kernel\Workbench\Benchmark;
@@ -8,13 +9,17 @@ use RuntimeException;
 
 final class CompetitiveBenchmarkRunner
 {
-    public function __construct(private readonly string $projectRoot) {}
+    public function __construct(private readonly string $projectRoot)
+    {
+    }
 
     public function execute(?string $outputFile = null): array
     {
         $corpusFile = $this->projectRoot . '/tests/ai/golden/competitive-benchmark-cases.v1.json';
         $corpus = is_file($corpusFile) ? json_decode((string)file_get_contents($corpusFile), true) : null;
-        if (!is_array($corpus)) throw new RuntimeException('Competitive benchmark corpus is missing or invalid');
+        if (!is_array($corpus)) {
+            throw new RuntimeException('Competitive benchmark corpus is missing or invalid');
+        }
 
         $startedAt = gmdate(DATE_ATOM);
         $classifier = new \Ikabud\Kernel\Workbench\Comprehension\Analyzers\PatternClassifier();
@@ -44,7 +49,9 @@ final class CompetitiveBenchmarkRunner
         $this->writeAtomic($outputFile, $report);
 
         $historyFile = dirname($outputFile) . '/competitive-' . substr($report['reproducibility_digest'], 0, 16) . '.json';
-        if (!is_file($historyFile)) $this->writeAtomic($historyFile, $report);
+        if (!is_file($historyFile)) {
+            $this->writeAtomic($historyFile, $report);
+        }
         return $report;
     }
 

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Services;
 
-use PDO;
 use Ikabud\Kernel\Crypto;
+use PDO;
 
 /**
  * Manages primary, control-plane, and per-tenant database connections for the kernel.
@@ -58,7 +58,8 @@ class DatabaseManager
         private readonly \Closure $logger,
         private readonly \Closure $resolveRequestTenant,
         private readonly \Closure $currentTenantId,
-    ) {}
+    ) {
+    }
 
     // ── DSN helpers ──────────────────────────────────────────────────────────
 

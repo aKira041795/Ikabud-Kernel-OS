@@ -43,7 +43,8 @@ final class AiCalibrationBenchmark
 
     public function __construct(
         private readonly PatternClassifier $classifier,
-    ) {}
+    ) {
+    }
 
     /**
      * Run calibration against a golden corpus.
@@ -130,7 +131,9 @@ final class AiCalibrationBenchmark
     {
         $results = [];
         foreach ($cases as $case) {
-            if (!is_array($case)) continue;
+            if (!is_array($case)) {
+                continue;
+            }
             $classification = $this->classifier->classify((string) ($case['evidence_text'] ?? ''));
             $top3 = $this->classifier->classifyTop((string) ($case['evidence_text'] ?? ''), 3);
             $categories = array_values(array_column($top3, 'category'));
@@ -170,7 +173,9 @@ final class AiCalibrationBenchmark
         $totalCost = 0.0;
 
         foreach ($cases as $case) {
-            if (!is_array($case)) continue;
+            if (!is_array($case)) {
+                continue;
+            }
             $started = microtime(true);
             try {
                 $aiResult = $aiCaller($case);
@@ -179,7 +184,9 @@ final class AiCalibrationBenchmark
 
                 $isFallback = isset($aiResult['provider_trace']['fallback_reason'])
                     && $aiResult['provider_trace']['fallback_reason'] !== null;
-                if ($isFallback) $fallbacks++;
+                if ($isFallback) {
+                    $fallbacks++;
+                }
 
                 $aiResults[] = [
                     'case_id' => (string) ($case['id'] ?? ''),
@@ -204,8 +211,8 @@ final class AiCalibrationBenchmark
         }
 
         $total = count($aiResults);
-        $accepted = count(array_filter($aiResults, fn($r) => $r['accepted'] ?? false));
-        $validCitations = count(array_filter($aiResults, fn($r) => $r['citations_valid'] ?? false));
+        $accepted = count(array_filter($aiResults, fn ($r) => $r['accepted'] ?? false));
+        $validCitations = count(array_filter($aiResults, fn ($r) => $r['citations_valid'] ?? false));
 
         return [
             'enabled' => true,
@@ -224,16 +231,16 @@ final class AiCalibrationBenchmark
     /** @param list<array<string,mixed>> $results */
     private function deterministicMetrics(array $results): array
     {
-        $positive = array_filter($results, fn($r) => $r['expected_detected']);
-        $negative = array_filter($results, fn($r) => !$r['expected_detected']);
-        $critical = array_filter($positive, fn($r) => $r['severity'] === 'critical');
-        $criticalDetected = count(array_filter($critical, fn($r) => $r['detected']));
-        $top3 = count(array_filter($positive, fn($r) => $r['top3_match']));
-        $falsePositives = count(array_filter($negative, fn($r) => $r['detected']));
+        $positive = array_filter($results, fn ($r) => $r['expected_detected']);
+        $negative = array_filter($results, fn ($r) => !$r['expected_detected']);
+        $critical = array_filter($positive, fn ($r) => $r['severity'] === 'critical');
+        $criticalDetected = count(array_filter($critical, fn ($r) => $r['detected']));
+        $top3 = count(array_filter($positive, fn ($r) => $r['top3_match']));
+        $falsePositives = count(array_filter($negative, fn ($r) => $r['detected']));
 
         return [
             'cases' => count($results),
-            'detected' => count(array_filter($results, fn($r) => $r['detected'])),
+            'detected' => count(array_filter($results, fn ($r) => $r['detected'])),
             'critical_recall' => $this->rate($criticalDetected, count($critical)),
             'critical_cases' => count($critical),
             'top_three_root_cause' => $this->rate($top3, count($positive)),
@@ -322,17 +329,23 @@ final class AiCalibrationBenchmark
     private function checkCitations(array $aiResult, array $case): bool
     {
         $hypotheses = $aiResult['hypotheses'] ?? [];
-        if ($hypotheses === []) return true; // Empty hypotheses are valid (no unsupported claims)
+        if ($hypotheses === []) {
+            return true;
+        } // Empty hypotheses are valid (no unsupported claims)
 
         foreach ($hypotheses as $hypothesis) {
-            if (!is_array($hypothesis)) continue;
+            if (!is_array($hypothesis)) {
+                continue;
+            }
             // Check that evidence citations exist and are non-empty
             $evidenceFor = (array) ($hypothesis['evidence_for'] ?? []);
             $evidenceAgainst = (array) ($hypothesis['evidence_against'] ?? []);
             $allCitations = array_merge($evidenceFor, $evidenceAgainst);
 
             // Each hypothesis must cite at least one evidence ID
-            if ($allCitations === []) return false;
+            if ($allCitations === []) {
+                return false;
+            }
         }
         return true;
     }

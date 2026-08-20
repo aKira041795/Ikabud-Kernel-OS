@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SlotRegistry — Governed theme slot contribution manager.
  *

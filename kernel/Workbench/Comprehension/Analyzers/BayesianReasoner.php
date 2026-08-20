@@ -109,7 +109,7 @@ class BayesianReasoner
         foreach (glob($glob, GLOB_ONLYDIR) ?: [] as $dir) {
             $moduleId = basename($dir);
             $files = glob($dir . '/*.json') ?: [];
-            $modules[$moduleId] = array_map(fn($f) => pathinfo($f, PATHINFO_FILENAME), $files);
+            $modules[$moduleId] = array_map(fn ($f) => pathinfo($f, PATHINFO_FILENAME), $files);
         }
         return $modules;
     }

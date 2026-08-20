@@ -24,7 +24,7 @@ function kernelTriggerTemplateVariables(string $template): array
     }
     preg_match_all('/#?\{([a-zA-Z0-9_]+)\}/', $template, $matches);
     $vars = $matches[1] ?? [];
-    $vars = array_values(array_unique(array_filter($vars, fn($v) => is_string($v) && trim($v) !== '')));
+    $vars = array_values(array_unique(array_filter($vars, fn ($v) => is_string($v) && trim($v) !== '')));
     sort($vars);
     return $vars;
 }
@@ -80,7 +80,7 @@ function kernelEventAvailableVars(string $eventKey): array
                     if (is_array($e) && trim((string)($e['key'] ?? '')) === $eventKey) {
                         $vars = $e['available_vars'] ?? null;
                         if (is_array($vars)) {
-                            $vars = array_values(array_unique(array_filter($vars, fn($v) => is_string($v) && trim($v) !== '')));
+                            $vars = array_values(array_unique(array_filter($vars, fn ($v) => is_string($v) && trim($v) !== '')));
                             sort($vars);
                             $cache[$eventKey] = $vars;
                             return $vars;
@@ -96,7 +96,7 @@ function kernelEventAvailableVars(string $eventKey): array
             $cache[$eventKey] = [];
             return [];
         }
-        $vars = array_values(array_unique(array_filter($decoded, fn($v) => is_string($v) && trim($v) !== '')));
+        $vars = array_values(array_unique(array_filter($decoded, fn ($v) => is_string($v) && trim($v) !== '')));
         sort($vars);
         $cache[$eventKey] = $vars;
         return $vars;

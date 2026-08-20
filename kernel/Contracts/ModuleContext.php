@@ -1,21 +1,22 @@
 <?php
+
 /**
  * Ikabud Kernel — Module Context
- * 
+ *
  * The scoped gateway object passed to every module handler.
  * Implements AuthContract, LogContract, and provides a scoped DatabaseContract.
- * 
+ *
  * This is the ONLY object modules should use to interact with the kernel.
  * It enforces:
  *   - Table ownership (via ModuleDB)
  *   - Centralized audit logging (module ID auto-tagged)
  *   - Auth delegation (no direct JWT/session access)
  *   - Template rendering (scoped to module's template directory)
- * 
+ *
  * Modules still have access to app() in PHP (we can't prevent it),
  * but ModuleContext is the documented, supported, and auditable interface.
  * Any module calling app()->db() directly will be flagged in code review.
- * 
+ *
  * @package Ikabud\Kernel\Contracts
  */
 

@@ -15,5 +15,6 @@ class EffectContract
     public function __construct(
         public readonly string $actionId,
         public readonly array $effects = [],
-    ) {}
+    ) {
+    }
 }

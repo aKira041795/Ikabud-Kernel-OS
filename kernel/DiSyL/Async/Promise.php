@@ -62,14 +62,26 @@ final class Promise
     {
         $next = new self();
         $handleFulfilled = function (mixed $v) use ($next, $onFulfilled): void {
-            if ($onFulfilled === null) { $next->doResolve($v); return; }
-            try { $next->doResolve($onFulfilled($v)); }
-            catch (\Throwable $e) { $next->doReject($e); }
+            if ($onFulfilled === null) {
+                $next->doResolve($v);
+                return;
+            }
+            try {
+                $next->doResolve($onFulfilled($v));
+            } catch (\Throwable $e) {
+                $next->doReject($e);
+            }
         };
         $handleRejected = function (\Throwable $r) use ($next, $onRejected): void {
-            if ($onRejected === null) { $next->doReject($r); return; }
-            try { $next->doResolve($onRejected($r)); }
-            catch (\Throwable $e) { $next->doReject($e); }
+            if ($onRejected === null) {
+                $next->doReject($r);
+                return;
+            }
+            try {
+                $next->doResolve($onRejected($r));
+            } catch (\Throwable $e) {
+                $next->doReject($e);
+            }
         };
         if ($this->state === self::FULFILLED) {
             $handleFulfilled($this->value);
@@ -92,21 +104,45 @@ final class Promise
      */
     public function wait(): mixed
     {
-        if ($this->state === self::FULFILLED) return $this->value;
-        if ($this->state === self::REJECTED)  throw $this->reason;
+        if ($this->state === self::FULFILLED) {
+            return $this->value;
+        }
+        if ($this->state === self::REJECTED) {
+            throw $this->reason;
+        }
         throw new \RuntimeException('Promise still pending; no scheduler available to drive it.');
     }
 
-    public function state(): string { return $this->state; }
-    public function isFulfilled(): bool { return $this->state === self::FULFILLED; }
-    public function isRejected(): bool  { return $this->state === self::REJECTED; }
-    public function isPending(): bool   { return $this->state === self::PENDING; }
-    public function valueOrNull(): mixed { return $this->state === self::FULFILLED ? $this->value : null; }
-    public function reasonOrNull(): ?\Throwable { return $this->state === self::REJECTED ? $this->reason : null; }
+    public function state(): string
+    {
+        return $this->state;
+    }
+    public function isFulfilled(): bool
+    {
+        return $this->state === self::FULFILLED;
+    }
+    public function isRejected(): bool
+    {
+        return $this->state === self::REJECTED;
+    }
+    public function isPending(): bool
+    {
+        return $this->state === self::PENDING;
+    }
+    public function valueOrNull(): mixed
+    {
+        return $this->state === self::FULFILLED ? $this->value : null;
+    }
+    public function reasonOrNull(): ?\Throwable
+    {
+        return $this->state === self::REJECTED ? $this->reason : null;
+    }
 
     private function doResolve(mixed $v): void
     {
-        if ($this->state !== self::PENDING) return;
+        if ($this->state !== self::PENDING) {
+            return;
+        }
         if ($v instanceof self) {
             $v->then(
                 fn ($x) => $this->doResolve($x),
@@ -116,16 +152,22 @@ final class Promise
         }
         $this->state = self::FULFILLED;
         $this->value = $v;
-        foreach ($this->onFulfilled as $cb) { $cb($v); }
+        foreach ($this->onFulfilled as $cb) {
+            $cb($v);
+        }
         $this->onFulfilled = $this->onRejected = [];
     }
 
     private function doReject(\Throwable $r): void
     {
-        if ($this->state !== self::PENDING) return;
+        if ($this->state !== self::PENDING) {
+            return;
+        }
         $this->state = self::REJECTED;
         $this->reason = $r;
-        foreach ($this->onRejected as $cb) { $cb($r); }
+        foreach ($this->onRejected as $cb) {
+            $cb($r);
+        }
         $this->onFulfilled = $this->onRejected = [];
     }
 }

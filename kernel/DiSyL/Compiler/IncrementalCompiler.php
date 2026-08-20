@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL v7.0 Incremental Compiler
  * Only recompiles changed templates and their dependents.
@@ -20,7 +21,7 @@ class IncrementalCompiler
     private string $gcStateFile;
     private array $manifest = [];
     private TemplateCompiler $compiler;
-    
+
     public function __construct(string $cacheDir)
     {
         $this->cacheDir = rtrim($cacheDir, '/');
@@ -29,24 +30,24 @@ class IncrementalCompiler
         $this->compiler = new TemplateCompiler();
         $this->loadManifest();
     }
-    
+
     private function loadManifest(): void
     {
         if (file_exists($this->manifestFile)) {
             $this->manifest = json_decode(file_get_contents($this->manifestFile), true) ?? [];
         }
     }
-    
+
     private function saveManifest(): void
     {
         file_put_contents($this->manifestFile, json_encode($this->manifest, JSON_PRETTY_PRINT));
     }
-    
+
     public function compile(string $templatePath): CompileResult
     {
         $hash = $this->getFileHash($templatePath);
         $entry = $this->manifest[$templatePath] ?? null;
-        
+
         // Check if recompilation needed (hash match + same compiler version + output exists)
         if ($entry
             && $entry['hash'] === $hash
@@ -54,25 +55,25 @@ class IncrementalCompiler
             && file_exists($entry['output'])) {
             return new CompileResult($entry['output'], false, 0);
         }
-        
+
         $startTime = microtime(true);
-        
+
         // Parse and compile
         $parser = new \Ikabud\Kernel\DiSyL\v4\Parser();
         $source = file_get_contents($templatePath);
         $ast = $parser->parse($source, $templatePath);
-        
+
         // Extract dependencies
         $deps = $this->extractDependencies($ast);
-        
+
         // Compile
         $className = $this->getClassName($templatePath);
         $code = $this->compiler->compile($ast, $className);
-        
+
         // Write output
         $outputPath = $this->cacheDir . '/' . $className . '.php';
         file_put_contents($outputPath, $code);
-        
+
         // Update manifest
         $this->manifest[$templatePath] = [
             'hash' => $hash,
@@ -84,37 +85,41 @@ class IncrementalCompiler
         ];
         $this->saveManifest();
         $this->runCacheGcIfDue();
-        
+
         $duration = (microtime(true) - $startTime) * 1000;
-        
+
         return new CompileResult($outputPath, true, $duration);
     }
-    
+
     public function compileAll(string $templatesDir): array
     {
         $results = [];
         $files = glob($templatesDir . '/**/*.disyl') ?: [];
         $files = array_merge($files, glob($templatesDir . '/*.disyl') ?: []);
-        
+
         foreach ($files as $file) {
             $results[$file] = $this->compile($file);
         }
-        
+
         // Recompile dependents of changed files
-        $changed = array_filter($results, fn($r) => $r->wasRecompiled);
+        $changed = array_filter($results, fn ($r) => $r->wasRecompiled);
         if (!empty($changed)) {
             $this->recompileDependents(array_keys($changed), $results);
         }
-        
+
         return $results;
     }
-    
+
     private function recompileDependents(array $changedFiles, array &$results): void
     {
         foreach ($this->manifest as $path => $entry) {
-            if (!is_array($entry)) continue;
-            if (isset($results[$path]) && $results[$path]->wasRecompiled) continue;
-            
+            if (!is_array($entry)) {
+                continue;
+            }
+            if (isset($results[$path]) && $results[$path]->wasRecompiled) {
+                continue;
+            }
+
             $deps = $entry['dependencies'] ?? [];
             foreach ($changedFiles as $changed) {
                 if (in_array(basename($changed, '.disyl'), $deps)) {
@@ -126,11 +131,11 @@ class IncrementalCompiler
             }
         }
     }
-    
+
     private function extractDependencies($ast): array
     {
         $deps = [];
-        $this->walkAST($ast, function($node) use (&$deps) {
+        $this->walkAST($ast, function ($node) use (&$deps) {
             if ($node->getType() === 'include') {
                 $deps[] = $node->getTemplate();
             }
@@ -140,7 +145,7 @@ class IncrementalCompiler
         });
         return array_unique($deps);
     }
-    
+
     private function walkAST($node, callable $callback): void
     {
         $callback($node);
@@ -153,12 +158,12 @@ class IncrementalCompiler
             $this->walkAST($node->getBody(), $callback);
         }
     }
-    
+
     private function getFileHash(string $path): string
     {
         return md5_file($path) ?: '';
     }
-    
+
     private function getClassName(string $path): string
     {
         $version = TemplateCompiler::COMPILER_VERSION;
@@ -177,7 +182,9 @@ class IncrementalCompiler
 
         $activeOutputs = [];
         foreach ($this->manifest as $entry) {
-            if (!is_array($entry)) continue;
+            if (!is_array($entry)) {
+                continue;
+            }
             $output = $entry['output'] ?? null;
             if (is_string($output) && $output !== '') {
                 $activeOutputs[$output] = true;
@@ -234,13 +241,13 @@ class IncrementalCompiler
     {
         @file_put_contents($this->gcStateFile, json_encode(['lastRun' => $timestamp], JSON_PRETTY_PRINT));
     }
-    
+
     public function invalidate(string $templatePath): void
     {
         unset($this->manifest[$templatePath]);
         $this->saveManifest();
     }
-    
+
     public function getStats(): array
     {
         $templateCount = 0;
@@ -263,5 +270,6 @@ class CompileResult
         public string $outputPath,
         public bool $wasRecompiled,
         public float $durationMs
-    ) {}
+    ) {
+    }
 }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$appUrl = $_ENV['APP_URL'] ?? 'http://applicationos.test';
+$appUrl = $_ENV['APP_URL'] ?? 'http://ikabudsix.test';
 $cookieName = trim((string)($_ENV['APP_COOKIE_NAME'] ?? ''));
 if ($cookieName === '') {
     $cookieHost = (string)(parse_url($appUrl, PHP_URL_HOST) ?? '');
@@ -13,7 +13,7 @@ if ($cookieName === '') {
 }
 
 return [
-    'name' => 'Application Kernel OS',
+    'name' => 'Ikabud Kernel OS',
     'version' => '6.0.0',
     'env' => $_ENV['APP_ENV'] ?? 'development',
     'debug' => (bool) ($_ENV['APP_DEBUG'] ?? true),
@@ -59,6 +59,9 @@ return [
     ],
 
     'multi_tenant' => [
+        // Application-first: multi-tenancy is an optional compatibility
+        // architecture (legacy shared-database capability), NOT the default
+        // design target. New modules assume database ownership.
         'enabled' => (bool) ($_ENV['APP_MULTI_TENANT_ENABLED'] ?? false),
         'strategy' => (string) ($_ENV['APP_TENANT_STRATEGY'] ?? 'control_host'),
         'header' => (string) ($_ENV['APP_TENANT_HEADER'] ?? 'X-Tenant'),
@@ -96,8 +99,8 @@ return [
 
     'updates' => [
         'enabled' => (bool) ($_ENV['APP_UPDATES_ENABLED'] ?? true),
-        'github_repo' => trim((string) ($_ENV['APP_UPDATES_GITHUB_REPO'] ?? 'aKira041795/Ikabud-CMS-Kernel')),
-        'github_branch' => trim((string) ($_ENV['APP_UPDATES_GITHUB_BRANCH'] ?? 'master')),
+        'github_repo' => trim((string) ($_ENV['APP_UPDATES_GITHUB_REPO'] ?? 'aKira041795/Ikabud-Kernel-OS')),
+        'github_branch' => trim((string) ($_ENV['APP_UPDATES_GITHUB_BRANCH'] ?? 'main')),
         'github_api_base' => rtrim((string) ($_ENV['APP_UPDATES_GITHUB_API_BASE'] ?? 'https://api.github.com'), '/'),
         'channel' => trim((string) ($_ENV['APP_UPDATES_CHANNEL'] ?? 'stable')),
         'timeout_seconds' => max(2, (int) ($_ENV['APP_UPDATES_TIMEOUT_SECONDS'] ?? 10)),

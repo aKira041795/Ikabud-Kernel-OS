@@ -1,14 +1,15 @@
 <?php
+
 /**
  * Ikabud Application Kernel
- * 
+ *
  * Central application class that wires together all kernel components.
  * Provides a clean interface for the Ikabud Kernel System.
- * 
+ *
  * The kernel is fully self-contained — it never calls module functions directly.
  * All extension points use the Hooks system (filter/action pattern).
  * Modules register hook listeners during their bootstrap phase.
- * 
+ *
  * @package Ikabud\Kernel
  * @version 6.0.0
  */
@@ -18,21 +19,17 @@ namespace Ikabud\Kernel;
 use Ikabud\Kernel\Capabilities\CapabilityBus;
 use Ikabud\Kernel\Capabilities\CapabilityRegistry;
 use Ikabud\Kernel\Database\KernelPDO;
-use Ikabud\Kernel\Database\MigrationRunner;
-use Ikabud\Kernel\EntityContext\ContextRegistry;
-use Ikabud\Kernel\EntityAuthority\EntityAuthorityRegistry;
-use Ikabud\Kernel\EntityAuthority\SyncContractRegistry;
-use Ikabud\Kernel\EntityContext\EntityViewResolver;
-use Ikabud\Kernel\EntityContext\EntityRendererInterface;
-use Ikabud\Kernel\EntityContext\DefaultEntityRenderer;
-use Ikabud\Kernel\EntityContext\CellRendererRegistryInterface;
-use Ikabud\Kernel\EntityContext\CellRendererRegistry;
-use Ikabud\Kernel\Services\SlotRegistry;
-
-use Ikabud\Kernel\TenantResolver;
 use Ikabud\Kernel\Database\ModuleDB;
 use Ikabud\Kernel\DiSyL\TemplateEngine;
-use Ikabud\Kernel\DiSyL\Reactive\HTMXRequest;
+use Ikabud\Kernel\EntityAuthority\EntityAuthorityRegistry;
+use Ikabud\Kernel\EntityAuthority\SyncContractRegistry;
+use Ikabud\Kernel\EntityContext\CellRendererRegistry;
+use Ikabud\Kernel\EntityContext\CellRendererRegistryInterface;
+use Ikabud\Kernel\EntityContext\ContextRegistry;
+use Ikabud\Kernel\EntityContext\DefaultEntityRenderer;
+use Ikabud\Kernel\EntityContext\EntityRendererInterface;
+use Ikabud\Kernel\EntityContext\EntityViewResolver;
+use Ikabud\Kernel\Services\SlotRegistry;
 use PDO;
 
 final class App
@@ -93,15 +90,17 @@ final class App
      * Mirrored to KernelPDO::setActiveModule() for O(1) origin detection.
      */
     private ?string $activeModule = null;
-    
+
     public const KERNEL_VERSION = '6.1.0';
     public const KERNEL_CODENAME = 'entity-view-extraction';
 
     /** @var int Maximum JSON input size in bytes (2 MB) */
     private const MAX_INPUT_SIZE = 2 * 1024 * 1024;
-    
-    private function __construct() {}
-    
+
+    private function __construct()
+    {
+    }
+
     /**
      * Get singleton instance
      */
@@ -112,7 +111,7 @@ final class App
         }
         return self::$instance;
     }
-    
+
     /**
      * Boot the application
      */
@@ -121,13 +120,13 @@ final class App
         if ($this->booted) {
             return $this;
         }
-        
+
         $this->config = $config;
         $this->hooks = Hooks::getInstance();
         $this->primeRenderBaseCaches();
         $this->seedAuthTableMapFromConfig();
         \Ikabud\Kernel\Services\KernelExport::registerDefaults();
-        
+
         try {
             $db = $this->db();
             $stmt = $db->query("SELECT DISTINCT trigger_event FROM kernel_integrations WHERE is_active = 1");
@@ -139,7 +138,7 @@ final class App
         } catch (\Throwable $e) {
             // Ignore during setup/migrations if table doesn't exist
         }
-        
+
         $this->booted = true;
 
         // Register kernel core capability providers before modules boot.
@@ -595,7 +594,7 @@ final class App
 
         return $kernelDefaults;
     }
-    
+
     /**
      * Get the hook system
      */
@@ -606,7 +605,7 @@ final class App
         }
         return $this->hooks;
     }
-    
+
     /**
      * Get the event bus (inter-module communication)
      */
@@ -1015,14 +1014,14 @@ final class App
     {
         $keys = explode('.', $key);
         $value = $this->config;
-        
+
         foreach ($keys as $k) {
             if (!isset($value[$k])) {
                 return $default;
             }
             $value = $value[$k];
         }
-        
+
         return $value;
     }
 
@@ -1033,9 +1032,9 @@ final class App
         if ($this->databaseManager === null) {
             $this->databaseManager = new Services\DatabaseManager(
                 $this->config,
-                fn(string $msg, string $level = 'info', array $ctx = []) => $this->log($msg, $level, $ctx),
-                fn() => $this->resolveCurrentTenantDbTarget(),
-                fn() => $this->tenant()->current(),
+                fn (string $msg, string $level = 'info', array $ctx = []) => $this->log($msg, $level, $ctx),
+                fn () => $this->resolveCurrentTenantDbTarget(),
+                fn () => $this->tenant()->current(),
             );
         }
         return $this->databaseManager;
@@ -1164,7 +1163,7 @@ final class App
             if (filter_var($_ENV['DISYL_STRICT_MODE'] ?? false, FILTER_VALIDATE_BOOL)) {
                 $this->templateEngine->enableStrictMode(true);
             }
-            
+
             $this->templateEngine->setGlobals([
                 'app_name' => $this->config('app.name', 'Ikabud System'),
                 'app_url' => external_base_url((string)$this->config('app.url', '/guidance')),
@@ -1178,10 +1177,10 @@ final class App
                 $this->templateEngine->addComponentDirectory('workbench', $workbenchComponents);
             }
         }
-        
+
         return $this->templateEngine;
     }
-    
+
     /**
      * Get JWT handler (lazy loaded)
      */
@@ -1193,10 +1192,10 @@ final class App
                 $this->config('app.jwt.expiration', 86400)
             );
         }
-        
+
         return $this->jwt;
     }
-    
+
     /**
      * Get cache handler (lazy loaded)
      */
@@ -1209,10 +1208,10 @@ final class App
                 (bool) $this->config('app.cache.log_invalidations', false)
             );
         }
-        
+
         return $this->cache;
     }
-    
+
     /**
      * Generate a CSRF token (kernel-level, no external dependency).
      * Stored in the session; created once per session.
@@ -1434,11 +1433,11 @@ final class App
 
     /**
      * Render a DiSyL template.
-     * 
+     *
      * The kernel builds a base context from its own state, then lets any
      * registered hook listeners enrich it (navigation, GUI overrides, etc.).
      * Zero function_exists() calls — all extension is via the Hooks system.
-     * 
+     *
      * Well-known hooks fired during render:
      *   'kernel.nav_items'      (filter)  array $items, ?array $user
      *   'kernel.gui_context'    (filter)  array $guiDefaults
@@ -1479,7 +1478,7 @@ final class App
 
         return \kernelApplyRenderTraceOutput($output, $trace);
     }
-    
+
     /**
      * Check if current request is HTMX
      */
@@ -1617,7 +1616,7 @@ final class App
                     }
                 }
             }
-            
+
             // Then try Authorization header (for API requests)
             $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
             if (preg_match('/Bearer\s+(.+)$/i', $authHeader, $matches)) {
@@ -1633,7 +1632,7 @@ final class App
             $this->resolvingCurrentUser = false;
         }
     }
-    
+
     /**
      * Set current user (after login)
      */
@@ -1641,7 +1640,7 @@ final class App
     {
         $this->currentUser = $user;
     }
-    
+
     /**
      * Check if user is authenticated
      */
@@ -1649,7 +1648,7 @@ final class App
     {
         return $this->user() !== null;
     }
-    
+
     /**
      * Check if user has role
      */
@@ -1784,7 +1783,7 @@ final class App
         echo json_encode($data, JSON_UNESCAPED_UNICODE);
         exit;
     }
-    
+
     /**
      * Send HTML response
      */
@@ -1795,7 +1794,7 @@ final class App
         echo $content;
         exit;
     }
-    
+
     /**
      * Redirect
      */
@@ -1822,7 +1821,7 @@ final class App
             ]);
             $url = '/';
         }
-        
+
         if ($this->isHtmx()) {
             \kernel_emit_redirect_header($url, $status, 'HX-Redirect');
         } else {
@@ -1830,10 +1829,10 @@ final class App
         }
         exit;
     }
-    
+
     /**
      * Get request input (hardened).
-     * 
+     *
      * Security measures:
      * - JSON body size capped at MAX_INPUT_SIZE (2 MB)
      * - Null bytes stripped from all string values (path traversal defence)
@@ -1862,7 +1861,7 @@ final class App
             $context['url'] = $_SERVER['REQUEST_URI'] ?? 'cli';
             $context['method'] = $_SERVER['REQUEST_METHOD'] ?? 'cli';
         }
-        
+
         write_log($message, $level, $context);
     }
 }

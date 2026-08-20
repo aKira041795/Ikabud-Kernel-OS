@@ -258,7 +258,9 @@ final class CapabilityTestRunner
                 return 'Expected result to be an object/array';
             }
             foreach ($er['has_keys'] as $k) {
-                if (!is_string($k)) continue;
+                if (!is_string($k)) {
+                    continue;
+                }
                 if (!array_key_exists($k, $result)) {
                     return "Missing key: {$k}";
                 }

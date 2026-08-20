@@ -29,7 +29,8 @@ class AiHypothesis
         public readonly array $doNotChangeBoundary = [],
         public readonly array $suggestedLinks = [],
         public readonly array $raw = [],
-    ) {}
+    ) {
+    }
 }
 
 /**
@@ -55,7 +56,8 @@ class RemediationPlan
         public readonly string $testCommand,
         public readonly string $riskLevel = 'medium',
         public readonly array $relatedFiles = [],
-    ) {}
+    ) {
+    }
 }
 
 /**
@@ -86,7 +88,8 @@ class CaseMemoryEntry
         public readonly string $fixSummary = '',
         public readonly string $createdAt = '',
         public readonly array $tags = [],
-    ) {}
+    ) {
+    }
 }
 
 /**
@@ -112,5 +115,6 @@ class SourceContext
         public readonly array $routeInfo = [],
         public readonly array $migrationFiles = [],
         public readonly array $logSnippets = [],
-    ) {}
+    ) {
+    }
 }

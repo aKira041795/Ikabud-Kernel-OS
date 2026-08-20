@@ -11,7 +11,6 @@ use Ikabud\Kernel\EntityContext\Renderer\ImageCellRenderer;
 use Ikabud\Kernel\EntityContext\Renderer\LocationCellRenderer;
 use Ikabud\Kernel\EntityContext\Renderer\MoneyCellRenderer;
 use Ikabud\Kernel\EntityContext\Renderer\TextCellRenderer;
-use Ikabud\Kernel\EntityContext\RowRenderContext;
 
 /**
  * Default entity renderer — the primary implementation of EntityRendererInterface.
@@ -128,7 +127,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 $fields = array_values(array_intersect($allKeys, $visibleFields));
             } else {
                 // Fallback: only exclude underscore-prefixed internal keys
-                $fields = array_values(array_filter($allKeys, fn(string $k): bool => !str_starts_with($k, '_')));
+                $fields = array_values(array_filter($allKeys, fn (string $k): bool => !str_starts_with($k, '_')));
             }
         }
 
@@ -136,7 +135,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $firstRowKeys = !empty($rows) ? array_keys($rows[0]) : [];
         $validFields = [];
         foreach ($fields as $field) {
-            if ($field === '*') continue;
+            if ($field === '*') {
+                continue;
+            }
             if (in_array($field, $firstRowKeys, true)) {
                 $validFields[] = $field;
             } elseif (function_exists('write_log')) {
@@ -183,24 +184,56 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
             $out .= match ($viewMode) {
                 'card_grid' => $this->renderCardGridRow(new RowRenderContext(
-                    row: $row, fields: $fields, actions: $actions, use: $use,
-                    actionUrls: $actionUrls, actionMethods: $actionMethods, actionConfirm: $actionConfirm,
-                    actionShowIf: $actionShowIf, actionLabels: $actionLabels, renderers: $renderers,
-                    rowClick: $rowClick, rowClickTarget: $rowClickTarget, userRole: $userRole, actionRoles: $actionRoles,
+                    row: $row,
+                    fields: $fields,
+                    actions: $actions,
+                    use: $use,
+                    actionUrls: $actionUrls,
+                    actionMethods: $actionMethods,
+                    actionConfirm: $actionConfirm,
+                    actionShowIf: $actionShowIf,
+                    actionLabels: $actionLabels,
+                    renderers: $renderers,
+                    rowClick: $rowClick,
+                    rowClickTarget: $rowClickTarget,
+                    userRole: $userRole,
+                    actionRoles: $actionRoles,
                     roleFields: $roleFields,
                 )),
                 'table' => $this->renderTableRow(new RowRenderContext(
-                    row: $row, fields: $fields, actions: $actions, use: $use,
-                    actionUrls: $actionUrls, actionMethods: $actionMethods, actionConfirm: $actionConfirm,
-                    actionShowIf: $actionShowIf, actionLabels: $actionLabels, renderers: $renderers,
-                    rowClick: $rowClick, rowClickTarget: $rowClickTarget, userRole: $userRole, actionRoles: $actionRoles,
-                    hasBulk: $hasBulk, fieldContracts: $fieldContracts, roleFields: $roleFields,
+                    row: $row,
+                    fields: $fields,
+                    actions: $actions,
+                    use: $use,
+                    actionUrls: $actionUrls,
+                    actionMethods: $actionMethods,
+                    actionConfirm: $actionConfirm,
+                    actionShowIf: $actionShowIf,
+                    actionLabels: $actionLabels,
+                    renderers: $renderers,
+                    rowClick: $rowClick,
+                    rowClickTarget: $rowClickTarget,
+                    userRole: $userRole,
+                    actionRoles: $actionRoles,
+                    hasBulk: $hasBulk,
+                    fieldContracts: $fieldContracts,
+                    roleFields: $roleFields,
                 )),
                 default => $this->renderCompactRow(new RowRenderContext(
-                    row: $row, fields: $fields, actions: $actions, use: $use,
-                    actionUrls: $actionUrls, actionMethods: $actionMethods, actionConfirm: $actionConfirm,
-                    actionShowIf: $actionShowIf, actionLabels: $actionLabels, renderers: $renderers,
-                    rowClick: $rowClick, rowClickTarget: $rowClickTarget, userRole: $userRole, actionRoles: $actionRoles,
+                    row: $row,
+                    fields: $fields,
+                    actions: $actions,
+                    use: $use,
+                    actionUrls: $actionUrls,
+                    actionMethods: $actionMethods,
+                    actionConfirm: $actionConfirm,
+                    actionShowIf: $actionShowIf,
+                    actionLabels: $actionLabels,
+                    renderers: $renderers,
+                    rowClick: $rowClick,
+                    rowClickTarget: $rowClickTarget,
+                    userRole: $userRole,
+                    actionRoles: $actionRoles,
                     roleFields: $roleFields,
                 )),
             };
@@ -247,7 +280,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
      * Lifecycle hook: called before rendering an entity list.
      * Override in subclasses/decorators for entity-specific setup.
      */
-    protected function beforeRenderList(array $attrs, array $context): void {}
+    protected function beforeRenderList(array $attrs, array $context): void
+    {
+    }
 
     /**
      * Lifecycle hook: called after rendering an entity list.
@@ -278,14 +313,16 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $fields = is_array($rawFields) ? $rawFields : array_map('trim', explode(',', (string)$rawFields));
         if ($fields === ['*'] || $fields === '*') {
             $fields = array_keys($entity);
-            $fields = array_values(array_filter($fields, fn(string $k): bool => !str_starts_with($k, '_')));
+            $fields = array_values(array_filter($fields, fn (string $k): bool => !str_starts_with($k, '_')));
         }
 
         $rows = '';
         foreach ($fields as $field) {
             $field = trim((string)$field);
             if ($field === '' || ($field === 'id' && count($fields) > 1)) {
-                if (count($fields) > 1) continue;
+                if (count($fields) > 1) {
+                    continue;
+                }
             }
             $label = ucwords(str_replace('_', ' ', $field));
             $value = $entity[$field] ?? '';
@@ -550,7 +587,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             $cells .= '<th scope="col" class="' . $thClass . '" style="width:40px"><input type="checkbox" class="ikb-bulk-select-all" onclick="document.querySelectorAll(\'.ikb-bulk-row\').forEach(cb => cb.checked = this.checked); document.getElementById(\'ikb-bulk-bar\').classList.toggle(\'hidden\', !this.checked)"></th>';
         }
         foreach ($fields as $field) {
-            if ($field === '*') continue;
+            if ($field === '*') {
+                continue;
+            }
             $label = htmlspecialchars(ucfirst(str_replace('_', ' ', $field)), ENT_QUOTES, 'UTF-8');
 
             if ($sortable && (empty($sortableFields) || isset($sortableFields[$field]))) {
@@ -585,7 +624,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             $cells .= '<td class="' . $tdClass . '" data-label=""><input type="checkbox" name="ids[]" value="' . $rowId . '" class="ikb-bulk-row"></td>';
         }
         foreach ($ctx->fields as $field) {
-            if ($field === '*') continue;
+            if ($field === '*') {
+                continue;
+            }
             $rawValue = $ctx->row[$field] ?? '';
             $renderer = $ctx->renderers[$field] ?? null;
             $fc = $ctx->fieldContracts[$field] ?? [];
@@ -610,7 +651,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
     private function renderRowActions(RowRenderContext $ctx): string
     {
-        if (empty($ctx->actions)) return '';
+        if (empty($ctx->actions)) {
+            return '';
+        }
 
         $id = $ctx->row['id'] ?? '';
         $actionWrapperClass = $this->style('actionWrapper', 'actions', $ctx->use);
@@ -618,11 +661,15 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
         foreach ($ctx->actions as $action) {
             $action = trim($action);
-            if ($action === '') continue;
+            if ($action === '') {
+                continue;
+            }
 
             if ($ctx->userRole !== '' && isset($ctx->actionRoles[$action])) {
                 $allowedRoles = is_array($ctx->actionRoles[$action]) ? $ctx->actionRoles[$action] : [$ctx->actionRoles[$action]];
-                if (!in_array($ctx->userRole, $allowedRoles, true)) continue;
+                if (!in_array($ctx->userRole, $allowedRoles, true)) {
+                    continue;
+                }
             }
 
             if (isset($ctx->actionShowIf[$action]) && $ctx->actionShowIf[$action] !== '') {
@@ -639,7 +686,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 }
                 $compiled = $this->compiledConditions[$cacheKey];
                 if ($compiled !== null) {
-                    if (!$this->conditionEvaluator->evaluate($compiled, $ctx->row)) continue;
+                    if (!$this->conditionEvaluator->evaluate($compiled, $ctx->row)) {
+                        continue;
+                    }
                 } else {
                     // Legacy regex fallback — condition uses old format
                     if (function_exists('write_log')) {
@@ -649,7 +698,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                             ['action' => $action, 'condition' => $condition, 'source' => 'entity_renderer']
                         );
                     }
-                    if (!$this->evaluateRowConditionLegacy($ctx->row, $condition)) continue;
+                    if (!$this->evaluateRowConditionLegacy($ctx->row, $condition)) {
+                        continue;
+                    }
                 }
             }
 
@@ -683,7 +734,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
                 $hiddenInputs = '<input type="hidden" name="id" value="' . $safeId . '">';
                 foreach ($ctx->row as $key => $value) {
-                    if ($key === 'id' || !is_scalar($value)) continue;
+                    if ($key === 'id' || !is_scalar($value)) {
+                        continue;
+                    }
                     $safeKey = htmlspecialchars((string)$key, ENT_QUOTES, 'UTF-8');
                     $safeVal = htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
                     $hiddenInputs .= '<input type="hidden" name="' . $safeKey . '" value="' . $safeVal . '">';
@@ -995,7 +1048,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $buttons = '';
         foreach ($bulkActions as $ba) {
             $ba = trim($ba);
-            if ($ba === '') continue;
+            if ($ba === '') {
+                continue;
+            }
             $label = htmlspecialchars(ucfirst($ba), ENT_QUOTES, 'UTF-8');
             $actionClass = $this->style('action', $ba, $use);
             $buttons .= '<button type="submit" name="bulk_action" value="' . $ba . '" class="' . $actionClass . '">' . $label . '</button>';
@@ -1035,7 +1090,9 @@ final class DefaultEntityRenderer implements EntityRendererInterface
      */
     public function entitySourceClass(string $source): string
     {
-        if ($source === '') return '';
+        if ($source === '') {
+            return '';
+        }
 
         [$entityType, $qualifier] = $this->parseSourceParts($source);
         $entityClass = 'ikb-entity-' . $this->normalizeCssIdentifier($entityType);
@@ -1066,13 +1123,13 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
     private function registerBuiltinRenderers(): void
     {
-        $this->cellRenderers->register('text',     new TextCellRenderer(),     'kernel');
-        $this->cellRenderers->register('badge',    new BadgeCellRenderer(),    'kernel');
-        $this->cellRenderers->register('money',    new MoneyCellRenderer(),    'kernel');
+        $this->cellRenderers->register('text', new TextCellRenderer(), 'kernel');
+        $this->cellRenderers->register('badge', new BadgeCellRenderer(), 'kernel');
+        $this->cellRenderers->register('money', new MoneyCellRenderer(), 'kernel');
         $this->cellRenderers->register('datetime', new DateTimeCellRenderer(), 'kernel');
-        $this->cellRenderers->register('boolean',  new BooleanCellRenderer(),  'kernel');
+        $this->cellRenderers->register('boolean', new BooleanCellRenderer(), 'kernel');
         $this->cellRenderers->register('location', new LocationCellRenderer(), 'kernel');
-        $this->cellRenderers->register('image',    new ImageCellRenderer(),    'kernel');
+        $this->cellRenderers->register('image', new ImageCellRenderer(), 'kernel');
     }
 
     private function buildStylePresets(): array
@@ -1090,7 +1147,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 'td'      => ['table' => ''],
                 'row'     => ['compact' => 'ikb-entity-row wb-panel__body'],
                 'title'   => ['compact' => 'wb-section-title', 'card_grid' => 'wb-section-title'],
-                'subtitle'=> ['compact' => 'wb-text-muted', 'card_grid' => 'wb-text-muted'],
+                'subtitle' => ['compact' => 'wb-text-muted', 'card_grid' => 'wb-text-muted'],
                 'card'    => ['card_grid' => 'ikb-entity-card wb-panel'],
                 'actionWrapper' => ['actions' => 'flex items-center justify-end gap-2'],
                 'action'  => [
@@ -1114,7 +1171,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 'td'      => ['table' => 'py-3 px-4 text-gray-700 whitespace-nowrap'],
                 'row'     => ['compact' => 'ikb-entity-row flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition'],
                 'title'   => ['compact' => 'text-sm font-semibold text-gray-900', 'card_grid' => 'font-semibold text-gray-900'],
-                'subtitle'=> ['compact' => 'text-sm text-gray-500', 'card_grid' => 'text-sm text-gray-500 mt-1'],
+                'subtitle' => ['compact' => 'text-sm text-gray-500', 'card_grid' => 'text-sm text-gray-500 mt-1'],
                 'card'    => ['card_grid' => 'ikb-entity-card bg-white rounded-lg shadow border border-gray-100 overflow-hidden hover:shadow-md transition'],
                 'actionWrapper' => ['actions' => 'flex items-center justify-end gap-2'],
                 'action'  => [
@@ -1138,7 +1195,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 'td'      => ['table' => 'px-3 py-2 align-middle'],
                 'row'     => ['compact' => 'ikb-entity-row list-group-item d-flex justify-content-between align-items-center px-3 py-2'],
                 'title'   => ['compact' => 'small fw-semibold mb-0', 'card_grid' => 'fw-semibold'],
-                'subtitle'=> ['compact' => 'small text-muted mb-0', 'card_grid' => 'small text-muted mt-1'],
+                'subtitle' => ['compact' => 'small text-muted mb-0', 'card_grid' => 'small text-muted mt-1'],
                 'card'    => ['card_grid' => 'ikb-entity-card card shadow-sm h-100'],
                 'actionWrapper' => ['actions' => 'd-flex gap-1 justify-content-end'],
                 'action'  => [
@@ -1162,7 +1219,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 'td'      => ['table' => 'px-4 py-2 text-sm text-gray-700'],
                 'row'     => ['compact' => 'ikb-entity-row'],
                 'title'   => ['compact' => 'text-sm font-semibold text-gray-900', 'card_grid' => 'font-semibold text-gray-900'],
-                'subtitle'=> ['compact' => 'text-sm text-gray-500', 'card_grid' => 'text-sm text-gray-500 mt-1'],
+                'subtitle' => ['compact' => 'text-sm text-gray-500', 'card_grid' => 'text-sm text-gray-500 mt-1'],
                 'card'    => ['card_grid' => 'ikb-entity-card bg-white rounded-lg shadow border border-gray-100 overflow-hidden'],
                 'actionWrapper' => ['actions' => 'flex items-center justify-end gap-1'],
                 'action'  => [

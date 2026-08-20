@@ -1,14 +1,15 @@
 <?php
+
 namespace Ikabud\Kernel;
 
 /**
  * JWT (JSON Web Token) Handler
- * 
+ *
  * Standalone JWT implementation for the Ikabud Kernel System.
  * Supports HS256 signing, token refresh, token version validation
  * for invalidation on password change or account deactivation,
  * and key rotation via JWT_SECRET_<ID> environment variables.
- * 
+ *
  * Since 2026-08-05 also supports RS256 (asymmetric) signing so distributed
  * API/mobile clients can verify tokens with a public key instead of sharing
  * the symmetric secret:
@@ -26,7 +27,7 @@ final class JWT
     private string $activeKeyId = 'default';
     /** @var string|null RS256 private key PEM (signing only). */
     private ?string $privateKey = null;
-    
+
     public function __construct(?string $secret = null, int $expiration = 86400, string $algorithm = 'HS256', string $issuer = 'ikabud')
     {
         $this->algorithm = strtoupper((string)$algorithm);
@@ -52,10 +53,14 @@ final class JWT
         // Build key ring for rotation support.
         // Primary key: JWT_SECRET. Additional keys: JWT_SECRET_<ID>.
         foreach (($_ENV + getenv()) as $envKey => $envValue) {
-            if (!is_string($envKey) || !is_string($envValue)) continue;
+            if (!is_string($envKey) || !is_string($envValue)) {
+                continue;
+            }
             if (preg_match('/^JWT_SECRET_(\w+)$/i', $envKey, $m)) {
                 $keyId = strtolower($m[1]);
-                if ($keyId === 'default' || $keyId === '') continue;
+                if ($keyId === 'default' || $keyId === '') {
+                    continue;
+                }
                 if (strlen($envValue) >= 32) {
                     $this->keyRing[$keyId] = $envValue;
                 }
@@ -112,10 +117,14 @@ final class JWT
             $this->keyRing['default'] = $pubDefault;
         }
         foreach (($_ENV + getenv()) as $envKey => $envValue) {
-            if (!is_string($envKey) || !is_string($envValue)) continue;
+            if (!is_string($envKey) || !is_string($envValue)) {
+                continue;
+            }
             if (preg_match('/^JWT_PUBLIC_KEY_(\w+)$/i', $envKey, $m)) {
                 $keyId = strtolower($m[1]);
-                if ($keyId === 'default' || $keyId === '') continue;
+                if ($keyId === 'default' || $keyId === '') {
+                    continue;
+                }
                 if (is_string($envValue) && $envValue !== '') {
                     $this->keyRing[$keyId] = $envValue;
                 }
@@ -140,7 +149,7 @@ final class JWT
             $this->activeKeyId = $activeKeyId;
         }
     }
-    
+
     /**
      * Generate JWT token
      */
@@ -155,25 +164,25 @@ final class JWT
             'alg' => $this->algorithm,
             'kid' => $this->activeKeyId,  // key ID for rotation support
         ];
-        
+
         $now = time();
         $payload['iss'] = $this->issuer;
         $payload['iat'] = $now;
         $payload['nbf'] = $now;           // not valid before now
         $payload['exp'] = $now + $this->expiration;
         $payload['jti'] = bin2hex(random_bytes(16)); // unique token ID
-        
+
         $headerEncoded = $this->base64UrlEncode(json_encode($header));
         $payloadEncoded = $this->base64UrlEncode(json_encode($payload));
-        
+
         $signature = $this->sign($headerEncoded . '.' . $payloadEncoded);
-        
+
         return $headerEncoded . '.' . $payloadEncoded . '.' . $signature;
     }
-    
+
     /**
      * Verify and decode JWT token
-     * 
+     *
      * @param string $token The JWT token string
      * @param int|null $expectedTokenVersion If provided, reject tokens with a different token_version claim.
      *                                       Used to invalidate tokens after password change or account deactivation.
@@ -182,11 +191,11 @@ final class JWT
     public function verify(string $token, ?int $expectedTokenVersion = null): ?array
     {
         $parts = explode('.', $token);
-        
+
         if (count($parts) !== 3) {
             return null;
         }
-        
+
         list($headerEncoded, $payloadEncoded, $signature) = $parts;
 
         // Validate algorithm matches what this instance expects to prevent
@@ -195,7 +204,7 @@ final class JWT
         if (!is_array($header) || ($header['alg'] ?? '') !== $this->algorithm) {
             return null;
         }
-        
+
         // Decode payload early so we can check key_id for rotation support
         $payload = json_decode($this->base64UrlDecode($payloadEncoded), true);
         if (!$payload) {
@@ -217,7 +226,9 @@ final class JWT
         // Fall back: try all keys in the ring (handles key rotation transition)
         if (!$signatureVerified) {
             foreach ($this->keyRing as $ringKeyId => $ringKey) {
-                if ($ringKeyId === $kid) continue; // already tried
+                if ($ringKeyId === $kid) {
+                    continue;
+                } // already tried
                 if ($this->verifySignature($headerEncoded . '.' . $payloadEncoded, $signature, $ringKey)) {
                     $signatureVerified = true;
                     break;
@@ -228,7 +239,7 @@ final class JWT
         if (!$signatureVerified) {
             return null;
         }
-        
+
         $now = time();
 
         // Check expiration
@@ -245,17 +256,17 @@ final class JWT
         if (isset($payload['iss']) && $payload['iss'] !== $this->issuer) {
             return null;
         }
-        
+
         // Check token version (for invalidation after password change / deactivation)
         if ($expectedTokenVersion !== null && isset($payload['token_version'])) {
             if ((int) $payload['token_version'] !== $expectedTokenVersion) {
                 return null;
             }
         }
-        
+
         return $payload;
     }
-    
+
     /**
      * Extract token from Authorization header.
      * Works under both Apache (getallheaders) and FastCGI/FPM (no
@@ -290,7 +301,7 @@ final class JWT
 
         return null;
     }
-    
+
     /**
      * Sign data with the active key
      */
@@ -330,7 +341,7 @@ final class JWT
         $expected = $this->signWithKey($data, $key);
         return hash_equals($signatureB64url, $expected);
     }
-    
+
     /**
      * Base64 URL encode
      */
@@ -338,7 +349,7 @@ final class JWT
     {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
-    
+
     /**
      * Base64 URL decode
      */
@@ -346,21 +357,21 @@ final class JWT
     {
         return base64_decode(strtr($data, '-_', '+/'));
     }
-    
+
     /**
      * Refresh token (extend expiration)
      */
     public function refresh(string $token): ?string
     {
         $payload = $this->verify($token);
-        
+
         if (!$payload) {
             return null;
         }
-        
+
         // Remove old timestamps and ID (new ones will be generated)
         unset($payload['iat'], $payload['exp'], $payload['nbf'], $payload['jti']);
-        
+
         // Generate new token
         return $this->generate($payload);
     }

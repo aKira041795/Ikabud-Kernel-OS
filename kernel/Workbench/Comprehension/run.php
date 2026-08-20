@@ -41,7 +41,8 @@ declare(strict_types=1);
  */
 
 if (php_sapi_name() !== 'cli') {
-    echo "CLI only.\n"; exit(1);
+    echo "CLI only.\n";
+    exit(1);
 }
 
 // ── Parse arguments ──────────────────────────────────────────
@@ -138,13 +139,12 @@ require_once dirname(__DIR__) . '/AI/WorkbenchAiAnalyzer.php';
 require_once dirname(__DIR__) . '/Issues/IssueLedger.php';
 require_once dirname(__DIR__) . '/Governance/WorkbenchRolloutPolicy.php';
 
-use Ikabud\Kernel\Workbench\Comprehension\SemanticComprehensionEngine;
-use Ikabud\Kernel\Workbench\Comprehension\PalComprehensionProvider;
-use Ikabud\Kernel\Workbench\Comprehension\ComprehensionProviderRegistry;
-use Ikabud\Kernel\Workbench\Evidence\EvidenceNormalizer;
 use Ikabud\Kernel\Workbench\AI\WorkbenchAiAnalyzer;
-use Ikabud\Kernel\Workbench\Issues\IssueLedger;
+use Ikabud\Kernel\Workbench\Comprehension\ComprehensionProviderRegistry;
+use Ikabud\Kernel\Workbench\Comprehension\SemanticComprehensionEngine;
+use Ikabud\Kernel\Workbench\Evidence\EvidenceNormalizer;
 use Ikabud\Kernel\Workbench\Governance\WorkbenchRolloutPolicy;
+use Ikabud\Kernel\Workbench\Issues\IssueLedger;
 
 echo "═══ Hybrid Semantic Comprehension Engine ═══\n";
 echo "Engine version: 3.0 (Deterministic + NLP-Embedding + Bayesian + Temporal + Pattern + Cross-Module + AI Hypothesis + Provider Coverage)\n\n";
@@ -236,14 +236,26 @@ if ($evidenceFile && is_file($evidenceFile)) {
 }
 
 // Override entity context from CLI args (highest priority)
-if ($tenantId !== null) $evidence['_tenant_id'] = $tenantId;
-elseif (isset($evidenceMeta['tenant_id'])) $evidence['_tenant_id'] = $evidenceMeta['tenant_id'];
-if ($entityId !== null) $evidence['_entity_id'] = $entityId;
-elseif (isset($evidenceMeta['entity_id'])) $evidence['_entity_id'] = $evidenceMeta['entity_id'];
-if ($entityType !== null) $evidence['_entity_type'] = $entityType;
-elseif (isset($evidenceMeta['entity_type'])) $evidence['_entity_type'] = $evidenceMeta['entity_type'];
-if ($runId !== null) $evidence['_run_id'] = $runId;
-elseif (isset($evidenceMeta['run_id'])) $evidence['_run_id'] = $evidenceMeta['run_id'];
+if ($tenantId !== null) {
+    $evidence['_tenant_id'] = $tenantId;
+} elseif (isset($evidenceMeta['tenant_id'])) {
+    $evidence['_tenant_id'] = $evidenceMeta['tenant_id'];
+}
+if ($entityId !== null) {
+    $evidence['_entity_id'] = $entityId;
+} elseif (isset($evidenceMeta['entity_id'])) {
+    $evidence['_entity_id'] = $evidenceMeta['entity_id'];
+}
+if ($entityType !== null) {
+    $evidence['_entity_type'] = $entityType;
+} elseif (isset($evidenceMeta['entity_type'])) {
+    $evidence['_entity_type'] = $evidenceMeta['entity_type'];
+}
+if ($runId !== null) {
+    $evidence['_run_id'] = $runId;
+} elseif (isset($evidenceMeta['run_id'])) {
+    $evidence['_run_id'] = $evidenceMeta['run_id'];
+}
 
 // Collect DB evidence if entity context is available
 if (!empty($evidence['_tenant_id']) && !empty($evidence['_entity_id'])) {
@@ -557,7 +569,9 @@ if ($actionId !== '') {
 
 $ledger = new IssueLedger($base . '/storage/private/workbench/issues');
 foreach ($analysisResultsForLedger as $aid => $analysisResult) {
-    if (($analysisResult['breakpoint'] ?? null) === null) continue;
+    if (($analysisResult['breakpoint'] ?? null) === null) {
+        continue;
+    }
     $issue = $ledger->ingest([
         'module_id' => $moduleId,
         'action_id' => $aid,

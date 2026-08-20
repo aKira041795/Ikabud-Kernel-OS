@@ -6,9 +6,6 @@ namespace Ikabud\Kernel\Workbench\Graph;
 
 use Ikabud\Kernel\Workbench\Comprehension\Contracts\{
     ModuleComprehensionProvider,
-    EntityContract,
-    WorkflowContract,
-    ActionContract,
 };
 
 /**
@@ -28,7 +25,8 @@ final class GraphBuilder
     public function __construct(
         private readonly ModuleComprehensionProvider $provider,
         private readonly string $moduleId,
-    ) {}
+    ) {
+    }
 
     public function build(): ModuleGraph
     {
@@ -129,7 +127,7 @@ final class GraphBuilder
                 'route' => $action->route,
                 'method' => $action->method,
                 'chain_length' => count($action->chain),
-                'chain_steps' => array_map(fn($s) => [
+                'chain_steps' => array_map(fn ($s) => [
                     'step' => $s->step,
                     'description' => $s->description,
                     'category' => $s->category,
@@ -254,7 +252,9 @@ final class GraphBuilder
     {
         $paths = [];
         foreach ($this->graph->nodesOfType('entity') as $entity) {
-            if (($entity->meta['unresolved'] ?? false) === true) continue;
+            if (($entity->meta['unresolved'] ?? false) === true) {
+                continue;
+            }
             foreach (['entity_list', 'entity_detail', 'entity_edit'] as $type) {
                 $paths[] = [
                     'type' => $type,
@@ -279,10 +279,14 @@ final class GraphBuilder
         }
 
         foreach ($this->graph->edges() as $edge) {
-            if ($edge->type !== 'transitions') continue;
+            if ($edge->type !== 'transitions') {
+                continue;
+            }
             $from = $this->graph->node($edge->from);
             $to = $this->graph->node($edge->to);
-            if ($from === null || $to === null) continue;
+            if ($from === null || $to === null) {
+                continue;
+            }
             $paths[] = [
                 'type' => 'transition',
                 'from' => (string)($from->meta['status'] ?? $from->id),

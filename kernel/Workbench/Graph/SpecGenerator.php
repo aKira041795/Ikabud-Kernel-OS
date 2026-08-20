@@ -21,19 +21,28 @@ final class SpecGenerator
         private readonly string $moduleId,
         private readonly string $projectRoot,
         private readonly string $outputDir,
-    ) {}
+    ) {
+    }
 
     public function generateAll(array $paths): array
     {
         $this->generatedFiles = [];
-        if (!is_dir($this->outputDir) && !mkdir($this->outputDir, 0755, true)) return [];
+        if (!is_dir($this->outputDir) && !mkdir($this->outputDir, 0755, true)) {
+            return [];
+        }
         $byType = [];
-        foreach ($paths as $p) { $byType[$p["type"]][] = $p; }
+        foreach ($paths as $p) {
+            $byType[$p["type"]][] = $p;
+        }
         foreach ($byType as $type => $typePaths) {
-            $filtered = array_filter($typePaths, fn($p) => $this->pathIsValid($p));
-            if (empty($filtered)) continue;
+            $filtered = array_filter($typePaths, fn ($p) => $this->pathIsValid($p));
+            if (empty($filtered)) {
+                continue;
+            }
             $spec = $this->generateSpec($type, $filtered);
-            if ($spec === null) continue;
+            if ($spec === null) {
+                continue;
+            }
             $filename = "generated-" . $type . ".spec.js";
             file_put_contents($this->outputDir . "/" . $filename, $spec);
             $this->generatedFiles[] = $this->outputDir . "/" . $filename;
@@ -46,7 +55,9 @@ final class SpecGenerator
         $entity = $p["entity"] ?? "";
         $type = $p["type"] ?? "";
         $cfg = $this->entityConfig[$entity] ?? null;
-        if ($cfg === null) return true;
+        if ($cfg === null) {
+            return true;
+        }
         return match ($type) {
             "entity_detail" => $cfg["detail"] ?? false,
             "entity_edit" => $cfg["edit"] ?? false,

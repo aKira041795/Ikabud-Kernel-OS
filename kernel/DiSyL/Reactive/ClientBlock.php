@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL v6.0 Client-Side Block Compiler
  * Compiles {% client %} blocks to JavaScript modules.
@@ -15,7 +16,7 @@ class ClientBlock
     private array $imports = [];
     private array $exports = [];
     private array $events = [];
-    
+
     public function __construct(string $code)
     {
         $this->id = 'client-' . substr(md5($code), 0, 8);
@@ -23,7 +24,7 @@ class ClientBlock
         $this->parseImports();
         $this->parseEvents();
     }
-    
+
     private function parseImports(): void
     {
         preg_match_all('/import\s+(?:{([^}]+)}|(\w+))\s+from\s+[\'"]([^\'"]+)[\'"]/', $this->code, $matches, PREG_SET_ORDER);
@@ -35,7 +36,7 @@ class ClientBlock
             ];
         }
     }
-    
+
     private function parseEvents(): void
     {
         preg_match_all('/@(\w+)(?:\.(\w+))?="([^"]+)"/', $this->code, $matches, PREG_SET_ORDER);
@@ -47,12 +48,24 @@ class ClientBlock
             ];
         }
     }
-    
-    public function getId(): string { return $this->id; }
-    public function getCode(): string { return $this->code; }
-    public function getImports(): array { return $this->imports; }
-    public function getEvents(): array { return $this->events; }
-    
+
+    public function getId(): string
+    {
+        return $this->id;
+    }
+    public function getCode(): string
+    {
+        return $this->code;
+    }
+    public function getImports(): array
+    {
+        return $this->imports;
+    }
+    public function getEvents(): array
+    {
+        return $this->events;
+    }
+
     public function toModule(): string
     {
         // Reject code containing </script> to prevent breaking out of
@@ -74,7 +87,7 @@ class EventHandler
         'keydown', 'keyup', 'keypress', 'focus', 'blur', 'change', 'input', 'submit',
         'scroll', 'resize', 'load', 'unload', 'error',
     ];
-    
+
     private static array $modifiers = [
         'prevent' => 'e.preventDefault();',
         'stop' => 'e.stopPropagation();',
@@ -83,7 +96,7 @@ class EventHandler
         'capture' => '', // Handled via addEventListener options
         'self' => 'if (e.target !== e.currentTarget) return;',
     ];
-    
+
     public static function compile(string $event, ?string $modifier, string $handler, string $elementId): string
     {
         // Validate event name against known-safe event names.
@@ -113,7 +126,7 @@ class EventHandler
 
         $options = [];
         $preCode = '';
-        
+
         if ($modifier) {
             if (isset(self::$modifiers[$modifier])) {
                 $preCode = self::$modifiers[$modifier];
@@ -122,9 +135,9 @@ class EventHandler
                 $options[$modifier] = true;
             }
         }
-        
+
         $optionsJSON = empty($options) ? '' : ', ' . json_encode($options);
-        
+
         return <<<JS
 document.getElementById('{$safeElementId}').addEventListener('{$event}', function(e) {
     {$preCode}
@@ -132,7 +145,7 @@ document.getElementById('{$safeElementId}').addEventListener('{$event}', functio
 }{$optionsJSON});
 JS;
     }
-    
+
     public static function isValidEvent(string $event): bool
     {
         return in_array($event, self::$handlers);

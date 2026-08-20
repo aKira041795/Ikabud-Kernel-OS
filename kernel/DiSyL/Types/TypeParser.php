@@ -83,13 +83,17 @@ final class TypeParser
     {
         $this->advance(); // 'type'
         $name = $this->expect('ident', 'expected type name');
-        if ($name === null) return;
+        if ($name === null) {
+            return;
+        }
         if (!$this->consumePunct('=')) {
             $this->errors[] = 'Expected "=" after type name "' . $name['value'] . '"';
             return;
         }
         $expr = $this->parseUnion();
-        if ($expr === null) return;
+        if ($expr === null) {
+            return;
+        }
         $this->types[$name['value']] = $expr;
     }
 
@@ -101,14 +105,18 @@ final class TypeParser
             return;
         }
         $expr = $this->parseUnion();
-        if ($expr === null) return;
+        if ($expr === null) {
+            return;
+        }
         $this->contextType = $expr;
     }
 
     private function parseUnion(): ?TypeNode
     {
         $first = $this->parsePostfix();
-        if ($first === null) return null;
+        if ($first === null) {
+            return null;
+        }
         $members = [$first];
         while ($this->matchPunct('|')) {
             $next = $this->parsePostfix();
@@ -123,7 +131,9 @@ final class TypeParser
     private function parsePostfix(): ?TypeNode
     {
         $node = $this->parsePrimary();
-        if ($node === null) return null;
+        if ($node === null) {
+            return null;
+        }
         while ($this->peek()['kind'] === 'punct' && $this->peek()['value'] === '[') {
             $save = $this->pos;
             $this->advance(); // '['
@@ -149,7 +159,9 @@ final class TypeParser
         if ($tok['kind'] === 'ident' && $tok['value'] === 'readonly') {
             $this->advance();
             $inner = $this->parsePrimary();
-            if ($inner === null) return null;
+            if ($inner === null) {
+                return null;
+            }
             // After readonly, expect [] suffix.
             if ($this->peek()['kind'] === 'punct' && $this->peek()['value'] === '[') {
                 $this->advance();
@@ -210,10 +222,16 @@ final class TypeParser
             if ($this->matchPunct('<')) {
                 while (true) {
                     $arg = $this->parseUnion();
-                    if ($arg === null) break;
+                    if ($arg === null) {
+                        break;
+                    }
                     $args[] = $arg;
-                    if ($this->matchPunct(',')) continue;
-                    if ($this->consumePunct('>')) break;
+                    if ($this->matchPunct(',')) {
+                        continue;
+                    }
+                    if ($this->consumePunct('>')) {
+                        break;
+                    }
                     $this->errors[] = 'Expected "," or ">" in type arguments for "' . $name . '"';
                     break;
                 }
@@ -271,18 +289,29 @@ final class TypeParser
                 continue;
             }
             $type = $this->parseUnion();
-            if ($type === null) continue;
+            if ($type === null) {
+                continue;
+            }
             $props[$name] = ['type' => $type, 'optional' => $optional, 'readonly' => $readonly];
         }
         return new ObjectType($props);
     }
 
-    private function isEnd(): bool { return $this->peek()['kind'] === 'eof'; }
+    private function isEnd(): bool
+    {
+        return $this->peek()['kind'] === 'eof';
+    }
 
     /** @return array{kind:string,value:string,pos:int} */
-    private function peek(): array { return $this->tokens[$this->pos] ?? ['kind' => 'eof', 'value' => '', 'pos' => -1]; }
+    private function peek(): array
+    {
+        return $this->tokens[$this->pos] ?? ['kind' => 'eof', 'value' => '', 'pos' => -1];
+    }
 
-    private function advance(): void { $this->pos++; }
+    private function advance(): void
+    {
+        $this->pos++;
+    }
 
     private function matchPunct(string $value): bool
     {
@@ -294,7 +323,10 @@ final class TypeParser
         return false;
     }
 
-    private function consumePunct(string $value): bool { return $this->matchPunct($value); }
+    private function consumePunct(string $value): bool
+    {
+        return $this->matchPunct($value);
+    }
 
     /** @return array{kind:string,value:string,pos:int}|null */
     private function expect(string $kind, string $msg): ?array
@@ -323,7 +355,10 @@ final class TypeParser
         $i = 0;
         while ($i < $len) {
             $ch = $source[$i];
-            if (ctype_space($ch)) { $i++; continue; }
+            if (ctype_space($ch)) {
+                $i++;
+                continue;
+            }
 
             if ($ch === "'" || $ch === '"') {
                 $start = $i;
@@ -345,15 +380,21 @@ final class TypeParser
 
             if (ctype_digit($ch) || ($ch === '-' && $i + 1 < $len && ctype_digit($source[$i + 1]))) {
                 $start = $i;
-                if ($ch === '-') $i++;
-                while ($i < $len && (ctype_digit($source[$i]) || $source[$i] === '.')) $i++;
+                if ($ch === '-') {
+                    $i++;
+                }
+                while ($i < $len && (ctype_digit($source[$i]) || $source[$i] === '.')) {
+                    $i++;
+                }
                 $tokens[] = ['kind' => 'number', 'value' => substr($source, $start, $i - $start), 'pos' => $start];
                 continue;
             }
 
             if (ctype_alpha($ch) || $ch === '_') {
                 $start = $i;
-                while ($i < $len && (ctype_alnum($source[$i]) || $source[$i] === '_')) $i++;
+                while ($i < $len && (ctype_alnum($source[$i]) || $source[$i] === '_')) {
+                    $i++;
+                }
                 $tokens[] = ['kind' => 'ident', 'value' => substr($source, $start, $i - $start), 'pos' => $start];
                 continue;
             }

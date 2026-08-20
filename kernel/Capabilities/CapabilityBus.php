@@ -205,7 +205,7 @@ final class CapabilityBus implements CapabilityBusContract
         }
 
         if ($provider !== null && $provider !== '') {
-            $providers = array_values(array_filter($providers, fn($p) => ($p['provider'] ?? '') === $provider));
+            $providers = array_values(array_filter($providers, fn ($p) => ($p['provider'] ?? '') === $provider));
             if (empty($providers)) {
                 throw new CapabilityNotFoundException("Capability provider '{$provider}' not found for: {$capabilityId}");
             }
@@ -281,7 +281,9 @@ final class CapabilityBus implements CapabilityBusContract
                 $denyList = array_merge($denyList, $rule['deny_providers']);
             }
             foreach ($denyList as $d) {
-                if (is_string($d) && $d !== '') $deny[$d] = true;
+                if (is_string($d) && $d !== '') {
+                    $deny[$d] = true;
+                }
             }
 
             $allowList = [];
@@ -291,7 +293,7 @@ final class CapabilityBus implements CapabilityBusContract
             if (isset($rule['allow_providers']) && is_array($rule['allow_providers'])) {
                 $allowList = array_merge($allowList, $rule['allow_providers']);
             }
-            $allowList = array_values(array_filter($allowList, fn($x) => is_string($x) && $x !== ''));
+            $allowList = array_values(array_filter($allowList, fn ($x) => is_string($x) && $x !== ''));
             if (!empty($allowList)) {
                 $allow = $allow ?? [];
                 foreach ($allowList as $a) {
@@ -303,7 +305,9 @@ final class CapabilityBus implements CapabilityBusContract
         $out = [];
         foreach ($providers as $p) {
             $pid = (string)($p['provider'] ?? '');
-            if ($pid === '') continue;
+            if ($pid === '') {
+                continue;
+            }
 
             // Enforce caller policy per provider
             if ($callerModule !== '') {
@@ -324,7 +328,7 @@ final class CapabilityBus implements CapabilityBusContract
                     if (isset($rule['deny_callers']) && is_array($rule['deny_callers'])) {
                         $denyCallerList = array_merge($denyCallerList, $rule['deny_callers']);
                     }
-                    $denyCallerList = array_values(array_filter($denyCallerList, fn($x) => is_string($x) && $x !== ''));
+                    $denyCallerList = array_values(array_filter($denyCallerList, fn ($x) => is_string($x) && $x !== ''));
                     if (!empty($denyCallerList) && in_array($callerModule, $denyCallerList, true)) {
                         continue;
                     }
@@ -336,7 +340,7 @@ final class CapabilityBus implements CapabilityBusContract
                     if (isset($rule['allow_callers']) && is_array($rule['allow_callers'])) {
                         $allowCallerList = array_merge($allowCallerList, $rule['allow_callers']);
                     }
-                    $allowCallerList = array_values(array_filter($allowCallerList, fn($x) => is_string($x) && $x !== ''));
+                    $allowCallerList = array_values(array_filter($allowCallerList, fn ($x) => is_string($x) && $x !== ''));
                     if (!empty($allowCallerList) && !in_array($callerModule, $allowCallerList, true)) {
                         continue;
                     }
@@ -402,8 +406,7 @@ final class CapabilityBus implements CapabilityBusContract
         array $caller = [],
         array $usedProviders = [],
         ?string $requestedCapabilityId = null
-    ): void
-    {
+    ): void {
         if (!$this->traceEnabled()) {
             return;
         }
@@ -414,7 +417,7 @@ final class CapabilityBus implements CapabilityBusContract
             $callerUser = $caller['user'] ?? null;
             $callerUserId = is_array($callerUser) ? ($callerUser['id'] ?? $callerUser['sub'] ?? null) : null;
             $callerRole = is_array($callerUser) ? ($callerUser['role'] ?? null) : null;
-            $providers = array_values(array_filter($usedProviders, fn($p) => is_string($p) && $p !== ''));
+            $providers = array_values(array_filter($usedProviders, fn ($p) => is_string($p) && $p !== ''));
 
             // app() helper exists in this project via bootstrap.php
             app()->log('capability.call', $ok ? 'info' : 'error', [

@@ -28,7 +28,8 @@ final class ThemeCustomizerDefinition
         public readonly array $regions,
         public readonly array $tokens,
         public readonly array $slots,
-    ) {}
+    ) {
+    }
 
     /**
      * Get a section definition by name.

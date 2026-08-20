@@ -13,10 +13,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../../bootstrap.php';
 
+use Ikabud\Kernel\Workbench\Comprehension\ComprehensionProviderRegistry;
 use Ikabud\Kernel\Workbench\Graph\GraphBuilder;
 use Ikabud\Kernel\Workbench\Graph\SpecGenerator;
-use Ikabud\Kernel\Workbench\Comprehension\PalComprehensionProvider;
-use Ikabud\Kernel\Workbench\Comprehension\ComprehensionProviderRegistry;
 use Ikabud\Kernel\Workbench\Planning\WeightedPathPlanner;
 
 require_once __DIR__ . '/../Planning/WeightedPathPlanner.php';
@@ -26,14 +25,25 @@ $args = $argv ?? [];
 $moduleId = null;
 $runAll = false;
 foreach ($args as $i => $arg) {
-    if ($i === 0) continue;
-    if ($arg === '--all') $runAll = true;
-    elseif (!str_starts_with($arg, '--')) $moduleId = $arg;
+    if ($i === 0) {
+        continue;
+    }
+    if ($arg === '--all') {
+        $runAll = true;
+    } elseif (!str_starts_with($arg, '--')) {
+        $moduleId = $arg;
+    }
 }
-if ($moduleId === null) { echo "Usage: php scan.php <module-id> [--all]\n"; exit(1); }
+if ($moduleId === null) {
+    echo "Usage: php scan.php <module-id> [--all]\n";
+    exit(1);
+}
 
 $registry = new ComprehensionProviderRegistry(dirname(__DIR__, 3));
-if (!$registry->has($moduleId)) { echo "No provider for {$moduleId}\n"; exit(1); }
+if (!$registry->has($moduleId)) {
+    echo "No provider for {$moduleId}\n";
+    exit(1);
+}
 
 echo "\n═══════════════════════════════════════════\n";
 echo "  ARK Workbench — Proactive Scanner\n";
@@ -59,7 +69,9 @@ foreach ($paths as $i => $p) {
 $planner = new WeightedPathPlanner();
 $plannedPaths = [];
 foreach ($provider->actions() as $action) {
-    if ($action->chain === []) continue;
+    if ($action->chain === []) {
+        continue;
+    }
     $routeId = 'route:' . $action->method . ':' . $action->route;
     $last = $action->chain[count($action->chain) - 1];
     $targetId = $action->id . ':' . $last->step;
@@ -68,7 +80,9 @@ foreach ($provider->actions() as $action) {
     }
 }
 $planDir = BASE_PATH . '/test_results/ai';
-if (!is_dir($planDir)) mkdir($planDir, 0770, true);
+if (!is_dir($planDir)) {
+    mkdir($planDir, 0770, true);
+}
 file_put_contents($planDir . '/test-plan.json', json_encode([
     'schema_version' => '1.0', 'mode' => 'shadow', 'module_id' => $moduleId,
     'graph_version' => hash('sha256', json_encode($graph->toArray($moduleId))),
@@ -85,12 +99,17 @@ if ($runAll) {
     echo "\n[3/3] Generating ALL path specs and running...\n";
     // Clean previous generated specs
     $existing = glob($outputDir . '/*.spec.js');
-    foreach ($existing as $f) { @unlink($f); }
+    foreach ($existing as $f) {
+        @unlink($f);
+    }
 
     $genFiles = $generator->generateAll($paths);
     echo "  Generated: " . count($genFiles) . " spec files\n";
 
-    if (empty($genFiles)) { echo "  No specs generated.\n"; exit(0); }
+    if (empty($genFiles)) {
+        echo "  No specs generated.\n";
+        exit(0);
+    }
 
     $specArgs = implode(' ', array_map('escapeshellarg', $genFiles));
     $cmd = "cd " . escapeshellarg(BASE_PATH)

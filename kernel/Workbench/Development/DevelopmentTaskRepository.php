@@ -313,7 +313,7 @@ final class DevelopmentTaskRepository
         }
         usort(
             $events,
-            static fn(array $a, array $b): int => (int) ($a['sequence'] ?? 0) <=> (int) ($b['sequence'] ?? 0)
+            static fn (array $a, array $b): int => (int) ($a['sequence'] ?? 0) <=> (int) ($b['sequence'] ?? 0)
         );
 
         return $events;
@@ -371,7 +371,7 @@ final class DevelopmentTaskRepository
         }));
         usort(
             $rows,
-            static fn(array $a, array $b): int => ((string) ($b['updated_at'] ?? '')) <=> ((string) ($a['updated_at'] ?? ''))
+            static fn (array $a, array $b): int => ((string) ($b['updated_at'] ?? '')) <=> ((string) ($a['updated_at'] ?? ''))
         );
 
         return $rows;

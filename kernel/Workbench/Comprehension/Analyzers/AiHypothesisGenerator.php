@@ -8,7 +8,6 @@ use Ikabud\Kernel\Workbench\Comprehension\Contracts\{
     AiHypothesis,
     RemediationPlan,
     SourceContext,
-    CaseMemoryEntry,
 };
 
 /**

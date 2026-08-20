@@ -21,7 +21,9 @@ namespace Ikabud\Kernel\Workbench\Scenario;
 final class ScenarioFixtureDeclaration
 {
     /** @param array<string,mixed> $declaration */
-    public function __construct(private readonly array $declaration) {}
+    public function __construct(private readonly array $declaration)
+    {
+    }
 
     /** @return array<string,mixed> */
     public function normalize(): array

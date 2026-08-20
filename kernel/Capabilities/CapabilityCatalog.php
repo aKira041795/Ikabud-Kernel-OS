@@ -530,7 +530,7 @@ final class CapabilityCatalog
             $out[] = [
                 'key' => $key,
                 'description' => trim((string)($event['description'] ?? '')),
-                'available_vars' => array_values(array_filter($availableVars, static fn($value): bool => is_string($value) && trim($value) !== '')),
+                'available_vars' => array_values(array_filter($availableVars, static fn ($value): bool => is_string($value) && trim($value) !== '')),
             ];
         }
 

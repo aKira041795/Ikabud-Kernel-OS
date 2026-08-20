@@ -1,4 +1,5 @@
 <?php
+
 /**
  * DiSyL Macro Processor
  *
@@ -49,16 +50,16 @@ final class MacroProcessor
     {
         return $this->macros !== [];
     }
-/**
-     * Extract {macro name(params)}...{/macro} definitions from template content.
-     *
-     * Each macro is stored in $this->macros keyed by name. The macro body
-     * is kept as raw template text; {paramName} patterns in the body are
-     * substituted at call time via expandMacroCalls().
-     *
-     * Macro definitions are removed from the template — they produce no
-     * output on their own.
-     */
+    /**
+         * Extract {macro name(params)}...{/macro} definitions from template content.
+         *
+         * Each macro is stored in $this->macros keyed by name. The macro body
+         * is kept as raw template text; {paramName} patterns in the body are
+         * substituted at call time via expandMacroCalls().
+         *
+         * Macro definitions are removed from the template — they produce no
+         * output on their own.
+         */
     public function extractMacros(string $content, bool $merge = false): string
     {
         // Reset or preserve existing macros
@@ -156,7 +157,9 @@ final class MacroProcessor
         $parts = explode(',', $raw);
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '') { continue; }
+            if ($part === '') {
+                continue;
+            }
             if (str_contains($part, '=')) {
                 [$name, $default] = explode('=', $part, 2);
                 $params[trim($name)] = trim($default, " \t\n\r\0\x0B\"'");
@@ -181,7 +184,9 @@ final class MacroProcessor
         $parts = $this->splitMacroCallArgs($raw);
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '') { continue; }
+            if ($part === '') {
+                continue;
+            }
             // Quoted string literal
             if ((str_starts_with($part, '"') && str_ends_with($part, '"')) ||
                 (str_starts_with($part, "'") && str_ends_with($part, "'"))) {
@@ -222,9 +227,20 @@ final class MacroProcessor
         $len = strlen($raw);
         for ($i = 0; $i < $len; $i++) {
             $ch = $raw[$i];
-            if ($ch === '\\' && $i + 1 < $len) { $buf .= $ch . $raw[++$i]; continue; }
-            if ($ch === "'" && !$inDouble) { $inSingle = !$inSingle; $buf .= $ch; continue; }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $buf .= $ch; continue; }
+            if ($ch === '\\' && $i + 1 < $len) {
+                $buf .= $ch . $raw[++$i];
+                continue;
+            }
+            if ($ch === "'" && !$inDouble) {
+                $inSingle = !$inSingle;
+                $buf .= $ch;
+                continue;
+            }
+            if ($ch === '"' && !$inSingle) {
+                $inDouble = !$inDouble;
+                $buf .= $ch;
+                continue;
+            }
             if ($ch === ',' && !$inSingle && !$inDouble) {
                 $parts[] = $buf;
                 $buf = '';
@@ -232,9 +248,11 @@ final class MacroProcessor
             }
             $buf .= $ch;
         }
-        if ($buf !== '') { $parts[] = $buf; }
+        if ($buf !== '') {
+            $parts[] = $buf;
+        }
         return $parts;
     }
-    
-    
+
+
 }

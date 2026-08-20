@@ -1,18 +1,19 @@
 <?php
+
 /**
  * Ikabud Kernel — Module-Scoped Database Gateway
- * 
+ *
  * Implements DatabaseContract with table ownership enforcement.
  * Every SQL query is parsed for table references and validated against
  * the module's declared owns_tables and reads_tables from module.json.
- * 
+ *
  * Rules:
  *   owns_tables  → SELECT, INSERT, UPDATE, DELETE allowed
  *   reads_tables → SELECT only
  *   undeclared   → DENIED, logged, RuntimeException thrown
- * 
+ *
  * DDL statements (CREATE, DROP, ALTER, TRUNCATE) are always denied.
- * 
+ *
  * @package Ikabud\Kernel\Contracts
  */
 
@@ -165,7 +166,7 @@ class ModuleDB implements DatabaseContract
 
     /**
      * Parse a SQL statement and enforce table access rules.
-     * 
+     *
      * @throws \RuntimeException on unauthorized access
      */
     private function enforceAccess(string $sql): void
@@ -261,14 +262,30 @@ class ModuleDB implements DatabaseContract
     private function detectQueryType(string $sql): string
     {
         $sql = ltrim($sql);
-        if (preg_match('/^SELECT\b/i', $sql)) return 'SELECT';
-        if (preg_match('/^INSERT\b/i', $sql)) return 'INSERT';
-        if (preg_match('/^UPDATE\b/i', $sql)) return 'UPDATE';
-        if (preg_match('/^DELETE\b/i', $sql)) return 'DELETE';
-        if (preg_match('/^REPLACE\b/i', $sql)) return 'INSERT';
-        if (preg_match('/^SHOW\b/i', $sql)) return 'SHOW';
-        if (preg_match('/^DESCRIBE\b|^DESC\b/i', $sql)) return 'DESCRIBE';
-        if (preg_match('/^EXPLAIN\b/i', $sql)) return 'EXPLAIN';
+        if (preg_match('/^SELECT\b/i', $sql)) {
+            return 'SELECT';
+        }
+        if (preg_match('/^INSERT\b/i', $sql)) {
+            return 'INSERT';
+        }
+        if (preg_match('/^UPDATE\b/i', $sql)) {
+            return 'UPDATE';
+        }
+        if (preg_match('/^DELETE\b/i', $sql)) {
+            return 'DELETE';
+        }
+        if (preg_match('/^REPLACE\b/i', $sql)) {
+            return 'INSERT';
+        }
+        if (preg_match('/^SHOW\b/i', $sql)) {
+            return 'SHOW';
+        }
+        if (preg_match('/^DESCRIBE\b|^DESC\b/i', $sql)) {
+            return 'DESCRIBE';
+        }
+        if (preg_match('/^EXPLAIN\b/i', $sql)) {
+            return 'EXPLAIN';
+        }
         return 'UNKNOWN';
     }
 
@@ -328,7 +345,7 @@ class ModuleDB implements DatabaseContract
         }
 
         // Deduplicate
-        return array_unique(array_filter($tables, fn($t) => !$this->isSqlKeyword($t)));
+        return array_unique(array_filter($tables, fn ($t) => !$this->isSqlKeyword($t)));
     }
 
     /**
@@ -395,4 +412,3 @@ class ModuleDB implements DatabaseContract
         return $this->readsTables;
     }
 }
-

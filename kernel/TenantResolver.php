@@ -1,24 +1,25 @@
 <?php
+
 /**
  * Ikabud Kernel — Tenant Resolver
- * 
+ *
  * Determines the current tenant context for multi-tenant deployments.
  * When multi-tenancy is enabled (via config), the resolver identifies the
  * tenant from the request (subdomain, header, JWT claim, or session) and
  * makes it available to the query builder for automatic scoping.
- * 
+ *
  * Strategies (checked in order):
  *   1. JWT claim 'tenant_id'   — API requests carry it in the token
  *   2. HTTP header 'X-Tenant'  — explicit override (admin/service use)
  *   3. Subdomain               — shop1.bakeshop.com → tenant 'shop1'
  *   4. Session                  — stored after login
  *   5. Config default           — single-tenant fallback
- * 
+ *
  * When multi-tenancy is DISABLED (the default for Ikabud),
  * the resolver returns null — meaning no tenant scoping is applied.
  * This makes the system zero-friction for single-tenant deployments
  * while being ready for multi-tenant when the config flag is flipped.
- * 
+ *
  * Config (config/app.php):
  *   'multi_tenant' => [
  *       'enabled'  => false,        // flip to true to activate
@@ -27,11 +28,11 @@
  *       'default'  => null,         // fallback tenant_id
  *       'column'   => 'tenant_id',  // DB column name
  *   ],
- * 
+ *
  * Usage:
  *   $resolver = new TenantResolver($config);
  *   $tenantId = $resolver->resolve($user);  // returns int|null
- * 
+ *
  * @package Ikabud\Kernel
  * @version 1.0.0
  */
@@ -99,7 +100,7 @@ class TenantResolver
     /**
      * Resolve the current tenant ID.
      * Returns null if multi-tenancy is disabled or tenant cannot be determined.
-     * 
+     *
      * @param array|null $user Current authenticated user (JWT payload)
      */
     public function resolve(?array $user = null): ?int

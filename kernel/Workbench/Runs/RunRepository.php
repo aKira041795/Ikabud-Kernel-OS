@@ -88,7 +88,7 @@ final class RunRepository
         }));
         usort(
             $rows,
-            static fn(array $a, array $b): int =>
+            static fn (array $a, array $b): int =>
                 ((string) ($b['recorded_at'] ?? '')) <=> ((string) ($a['recorded_at'] ?? ''))
         );
 

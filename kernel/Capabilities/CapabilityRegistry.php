@@ -181,7 +181,9 @@ final class CapabilityRegistry implements CapabilityRegistryContract
         usort($this->providers[$capabilityId], function (array $a, array $b): int {
             // priority DESC
             $p = ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0);
-            if ($p !== 0) return $p;
+            if ($p !== 0) {
+                return $p;
+            }
             // FIFO tiebreaker: earlier registration wins (lower order = higher precedence)
             return ($a['registration_order'] ?? 0) <=> ($b['registration_order'] ?? 0);
         });

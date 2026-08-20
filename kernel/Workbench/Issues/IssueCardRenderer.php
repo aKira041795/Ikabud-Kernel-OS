@@ -26,7 +26,8 @@ final class IssueCardRenderer
 {
     public function __construct(
         private readonly ?RunExporter $exporter = null,
-    ) {}
+    ) {
+    }
 
     /**
      * Render a single issue as an actionable card.
@@ -117,7 +118,7 @@ final class IssueCardRenderer
      */
     public function renderBatch(array $issues, array $context = []): array
     {
-        return array_map(fn(array $issue): array => $this->render($issue, $context), $issues);
+        return array_map(fn (array $issue): array => $this->render($issue, $context), $issues);
     }
 
     /**
@@ -140,8 +141,12 @@ final class IssueCardRenderer
         foreach ($groups as $cls => $group) {
             $counts[$cls] = count($group);
             foreach ($group as $card) {
-                if ($card['is_release_blocking'] ?? false) $releaseBlockers++;
-                if ($card['is_fixture_block'] ?? false) $fixtureBlocks++;
+                if ($card['is_release_blocking'] ?? false) {
+                    $releaseBlockers++;
+                }
+                if ($card['is_fixture_block'] ?? false) {
+                    $fixtureBlocks++;
+                }
             }
         }
 
@@ -179,7 +184,9 @@ final class IssueCardRenderer
     private function aiConfidence(array $aiResult): ?float
     {
         $hypotheses = (array) ($aiResult['hypotheses'] ?? []);
-        if ($hypotheses === []) return null;
+        if ($hypotheses === []) {
+            return null;
+        }
         return (float) ($hypotheses[0]['confidence'] ?? 0);
     }
 
@@ -229,11 +236,15 @@ final class IssueCardRenderer
         $module = (string) ($issue['module_id'] ?? $issue['module'] ?? $context['module'] ?? '');
         $action = (string) ($issue['action_id'] ?? $issue['action'] ?? '');
 
-        if ($module === '') return '';
+        if ($module === '') {
+            return '';
+        }
 
         // Prefer the test command from context
         $testCommand = (string) ($context['test_command'] ?? '');
-        if ($testCommand !== '') return $testCommand;
+        if ($testCommand !== '') {
+            return $testCommand;
+        }
 
         // Build a default command
         $parts = ['php', 'ikabud', 'workbench:doctor', $module];
@@ -311,10 +322,14 @@ final class IssueCardRenderer
     private function determineOwner(array $issue, array $classification, array $context): string
     {
         $owner = (string) ($context['recommended_owner'] ?? '');
-        if ($owner !== '') return $owner;
+        if ($owner !== '') {
+            return $owner;
+        }
 
         $module = (string) ($issue['module_id'] ?? $issue['module'] ?? $context['module'] ?? '');
-        if ($module !== '') return 'module:' . $module;
+        if ($module !== '') {
+            return 'module:' . $module;
+        }
 
         return 'unassigned';
     }

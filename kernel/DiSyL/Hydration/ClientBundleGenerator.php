@@ -1,7 +1,8 @@
 <?php
+
 /**
  * DiSyL v11.0 Client Bundle Generator
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Hydration
  * @version 11.0.0
  */
@@ -15,18 +16,18 @@ class ClientBundleGenerator
 {
     private IslandRegistry $registry;
     private string $runtimePath;
-    
+
     public function __construct(IslandRegistry $registry, string $runtimePath = '/disyl-runtime.js')
     {
         $this->registry = $registry;
         $this->runtimePath = $runtimePath;
     }
-    
+
     public function generateScripts(): string
     {
         $manifest = new IslandManifest($this->registry);
         $output = $manifest->generateScriptTag() . "\n";
-        
+
         // Add preload hints for immediate-load components
         foreach ($this->registry->getIslands() as $island) {
             if ($island->strategy === HydrationStrategy::LOAD) {
@@ -37,14 +38,14 @@ class ClientBundleGenerator
                 }
             }
         }
-        
+
         // Add runtime script
         $safeRuntimePath = htmlspecialchars($this->runtimePath, ENT_QUOTES, 'UTF-8');
         $output .= "<script type=\"module\" src=\"{$safeRuntimePath}\"></script>\n";
-        
+
         return $output;
     }
-    
+
     public function generateInlineScript(): string
     {
         return <<<'JS'

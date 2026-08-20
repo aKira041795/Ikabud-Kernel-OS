@@ -17,7 +17,10 @@ final class IssueLedger
         'verified' => ['promoted_to_case'],
     ];
 
-    public function __construct(private readonly string $storagePath) { $this->ensure(); }
+    public function __construct(private readonly string $storagePath)
+    {
+        $this->ensure();
+    }
 
     public function ingest(array $finding, array $occurrence = []): array
     {
@@ -36,9 +39,13 @@ final class IssueLedger
             $occurrence += ['run_id' => null, 'observation_id' => null, 'seen_at' => date('c'), 'source_fingerprint' => $normalized['source_fingerprint']];
             $occurrenceId = hash('sha256', json_encode([$occurrence['run_id'], $occurrence['observation_id'], $occurrence['source_fingerprint'], $normalized['summary']]));
             $seen = array_column($issue['occurrences'], 'id');
-            if (!in_array($occurrenceId, $seen, true)) $issue['occurrences'][] = ['id' => $occurrenceId] + $occurrence;
+            if (!in_array($occurrenceId, $seen, true)) {
+                $issue['occurrences'][] = ['id' => $occurrenceId] + $occurrence;
+            }
             $issue['last_seen'] = date('c');
-            if (count($issue['occurrences']) > 1 && $issue['state'] === 'observed') $issue['state'] = 'clustered';
+            if (count($issue['occurrences']) > 1 && $issue['state'] === 'observed') {
+                $issue['state'] = 'clustered';
+            }
             $index['fingerprints'][$fingerprint] = $id;
             $index['issues'][$id] = ['state' => $issue['state'], 'module_id' => $issue['module_id'], 'last_seen' => $issue['last_seen']];
             $this->writeIssue($issue);
@@ -51,7 +58,9 @@ final class IssueLedger
         return $this->withLock(function (array &$index) use ($id, $to, $metadata): array {
             $issue = $this->readIssue($id) ?? throw new \RuntimeException("Issue not found: {$id}");
             $from = (string)$issue['state'];
-            if (!in_array($to, self::TRANSITIONS[$from] ?? [], true)) throw new \DomainException("Invalid issue transition {$from} -> {$to}");
+            if (!in_array($to, self::TRANSITIONS[$from] ?? [], true)) {
+                throw new \DomainException("Invalid issue transition {$from} -> {$to}");
+            }
             $issue['state'] = $to;
             if (in_array($to, ['dismissed', 'accepted', 'flaky', 'environment_only', 'verified'], true)) {
                 $issue['resolution'] = ['state' => $to, 'at' => date('c')] + $metadata;
@@ -75,13 +84,22 @@ final class IssueLedger
     public function promoteVerified(string $id, object $caseMemory, array $case): string
     {
         $issue = $this->readIssue($id) ?? throw new \RuntimeException("Issue not found: {$id}");
-        if (($issue['state'] ?? '') !== 'verified') throw new \DomainException('Only verified issues can be promoted');
+        if (($issue['state'] ?? '') !== 'verified') {
+            throw new \DomainException('Only verified issues can be promoted');
+        }
         $entryClass = 'Ikabud\\Kernel\\Workbench\\Comprehension\\Contracts\\CaseMemoryEntry';
         $caseId = 'case-' . $issue['module_id'] . '-' . bin2hex(random_bytes(8));
         $caseMemory->store(new $entryClass(
-            id: $caseId, moduleId: $issue['module_id'], actionId: $issue['action_id'], summary: $issue['summary'],
-            evidencePacket: ['issue_id' => $id, 'fingerprint' => $issue['fingerprint']], changedFiles: (array)($case['changed_files'] ?? []),
-            testCommand: (string)($case['test_command'] ?? ''), fixSummary: (string)($case['fix_summary'] ?? ''), createdAt: date('c'), tags: ['verified', 'issue:' . $id, 'category:' . $issue['category']],
+            id: $caseId,
+            moduleId: $issue['module_id'],
+            actionId: $issue['action_id'],
+            summary: $issue['summary'],
+            evidencePacket: ['issue_id' => $id, 'fingerprint' => $issue['fingerprint']],
+            changedFiles: (array)($case['changed_files'] ?? []),
+            testCommand: (string)($case['test_command'] ?? ''),
+            fixSummary: (string)($case['fix_summary'] ?? ''),
+            createdAt: date('c'),
+            tags: ['verified', 'issue:' . $id, 'category:' . $issue['category']],
         ));
         $this->transition($id, 'promoted_to_case', ['case_id' => $caseId]);
         return $caseId;
@@ -90,7 +108,9 @@ final class IssueLedger
     public function verifyAndPromote(string $id, array $verification, object $caseMemory, array $case): string
     {
         $issue = $this->readIssue($id) ?? throw new \RuntimeException("Issue not found: {$id}");
-        if (($issue['state'] ?? '') !== 'fixed') throw new \DomainException('Issue must be fixed before verification');
+        if (($issue['state'] ?? '') !== 'fixed') {
+            throw new \DomainException('Issue must be fixed before verification');
+        }
         if (($verification['outcome'] ?? '') !== 'passed' || trim((string)($verification['test_command'] ?? '')) === '') {
             throw new \DomainException('Promotion requires a passing named regression test');
         }
@@ -103,13 +123,20 @@ final class IssueLedger
         return $this->promoteVerified($id, $caseMemory, $case);
     }
 
-    public function get(string $id): ?array { return $this->readIssue($id); }
+    public function get(string $id): ?array
+    {
+        return $this->readIssue($id);
+    }
     public function all(): array
     {
         $index = $this->readIndex();
         $out = [];
-        foreach (array_keys($index['issues'] ?? []) as $id) if ($issue = $this->readIssue($id)) $out[] = $issue;
-        usort($out, fn(array $a, array $b): int => strcmp($b['last_seen'], $a['last_seen']));
+        foreach (array_keys($index['issues'] ?? []) as $id) {
+            if ($issue = $this->readIssue($id)) {
+                $out[] = $issue;
+            }
+        }
+        usort($out, fn (array $a, array $b): int => strcmp($b['last_seen'], $a['last_seen']));
         return $out;
     }
 
@@ -128,11 +155,51 @@ final class IssueLedger
         ];
     }
 
-    private function fingerprint(array $f): string { return hash('sha256', implode('|', [$f['module_id'], $f['action_id'], $f['failing_node'], $f['category'], $f['normalized_signature'], $f['source_fingerprint']])); }
-    private function issueFile(string $id): string { return $this->storagePath . '/issues/' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $id) . '.json'; }
-    private function readIssue(string $id): ?array { $f = $this->issueFile($id); if (!is_file($f)) return null; $v = json_decode((string)file_get_contents($f), true); return is_array($v) ? $v : null; }
-    private function writeIssue(array $issue): void { file_put_contents($this->issueFile($issue['id']), json_encode($issue, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX); }
-    private function readIndex(): array { $f = $this->storagePath . '/index.json'; $v = is_file($f) ? json_decode((string)file_get_contents($f), true) : []; return is_array($v) ? $v + ['fingerprints' => [], 'issues' => []] : ['fingerprints' => [], 'issues' => []]; }
-    private function withLock(callable $fn): mixed { $lock = fopen($this->storagePath . '/index.lock', 'c+'); if (!$lock || !flock($lock, LOCK_EX)) throw new \RuntimeException('Issue ledger lock failed'); try { $index = $this->readIndex(); $result = $fn($index); file_put_contents($this->storagePath . '/index.json', json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX); return $result; } finally { flock($lock, LOCK_UN); fclose($lock); } }
-    private function ensure(): void { if (!is_dir($this->storagePath . '/issues') && !@mkdir($this->storagePath . '/issues', 0770, true) && !is_dir($this->storagePath . '/issues')) throw new \RuntimeException('Cannot create issue ledger'); }
+    private function fingerprint(array $f): string
+    {
+        return hash('sha256', implode('|', [$f['module_id'], $f['action_id'], $f['failing_node'], $f['category'], $f['normalized_signature'], $f['source_fingerprint']]));
+    }
+    private function issueFile(string $id): string
+    {
+        return $this->storagePath . '/issues/' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $id) . '.json';
+    }
+    private function readIssue(string $id): ?array
+    {
+        $f = $this->issueFile($id);
+        if (!is_file($f)) {
+            return null;
+        } $v = json_decode((string)file_get_contents($f), true);
+        return is_array($v) ? $v : null;
+    }
+    private function writeIssue(array $issue): void
+    {
+        file_put_contents($this->issueFile($issue['id']), json_encode($issue, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+    }
+    private function readIndex(): array
+    {
+        $f = $this->storagePath . '/index.json';
+        $v = is_file($f) ? json_decode((string)file_get_contents($f), true) : [];
+        return is_array($v) ? $v + ['fingerprints' => [], 'issues' => []] : ['fingerprints' => [], 'issues' => []];
+    }
+    private function withLock(callable $fn): mixed
+    {
+        $lock = fopen($this->storagePath . '/index.lock', 'c+');
+        if (!$lock || !flock($lock, LOCK_EX)) {
+            throw new \RuntimeException('Issue ledger lock failed');
+        } try {
+            $index = $this->readIndex();
+            $result = $fn($index);
+            file_put_contents($this->storagePath . '/index.json', json_encode($index, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+            return $result;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+    private function ensure(): void
+    {
+        if (!is_dir($this->storagePath . '/issues') && !@mkdir($this->storagePath . '/issues', 0770, true) && !is_dir($this->storagePath . '/issues')) {
+            throw new \RuntimeException('Cannot create issue ledger');
+        }
+    }
 }

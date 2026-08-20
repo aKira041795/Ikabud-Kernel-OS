@@ -1,21 +1,22 @@
 <?php
+
 /**
  * DiSyL v4.0 Compiled Template Base Class
- * 
+ *
  * Base class for compiled templates with runtime helpers.
- * 
+ *
  * @package Ikabud\Kernel\DiSyL\Compiler
  * @version 4.0.0
  */
 
 namespace Ikabud\Kernel\DiSyL\Compiler;
 
-use Ikabud\Kernel\DiSyL\v4\RenderContext;
-use Ikabud\Kernel\DiSyL\v4\FilterRegistry;
-use Ikabud\Kernel\DiSyL\v4\FunctionRegistry;
-use Ikabud\Kernel\DiSyL\v4\AST\DocumentNode;
 use Ikabud\Kernel\DiSyL\CMS\CMSAdapterInterface;
 use Ikabud\Kernel\DiSyL\CMS\NullAdapter;
+use Ikabud\Kernel\DiSyL\v4\AST\DocumentNode;
+use Ikabud\Kernel\DiSyL\v4\FilterRegistry;
+use Ikabud\Kernel\DiSyL\v4\FunctionRegistry;
+use Ikabud\Kernel\DiSyL\v4\RenderContext;
 
 /**
  * Base class for compiled templates
@@ -31,7 +32,7 @@ abstract class CompiledTemplate
     /** @var array<string, true> Active compiled include names for cycle detection. */
     private static array $includeStack = [];
     private const MAX_INCLUDE_DEPTH = 20;
-    
+
     public function __construct(
         ?CMSAdapterInterface $cms = null,
         ?FilterRegistry $filters = null
@@ -39,7 +40,7 @@ abstract class CompiledTemplate
         $this->cms = $cms ?? new NullAdapter();
         $this->filters = $filters ?? new FilterRegistry();
     }
-    
+
     /**
      * Set CMS adapter
      */
@@ -47,7 +48,7 @@ abstract class CompiledTemplate
     {
         $this->cms = $cms;
     }
-    
+
     /**
      * Set Filter Registry
      */
@@ -55,7 +56,7 @@ abstract class CompiledTemplate
     {
         $this->filters = $filters;
     }
-    
+
     /**
      * Set template loader for includes
      */
@@ -68,12 +69,12 @@ abstract class CompiledTemplate
     {
         $this->errorHandler = $handler;
     }
-    
+
     /**
      * Render the template
      */
     abstract public function render(RenderContext $ctx): string;
-    
+
     /**
      * Execute the template with variables
      */
@@ -90,7 +91,7 @@ abstract class CompiledTemplate
     {
         return $this->render($ctx);
     }
-    
+
     /**
      * Escape HTML
      */
@@ -101,7 +102,7 @@ abstract class CompiledTemplate
         }
         return $this->cms->escape((string)$value);
     }
-    
+
     /**
      * Apply a filter
      */
@@ -120,7 +121,7 @@ abstract class CompiledTemplate
     {
         return FunctionRegistry::call($name, $args);
     }
-    
+
     /**
      * Check if value is truthy
      */
@@ -134,7 +135,7 @@ abstract class CompiledTemplate
         }
         return true;
     }
-    
+
     /**
      * Include another template
      */
@@ -143,7 +144,7 @@ abstract class CompiledTemplate
         if ($this->templateLoader === null) {
             return "<!-- include: {$template} -->";
         }
-        
+
         $key = trim($template);
         if ($key === '' || isset(self::$includeStack[$key]) || count(self::$includeStack) >= self::MAX_INCLUDE_DEPTH) {
             if ($this->errorHandler !== null) {
@@ -157,7 +158,7 @@ abstract class CompiledTemplate
         self::$includeStack[$key] = true;
         try {
             $loaded = ($this->templateLoader)($template);
-        
+
             if ($loaded instanceof CompiledTemplate) {
                 $loaded->setCMS($this->cms);
                 $loaded->setTemplateLoader($this->templateLoader);
@@ -178,7 +179,7 @@ abstract class CompiledTemplate
             unset(self::$includeStack[$key]);
         }
     }
-    
+
     /**
      * Render a block
      *

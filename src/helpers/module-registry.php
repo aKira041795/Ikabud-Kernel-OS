@@ -477,12 +477,20 @@ function moduleRegistryAlwaysActiveForTenant(int $tenantId): array
     $exposesByCapability = [];
     foreach ($allModules as $moduleId => $manifest) {
         $exposes = $manifest['capabilities']['exposes'] ?? [];
-        if (!is_array($exposes)) { continue; }
+        if (!is_array($exposes)) {
+            continue;
+        }
         foreach ($exposes as $expose) {
-            if (!is_array($expose)) { continue; }
+            if (!is_array($expose)) {
+                continue;
+            }
             $capabilityId = trim((string)($expose['id'] ?? ''));
-            if ($capabilityId === '') { continue; }
-            if (!isset($exposesByCapability[$capabilityId])) { $exposesByCapability[$capabilityId] = []; }
+            if ($capabilityId === '') {
+                continue;
+            }
+            if (!isset($exposesByCapability[$capabilityId])) {
+                $exposesByCapability[$capabilityId] = [];
+            }
             $exposesByCapability[$capabilityId][] = $moduleId;
         }
     }
@@ -507,7 +515,9 @@ function moduleRegistryAlwaysActiveForTenant(int $tenantId): array
 
     while ($queue !== []) {
         $current = array_shift($queue);
-        if (!is_string($current) || !isset($allModules[$current])) { continue; }
+        if (!is_string($current) || !isset($allModules[$current])) {
+            continue;
+        }
         if (!isset($selected[$current])) {
             $selected[$current] = true;
         }
@@ -525,11 +535,15 @@ function moduleRegistryAlwaysActiveForTenant(int $tenantId): array
 
         // Capability depends → provider modules the chain hard-requires.
         $capRefs = $manifest['capabilities']['depends'] ?? [];
-        if (!is_array($capRefs)) { $capRefs = []; }
+        if (!is_array($capRefs)) {
+            $capRefs = [];
+        }
         foreach ($capRefs as $capRef) {
             $capabilityId = is_array($capRef) ? (string)($capRef['id'] ?? '') : (string)$capRef;
             $capabilityId = trim($capabilityId);
-            if ($capabilityId === '') { continue; }
+            if ($capabilityId === '') {
+                continue;
+            }
             foreach ($exposesByCapability[$capabilityId] ?? [] as $providerModuleId) {
                 if (!isset($selected[$providerModuleId])) {
                     $selected[$providerModuleId] = true;
@@ -897,4 +911,3 @@ function moduleIsLoadable(string $moduleId): bool
     $enabled = getEnabledModules();
     return isset($enabled[$moduleId]);
 }
-

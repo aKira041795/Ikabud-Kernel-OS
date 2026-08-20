@@ -127,14 +127,14 @@ final class IntegrationCatalog
         if ($retentionDays < 1) {
             $retentionDays = 1;
         }
-        
+
         $cutoff = date('Y-m-d H:i:s', time() - ($retentionDays * 86400));
-        
+
         try {
             $stmt = $this->db->prepare('DELETE FROM kernel_trigger_executions WHERE created_at < ?');
             $stmt->execute([$cutoff]);
             $deleted = $stmt->rowCount();
-            
+
             if ($deleted > 0 && function_exists('write_log')) {
                 write_log("IntegrationCatalog::pruneExecutionHistory removed {$deleted} old trigger execution traces.", 'info', [
                     'retention_days' => $retentionDays,
@@ -142,7 +142,7 @@ final class IntegrationCatalog
                     'deleted'      => $deleted
                 ]);
             }
-            
+
             return $deleted;
         } catch (Throwable $e) {
             if (function_exists('write_log')) {
@@ -222,16 +222,16 @@ final class IntegrationCatalog
             'summary' => [
                 'event_count' => count($events),
                 'trigger_count' => count($triggers),
-                'active_trigger_count' => count(array_filter($triggers, static fn(array $row): bool => (int)($row['is_enabled'] ?? 0) === 1)),
+                'active_trigger_count' => count(array_filter($triggers, static fn (array $row): bool => (int)($row['is_enabled'] ?? 0) === 1)),
                 'integration_count' => count($integrations),
-                'active_integration_count' => count(array_filter($integrations, static fn(array $row): bool => (int)($row['is_active'] ?? 0) === 1)),
+                'active_integration_count' => count(array_filter($integrations, static fn (array $row): bool => (int)($row['is_active'] ?? 0) === 1)),
                 'integration_log_count' => count($logs),
                 'trigger_execution_count' => $this->countRows('SELECT COUNT(*) FROM kernel_trigger_executions'),
                 'failed_trigger_execution_count' => $this->countRows("SELECT COUNT(*) FROM kernel_trigger_executions WHERE status = 'failed'"),
                 'rate_limited_trigger_execution_count' => $this->countRows("SELECT COUNT(*) FROM kernel_trigger_executions WHERE status = 'rate_limited'"),
                 'trace_timeline_count' => count($timelines),
-                'unregistered_trigger_event_count' => count(array_filter($triggers, static fn(array $row): bool => empty($row['event_registered']))),
-                'unresolved_integration_target_count' => count(array_filter($integrations, static fn(array $row): bool => empty($row['target_runtime_registered']) && empty($row['target_declared_provider_count']))),
+                'unregistered_trigger_event_count' => count(array_filter($triggers, static fn (array $row): bool => empty($row['event_registered']))),
+                'unresolved_integration_target_count' => count(array_filter($integrations, static fn (array $row): bool => empty($row['target_runtime_registered']) && empty($row['target_declared_provider_count']))),
             ],
             'events' => $events,
             'triggers' => $triggers,
@@ -616,7 +616,7 @@ final class IntegrationCatalog
             $conditions[] = 'trigger_id = :trigger_id';
             $params[':trigger_id'] = $triggerId;
         }
-        
+
         $beforeId = isset($filters['before_id']) ? (int)$filters['before_id'] : 0;
         if ($beforeId > 0) {
             $conditions[] = 'id < :before_id';
@@ -694,7 +694,7 @@ final class IntegrationCatalog
             return [];
         }
 
-        $decoded = array_values(array_filter($decoded, static fn(mixed $item): bool => is_string($item) && trim($item) !== ''));
+        $decoded = array_values(array_filter($decoded, static fn (mixed $item): bool => is_string($item) && trim($item) !== ''));
         sort($decoded);
         return $decoded;
     }

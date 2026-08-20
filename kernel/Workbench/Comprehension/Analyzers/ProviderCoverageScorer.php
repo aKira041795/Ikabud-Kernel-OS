@@ -6,8 +6,6 @@ namespace Ikabud\Kernel\Workbench\Comprehension\Analyzers;
 
 use Ikabud\Kernel\Workbench\Comprehension\Contracts\{
     ModuleComprehensionProvider,
-    ActionContract,
-    ChainLink,
 };
 
 /**
@@ -114,7 +112,9 @@ class ProviderCoverageScorer
         $uiLinkCount = 0;
 
         foreach ($evidence as $key => $value) {
-            if (str_starts_with((string)$key, '_')) continue;
+            if (str_starts_with((string)$key, '_')) {
+                continue;
+            }
             $lower = mb_strtolower((string)$key);
             if (preg_match('/click|visible|render|button|link|href|selector|dom|element/i', $lower)) {
                 $uiEvidenceCount++;
@@ -207,15 +207,21 @@ class ProviderCoverageScorer
 
         foreach ($actions as $action) {
             foreach ($action->chain as $link) {
-                if ($link->category === 'event') $hasEventLinks = true;
-                if ($link->category === 'audit') $hasAuditLinks = true;
+                if ($link->category === 'event') {
+                    $hasEventLinks = true;
+                }
+                if ($link->category === 'audit') {
+                    $hasAuditLinks = true;
+                }
             }
         }
 
         // Check evidence for event/audit patterns
         $evidenceText = '';
         foreach ($evidence as $key => $value) {
-            if (is_string($value)) $evidenceText .= ' ' . $value;
+            if (is_string($value)) {
+                $evidenceText .= ' ' . $value;
+            }
         }
 
         $hasEventEvidence = (bool)preg_match('/event|trigger|fired|dispatch/i', $evidenceText);
