@@ -40,15 +40,13 @@
     .config-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
     .config-modal-title { font-size: 13px; font-weight: 700; color: #1e293b; }
     .config-modal-body { padding: 14px; overflow-y: auto; }
-    .cap-panel { background: #fff; border: 1px solid var(--kernel-panel-border); border-radius: var(--radius); padding: 14px 16px; font-size: 12px; color: #1e293b; min-height: 48px; }
     .cap-panel-loading { color: #64748b; }
     .cap-panel-error { color: #dc2626; }
-    .cap-cap-list { display: flex; flex-wrap: wrap; gap: 4px; }
-    .caller-cap-list { display: flex; flex-wrap: wrap; gap: 4px; }
 </style>
 <script>
     var BASE = '{base_url}';
     var CSRF = '{csrf_token}';
+    var MODULE_CONFIG = {modules_config_json|raw};
 
     function showToast(message, type) {
         window.dispatchEvent(new CustomEvent('cms-toast', { detail: { message: message || '', type: type || 'success' } }));
@@ -158,22 +156,18 @@
 
         var modal = document.getElementById('module-config-modal');
         if (modal) modal.classList.add('show');
+        if (!form) return;
 
-        fetch(BASE + '/api/v1/admin/modules/settings?module_id=' + encodeURIComponent(moduleId))
-            .then(function(r) { return r.json(); })
-            .then(function(res) {
-                if (!form) return;
-                if (!res.ok) {
-                    form.innerHTML = '<div class="cap-panel-error">' + (res.error || 'Failed to load') + '</div>';
-                    return;
-                }
-                var settings = res.settings || {};
-                var fields = res.fields || [];
-                if (fields.length === 0) {
-                    form.innerHTML = '<div class="muted">No configurable settings for this module.</div>';
-                    return;
-                }
-                var html = '';
+        // Settings + field definitions are embedded server-side at render time
+        // (no separate GET endpoint is required).
+        var cfg = MODULE_CONFIG[moduleId] || {};
+        var settings = cfg.settings || {};
+        var fields = cfg.fields || [];
+        if (fields.length === 0) {
+            form.innerHTML = '<div class="muted">No configurable settings for this module.</div>';
+            return;
+        }
+        var html = '';
                 fields.forEach(function(f) {
                     var val = settings[f.key] !== undefined ? settings[f.key] : (f.default || '');
                     if (f.type === 'checkbox' || f.is_checkbox) {
@@ -195,11 +189,7 @@
                         html += '<div class="hint">' + escapeHtml(f.description) + '</div>';
                     }
                 });
-                form.innerHTML = html;
-            })
-            .catch(function() {
-                if (form) form.innerHTML = '<div class="cap-panel-error">Network error loading settings</div>';
-            });
+        form.innerHTML = html;
     }
 
     function closeModuleConfig() {
@@ -369,36 +359,16 @@
             <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">{mod.settings_context_notice}</div>
             {/if}
 
+            {if mod.show_allow_kernel_admin}
             <div class="optin-row">
                 <input type="checkbox" id="optin-{mod.id}" {if mod.allow_kernel_admin}checked{/if} onchange="toggleAdminOptin('{mod.id}', this.checked)">
                 <label for="optin-{mod.id}">Allow kernel admin access</label>
             </div>
+            {/if}
         </div>
         {/foreach}
     </div>
     {/if}
-</div>
-
-<!-- Capability insights -->
-<div class="cap-section">
-    <div class="cap-section-header">
-        <h3>Capability Insights</h3>
-        <span>Providers, latency/breakers, and which modules are allowed to call each capability.</span>
-    </div>
-    <div id="capabilities-panel" class="cap-panel cap-panel-loading">
-        Loading capability data...
-    </div>
-</div>
-
-<!-- Caller wiring (per-module capability depends) -->
-<div class="cap-section">
-    <div class="cap-section-header">
-        <h3>Caller Wiring</h3>
-        <span>Pick a module and choose which capabilities it depends on.</span>
-    </div>
-    <div id="caller-panel" class="cap-panel cap-panel-loading">
-        Loading caller wiring...
-    </div>
 </div>
 
 <div id="module-config-modal" class="config-modal" aria-hidden="true">

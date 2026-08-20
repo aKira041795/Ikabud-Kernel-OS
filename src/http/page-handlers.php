@@ -599,6 +599,20 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 $settingsContextNotice = 'Feature settings are managed by the Superadmin on the tenant domain.';
             }
 
+            // Kernel-admin gate visibility: only modules with their own admin
+            // surface and module-owned auth need the opt-in toggle. Modules that
+            // authenticate against the kernel users table are always allowed;
+            // companion (extension/adapter) modules are reached through a host.
+            $usesKernelUsers = function_exists('tenantEntryModuleUsesKernelUsers')
+                && tenantEntryModuleUsesKernelUsers($moduleId);
+            $kind = function_exists('moduleManifestKindFromManifest')
+                ? moduleManifestKindFromManifest($m)
+                : MODULE_KIND_STANDALONE;
+            $isCompanion = $kind === MODULE_KIND_EXTENSION
+                || $kind === MODULE_KIND_ADAPTER
+                || (function_exists('moduleExtendsForModule') && moduleExtendsForModule($moduleId) !== null);
+            $showAllowKernelAdmin = !$usesKernelUsers && count($m['nav'] ?? []) > 0 && !$isCompanion;
+
             $moduleList[] = [
                 'id' => $m['id'],
                 'name' => $m['name'] ?? $m['id'],
@@ -608,6 +622,7 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 'icon' => trim((string) ($m['icon'] ?? '')),
                 'enabled' => !empty($m['_enabled']),
                 'allow_kernel_admin' => (bool)($modSettings['allow_kernel_admin'] ?? false),
+                'show_allow_kernel_admin' => $showAllowKernelAdmin,
                 'nav_count' => count($m['nav'] ?? []),
                 'route_count' => $routeCount,
                 'settings_url' => $settingsUrl,
@@ -623,11 +638,23 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 'entities_owned_count' => count($entitiesOwned),
             ];
         }
+
+        // Embed per-module settings + field definitions so the Config modal can
+        // render without a separate GET endpoint.
+        $modulesConfig = [];
+        foreach ($moduleList as $modEntry) {
+            $modulesConfig[$modEntry['id']] = [
+                'fields' => $modEntry['settings_fields'],
+                'settings' => $modEntry['settings'],
+            ];
+        }
+
         echo app()->render('pages/admin-modules.disyl', array_merge(
             kernelAdminContext($user, 'modules'),
             [
                 'page_title' => 'Module Manager',
                 'modules' => $moduleList,
+                'modules_config_json' => json_encode($modulesConfig, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             ]
         ));
         exit;
