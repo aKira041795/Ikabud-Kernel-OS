@@ -248,9 +248,9 @@ function kernelHandleApiSuperadminServiceHealth(): void
         'ok' => true,
         'services' => $services,
         'total' => count($services),
-        'healthy' => count(array_filter($services, fn($s) => $s['health_status'] === 'healthy')),
-        'degraded' => count(array_filter($services, fn($s) => $s['health_status'] === 'degraded')),
-        'unreachable' => count(array_filter($services, fn($s) => $s['health_status'] === 'unreachable')),
+        'healthy' => count(array_filter($services, fn ($s) => $s['health_status'] === 'healthy')),
+        'degraded' => count(array_filter($services, fn ($s) => $s['health_status'] === 'degraded')),
+        'unreachable' => count(array_filter($services, fn ($s) => $s['health_status'] === 'unreachable')),
     ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
 }
 
@@ -266,7 +266,9 @@ function kernelHandleApiSuperadminBreakers(): void
     $breakers = [];
 
     foreach ($state as $key => $data) {
-        if (!is_array($data)) continue;
+        if (!is_array($data)) {
+            continue;
+        }
         $breakers[] = [
             'key' => $key,
             'open' => !empty($data['open']),
@@ -278,14 +280,14 @@ function kernelHandleApiSuperadminBreakers(): void
         ];
     }
 
-    usort($breakers, fn($a, $b) => ($b['failure_count'] ?? 0) <=> ($a['failure_count'] ?? 0));
+    usort($breakers, fn ($a, $b) => ($b['failure_count'] ?? 0) <=> ($a['failure_count'] ?? 0));
 
     header('Content-Type: application/json');
     echo json_encode([
         'ok' => true,
         'breakers' => $breakers,
         'total' => count($breakers),
-        'open_count' => count(array_filter($breakers, fn($b) => $b['open'])),
+        'open_count' => count(array_filter($breakers, fn ($b) => $b['open'])),
     ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
 }
 
@@ -338,20 +340,36 @@ function kernelHandleApiSuperadminCapabilityTrace(): void
         $lines = array_reverse($lines); // newest first
 
         foreach ($lines as $line) {
-            if (count($traces) >= $limit) break;
-            if (!str_contains($line, 'capability.call')) continue;
+            if (count($traces) >= $limit) {
+                break;
+            }
+            if (!str_contains($line, 'capability.call')) {
+                continue;
+            }
 
             $jsonStart = strpos($line, '{');
-            if ($jsonStart === false) continue;
+            if ($jsonStart === false) {
+                continue;
+            }
             $jsonStr = substr($line, $jsonStart);
             $data = json_decode($jsonStr, true);
-            if (!is_array($data)) continue;
+            if (!is_array($data)) {
+                continue;
+            }
 
             // Filters
-            if ($capability !== '' && !str_contains(($data['capability_id'] ?? ''), $capability)) continue;
-            if ($provider !== '' && !in_array($provider, $data['providers'] ?? [], true)) continue;
-            if ($status === 'ok' && empty($data['ok'])) continue;
-            if ($status === 'error' && !empty($data['ok'])) continue;
+            if ($capability !== '' && !str_contains(($data['capability_id'] ?? ''), $capability)) {
+                continue;
+            }
+            if ($provider !== '' && !in_array($provider, $data['providers'] ?? [], true)) {
+                continue;
+            }
+            if ($status === 'ok' && empty($data['ok'])) {
+                continue;
+            }
+            if ($status === 'error' && !empty($data['ok'])) {
+                continue;
+            }
 
             $traces[] = [
                 'capability_id' => $data['capability_id'] ?? '',
@@ -388,7 +406,9 @@ function kernelHandleApiSuperadminServiceProxyDiagnostics(): void
     $diagnostics = [];
 
     foreach ($modules as $id => $manifest) {
-        if (($manifest['type'] ?? 'php-module') !== 'service-module') continue;
+        if (($manifest['type'] ?? 'php-module') !== 'service-module') {
+            continue;
+        }
 
         $service = $manifest['service'] ?? [];
         $endpoint = rtrim((string)($service['endpoint'] ?? ''), '/');
@@ -496,7 +516,7 @@ function kernelHandleApiSuperadminEntityViewDebug(): void
         $debug['capability_exists'] = \app()->capabilities()->has($capabilityId);
         if ($debug['capability_exists']) {
             $debug['capability_providers'] = array_map(
-                fn($p) => $p['provider'] ?? '?',
+                fn ($p) => $p['provider'] ?? '?',
                 \app()->capabilities()->providers($capabilityId)
             );
         }
@@ -732,7 +752,10 @@ function kernelHandleApiSuperadminAiPrompts(): void
     if ($method === 'POST') {
         $body = json_decode(file_get_contents('php://input'), true);
         $id = (string)($body['id'] ?? '');
-        if ($id === '') { echo json_encode(['ok' => false, 'error' => 'id required']); return; }
+        if ($id === '') {
+            echo json_encode(['ok' => false, 'error' => 'id required']);
+            return;
+        }
         \Ikabud\Kernel\DiSyL\AI\AIGovernance::savePromptTemplate($id, $body);
         echo json_encode(['ok' => true]);
         return;
@@ -761,7 +784,10 @@ function kernelHandleApiSuperadminAiRedaction(): void
     if ($method === 'POST') {
         $body = json_decode(file_get_contents('php://input'), true);
         $id = (string)($body['id'] ?? '');
-        if ($id === '') { echo json_encode(['ok' => false, 'error' => 'id required']); return; }
+        if ($id === '') {
+            echo json_encode(['ok' => false, 'error' => 'id required']);
+            return;
+        }
         \Ikabud\Kernel\DiSyL\AI\AIGovernance::saveRedactionRule($id, $body);
         echo json_encode(['ok' => true]);
         return;
@@ -825,4 +851,3 @@ function kernelHandleApiSuperadminAiCertify(): void
         'certification' => \Ikabud\Kernel\DiSyL\AI\AIGovernance::certifyAiCapability($capabilityId),
     ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
 }
-
