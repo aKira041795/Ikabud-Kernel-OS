@@ -3004,9 +3004,16 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
         }
 
         // Kernel admin should not see module links unless the module opts in.
+        // Mirror the route gate: modules authenticating against the kernel
+        // users table are always reachable by the kernel admin, so their nav
+        // links are shown even without an explicit opt-in.
         if ($isKernelAdmin) {
             $settings = $module['_settings'] ?? [];
-            $allowKernelAdmin = (bool)($settings['allow_kernel_admin'] ?? false);
+            $usesKernelUsers = function_exists('tenantEntryModuleUsesKernelUsers')
+                && tenantEntryModuleUsesKernelUsers($moduleId);
+            $allowKernelAdmin = $usesKernelUsers
+                ? true
+                : (bool)($settings['allow_kernel_admin'] ?? false);
             if (!$allowKernelAdmin) {
                 continue;
             }
@@ -3035,6 +3042,11 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
                 ];
             }
         }
+    }
+
+    // Group kernel-accessible companion module links under a labeled section.
+    if ($isKernelAdmin && $navItems !== []) {
+        array_unshift($navItems, ['label' => '__section__', 'url' => '#', 'icon' => 'separator', 'module' => '_kernel', 'section' => 'Companion Modules']);
     }
 
     // Kernel-level nav: Modules page (always available to admin, even if no modules enabled)
