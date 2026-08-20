@@ -9832,7 +9832,8 @@ parameters:
 
 		-
 			message: "#^Constant BASE_PATH not found\\.$#"
-                   count: 15
+			count: 15
+			path: src/helpers/module-migrations.php
 
 		-
 			message: "#^Function applyModuleSqlArtifacts\\(\\) has parameter \\$manifest with no value type specified in iterable type array\\.$#"
