@@ -574,7 +574,7 @@ function kernelHandleAuthForgotPassword(): void
 
             if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $context = kernelAuthExperienceContext();
-                $brandText = (string)($context['login_brand_text'] ?? 'APPLICATION KERNEL OS');
+                $brandText = (string)($context['login_brand_text'] ?? 'IKABUD KERNEL OS');
                 $name = trim((string)($user['full_name'] ?? $user['username'] ?? 'there'));
                 $content = '<p style="margin:0 0 16px;color:#4b5563;font-size:16px;line-height:1.6;">Hi ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ',</p>'
                     . '<p style="margin:0 0 16px;color:#4b5563;font-size:16px;line-height:1.6;">A request was made to reset your ' . htmlspecialchars($brandText, ENT_QUOTES, 'UTF-8') . ' password.</p>'
