@@ -16,6 +16,12 @@ interface EventBusContract
 
     public function fire(string $event, array $payload = [], string $module = ''): int;
 
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $opts
+     */
+    public function fireDurable(string $event, array $payload = [], ?\PDO $pdo = null, array $opts = []): ?int;
+
     public function hasListeners(string $event): bool;
 
     public function registeredEvents(): array;

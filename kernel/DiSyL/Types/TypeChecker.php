@@ -20,6 +20,17 @@ require_once __DIR__ . '/TypeAst.php';
  */
 final class TypeChecker
 {
+    /** @var array<string, string> */
+    private const RUNTIME_TYPE_ALIASES = [
+        'string' => 'string',
+        'int' => 'int',
+        'integer' => 'int',
+        'float' => 'float',
+        'number' => 'number',
+        'bool' => 'bool',
+        'boolean' => 'bool',
+    ];
+
     /** @var list<array{code:string, message:string, template:string, line:int}> */
     public array $diagnostics = [];
 
@@ -218,7 +229,7 @@ final class TypeChecker
                 $locals[] = $v;
             }
         }
-        if (preg_match_all('/\{set\s+(\w+)\s*=/', $body, $m)) {
+        if (preg_match_all('/\{set\s+(\w+)(?:\s*:\s*[^=]+)?\s*=/', $body, $m)) {
             foreach ($m[1] as $name) {
                 $locals[] = $name;
             }
@@ -267,6 +278,80 @@ final class TypeChecker
             $i++;
         }
         return $paths;
+    }
+
+    public static function normalizeRuntimeType(?string $type): ?string
+    {
+        if ($type === null) {
+            return null;
+        }
+
+        $type = strtolower(trim($type));
+        return self::RUNTIME_TYPE_ALIASES[$type] ?? null;
+    }
+
+    public static function matchesRuntimeType(mixed $value, ?string $type): bool
+    {
+        $type = self::normalizeRuntimeType($type);
+        if ($type === null) {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'number' => is_int($value) || is_float($value),
+            'bool' => is_bool($value),
+            'int' => is_int($value),
+            'float' => is_float($value),
+            default => true,
+        };
+    }
+
+    public static function describeRuntimeType(mixed $value): string
+    {
+        return match (true) {
+            is_int($value) => 'int',
+            is_float($value) => 'float',
+            is_bool($value) => 'bool',
+            is_string($value) => 'string',
+            is_array($value) => 'array',
+            is_object($value) => 'object',
+            $value === null => 'null',
+            default => gettype($value),
+        };
+    }
+
+    /**
+     * Coerce a runtime value to a literal-union type. Literal unions are
+     * self-validating enums: if the value is not one of the declared literal
+     * members, fall back to the first member (the default). Returns null when
+     * the declared type is not a quoted-string literal union (no coercion).
+     */
+    public static function coerceLiteralUnion(mixed $value, ?string $type): mixed
+    {
+        if ($type === null) {
+            return null;
+        }
+
+        $type = trim($type);
+        $members = [];
+        foreach (explode('|', $type) as $part) {
+            $part = trim($part);
+            // Literal-union members must be quoted string literals: "a" | "b".
+            $first = $part[0] ?? '';
+            if (($first !== '"' && $first !== "'") || substr($part, -1) !== $first || strlen($part) < 2) {
+                return null;
+            }
+            $members[] = stripcslashes(substr($part, 1, -1));
+        }
+
+        foreach ($members as $member) {
+            if ($value === $member) {
+                return $value; // already a valid member
+            }
+        }
+
+        return $members[0]; // invalid -> fall back to the first (default) member
     }
 
     /**

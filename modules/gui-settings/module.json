@@ -281,7 +281,10 @@
     "policy": {
       "capabilities": {
         "gui_settings.apply@1": {
-          "allow_callers": ["kernel", "gui-settings"]
+          "allow_callers": [
+            "kernel",
+            "gui-settings"
+          ]
         }
       }
     }
