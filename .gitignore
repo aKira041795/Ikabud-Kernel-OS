@@ -16,7 +16,12 @@ templates/modules/*
 
 # ── Local agent/tool state ──────────────────────────────────────────
 /.ai/current-task.md
+/.ai/debate/
+/.ai/current-task.review-baseline.md
 .lean-ctx/
+
+# ── Formatter / tool caches (never commit) ──────────────────────────
+.php-cs-fixer.cache
 
 # ── Environment (never commit secrets) ─────────────────────────────
 .env
