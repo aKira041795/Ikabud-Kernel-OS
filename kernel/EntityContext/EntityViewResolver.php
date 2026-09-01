@@ -31,6 +31,9 @@ final class EntityViewResolver
     /** @var array<string, array<string, mixed>> resolved view contracts */
     private array $viewContracts = [];
 
+    /** @var string[] allowed source schema field types */
+    private const SOURCE_SCHEMA_TYPES = ['string', 'int', 'float', 'bool', 'json', 'date', 'datetime', 'reference'];
+
     /** @var array<string, ResolvedEntityContext> cached resolved contexts */
     private array $resolvedCache = [];
 
@@ -128,6 +131,7 @@ final class EntityViewResolver
             'action_labels'   => [],
             'key_field'       => null,
             'timeout_ms'      => 10000,
+            'source_schema'   => null,
         ];
 
         // Domain-specific merge (P1.5) — not generic array_replace
@@ -167,8 +171,18 @@ final class EntityViewResolver
 
         $merged['provider'] = $providerId;
 
+        if (array_key_exists('source_schema', $contract)) {
+            $merged['source_schema'] = $this->normalizeSourceSchema($entityType, $view, $contract, $providerId);
+        }
+
         // Provenance tracking (P1.4)
         $entry = ['provider' => $providerId, 'timestamp' => date('c')];
+        if (isset($merged['source_schema']) && is_array($merged['source_schema'])) {
+            $entry['source_schema'] = $merged['source_schema'];
+        }
+        if (isset($contract['cross_module_approved']) && is_array($contract['cross_module_approved'])) {
+            $entry['cross_module_approved'] = $contract['cross_module_approved'];
+        }
         $provenance = [$entry];
         if (isset($this->viewContracts[$key]['_provenance']) && is_array($this->viewContracts[$key]['_provenance'])) {
             $provenance = array_merge($this->viewContracts[$key]['_provenance'], [$entry]);
@@ -176,7 +190,11 @@ final class EntityViewResolver
         $merged['_provenance'] = $provenance;
 
         $this->viewContracts[$key] = $merged;
-        unset($this->resolvedCache[$key]);
+        foreach (array_keys($this->resolvedCache) as $cacheKey) {
+            if (str_starts_with($cacheKey, trim($entityType) . '.')) {
+                unset($this->resolvedCache[$cacheKey]);
+            }
+        }
     }
 
     /**
@@ -374,7 +392,7 @@ final class EntityViewResolver
             'rows' => $rows,
             'total' => $total,
             'view' => $contract,
-            'display_fields' => is_array($displayFields) ? $displayFields : ($rows[0] ?? [] ? array_keys($rows[0]) : []),
+            'display_fields' => is_array($displayFields) ? $displayFields : ($rows[0] ?? [] ? array_values(array_intersect(array_keys($rows[0]), \Ikabud\Kernel\EntityContext\DefaultEntityRenderer::SAFE_FALLBACK_FIELDS)) : []),
             'source' => $parsed,
             'error' => null,
         ];
@@ -649,25 +667,17 @@ final class EntityViewResolver
     /**
      * @deprecated P2.1 Built-in defaults are being migrated to module-level
      *             registrations. This method is kept as a backward-compat
-     *             fallback for entity types that no module has claimed yet.
+     *             fallback for legacy entity types that no module has claimed
+     *             yet; `products` migrated to ecommerce ownership in P2.1.
      *             Logs a warning when invoked so migration progress can
      *             be tracked.
      * @return array<string, mixed>|null
      */
     private function builtinDefaults(string $entityType, string $view): ?array
     {
-        // Log deprecation warning to track unresolved entity types
-        if (\function_exists('write_log')) {
-            \write_log("EntityViewResolver: built-in default used for '{$entityType}.{$view}' — migrate to module-level registration (P2.1)", 'warning', [
-                'entity_type' => $entityType,
-                'view' => $view,
-            ]);
-        }
-
         $compactDefaults = [
             // Legacy backward-compat aliases (short names)
             'orders' => ['fields' => ['id', 'status', 'total', 'created_at'], 'actions' => ['view'], 'limit' => 10, 'empty_state' => 'No orders yet.'],
-            'products' => ['fields' => ['id', 'name', 'price', 'image'], 'actions' => ['view', 'add_to_cart'], 'limit' => 20, 'empty_state' => 'No products found.'],
             'cases' => ['fields' => ['id', 'title', 'status', 'updated_at'], 'actions' => ['view'], 'limit' => 15, 'empty_state' => 'No cases found.'],
             'ledger' => ['fields' => ['id', 'entry_type', 'amount', 'created_at'], 'actions' => ['view'], 'limit' => 25, 'empty_state' => 'No ledger entries.'],
             'appointments' => ['fields' => ['id', 'title', 'date', 'status'], 'actions' => ['view', 'cancel'], 'limit' => 10, 'empty_state' => 'No appointments.'],
@@ -675,7 +685,18 @@ final class EntityViewResolver
             'weather' => ['fields' => ['date', 'high_c', 'low_c', 'condition'], 'actions' => [], 'limit' => 5, 'empty_state' => 'No weather data.'],
         ];
 
-        $base = $compactDefaults[$entityType] ?? ['fields' => '*', 'actions' => ['view'], 'limit' => 25, 'empty_state' => 'No records found.'];
+        $base = $compactDefaults[$entityType] ?? null;
+        if ($base === null) {
+            return null;
+        }
+
+        // Log deprecation warning to track unresolved entity types
+        if (\function_exists('write_log')) {
+            \write_log("EntityViewResolver: built-in default used for '{$entityType}.{$view}' — migrate to module-level registration (P2.1)", 'warning', [
+                'entity_type' => $entityType,
+                'view' => $view,
+            ]);
+        }
 
         return [
             'entity_type' => $entityType,
@@ -696,6 +717,7 @@ final class EntityViewResolver
             'exportable' => false,
             'capability' => null,
             'provider' => 'kernel.builtin',
+            'source_schema' => null,
         ];
     }
 
@@ -736,6 +758,7 @@ final class EntityViewResolver
             'provider'        => 'kernel.generic',
             'key_field'       => null,
             'timeout_ms'      => 10000,
+            'source_schema'   => null,
         ];
     }
 
@@ -779,5 +802,131 @@ final class EntityViewResolver
         }
         // Must be a sequential array (0-indexed)
         return array_keys($value) === range(0, count($value) - 1);
+    }
+
+    /**
+     * @param array<string, mixed> $contract
+     * @return array{entity: string, owner: string, fields: array<string, string>}
+     */
+    private function normalizeSourceSchema(string $entityType, string $view, array $contract, string $providerId): array
+    {
+        $schema = $contract['source_schema'] ?? null;
+        if (!is_array($schema)) {
+            throw new \InvalidArgumentException('Entity view source_schema must be an array.');
+        }
+
+        $schemaEntity = trim((string)($schema['entity'] ?? $entityType));
+        $schemaOwner = trim((string)($schema['owner'] ?? $providerId));
+        $schemaFields = $schema['fields'] ?? [];
+
+        if (!is_array($schemaFields)) {
+            throw new \InvalidArgumentException('Entity view source_schema.fields must be an array.');
+        }
+
+        $normalizedFields = [];
+        foreach ($schemaFields as $field => $type) {
+            $fieldName = trim((string)$field);
+            $typeName = trim((string)$type);
+            if ($fieldName === '') {
+                continue;
+            }
+            if (!in_array($typeName, self::SOURCE_SCHEMA_TYPES, true)) {
+                $this->logSourceSchema('entity.source_schema.invalid_type', 'warning', [
+                    'entity_type' => $entityType,
+                    'view' => $view,
+                    'provider' => $providerId,
+                    'field' => $fieldName,
+                    'type' => $typeName,
+                ]);
+                throw new \InvalidArgumentException("Entity view source_schema has invalid type '{$typeName}' for field '{$fieldName}'.");
+            }
+            $normalizedFields[$fieldName] = $typeName;
+        }
+
+        $normalized = [
+            'entity' => $schemaEntity,
+            'owner' => $schemaOwner,
+            'fields' => $normalizedFields,
+        ];
+
+        $approval = isset($contract['cross_module_approved']) && is_array($contract['cross_module_approved'])
+            ? $contract['cross_module_approved']
+            : null;
+
+        if ($schemaOwner !== $providerId) {
+            if ($approval !== null) {
+                $this->logSourceSchema('entity.source_schema.cross_module_approved', 'warning', [
+                    'entity_type' => $entityType,
+                    'schema_entity' => $schemaEntity,
+                    'view' => $view,
+                    'provider' => $providerId,
+                    'owner' => $schemaOwner,
+                    'approval' => $approval,
+                ]);
+            } elseif (!$this->isAllowedKernelStructuralSchema($entityType, $providerId, $normalized, $contract)) {
+                $this->logSourceSchema('entity.source_schema.owner_mismatch', 'warning', [
+                    'entity_type' => $entityType,
+                    'schema_entity' => $schemaEntity,
+                    'view' => $view,
+                    'provider' => $providerId,
+                    'owner' => $schemaOwner,
+                ]);
+                throw new \InvalidArgumentException("Entity view source_schema owner mismatch: provider '{$providerId}' cannot source '{$schemaEntity}' owned by '{$schemaOwner}'.");
+            }
+        }
+
+        $viewFields = $contract['fields'] ?? '*';
+        if (is_array($viewFields) && $normalizedFields !== []) {
+            foreach ($viewFields as $field) {
+                $fieldName = trim((string)$field);
+                if ($fieldName === '') {
+                    continue;
+                }
+                if (!array_key_exists($fieldName, $normalizedFields)) {
+                    $this->logSourceSchema('entity.source_schema.unknown_field', 'warning', [
+                        'entity_type' => $entityType,
+                        'schema_entity' => $schemaEntity,
+                        'view' => $view,
+                        'provider' => $providerId,
+                        'field' => $fieldName,
+                    ]);
+                    throw new \InvalidArgumentException("Entity view field '{$fieldName}' is not declared in source_schema.fields.");
+                }
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array{entity: string, owner: string, fields: array<string, string>} $schema
+     * @param array<string, mixed> $contract
+     */
+    private function isAllowedKernelStructuralSchema(string $entityType, string $providerId, array $schema, array $contract): bool
+    {
+        if ($schema['owner'] !== 'kernel' || $providerId !== 'kernel') {
+            return false;
+        }
+
+        if ($schema['fields'] !== []) {
+            return false;
+        }
+
+        $viewFields = $contract['fields'] ?? '*';
+        if ($viewFields !== '*' && $viewFields !== []) {
+            return false;
+        }
+
+        return $entityType === '*' || $schema['entity'] === '*' || $schema['entity'] === $entityType;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function logSourceSchema(string $message, string $level, array $context): void
+    {
+        if (\function_exists('write_log')) {
+            \write_log($message, $level, $context);
+        }
     }
 }

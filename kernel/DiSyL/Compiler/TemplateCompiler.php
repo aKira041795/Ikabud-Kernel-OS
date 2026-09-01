@@ -12,6 +12,8 @@
 
 namespace Ikabud\Kernel\DiSyL\Compiler;
 
+require_once dirname(__DIR__) . '/Types/TypeChecker.php';
+
 use Ikabud\Kernel\DiSyL\v4\AST\AbstractNode;
 use Ikabud\Kernel\DiSyL\v4\AST\ArrayNode;
 use Ikabud\Kernel\DiSyL\v4\AST\BinaryOpNode;
@@ -53,6 +55,12 @@ class TemplateCompiler
     private string $indent = '    ';
     /** Whether the template being compiled extends a parent (child template) */
     private bool $isChildTemplate = false;
+    private bool $strictTypes;
+
+    public function __construct(bool $strictTypes = false)
+    {
+        $this->strictTypes = $strictTypes;
+    }
 
     /**
      * Compile AST to PHP class code
@@ -308,6 +316,7 @@ PHP;
             'break' => $this->line('break;'),
             'continue' => $this->line('continue;'),
             'set' => $this->compileSet($node),
+            'math' => $this->compileMath($node),
             'with' => $this->compileWith($node),
             'apply' => $this->compileApply($node),
             'query' => $this->compileQuery($node),
@@ -507,8 +516,13 @@ PHP;
     private function compileSet(ControlNode $node): string
     {
         $name = var_export($node->getAttribute('name'), true);
+        $type = $node->getAttribute('type');
+        $typeExport = var_export(is_string($type) ? trim($type) : null, true);
         $value = $this->compileExpressionValue($node->getAttribute('value'));
         $compound = $node->getAttribute('compound');
+        $strictDefault = $this->strictTypes ? 'true' : 'false';
+
+        $code = $this->line("\$__disyl_set_value = {$value};");
         if ($compound !== null) {
             $op = match ($compound) {
                 '+=' => '+',
@@ -518,10 +532,62 @@ PHP;
                 default => null,
             };
             if ($op !== null) {
-                return $this->line("\$ctx->set({$name}, \$ctx->get({$name}) {$op} {$value});");
+                $code .= $this->line("\$__disyl_set_value = \$ctx->get({$name}) {$op} \$__disyl_set_value;");
             }
         }
-        return $this->line("\$ctx->set({$name}, {$value});");
+
+        $code .= $this->line("\$__disyl_set_type = {$typeExport};");
+        // Literal-union types are self-validating: coerce invalid values to the
+        // first member regardless of the strict-types toggle.
+        $code .= $this->line("\$__disyl_coerced = \\Ikabud\\Kernel\\DiSyL\\Types\\TypeChecker::coerceLiteralUnion(\$__disyl_set_value, \$__disyl_set_type);");
+        $code .= $this->line("if (\$__disyl_coerced !== null) { \$__disyl_set_value = \$__disyl_coerced; }");
+        $code .= $this->line("\$__disyl_strict_types = \$ctx->get('__disyl_strict_types');");
+        $code .= $this->line("if (\$__disyl_strict_types === null) { \$__disyl_strict_types = {$strictDefault}; }");
+        $code .= $this->line("if (\$__disyl_strict_types && \$__disyl_set_type !== null) {");
+        $this->indentLevel++;
+        $code .= $this->line("\$__disyl_normalized_type = \\Ikabud\\Kernel\\DiSyL\\Types\\TypeChecker::normalizeRuntimeType(\$__disyl_set_type);");
+        $code .= $this->line("if (\$__disyl_normalized_type !== null && !\\Ikabud\\Kernel\\DiSyL\\Types\\TypeChecker::matchesRuntimeType(\$__disyl_set_value, \$__disyl_normalized_type)) {");
+        $this->indentLevel++;
+        $code .= $this->line("\$__disyl_actual_type = \\Ikabud\\Kernel\\DiSyL\\Types\\TypeChecker::describeRuntimeType(\$__disyl_set_value);");
+        $code .= $this->line("\$__disyl_msg = '[strict] Type mismatch for $' . {$name} . ': expected ' . \$__disyl_normalized_type . ', got ' . \$__disyl_actual_type;");
+        $code .= $this->line("if (is_callable(\$this->errorHandler)) { (\$this->errorHandler)(\$__disyl_msg); }");
+        $code .= $this->line("\$output .= '[[DiSyL strict type mismatch: $' . {$name} . ' expected ' . \$__disyl_normalized_type . ', got ' . \$__disyl_actual_type . ']]';");
+        $this->indentLevel--;
+        $code .= $this->line("}");
+        $this->indentLevel--;
+        $code .= $this->line("}");
+        $code .= $this->line("\$ctx->set({$name}, \$__disyl_set_value);");
+
+        return $code;
+    }
+
+    /** {math equation="..." [format="decimals"] [assign="var"]} — self-closing math tag. */
+    private function compileMath(ControlNode $node): string
+    {
+        // Missing/invalid equation: emit a visible marker + log, never silent.
+        $error = $node->getAttribute('error');
+        if ($error !== null) {
+            $msg = 'DiSyL {math} error: ' . $error;
+            $comment = '<!-- DiSyL math error: ' . $error . ' -->';
+            $log = "if (function_exists('write_log')) { \\write_log(" . var_export($msg, true) . '); }';
+            return $this->line($log)
+                 . $this->line('$output .= ' . var_export($comment, true) . ';');
+        }
+
+        $equation = $this->compileExpressionValue($node->getAttribute('equation'));
+
+        $format = $node->getAttribute('format');
+        if ($format !== null) {
+            $formatExpr = $this->compileExpressionValue($format);
+            $equation = "number_format((float)({$equation}), (int)({$formatExpr}))";
+        }
+
+        $assign = $node->getAttribute('assign');
+        if ($assign !== null) {
+            return $this->line("\$ctx->set(" . var_export($assign, true) . ", {$equation});");
+        }
+
+        return $this->line("\$output .= (string)(\$this->escape({$equation}));");
     }
 
     private function compileWith(ControlNode $node): string

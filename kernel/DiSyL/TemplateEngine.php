@@ -43,6 +43,7 @@ require_once __DIR__ . '/Component/IncludeResolver.php';
 require_once __DIR__ . '/Component/ExtendsProcessor.php';
 require_once __DIR__ . '/Cache/SourceCache.php';
 require_once __DIR__ . '/Renderer/TemplateRenderer.php';
+require_once __DIR__ . '/Types/TypeChecker.php';
 
 use Ikabud\Kernel\DiSyL\Cache\SourceCache;
 use Ikabud\Kernel\DiSyL\Component\ComponentRenderer;
@@ -65,8 +66,10 @@ class TemplateEngine
     private bool $compiledMode = true;
     /** Track whether eager compiled-cache init has been attempted this request. */
     private bool $compiledModeBooted = false;
-    /** Strict mode ON by default (v4.8+). Logs undefined vars, type mismatches, |raw usage. */
+    /** Strict mode ON by default (v4.8+). Logs undefined vars and |raw usage. */
     private bool $strictMode = true;
+    /** Typed {set} runtime validation is opt-in and defaults OFF for compatibility. */
+    private bool $strictTypes = false;
     /** Auto-convert HTML-style <ikb_> tags to DiSyL {ikb_...} syntax (default off). */
     private bool $autoConvertHtmlTags = false;
     /** @var array<string, array{params: array, body: string}> Registered {macro} definitions */
@@ -127,11 +130,12 @@ class TemplateEngine
     /** @var ExpressionEvaluator Lazy-instantiated expression evaluator */
     private ?ExpressionEvaluator $evaluator = null;
 
-    public function __construct(string $templateDir, string $cacheDir, bool $cacheEnabled = true)
+    public function __construct(string $templateDir, string $cacheDir, bool $cacheEnabled = true, bool $strictTypes = false)
     {
         $this->templateDir = rtrim($templateDir, '/');
         $this->cacheDir = rtrim($cacheDir, '/');
         $this->cacheEnabled = $cacheEnabled;
+        $this->strictTypes = $strictTypes;
         $this->extendsCacheDir = $this->cacheDir . '/disyl-extends';
 
         $this->registerDefaultFilters();
@@ -183,6 +187,15 @@ class TemplateEngine
         if ($this->evaluator !== null) {
             $this->evaluator->setStrictMode($enable);
         }
+    }
+
+    /**
+     * Enable strict runtime validation for typed {set} assignments.
+     * Defaults OFF so typed syntax stays additive unless the caller opts in.
+     */
+    public function enableStrictTypes(bool $enable = true): void
+    {
+        $this->strictTypes = $enable;
     }
 
     /**
@@ -440,7 +453,7 @@ class TemplateEngine
                 $compiled->setErrorHandler(\Closure::fromCallable([$this, 'logError']));
                 $compiled->setFilters($registry);
 
-                $ctx_obj = new RenderContext($context);
+                $ctx_obj = new RenderContext($context + ['__disyl_strict_types' => $this->strictTypes]);
                 $result = $compiled->executeRaw($ctx_obj);
                 // Handle {extends} chain: child registers blocks, parent reads them
                 $maxExtendsDepth = 10;
@@ -853,6 +866,12 @@ class TemplateEngine
             $content = $this->processDebugTags($content, $context);
         }
 
+        // 9d. Process {math equation="..."} tags (must run BEFORE processVariables
+        //     so the whole tag is consumed as a unit, not evaluated as a variable).
+        if (str_contains($content, '{math')) {
+            $content = $this->processMathTags($content, $context);
+        }
+
         // 10. Process remaining variables (including arithmetic and ternary expressions)
         if (str_contains($content, '{')) {
             $t = microtime(true);
@@ -935,7 +954,7 @@ class TemplateEngine
         // variables (letter/underscore start), filters, set, include, etc.
         $disylPattern = '/\{(?:'             // Opening brace followed by:
             . '\/(?:if|for|foreach|each|literal|verbatim)\}'  // Closing tags
-            . '|(?:if|elseif|for|foreach|each|set|include|literal|verbatim|else)\s' // Opening tags with space
+            . '|(?:if|elseif|for|foreach|each|set|math|include|literal|verbatim|else)\s' // Opening tags with space
             . '|else\}'                       // {else}
             . '|[a-zA-Z_][\w.]*'              // Variables: {name}, {user.email}
             . ')/s';
@@ -1255,6 +1274,57 @@ class TemplateEngine
      * cause the value capture to skip past the closing '}' and merge
      * adjacent {set} blocks.
      */
+    /**
+     * Process {math equation="..." [format="decimals"] [assign="var"]} tags.
+     *
+     * Evaluates the equation through the SAME expression engine as {(expr)}
+     * (arithmetic, variables, function calls, filters) so behavior is
+     * identical to the compiled path. Optionally formats the result with
+     * number_format, then either stores it into context (assign, no output)
+     * or emits it escaped (matching {expr} output semantics).
+     *
+     * @param array<string, mixed> $context
+     */
+    private function processMathTags(string $content, array &$context): string
+    {
+        return preg_replace_callback(
+            '/\{math\s+([^{}]*)\}/',
+            function ($match) use (&$context) {
+                $attrString = trim($match[1]);
+                $attrs = $this->parseAttributes($attrString, $context);
+
+                $equation = trim((string)($attrs['equation'] ?? ''));
+                if ($equation === '') {
+                    $this->logError("DiSyL {math}: missing required 'equation' attribute in '{math " . $attrString . "}'");
+                    return '<!-- DiSyL math error: missing equation attribute -->';
+                }
+
+                try {
+                    $value = $this->resolveValueWithFilters($equation, $context);
+                } catch (\Throwable $e) {
+                    $msg = $e->getMessage();
+                    $this->logError("DiSyL {math} failed for equation '{$equation}': {$msg}");
+                    $safe = str_replace(['{', '}'], '', htmlspecialchars($msg, ENT_QUOTES, 'UTF-8'));
+                    return '<!-- DiSyL math error: ' . $safe . ' -->';
+                }
+
+                $format = trim((string)($attrs['format'] ?? ''));
+                if ($format !== '') {
+                    $value = number_format((float)$value, (int)$format);
+                }
+
+                $assign = trim((string)($attrs['assign'] ?? ''));
+                if ($assign !== '') {
+                    $context[$assign] = $value;
+                    return '';
+                }
+
+                return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+            },
+            $content
+        );
+    }
+
     private function processSetStatements(string $content, array &$context): string
     {
         // Normalize shorthand {var++} and {var--}
@@ -1310,7 +1380,10 @@ class TemplateEngine
                         '/' => $current / $value,
                         default => $value,
                     };
-                    $value = $this->coerceType($value, $varType, $varName);
+                }
+
+                if ($marker = $this->validateTypedSetAssignment($varName, $varType, $value)) {
+                    $result .= $marker;
                 }
 
                 $context[$varName] = $value;
@@ -4735,6 +4808,23 @@ class TemplateEngine
             return false;
         }
 
+        // JS statement blocks inside HTML attributes ({let ...}, {const ...},
+        // {var ...}, {function ...}, {return ...}, etc.) are raw JavaScript, not
+        // DiSyL expressions. They commonly appear in Alpine @click/@input/...
+        // handlers where the block body contains arithmetic or function calls
+        // (e.g. {let c=...;parseInt(c.slice(1,3),16)...}), which would otherwise
+        // be misclassified as a processable arithmetic expression and then
+        // stripped to '' when evaluation fails — corrupting the handler.
+        // {set ...} is the DiSyL assignment form and is unaffected.
+        //
+        // Guarded to statement form only: the keyword must be followed by
+        // whitespace, '=', or '(' — NOT a '.' — so valid DiSyL dotted variable
+        // paths like {case.status} (or {default.value}, {if_active} as a plain
+        // identifier) are never misclassified as JS statements.
+        if (preg_match('/^(?:let|const|var|function|return|new|typeof|delete|void|yield|debugger|class|import|export|try|catch|finally|throw|switch|case|default|do|if|else|for|while|with|instanceof|in|of|async|await)(?=[\s=(])/', $expr)) {
+            return false;
+        }
+
         // keyof expression
         if (str_starts_with($expr, 'keyof ')) {
             return true;
@@ -5084,6 +5174,24 @@ class TemplateEngine
     /**
      * Log an error
      */
+    private function validateTypedSetAssignment(string $varName, ?string $type, mixed $value): string
+    {
+        if (!$this->strictTypes || $type === null || $type === '') {
+            return '';
+        }
+
+        $normalized = \Ikabud\Kernel\DiSyL\Types\TypeChecker::normalizeRuntimeType($type);
+        if ($normalized === null || \Ikabud\Kernel\DiSyL\Types\TypeChecker::matchesRuntimeType($value, $normalized)) {
+            return '';
+        }
+
+        $actualType = \Ikabud\Kernel\DiSyL\Types\TypeChecker::describeRuntimeType($value);
+        $message = "[strict] Type mismatch for \${$varName}: expected {$normalized}, got {$actualType}";
+        $this->logError($message);
+
+        return '[[DiSyL strict type mismatch: $' . $varName . ' expected ' . $normalized . ', got ' . $actualType . ']]';
+    }
+
     public function logError(string $message): void
     {
         // v4.8: always tag errors with template path + expression context

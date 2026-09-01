@@ -317,6 +317,11 @@ parameters:
 
 		-
 			message: "#^Else branch is unreachable because ternary operator condition is always true\\.$#"
+			count: 1
+			path: kernel/Capabilities/CapabilityAuthorizationRegistry.php
+
+		-
+			message: "#^Else branch is unreachable because ternary operator condition is always true\\.$#"
 			count: 3
 			path: kernel/Capabilities/CapabilityBus.php
 
@@ -561,6 +566,11 @@ parameters:
 			path: kernel/Capabilities/CapabilityBus.php
 
 		-
+			message: "#^Offset 'provider' on array\\{provider\\: string, modes\\: array\\<string\\>, handler\\: callable\\(\\)\\: mixed, meta\\?\\: array\\<string, mixed\\>\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 2
+			path: kernel/Capabilities/CapabilityBus.php
+
+		-
 			message: "#^Offset 'provider' on array\\{provider\\: string, modes\\: array\\<string\\>, handler\\: callable\\(\\)\\: mixed, meta\\?\\: array\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 3
 			path: kernel/Capabilities/CapabilityBus.php
@@ -774,6 +784,21 @@ parameters:
 			message: "#^Property Ikabud\\\\Kernel\\\\Capabilities\\\\ServiceProxy\\:\\:\\$protocol is never read, only written\\.$#"
 			count: 1
 			path: kernel/Capabilities/ServiceProxy.php
+
+		-
+			message: "#^Else branch is unreachable because ternary operator condition is always true\\.$#"
+			count: 1
+			path: kernel/Capabilities/ServiceProxyV2.php
+
+		-
+			message: "#^Expression on left side of \\?\\? is not nullable\\.$#"
+			count: 1
+			path: kernel/Capabilities/ServiceProxyV2.php
+
+		-
+			message: "#^Method Ikabud\\\\Kernel\\\\Capabilities\\\\ServiceProxyV2\\:\\:findOriginalKey\\(\\) never returns int so it can be removed from the return type\\.$#"
+			count: 1
+			path: kernel/Capabilities/ServiceProxyV2.php
 
 		-
 			message: "#^Method Ikabud\\\\Kernel\\\\Contracts\\\\AuthContract\\:\\:requireAnyRole\\(\\) return type has no value type specified in iterable type array\\.$#"
@@ -4712,7 +4737,7 @@ parameters:
 
 		-
 			message: "#^Variable \\$rows in empty\\(\\) always exists and is not falsy\\.$#"
-			count: 1
+			count: 2
 			path: kernel/EntityContext/DefaultEntityRenderer.php
 
 		-
@@ -4941,11 +4966,6 @@ parameters:
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Method Ikabud\\\\Kernel\\\\EntityContext\\\\EntityViewResolver\\:\\:builtinDefaults\\(\\) never returns null so it can be removed from the return type\\.$#"
-			count: 1
-			path: kernel/EntityContext/EntityViewResolver.php
-
-		-
 			message: "#^Method Ikabud\\\\Kernel\\\\EntityContext\\\\EntityViewResolver\\:\\:detailErrorResult\\(\\) return type has no value type specified in iterable type array\\.$#"
 			count: 2
 			path: kernel/EntityContext/EntityViewResolver.php
@@ -4966,7 +4986,7 @@ parameters:
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'action_confirm' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'action_confirm' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
@@ -4976,57 +4996,62 @@ parameters:
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'action_labels' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'action_labels' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'action_methods' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'action_methods' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'action_show_if' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'action_show_if' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'action_urls' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'action_urls' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'actions' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'actions' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'empty_state' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'empty_state' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'field_contracts' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'field_contracts' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'fields' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'fields' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'limit' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'limit' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
-			message: "#^Offset 'renderers' on array\\{fields\\: '\\*', actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No records found\\.'\\}\\|array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'name', 'price', 'image'\\}, actions\\: array\\{'view', 'add_to_cart'\\}, limit\\: 20, empty_state\\: 'No products found\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
+			message: "#^Offset 'renderers' on array\\{fields\\: array\\{'date', 'high_c', 'low_c', 'condition'\\}, actions\\: array\\{\\}, limit\\: 5, empty_state\\: 'No weather data\\.'\\}\\|array\\{fields\\: array\\{'id', 'entry_type', 'amount', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 25, empty_state\\: 'No ledger entries\\.'\\}\\|array\\{fields\\: array\\{'id', 'status', 'total', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 10, empty_state\\: 'No orders yet\\.'\\}\\|array\\{fields\\: array\\{'id', 'subject', 'status', 'created_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No tickets\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'date', 'status'\\}, actions\\: array\\{'view', 'cancel'\\}, limit\\: 10, empty_state\\: 'No appointments\\.'\\}\\|array\\{fields\\: array\\{'id', 'title', 'status', 'updated_at'\\}, actions\\: array\\{'view'\\}, limit\\: 15, empty_state\\: 'No cases found\\.'\\} on left side of \\?\\? does not exist\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
 		-
 			message: "#^Result of && is always false\\.$#"
+			count: 1
+			path: kernel/EntityContext/EntityViewResolver.php
+
+		-
+			message: "#^Right side of && is always true\\.$#"
 			count: 1
 			path: kernel/EntityContext/EntityViewResolver.php
 
@@ -5791,6 +5816,11 @@ parameters:
 			path: kernel/Services/ApiKeyAuth.php
 
 		-
+			message: "#^Offset 'status' on array\\{status\\: 'conflict'\\|'error'\\|'idempotent'\\|'registered', id\\?\\: int, digest\\?\\: string, message\\?\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 3
+			path: kernel/Services/ApplicationProfileRegistry.php
+
+		-
 			message: "#^Offset 'id' on array\\{id\\: string, version\\: string, required_components\\?\\: array\\<string, string\\>\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: kernel/Services/ApplicationProfileResolver.php
@@ -6282,11 +6312,6 @@ parameters:
 
 		-
 			message: "#^Method Ikabud\\\\Kernel\\\\Services\\\\TenantProvisioner\\:\\:result\\(\\) return type has no value type specified in iterable type array\\.$#"
-			count: 1
-			path: kernel/Services/TenantProvisioner.php
-
-		-
-			message: "#^Method Ikabud\\\\Kernel\\\\Services\\\\TenantProvisioner\\:\\:seedAdminUserFromAuthOwnedSpec\\(\\) has parameter \\$spec with no value type specified in iterable type array\\.$#"
 			count: 1
 			path: kernel/Services/TenantProvisioner.php
 
