@@ -16,6 +16,23 @@ use Throwable;
  * complete. The unique (idempotency_key_hash, tenant_id) index is the atomic
  * database claim; a connection-scoped advisory lock lets concurrent callers
  * wait for and reuse the winner's committed result.
+ *
+ * HTTP adoption is deliberately primitive-level: use the client
+ * Idempotency-Key as the key and hash
+ * canonicalPayloadHash(['method' => strtoupper($method), 'path' => $pathWithoutQuery,
+ * 'body' => $parsedBody]). JSON bodies are decoded exactly once, associatively,
+ * with JSON_THROW_ON_ERROR; whitespace-only JSON is null, and decoded scalar,
+ * null, object-map, and list types are retained. Form-urlencoded bodies are
+ * string-valued maps. Multipart and other body formats are outside this
+ * fingerprint contract.
+ *
+ * A new claim may execute and commit an HTTP outcome shaped as
+ * ['status' => int, 'body' => string, 'headers' => allowlisted replay metadata].
+ * The outcome must not contain a version: encodeEnvelope() already versions it.
+ * A duplicate replays that outcome without execution; conflict maps to HTTP 409,
+ * and in_progress maps to HTTP 425 with Retry-After: 2. Replay header allowlists
+ * must exclude hop-by-hop headers and Set-Cookie. Release only a failure known to
+ * precede every side effect; uncertain execution or commit remains processing.
  */
 class Idempotency
 {
@@ -67,23 +84,45 @@ class Idempotency
     /**
      * Atomically claim a tenant-scoped key.
      *
+     * $waitCapSeconds bounds total advisory-lock contention. Null preserves the
+     * five-minute default used by WorkflowEngine and EventBus. A cap no greater
+     * than LOCK_RETRY_SECONDS performs at most one GET_LOCK attempt; zero makes
+     * that attempt non-blocking. Exhaustion returns in_progress and never grants
+     * permission to execute.
+     *
      * @return array{status: 'new'}|array{status: 'duplicate', outcome: mixed}|array{status: 'conflict'}|array{status: 'in_progress'}
      */
-    public static function claim(string $key, int $tenantId, string $payloadHash, ?PDO $db = null): array
-    {
+    public static function claim(
+        string $key,
+        int $tenantId,
+        string $payloadHash,
+        ?PDO $db = null,
+        ?int $waitCapSeconds = null,
+    ): array {
         self::assertInputs($key, $tenantId, $payloadHash);
+        $waitCapSeconds ??= self::WAIT_CAP_SECONDS;
+        if ($waitCapSeconds < 0) {
+            throw new \InvalidArgumentException('waitCapSeconds must not be negative');
+        }
         $db ??= self::db();
         $keyHash = hash('sha256', $key);
         $lockName = self::lockName($keyHash, $tenantId);
 
-        $deadline = microtime(true) + self::WAIT_CAP_SECONDS;
+        $deadline = microtime(true) + $waitCapSeconds;
         do {
-            if (!self::acquireLock($db, $lockName, self::LOCK_RETRY_SECONDS)) {
+            $remaining = max(0.0, $deadline - microtime(true));
+            $lockTimeout = $waitCapSeconds === 0
+                ? 0
+                : min(self::LOCK_RETRY_SECONDS, max(1, (int)ceil($remaining)));
+            if (!self::acquireLock($db, $lockName, $lockTimeout)) {
                 // The winner still owns the lock. Its committed row is visible
                 // before it releases that lock, so observe publication directly.
                 $observed = self::observe($db, $keyHash, $tenantId, $payloadHash);
                 if ($observed !== null && $observed['status'] !== 'in_progress') {
                     return $observed;
+                }
+                if ($waitCapSeconds <= self::LOCK_RETRY_SECONDS || microtime(true) >= $deadline) {
+                    return ['status' => 'in_progress'];
                 }
                 continue;
             }

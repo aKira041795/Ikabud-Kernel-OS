@@ -94,5 +94,7 @@ Evidence (6.6) · Identity (cross-cutting). main HEAD 7be0857.
 Open follow-ups (recorded): (a) kernel.audit.list@1 register-vs-retire — resolved by Gate 1;
 (b) EventBus `fireDurable` adoption of the 6.3 primitive — resolved by Stabilization Gate 2 with one sanctioned
 Kernel outbox, one canonicalizer, tenant validation, and safe legacy envelope-less observation; HTTP payload-aware
-adoption remains Gate 3; (c) ARK phases 3/5 in the main CMS app repo; (d) config/app.php env-boolean (bool) casts →
-filter_var.
+primitive capability — resolved additively by Stabilization Gate 3 with bounded wait, replay outcomes without a
+nested version, and the 409/425 + `Retry-After: 2` adopter mapping. No kernel seam exists here: daily-ledger and
+mobile POST/PUT seam wiring is a MAIN-CMS-REPO milestone; (c) ARK phases 3/5 in the main CMS app repo;
+(d) config/app.php env-boolean (bool) casts → filter_var.
