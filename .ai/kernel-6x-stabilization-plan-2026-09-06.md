@@ -59,8 +59,23 @@ GATE 1  Resolve kernel.audit.list@1 → capability:audit baseline ZERO   ✅ DON
         - Auditor baseline ZERO (closed-world KERNEL_CAPABILITIES; dead baselined-unregistered mechanism removed).
         - Functional test 4/4 incl. ComponentRenderer audit_log render path (reachability proven). 18/18 + 19/19 + 5/5.
         - CI 6/6 green. Logs clean. Contract: .ai/contract-stabilization-gate1-auditlist-2026-09-06.md
-GATE 2  EventBus fireDurable → shared Idempotency primitive ✅ IMPLEMENTED (Kernel-owned tenant outbox;
-        keyed row-id replay/conflict safety; one canonicalizer; envelope-less rows never conflict)
-GATE 3  HTTP idempotency adoption → shared primitive, ADDITIVE-ONLY, regress mobile retry path (LAST)
-NEXT: real-module adoption (main CMS repo) → production observation → THEN Kernel 7 (deferred)
+GATE 2  EventBus fireDurable → shared Idempotency primitive          ✅ DONE (PR #25, merged main 068e801)
+        - migrations/015: sole kernel_durable_event_outbox (MySQL 5.7, tenant_id INT UNSIGNED type-matched to
+          kernel_idempotency_keys; integer row id; delivery metadata). Outbox = delivery only, never idempotency.
+        - Idempotency::canonicalPayloadHash() = SOLE canonicalizer (extracted byte-identical from WorkflowEngine;
+          WorkflowEngine now delegates). Envelope-less legacy rows → in_progress/duplicate, never conflict.
+        - fireDurable repaired (dead path, zero callers): keyed same-PDO claim/commit/release, open-txn reject,
+          row-id replay, conflict/in_progress fail explicit, fail-closed ambiguity; keyless one row, caller txn untouched.
+        - Canonicalizer 5/5, outbox 22/22, durable idem 30/30, workflow 32/38/12/35/11, capability 18/18 + 4/4.
+        - CI 6/6 green. Logs 0 bytes. Contract: .ai/contract-stabilization-gate2-eventbus-2026-09-06.md
+GATE 3  HTTP idempotency adoption → shared primitive, ADDITIVE-ONLY       ✅ IMPLEMENTED (primitive-level)
+        - claim() appends a nullable bounded-wait argument; null preserves 300 seconds and a mobile-sized two-second
+          cap permits one GET_LOCK attempt before fail-closed in_progress.
+        - HTTP adopter contract uses client Idempotency-Key and the sole canonicalPayloadHash over uppercase method,
+          query-free path, and parsed body. Replay outcome is status/body/allowlisted headers with no nested version.
+        - Consumer mapping: conflict → 409 idempotency_payload_conflict; in_progress → 425
+          idempotency_in_progress plus Retry-After: 2. Legacy check/store and keyless paths remain unchanged.
+        - No kernel HTTP seam exists in this repo. daily-ledger + mobile POST/PUT seam wiring remains the
+          MAIN-CMS-REPO milestone (NO-BROADEN); no router, handler, or module was changed.
+NEXT: MAIN-CMS-REPO seam wiring + real-module adoption → production observation → THEN Kernel 7 (deferred)
 ```
