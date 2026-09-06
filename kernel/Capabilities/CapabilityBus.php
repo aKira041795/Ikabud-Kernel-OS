@@ -217,14 +217,16 @@ final class CapabilityBus implements CapabilityBusContract
             throw new CapabilityCallException('Capability authorization denied', $capabilityId, $provider);
         }
 
+        $executedProviders = [];
         try {
             $result = match ($mode) {
-                'pipeline' => $this->callPipeline($capabilityId, $payload, $providers, $callOptions),
-                'fanout' => $this->callFanout($capabilityId, $payload, $providers, $strict, $callOptions),
-                'first' => $this->callFirst($capabilityId, $payload, $providers, $callOptions),
+                'pipeline' => $this->callPipeline($capabilityId, $payload, $providers, $callOptions, $executedProviders),
+                'fanout' => $this->callFanout($capabilityId, $payload, $providers, $strict, $callOptions, $executedProviders),
+                'first' => $this->callFirst($capabilityId, $payload, $providers, $callOptions, $executedProviders),
                 default => throw new CapabilityException("Unknown capability call mode: {$mode}"),
             };
 
+            $this->invalidateProviderEffects($executedProviders);
             $usedProviders = $this->providersForMode($providers, $mode);
             $this->trace($capabilityId, $mode, $provider, true, microtime(true) - $t0, null, $caller, $usedProviders, $requestedCapabilityId);
             return $result;
@@ -557,16 +559,19 @@ final class CapabilityBus implements CapabilityBusContract
     }
 
     /**
-     * @param array<int, array{provider: string, modes: string[], handler: callable}> $providers
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $providers
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $executedProviders
      */
-    private function callFirst(string $capabilityId, mixed $payload, array $providers, array $options): mixed
+    private function callFirst(string $capabilityId, mixed $payload, array $providers, array $options, array &$executedProviders): mixed
     {
         $p = $providers[0];
         if (!$this->supportsMode($p, 'first')) {
             throw new CapabilityCallException("Provider does not support mode 'first'", $capabilityId, (string)$p['provider']);
         }
 
-        return $this->callProvider($capabilityId, $payload, $p, $options);
+        $result = $this->callProvider($capabilityId, $payload, $p, $options);
+        $executedProviders[] = $p;
+        return $result;
     }
 
     /**
@@ -575,9 +580,10 @@ final class CapabilityBus implements CapabilityBusContract
      * Convention: a provider can return null to mean "no change" and the pipeline continues.
      * This is important for authenticate() style chains.
      *
-     * @param array<int, array{provider: string, modes: string[], handler: callable}> $providers
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $providers
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $executedProviders
      */
-    private function callPipeline(string $capabilityId, mixed $payload, array $providers, array $options): mixed
+    private function callPipeline(string $capabilityId, mixed $payload, array $providers, array $options, array &$executedProviders): mixed
     {
         $value = $payload;
         $changed = false;
@@ -590,6 +596,7 @@ final class CapabilityBus implements CapabilityBusContract
 
             try {
                 $out = $this->callProvider($capabilityId, $value, $p, $options);
+                $executedProviders[] = $p;
                 if ($out !== null) {
                     $value = $out;
                     $changed = true;
@@ -613,9 +620,10 @@ final class CapabilityBus implements CapabilityBusContract
     /**
      * Fanout: call all providers and return a summary.
      *
-     * @param array<int, array{provider: string, modes: string[], handler: callable}> $providers
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $providers
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $executedProviders
      */
-    private function callFanout(string $capabilityId, mixed $payload, array $providers, bool $strict, array $options): array
+    private function callFanout(string $capabilityId, mixed $payload, array $providers, bool $strict, array $options, array &$executedProviders): array
     {
         $results = [];
         $errors = [];
@@ -627,6 +635,7 @@ final class CapabilityBus implements CapabilityBusContract
 
             try {
                 $results[(string)$p['provider']] = $this->callProvider($capabilityId, $payload, $p, $options);
+                $executedProviders[] = $p;
             } catch (\Throwable $e) {
                 $errors[(string)$p['provider']] = $e->getMessage();
                 if ($strict) {
@@ -931,6 +940,44 @@ final class CapabilityBus implements CapabilityBusContract
         }
 
         return $options;
+    }
+
+    /**
+     * Apply provider-owned entity-cache effects after a successful dispatch.
+     *
+     * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array<string, mixed>}> $providers
+     */
+    private function invalidateProviderEffects(array $providers): void
+    {
+        if ($providers === [] || !function_exists('app')) {
+            return;
+        }
+
+        try {
+            $app = app();
+            $tenantId = $app->tenant()->current();
+            foreach ($providers as $provider) {
+                $meta = is_array($provider['meta'] ?? null) ? $provider['meta'] : [];
+                $effects = is_array($meta['effects'] ?? null) ? $meta['effects'] : [];
+                $invalidates = is_array($effects['invalidates'] ?? null) ? $effects['invalidates'] : [];
+                foreach ($invalidates as $tag) {
+                    if (!is_string($tag)) {
+                        continue;
+                    }
+                    if (preg_match('/^entity\.(?:list|detail)\.(\S+)$/', trim($tag), $matches) !== 1) {
+                        continue;
+                    }
+                    $app->entityViews()->invalidateEntityCache($matches[1], $tenantId);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Mutation effects are fail-open: cache infrastructure must not break a successful write.
+            if (function_exists('write_log')) {
+                write_log('Capability entity-cache effect invalidation failed open', 'warning', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     private function providersForMode(array $providers, string $mode): array

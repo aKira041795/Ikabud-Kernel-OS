@@ -256,17 +256,37 @@ the stable user identity is then included in the key. User-shaped contexts with
 no stable identity remain uncached. This prevents tenant, role, and user HTML
 from sharing a fragment.
 
-After a successful entity write, invalidate both render variants for that type
-and tenant:
+Entity-mutating capability providers should declare their rendered-cache effects
+in the exposing entry of `module.json`:
+
+```json
+{
+  "id": "products.update@1",
+  "effects": {
+    "invalidates": ["entity.list.products", "entity.detail.products"]
+  }
+}
+```
+
+`effects.invalidates` is optional and additive. Its entries use the exact
+`entity.list.<type>` or `entity.detail.<type>` tag contract. After a successful
+capability dispatch, the kernel applies declarations from only the providers
+that actually executed (respecting `first`, `pipeline`, and `fanout`) and calls
+the entity-view invalidator in the active tenant. A failed dispatch, failed
+provider, unexecuted provider, or capability with no declared effects does not
+invalidate cached HTML. Invalidation remains fail-open, so cache infrastructure
+cannot turn a successful mutation into a failed capability call.
+
+For writes that do not flow through the capability bus, the low-level API remains
+available:
 
 ```php
 app()->entityViews()->invalidateEntityCache('products', $tenantId);
 ```
 
-If `$tenantId` is omitted, the active tenant is used. Module write handlers are
-responsible for invoking this invalidator; otherwise opted-in HTML remains valid
-until its TTL expires. DiSyL `{invalidate}` may also invalidate the documented
-entity tag when a narrower list/detail refresh is intended.
+If `$tenantId` is omitted, the active tenant is used. DiSyL `{invalidate}` may
+also invalidate a documented entity tag when a narrower list/detail refresh is
+intended.
 
 ### Timeout Handling
 
