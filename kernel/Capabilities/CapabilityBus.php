@@ -753,8 +753,7 @@ final class CapabilityBus implements CapabilityBusContract
         string $direction,
         array $settings,
         array $caller
-    ): void
-    {
+    ): void {
         $meta = is_array($provider['meta'] ?? null) ? $provider['meta'] : [];
         $schema = $this->schemaForDirection(is_array($meta['schema'] ?? null) ? $meta['schema'] : null, $direction);
         if ($schema === null) {
@@ -797,8 +796,7 @@ final class CapabilityBus implements CapabilityBusContract
         array $errors,
         array $settings,
         array $caller
-    ): void
-    {
+    ): void {
         $message = 'Capability ' . $direction . ' schema validation failed: ' . implode('; ', $errors);
         $mode = strtolower((string)($settings['schema_validation_mode'] ?? 'warn'));
 
@@ -816,8 +814,7 @@ final class CapabilityBus implements CapabilityBusContract
         string $direction,
         array $errors,
         array $caller
-    ): void
-    {
+    ): void {
         try {
             $ctx = $caller;
             app()->log('capability.schema_violation', 'warning', [
