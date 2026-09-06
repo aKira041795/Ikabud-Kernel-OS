@@ -327,7 +327,36 @@ This keeps the existing successful `start()` contract while making duplicate `ha
 
 Capability dispatch uses the canonical CapabilityBus path, `app()->cap()->call()`. `App::capabilities()` exposes the registration/inspection registry and intentionally has no `call()` method.
 
-The generated `workflow_run_steps.idempotency_key` remains a trace identifier (`step_<step-key>_<run-id>_<ordinal>`). There is no caller-supplied key/result-reuse seam in the current API; durable result reuse by an external idempotency key remains follow-on work.
+The generated `workflow_run_steps.idempotency_key` remains a trace identifier (`step_<step-key>_<run-id>_<ordinal>`). It is not the caller's durable key and does not replace the external-key contract below.
+
+#### Durable external idempotency key
+
+`start()` accepts an optional sixth argument, `externalKey`. Keyless callers use the unchanged active-run path and unchanged return shape. A keyed caller must have a positive current tenant (`app()->tenant()->current()`):
+
+```php
+$result = $engine->start(
+    'report-approval',
+    'reports',
+    ['report_id' => 42, 'format' => 'pdf'],
+    'report',
+    '42',
+    'client-request-0187',
+);
+```
+
+The first call claims `(SHA-256(externalKey), tenant_id)` in `kernel_idempotency_keys`, executes the workflow, and commits a versioned envelope containing the run outcome. It returns `deduplicated: false`, `run_id`, and a persisted `result` snapshot. A duplicate with the same normalized invocation returns that same `run_id` and `result`, adds `deduplicated: true`, and creates or executes nothing. Reuse with a different normalized invocation fails explicitly:
+
+```php
+['ok' => false, 'conflict' => true, 'error' => 'idempotency_payload_conflict']
+```
+
+Normalization is deterministic. The hashed invocation contains `workflow_key`, `module`, normalized empty-string `entity_type`/`entity_id`, and `payload`. Associative keys are sorted lexicographically at every depth; list order is preserved; objects are normalized through their public properties; scalar and null JSON types are preserved. It is encoded with unescaped Unicode/slashes and preserved zero fractions, then SHA-256 hashed. Therefore associative key ordering and JSON whitespace do not conflict, while list ordering, value types, workflow identity, subject identity, or values do.
+
+The shared primitive is `Ikabud\Kernel\Http\Idempotency::claim/commit/release`. Migration 011 supplies the required unique `(idempotency_key_hash, tenant_id)` index, so no DDL or missing-index fallback is needed. The unique insert is the atomic claim; a MySQL-5.7-compatible advisory lock serializes concurrent publication. A contender uses short `GET_LOCK` waits and re-reads the row between waits, so workflow duration is not limited by one lock timeout and a live loser deterministically observes the winner's committed outcome.
+
+The wait has a documented five-minute operational safety cap. Reaching it, or acquiring an otherwise unowned lock while an existing row is still `processing`, returns the distinct fail-closed result `['ok' => false, 'in_progress' => true, 'error' => 'idempotency_in_progress']`; it never reclaims the row or executes again. Pre-execution failures may release a processing claim only from the connection that owns its exact advisory lock. `commit()` and `release()` verify ownership with `IS_USED_LOCK(...) = CONNECTION_ID()` and use a guarded `status = 'processing'` mutation; a non-owner receives `false` and cannot alter the claim. A post-execution commit uncertainty stays fail-closed and returns `idempotency_commit_failed`, rather than making a possibly executed side effect retryable.
+
+The legacy HTTP `check/store` API remains compatible but has not yet adopted payload-conflict semantics. HTTP Idempotency and `EventBus::fireDurable` (whose key is propagated by `IntegrationBridge`) are follow-on adopters and should converge on this shared primitive in separately targeted tests; their current transaction/outbox contracts make adoption non-trivial.
 
 `WorkflowRuntime` is not coupled to this guard. It stores state-machine subjects in `workflow_instances`, not `workflow_runs`, and retains its independent optimistic transition behavior.
 
@@ -336,7 +365,7 @@ The generated `workflow_run_steps.idempotency_key` remains a trace identifier (`
 | Method | Signature | Purpose |
 |---|---|---|
 | `loadDefinitions` | `(string $moduleDir, string $moduleId): array` | Scan `modules/<id>/workflows/*.yaml` and sync to DB. Returns list of loaded workflow keys. |
-| `start` | `(string $workflowKey, string $module, array $payload = [], ?string $entityType = null, ?string $entityId = null): array` | Start a run or return the matching active run with `deduplicated: true` |
+| `start` | `(string $workflowKey, string $module, array $payload = [], ?string $entityType = null, ?string $entityId = null, ?string $externalKey = null): array` | Start a run; an external key adds durable tenant-scoped result reuse and conflict detection |
 | `advance` | `(int $runId): array` | Atomically claim and execute the next step; returns `run_busy: true` on contention |
 | `cancel` | `(int $runId, string $reason): array` | Guarded cancellation; refuses with `run_busy: true` while a step is running |
 | `replay` | `(int $runId, ?string $fromStep): array` | Guarded replay; refuses with `run_busy: true` while a step is running |
