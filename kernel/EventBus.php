@@ -34,7 +34,7 @@
  *   // flushed automatically at shutdown or manually via flushDeferred()
  *
  * Durable events:
- *   app()->events()->fireDurable('order.placed', ['order_id' => 42], $pdo, ['tenant_id' => 't1']);
+ *   app()->events()->fireDurable('order.placed', ['order_id' => 42], $pdo, ['tenant_id' => 1]);
  *   // writes an outbox row in the caller's transaction for worker delivery
  *
  * @package Ikabud\Kernel
@@ -44,6 +44,7 @@
 namespace Ikabud\Kernel;
 
 use Ikabud\Kernel\Contracts\EventBusContract;
+use Ikabud\Kernel\Http\Idempotency;
 use PDO;
 
 final class EventBus implements EventBusContract
@@ -338,13 +339,22 @@ final class EventBus implements EventBusContract
             throw new \InvalidArgumentException('A PDO instance is required.');
         }
 
-        if (!\function_exists('writeDurableEventOutbox')) {
-            require_once dirname(__DIR__) . '/src/helpers/durable-event-outbox.php';
+        if (!array_key_exists('tenant_id', $opts)) {
+            throw new \InvalidArgumentException('tenant_id is required.');
+        }
+        $tenantId = (int)$opts['tenant_id'];
+        $ambientTenantId = null;
+        if (\function_exists('app') && ($application = \app())) {
+            $ambientTenantId = $application->tenant()->current();
+        }
+        if ($tenantId <= 0 || $ambientTenantId === null || $tenantId !== $ambientTenantId) {
+            throw new \InvalidArgumentException('tenant_id must be positive and match the current tenant.');
         }
 
-        $tenantId = trim((string)($opts['tenant_id'] ?? ''));
-        if ($tenantId === '') {
-            throw new \InvalidArgumentException('tenant_id is required.');
+        $hasIdempotencyKey = array_key_exists('idempotency_key', $opts);
+        $idempotencyKey = $hasIdempotencyKey ? (string)$opts['idempotency_key'] : null;
+        if ($hasIdempotencyKey && $pdo->inTransaction()) {
+            throw new \RuntimeException('Keyed durable events require a PDO connection in autocommit mode.');
         }
 
         $defaultSource = 'kernel';
@@ -361,50 +371,127 @@ final class EventBus implements EventBusContract
         $eventData = [
             'tenant_id' => $tenantId,
             'event_name' => $event,
+            'payload' => $payload,
             'source' => $source !== '' ? $source : 'kernel',
             'actor_id' => $opts['actor_id'] ?? null,
             'actor_role' => $opts['actor_role'] ?? null,
             'request_id' => $opts['request_id'] ?? null,
-            'idempotency_key' => $opts['idempotency_key'] ?? null,
-            'payload' => $payload,
+            'event_id' => $opts['event_id'] ?? null,
         ];
 
-        if (isset($opts['event_id'])) {
-            $eventData['event_id'] = $opts['event_id'];
+        try {
+            $tableStmt = $pdo->prepare(
+                'SELECT 1 FROM information_schema.tables '
+                . 'WHERE table_schema = DATABASE() AND table_name = :table_name LIMIT 1'
+            );
+            $tableStmt->execute([':table_name' => 'kernel_durable_event_outbox']);
+            if ((int)$tableStmt->fetchColumn() !== 1) {
+                throw new \RuntimeException('kernel_durable_event_outbox is not migrated on the supplied PDO database.');
+            }
+        } catch (\Throwable $e) {
+            if (\function_exists('write_log')) {
+                \write_log('EventBus: durable outbox unavailable; failing closed', 'error', [
+                    'event' => $event,
+                    'tenant_id' => $tenantId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            throw new \RuntimeException('Durable event outbox is unavailable on the supplied PDO database.', 0, $e);
+        }
+
+        $payloadJson = json_encode(
+            $payload,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
+        );
+        $insertStarted = false;
+        $insertOutbox = static function (?string $key) use (
+            $pdo,
+            $eventData,
+            $payloadJson,
+            &$insertStarted,
+        ): int {
+            $stmt = $pdo->prepare(
+                'INSERT INTO kernel_durable_event_outbox '
+                . '(tenant_id, event_name, payload_json, source, actor_id, actor_role, request_id, event_id, '
+                . 'idempotency_key, status, attempts, available_at, created_at, updated_at) '
+                . "VALUES (:tenant, :event, :payload, :source, :actor_id, :actor_role, :request_id, :event_id, "
+                . ":idempotency_key, 'pending', 0, NOW(), NOW(), NOW())"
+            );
+            $insertStarted = true;
+            $stmt->execute([
+                ':tenant' => $eventData['tenant_id'],
+                ':event' => $eventData['event_name'],
+                ':payload' => $payloadJson,
+                ':source' => $eventData['source'],
+                ':actor_id' => $eventData['actor_id'],
+                ':actor_role' => $eventData['actor_role'],
+                ':request_id' => $eventData['request_id'],
+                ':event_id' => $eventData['event_id'],
+                ':idempotency_key' => $key,
+            ]);
+            $rowId = (int)$pdo->lastInsertId();
+            if ($rowId <= 0) {
+                throw new \RuntimeException('Durable outbox insert returned no row id.');
+            }
+            return $rowId;
+        };
+
+        if (!$hasIdempotencyKey) {
+            try {
+                return $insertOutbox(null);
+            } catch (\Throwable $e) {
+                if (\function_exists('write_log')) {
+                    \write_log('EventBus: durable outbox write failed', 'warning', [
+                        'event' => $event,
+                        'tenant_id' => $tenantId,
+                        'source' => $eventData['source'],
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                return null;
+            }
+        }
+
+        $payloadHash = Idempotency::canonicalPayloadHash($eventData);
+        $claim = Idempotency::claim((string)$idempotencyKey, $tenantId, $payloadHash, $pdo);
+        if ($claim['status'] === 'duplicate') {
+            $outcome = $claim['outcome'] ?? null;
+            if (!is_int($outcome) && !(is_string($outcome) && ctype_digit($outcome))) {
+                throw new \RuntimeException('Durable event duplicate has no valid committed outbox row id.');
+            }
+            return (int)$outcome;
+        }
+        if ($claim['status'] === 'conflict') {
+            throw new \RuntimeException('Durable event idempotency payload conflict.');
+        }
+        if ($claim['status'] === 'in_progress') {
+            throw new \RuntimeException('Durable event idempotency key is already in progress.');
         }
 
         try {
-            $rowId = \writeDurableEventOutbox($pdo, $eventData);
-            if ($rowId > 0) {
-                return $rowId;
+            $rowId = $insertOutbox((string)$idempotencyKey);
+            if (!Idempotency::commit((string)$idempotencyKey, $tenantId, $rowId, $pdo)) {
+                throw new \RuntimeException('Durable event idempotency commit was not owned by the supplied PDO.');
             }
+            return $rowId;
         } catch (\Throwable $e) {
-            $isDuplicate = $e instanceof \PDOException
-                && (((string)$e->getCode() === '23000') || stripos($e->getMessage(), 'duplicate') !== false);
-            if ($isDuplicate) {
-                throw $e;
+            // A prepare failure is certainly pre-publication. Once execute was
+            // attempted, or an id was obtained, publication may have occurred;
+            // leave processing for reconciliation instead of enabling a retry.
+            if (!$insertStarted) {
+                Idempotency::release((string)$idempotencyKey, $tenantId, $pdo);
             }
-
             if (\function_exists('write_log')) {
-                \write_log('EventBus: durable outbox write returned recoverable failure', 'warning', [
+                \write_log('EventBus: keyed durable outbox publication failed', 'warning', [
                     'event' => $event,
                     'tenant_id' => $tenantId,
                     'source' => $eventData['source'],
+                    'publication_may_have_occurred' => $insertStarted,
                     'error' => $e->getMessage(),
                 ]);
             }
             return null;
         }
-
-        if (\function_exists('write_log')) {
-            \write_log('EventBus: durable outbox write returned no row id', 'warning', [
-                'event' => $event,
-                'tenant_id' => $tenantId,
-                'source' => $eventData['source'],
-            ]);
-        }
-
-        return null;
     }
 
     /**

@@ -77,4 +77,4 @@ WorkflowEngine consumers.
   - Concurrent duplicate under a missing unique constraint would double-claim — verify the 011 table has the unique
     (hash, tenant) constraint; if NOT, app-level advisory-lock (GET_LOCK) claim is required (NO DDL).
 
-### status: READY_FOR_IMPLEMENTATION
+### status: IMPLEMENTED (Phase 6.3 baseline); Stabilization Gate 2 subsequently converged EventBus and the sole canonicalizer, while HTTP payload-aware adoption remains deferred to Gate 3.

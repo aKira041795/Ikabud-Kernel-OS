@@ -29,6 +29,42 @@ class Idempotency
     private const LOCK_RETRY_SECONDS = 2;
 
     /**
+     * Hash a value using the Kernel's sole idempotency canonicalization.
+     * Associative keys are sorted recursively; list order and scalar types are
+     * preserved by JSON encoding (including the distinction between 1 and 1.0).
+     */
+    public static function canonicalPayloadHash(mixed $value): string
+    {
+        $canonicalize = static function (mixed $item) use (&$canonicalize): mixed {
+            if (is_object($item)) {
+                $item = get_object_vars($item);
+            }
+            if (!is_array($item)) {
+                if (is_resource($item)) {
+                    throw new \InvalidArgumentException('Resources cannot be normalized for idempotency');
+                }
+                return $item;
+            }
+
+            if (array_is_list($item)) {
+                return array_map(fn (mixed $entry): mixed => $canonicalize($entry), $item);
+            }
+
+            ksort($item, SORT_STRING);
+            foreach ($item as $key => $entry) {
+                $item[$key] = $canonicalize($entry);
+            }
+            return $item;
+        };
+
+        $json = json_encode(
+            $canonicalize($value),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
+        );
+        return hash('sha256', $json);
+    }
+
+    /**
      * Atomically claim a tenant-scoped key.
      *
      * @return array{status: 'new'}|array{status: 'duplicate', outcome: mixed}|array{status: 'conflict'}|array{status: 'in_progress'}
@@ -224,6 +260,12 @@ class Idempotency
         }
 
         $stored = self::decodeEnvelope((string)($row['response_json'] ?? ''));
+        if ($stored['enveloped'] !== true) {
+            if (($row['status'] ?? '') === 'completed') {
+                return ['status' => 'duplicate', 'outcome' => $stored['outcome']];
+            }
+            return ['status' => 'in_progress'];
+        }
         if (($stored['payload_hash'] ?? null) !== $payloadHash) {
             return ['status' => 'conflict'];
         }
@@ -281,14 +323,15 @@ class Idempotency
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
-    /** @return array{payload_hash?: mixed, outcome?: mixed} */
+    /** @return array{enveloped: bool, payload_hash?: mixed, outcome: mixed} */
     private static function decodeEnvelope(string $json): array
     {
         $decoded = json_decode($json, true);
         if (!is_array($decoded) || !is_array($decoded['_kernel_idempotency'] ?? null)) {
-            return [];
+            return ['enveloped' => false, 'outcome' => $decoded];
         }
         return [
+            'enveloped' => true,
             'payload_hash' => $decoded['_kernel_idempotency']['payload_hash'] ?? null,
             'outcome' => $decoded['outcome'] ?? null,
         ];

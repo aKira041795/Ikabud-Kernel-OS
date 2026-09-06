@@ -53,9 +53,14 @@ status: READY — item (a) is the first implementable unit (own contract).
   5-round two-model debate + verified revisions)**. Gates executed strictly in order, each own contract + own gate.
 
 ```
-GATE 1  Resolve kernel.audit.list@1 → capability:audit baseline ZERO   (register scoped kernel capability over
-        audit_logs; allowed_roles admin,superadmin; verify ComponentRenderer cap() reachability)   → this contract
-GATE 2  EventBus fireDurable → shared Idempotency primitive (one canonicalizer; envelope-less rows never conflict)
+GATE 1  Resolve kernel.audit.list@1 → capability:audit baseline ZERO   ✅ DONE (PR #24, merged main 57dd86f)
+        - kernel.audit.list@1 registered in App.php as kernel provider over audit_logs (admin/superadmin,
+          tenant-aware, entity filters, limit 1-100, nullable entity_id schema).
+        - Auditor baseline ZERO (closed-world KERNEL_CAPABILITIES; dead baselined-unregistered mechanism removed).
+        - Functional test 4/4 incl. ComponentRenderer audit_log render path (reachability proven). 18/18 + 19/19 + 5/5.
+        - CI 6/6 green. Logs clean. Contract: .ai/contract-stabilization-gate1-auditlist-2026-09-06.md
+GATE 2  EventBus fireDurable → shared Idempotency primitive ✅ IMPLEMENTED (Kernel-owned tenant outbox;
+        keyed row-id replay/conflict safety; one canonicalizer; envelope-less rows never conflict)
 GATE 3  HTTP idempotency adoption → shared primitive, ADDITIVE-ONLY, regress mobile retry path (LAST)
 NEXT: real-module adoption (main CMS repo) → production observation → THEN Kernel 7 (deferred)
 ```

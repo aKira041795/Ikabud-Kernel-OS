@@ -1193,41 +1193,13 @@ final class WorkflowEngine
         string $entityType,
         string $entityId,
     ): string {
-        $canonical = $this->canonicalizeIdempotencyValue([
+        return Idempotency::canonicalPayloadHash([
             'workflow_key' => $workflowKey,
             'module' => $module,
             'entity_type' => $entityType,
             'entity_id' => $entityId,
             'payload' => $payload,
         ]);
-        $json = json_encode(
-            $canonical,
-            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
-        );
-        return hash('sha256', $json);
-    }
-
-    private function canonicalizeIdempotencyValue(mixed $value): mixed
-    {
-        if (is_object($value)) {
-            $value = get_object_vars($value);
-        }
-        if (!is_array($value)) {
-            if (is_resource($value)) {
-                throw new \InvalidArgumentException('Resources cannot be normalized for idempotency');
-            }
-            return $value;
-        }
-
-        if (array_is_list($value)) {
-            return array_map(fn (mixed $item): mixed => $this->canonicalizeIdempotencyValue($item), $value);
-        }
-
-        ksort($value, SORT_STRING);
-        foreach ($value as $key => $item) {
-            $value[$key] = $this->canonicalizeIdempotencyValue($item);
-        }
-        return $value;
     }
 
     private function startLockName(string $workflowKey, string $module, string $entityType, string $entityId): string
