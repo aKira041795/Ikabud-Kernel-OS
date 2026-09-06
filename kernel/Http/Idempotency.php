@@ -4,95 +4,301 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Http;
 
+use PDO;
+use RuntimeException;
+use Throwable;
+
 /**
- * Idempotency key support for safe mobile retries.
+ * Shared durable idempotency primitive over kernel_idempotency_keys.
  *
- * Idempotency keys prevent duplicate writes when network interruptions cause
- * clients to retry POST/PUT requests. The client sends an Idempotency-Key header;
- * if the server has already processed that key, it returns the stored response
- * instead of applying the mutation again.
- *
- * Usage in handlers:
- *   $key = $_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? '';
- *   if ($key) {
- *       $existing = Idempotency::check($key, $tenantId);
- *       if ($existing) {
- *           ApiResponse::success($existing, 200);
- *           return;
- *       }
- *   }
- *   // ... process mutation ...
- *   if ($key) {
- *       Idempotency::store($key, $tenantId, ['id' => $newId]);
- *   }
- *   ApiResponse::success(['id' => $newId], 201);
+ * The table's response_json column stores a versioned envelope containing the
+ * normalized payload hash while processing and the committed outcome when
+ * complete. The unique (idempotency_key_hash, tenant_id) index is the atomic
+ * database claim; a connection-scoped advisory lock lets concurrent callers
+ * wait for and reuse the winner's committed result.
  */
 class Idempotency
 {
     /**
-     * Check if an idempotency key has already been processed.
-     * Returns the stored response if found, null if this is a new request.
+     * A contender waits in short server-side lock calls and re-reads committed
+     * state between them. Five minutes is an operational safety cap, not a
+     * workflow-duration timeout: expiry fails closed as "in_progress" and
+     * never reclaims or executes an uncertain processing claim.
+     */
+    private const WAIT_CAP_SECONDS = 300;
+    private const LOCK_RETRY_SECONDS = 2;
+
+    /**
+     * Atomically claim a tenant-scoped key.
+     *
+     * @return array{status: 'new'}|array{status: 'duplicate', outcome: mixed}|array{status: 'conflict'}|array{status: 'in_progress'}
+     */
+    public static function claim(string $key, int $tenantId, string $payloadHash, ?PDO $db = null): array
+    {
+        self::assertInputs($key, $tenantId, $payloadHash);
+        $db ??= self::db();
+        $keyHash = hash('sha256', $key);
+        $lockName = self::lockName($keyHash, $tenantId);
+
+        $deadline = microtime(true) + self::WAIT_CAP_SECONDS;
+        do {
+            if (!self::acquireLock($db, $lockName, self::LOCK_RETRY_SECONDS)) {
+                // The winner still owns the lock. Its committed row is visible
+                // before it releases that lock, so observe publication directly.
+                $observed = self::observe($db, $keyHash, $tenantId, $payloadHash);
+                if ($observed !== null && $observed['status'] !== 'in_progress') {
+                    return $observed;
+                }
+                continue;
+            }
+
+            try {
+                $observed = self::observe($db, $keyHash, $tenantId, $payloadHash);
+                if ($observed === null) {
+                    $stmt = $db->prepare(
+                        "INSERT INTO kernel_idempotency_keys "
+                        . "(idempotency_key_hash, tenant_id, status, response_json, created_at) "
+                        . "VALUES (:hash, :tenant, 'processing', :response, NOW())"
+                    );
+                    $stmt->execute([
+                        ':hash' => $keyHash,
+                        ':tenant' => $tenantId,
+                        ':response' => self::encodeEnvelope($payloadHash, null),
+                    ]);
+
+                    // The claimant keeps ownership until commit() or release().
+                    return ['status' => 'new'];
+                }
+                if ($observed['status'] !== 'in_progress') {
+                    self::releaseLock($db, $lockName);
+                    return $observed;
+                }
+
+                // We acquired an unowned lock but found processing state. The
+                // former owner may have crashed after a side effect; never reclaim.
+                self::releaseLock($db, $lockName);
+                return ['status' => 'in_progress'];
+            } catch (Throwable $e) {
+                self::releaseLock($db, $lockName);
+                throw $e;
+            }
+        } while (microtime(true) < $deadline);
+
+        return ['status' => 'in_progress'];
+    }
+
+    /** Commit a claimed key and persist its reusable outcome. */
+    public static function commit(string $key, int $tenantId, mixed $outcome, ?PDO $db = null): bool
+    {
+        self::assertKeyAndTenant($key, $tenantId);
+        $db ??= self::db();
+        $keyHash = hash('sha256', $key);
+        $lockName = self::lockName($keyHash, $tenantId);
+
+        if (!self::ownsLock($db, $lockName)) {
+            return false;
+        }
+
+        try {
+            $stmt = $db->prepare(
+                "SELECT response_json FROM kernel_idempotency_keys "
+                . "WHERE idempotency_key_hash = :hash AND tenant_id = :tenant AND status = 'processing' LIMIT 1"
+            );
+            $stmt->execute([':hash' => $keyHash, ':tenant' => $tenantId]);
+            $raw = $stmt->fetchColumn();
+            if (!is_string($raw)) {
+                throw new RuntimeException('Idempotency key is not claimed for processing');
+            }
+            $stored = self::decodeEnvelope($raw);
+            $payloadHash = (string)($stored['payload_hash'] ?? '');
+            if ($payloadHash === '') {
+                throw new RuntimeException('Idempotency claim payload hash is missing');
+            }
+
+            $update = $db->prepare(
+                "UPDATE kernel_idempotency_keys SET status = 'completed', response_json = :response "
+                . "WHERE idempotency_key_hash = :hash AND tenant_id = :tenant AND status = 'processing'"
+            );
+            $update->execute([
+                ':response' => self::encodeEnvelope($payloadHash, $outcome),
+                ':hash' => $keyHash,
+                ':tenant' => $tenantId,
+            ]);
+            if ($update->rowCount() !== 1) {
+                throw new RuntimeException('Idempotency commit lost its processing claim');
+            }
+            return true;
+        } finally {
+            self::releaseLock($db, $lockName);
+        }
+    }
+
+    /** Release a failed processing claim so a later retry can execute. */
+    public static function release(string $key, int $tenantId, ?PDO $db = null): bool
+    {
+        self::assertKeyAndTenant($key, $tenantId);
+        $db ??= self::db();
+        $keyHash = hash('sha256', $key);
+        $lockName = self::lockName($keyHash, $tenantId);
+
+        if (!self::ownsLock($db, $lockName)) {
+            return false;
+        }
+
+        try {
+            $stmt = $db->prepare(
+                "DELETE FROM kernel_idempotency_keys "
+                . "WHERE idempotency_key_hash = :hash AND tenant_id = :tenant AND status = 'processing'"
+            );
+            $stmt->execute([':hash' => $keyHash, ':tenant' => $tenantId]);
+            return $stmt->rowCount() === 1;
+        } finally {
+            self::releaseLock($db, $lockName);
+        }
+    }
+
+    /**
+     * Legacy HTTP lookup helper. New adopters should use claim().
+     *
+     * @return array<string, mixed>|null
      */
     public static function check(string $key, int $tenantId): ?array
     {
         $hash = hash('sha256', $key);
-
         $stmt = self::db()->prepare(
-            'SELECT response_json FROM kernel_idempotency_keys
-             WHERE idempotency_key_hash = ? AND tenant_id = ? AND status = \'completed\''
+            "SELECT response_json FROM kernel_idempotency_keys "
+            . "WHERE idempotency_key_hash = ? AND tenant_id = ? AND status = 'completed'"
         );
         $stmt->execute([$hash, $tenantId]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-        if ($row && !empty($row['response_json'])) {
-            return json_decode($row['response_json'], true);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row) || empty($row['response_json'])) {
+            // Preserve the legacy helper's processing marker. HTTP adoption of
+            // payload-aware claim/commit remains a separately tested follow-on.
+            self::db()->prepare(
+                "INSERT INTO kernel_idempotency_keys (idempotency_key_hash, tenant_id, status, created_at) "
+                . "VALUES (?, ?, 'processing', NOW()) "
+                . "ON DUPLICATE KEY UPDATE status = IF(status = 'completed', status, 'processing')"
+            )->execute([$hash, $tenantId]);
+            return null;
         }
 
-        // Mark as processing to prevent concurrent duplicate processing
-        self::db()->prepare(
-            'INSERT INTO kernel_idempotency_keys (idempotency_key_hash, tenant_id, status, created_at)
-             VALUES (?, ?, \'processing\', NOW())
-             ON DUPLICATE KEY UPDATE status = IF(status = \'completed\', status, \'processing\')'
-        )->execute([$hash, $tenantId]);
-
-        return null;
+        $decoded = json_decode((string)$row['response_json'], true);
+        if (is_array($decoded) && isset($decoded['_kernel_idempotency'])) {
+            return is_array($decoded['outcome'] ?? null) ? $decoded['outcome'] : null;
+        }
+        return is_array($decoded) ? $decoded : null;
     }
 
-    /**
-     * Store the response after successful processing.
-     */
+    /** @param array<string, mixed> $response */
     public static function store(string $key, int $tenantId, array $response): void
     {
         $hash = hash('sha256', $key);
-
         self::db()->prepare(
-            'UPDATE kernel_idempotency_keys
-             SET status = \'completed\', response_json = ?
-             WHERE idempotency_key_hash = ? AND tenant_id = ?'
+            "UPDATE kernel_idempotency_keys SET status = 'completed', response_json = ? "
+            . 'WHERE idempotency_key_hash = ? AND tenant_id = ?'
         )->execute([json_encode($response), $hash, $tenantId]);
     }
 
-    /**
-     * Release the key after a processing failure, so the client can retry.
-     */
-    public static function release(string $key, int $tenantId): void
+    private static function acquireLock(PDO $db, string $lockName, int $timeout): bool
     {
-        $hash = hash('sha256', $key);
-
-        self::db()->prepare(
-            'DELETE FROM kernel_idempotency_keys
-             WHERE idempotency_key_hash = ? AND tenant_id = ? AND status = \'processing\''
-        )->execute([$hash, $tenantId]);
+        $stmt = $db->prepare('SELECT GET_LOCK(:lock_name, :timeout)');
+        $stmt->bindValue(':lock_name', $lockName, PDO::PARAM_STR);
+        $stmt->bindValue(':timeout', $timeout, PDO::PARAM_INT);
+        $stmt->execute();
+        return (int)$stmt->fetchColumn() === 1;
     }
 
     /**
-     * Get the kernel database connection.
+     * @return array{status: 'duplicate', outcome: mixed}|array{status: 'conflict'}|array{status: 'in_progress'}|null
      */
-    private static function db(): \PDO
+    private static function observe(PDO $db, string $keyHash, int $tenantId, string $payloadHash): ?array
+    {
+        $stmt = $db->prepare(
+            'SELECT status, response_json FROM kernel_idempotency_keys '
+            . 'WHERE idempotency_key_hash = :hash AND tenant_id = :tenant LIMIT 1'
+        );
+        $stmt->execute([':hash' => $keyHash, ':tenant' => $tenantId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return null;
+        }
+
+        $stored = self::decodeEnvelope((string)($row['response_json'] ?? ''));
+        if (($stored['payload_hash'] ?? null) !== $payloadHash) {
+            return ['status' => 'conflict'];
+        }
+        if (($row['status'] ?? '') === 'completed') {
+            return ['status' => 'duplicate', 'outcome' => $stored['outcome'] ?? null];
+        }
+        return ['status' => 'in_progress'];
+    }
+
+    private static function ownsLock(PDO $db, string $lockName): bool
+    {
+        $stmt = $db->prepare('SELECT IS_USED_LOCK(:lock_name) = CONNECTION_ID()');
+        $stmt->execute([':lock_name' => $lockName]);
+        return (int)$stmt->fetchColumn() === 1;
+    }
+
+    private static function releaseLock(PDO $db, string $lockName): void
+    {
+        try {
+            $stmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+            $stmt->execute([':lock_name' => $lockName]);
+        } catch (Throwable $e) {
+            // Preserve the primary failure. Connection close also releases it.
+        }
+    }
+
+    private static function lockName(string $keyHash, int $tenantId): string
+    {
+        return 'kernel:idem:' . substr(hash('sha256', $tenantId . ':' . $keyHash), 0, 52);
+    }
+
+    private static function assertInputs(string $key, int $tenantId, string $payloadHash): void
+    {
+        self::assertKeyAndTenant($key, $tenantId);
+        if (preg_match('/^[a-f0-9]{64}$/', $payloadHash) !== 1) {
+            throw new \InvalidArgumentException('payloadHash must be a lowercase SHA-256 hash');
+        }
+    }
+
+    private static function assertKeyAndTenant(string $key, int $tenantId): void
+    {
+        if ($key === '') {
+            throw new \InvalidArgumentException('Idempotency key must not be empty');
+        }
+        if ($tenantId <= 0) {
+            throw new \InvalidArgumentException('A positive tenant ID is required for idempotency');
+        }
+    }
+
+    private static function encodeEnvelope(string $payloadHash, mixed $outcome): string
+    {
+        return json_encode([
+            '_kernel_idempotency' => ['version' => 1, 'payload_hash' => $payloadHash],
+            'outcome' => $outcome,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    /** @return array{payload_hash?: mixed, outcome?: mixed} */
+    private static function decodeEnvelope(string $json): array
+    {
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded) || !is_array($decoded['_kernel_idempotency'] ?? null)) {
+            return [];
+        }
+        return [
+            'payload_hash' => $decoded['_kernel_idempotency']['payload_hash'] ?? null,
+            'outcome' => $decoded['outcome'] ?? null,
+        ];
+    }
+
+    private static function db(): PDO
     {
         if (function_exists('app') && $app = \app()) {
             return $app->db();
         }
-        throw new \RuntimeException('Application not available for database access');
+        throw new RuntimeException('Application not available for database access');
     }
 }

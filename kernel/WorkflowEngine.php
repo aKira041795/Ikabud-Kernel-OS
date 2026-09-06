@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel;
 
+use Ikabud\Kernel\Http\Idempotency;
 use PDO;
 use Throwable;
 
@@ -542,16 +543,118 @@ final class WorkflowEngine
     // ── Run Lifecycle ────────────────────────────────────────────────
 
     /**
-     * Start a workflow run, or return the active run for the same subject.
+     * Start a workflow run, optionally under a durable external idempotency key.
      *
-     * A tuple-scoped MySQL advisory lock serializes the empty-range lookup and
-     * insert without requiring DDL. The run-creation transaction and advisory
-     * lock use the same connection.
+     * Keyless calls retain the original active-run behavior. A keyed call is
+     * tenant-scoped and hashes the canonical invocation (workflow identity,
+     * subject, and recursively key-sorted payload) before claiming the shared
+     * kernel idempotency primitive.
      *
+     * @return array{ok: bool, run_id?: int, status?: string, deduplicated?: bool, conflict?: bool, result?: mixed, error?: string}
+     */
+    public function start(
+        string $workflowKey,
+        string $module,
+        array $payload = [],
+        ?string $entityType = null,
+        ?string $entityId = null,
+        ?string $externalKey = null,
+    ): array {
+        if ($externalKey === null) {
+            return $this->startWithoutExternalKey($workflowKey, $module, $payload, $entityType, $entityId);
+        }
+        if ($externalKey === '') {
+            return ['ok' => false, 'error' => 'idempotency_key_required'];
+        }
+
+        $tenantId = $this->app->tenant()->current();
+        if ($tenantId === null || $tenantId <= 0) {
+            return ['ok' => false, 'error' => 'idempotency_tenant_required'];
+        }
+
+        try {
+            $payloadHash = $this->externalPayloadHash(
+                $workflowKey,
+                $module,
+                $payload,
+                $entityType ?? '',
+                $entityId ?? '',
+            );
+            $claim = Idempotency::claim($externalKey, $tenantId, $payloadHash, $this->app->db());
+        } catch (Throwable $e) {
+            write_log("WorkflowEngine: idempotency claim failed for {$workflowKey}: " . $e->getMessage(), 'error');
+            return ['ok' => false, 'error' => 'idempotency_claim_failed'];
+        }
+
+        if ($claim['status'] === 'conflict') {
+            return [
+                'ok' => false,
+                'conflict' => true,
+                'error' => 'idempotency_payload_conflict',
+            ];
+        }
+        if ($claim['status'] === 'duplicate') {
+            $outcome = is_array($claim['outcome'] ?? null) ? $claim['outcome'] : [];
+            $outcome['deduplicated'] = true;
+            return $outcome;
+        }
+        if ($claim['status'] === 'in_progress') {
+            return [
+                'ok' => false,
+                'in_progress' => true,
+                'error' => 'idempotency_in_progress',
+            ];
+        }
+
+        $started = $this->startWithoutExternalKey($workflowKey, $module, $payload, $entityType, $entityId);
+        if ($started['ok'] !== true) {
+            try {
+                Idempotency::release($externalKey, $tenantId, $this->app->db());
+            } catch (Throwable $releaseError) {
+                write_log("WorkflowEngine: idempotency release failed for {$workflowKey}: " . $releaseError->getMessage(), 'error');
+            }
+            return $started;
+        }
+
+        $runId = (int)($started['run_id'] ?? 0);
+        $outcome = [
+            'ok' => true,
+            'run_id' => $runId,
+            'deduplicated' => false,
+            'result' => $this->getRun($runId),
+        ];
+
+        try {
+            if (!Idempotency::commit($externalKey, $tenantId, $outcome, $this->app->db())) {
+                throw new \RuntimeException('Idempotency commit connection does not own the claim');
+            }
+        } catch (Throwable $e) {
+            // Dispatch may already have produced side effects. Keep the
+            // processing row fail-closed rather than releasing it for replay.
+            write_log("WorkflowEngine: idempotency commit failed for {$workflowKey}: " . $e->getMessage(), 'error');
+            return [
+                'ok' => false,
+                'run_id' => $runId,
+                'error' => 'idempotency_commit_failed',
+            ];
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * Original keyless start path, kept separate to preserve its return shape.
+     *
+     * @param array<string, mixed> $payload
      * @return array{ok: bool, run_id?: int, status?: string, deduplicated?: bool, error?: string}
      */
-    public function start(string $workflowKey, string $module, array $payload = [], ?string $entityType = null, ?string $entityId = null): array
-    {
+    private function startWithoutExternalKey(
+        string $workflowKey,
+        string $module,
+        array $payload = [],
+        ?string $entityType = null,
+        ?string $entityId = null,
+    ): array {
         try {
             $db = $this->app->db();
             $normalizedEntityType = $entityType ?? '';
@@ -1055,6 +1158,51 @@ final class WorkflowEngine
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
+
+    /** @param array<string, mixed> $payload */
+    private function externalPayloadHash(
+        string $workflowKey,
+        string $module,
+        array $payload,
+        string $entityType,
+        string $entityId,
+    ): string {
+        $canonical = $this->canonicalizeIdempotencyValue([
+            'workflow_key' => $workflowKey,
+            'module' => $module,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'payload' => $payload,
+        ]);
+        $json = json_encode(
+            $canonical,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
+        );
+        return hash('sha256', $json);
+    }
+
+    private function canonicalizeIdempotencyValue(mixed $value): mixed
+    {
+        if (is_object($value)) {
+            $value = get_object_vars($value);
+        }
+        if (!is_array($value)) {
+            if (is_resource($value)) {
+                throw new \InvalidArgumentException('Resources cannot be normalized for idempotency');
+            }
+            return $value;
+        }
+
+        if (array_is_list($value)) {
+            return array_map(fn (mixed $item): mixed => $this->canonicalizeIdempotencyValue($item), $value);
+        }
+
+        ksort($value, SORT_STRING);
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalizeIdempotencyValue($item);
+        }
+        return $value;
+    }
 
     private function startLockName(string $workflowKey, string $module, string $entityType, string $entityId): string
     {
