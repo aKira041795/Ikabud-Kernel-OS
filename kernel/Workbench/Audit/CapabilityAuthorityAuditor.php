@@ -17,11 +17,11 @@ use SplFileInfo;
  * auditing every installable relationship in a repository checkout.
  *
  * Kernel authority is closed-world: KERNEL_CAPABILITIES lists every static
- * CapabilityRegistry registration in kernel/App.php, and
- * BASELINED_UNREGISTERED_KERNEL_CAPABILITIES surfaces (rather than suppresses)
- * a known latent call-site gap. Every non-kernel literal in src/kernel must be
- * present in OPTIONAL_KERNEL_CAPABILITIES; this is the exhaustive classification
- * inventory, and resolved providers are still checked with caller `kernel`.
+ * CapabilityRegistry registration in kernel/App.php. Every non-kernel literal in
+ * src/kernel must be present in OPTIONAL_KERNEL_CAPABILITIES; this is the
+ * exhaustive classification inventory, and resolved providers are still checked
+ * with caller `kernel`. Real-repository baseline is zero findings: any
+ * `kernel.*` literal absent from KERNEL_CAPABILITIES is critical (fail-on-new).
  */
 final class CapabilityAuthorityAuditor
 {
@@ -34,26 +34,13 @@ final class CapabilityAuthorityAuditor
         'kernel.auth.require@1' => 'kernel/App.php:163',
         'kernel.http.request_context@1' => 'kernel/App.php:172',
         'kernel.audit.record@1' => 'kernel/App.php:187',
-        'kernel.auth.delegate@1' => 'kernel/App.php:300',
-        'kernel.auth.validate_delegate@1' => 'kernel/App.php:388',
-        'kernel.render.context@1' => 'kernel/App.php:468',
-        'kernel.auth.authenticate@1' => 'kernel/App.php:480',
-        'workflow.state.get@1' => 'kernel/App.php:532',
-        'workflow.transition@1' => 'kernel/App.php:536',
-    ];
-
-    /**
-     * Explicit fail-on-new baseline. Only the exact ID/file/line produces a
-     * warning; another use of the same unregistered ID remains critical.
-     *
-     * @var array<string, array{file: string, line: int, reason: string}>
-     */
-    private const BASELINED_UNREGISTERED_KERNEL_CAPABILITIES = [
-        'kernel.audit.list@1' => [
-            'file' => 'kernel/DiSyL/Component/ComponentRenderer.php',
-            'line' => 1075,
-            'reason' => 'latent ikb_audit_log call; no registration exists',
-        ],
+        'kernel.audit.list@1' => 'kernel/App.php:298',
+        'kernel.auth.delegate@1' => 'kernel/App.php:397',
+        'kernel.auth.validate_delegate@1' => 'kernel/App.php:485',
+        'kernel.render.context@1' => 'kernel/App.php:565',
+        'kernel.auth.authenticate@1' => 'kernel/App.php:577',
+        'workflow.state.get@1' => 'kernel/App.php:629',
+        'workflow.transition@1' => 'kernel/App.php:633',
     ];
 
     /**
@@ -540,19 +527,6 @@ final class CapabilityAuthorityAuditor
         $requested = $call['id'];
         if (str_starts_with($requested, 'kernel.')) {
             if ($this->resolve($requested, $this->kernelProviderInventory()) !== null) {
-                return;
-            }
-            $baseline = self::BASELINED_UNREGISTERED_KERNEL_CAPABILITIES[$requested] ?? null;
-            if (is_array($baseline)
-                && $call['file'] === $baseline['file']
-                && $call['line'] === $baseline['line']) {
-                $findings[] = $this->finding(
-                    'CAPABILITY_KERNEL_BASELINED_UNREGISTERED',
-                    'warning',
-                    $call['file'],
-                    $call['line'],
-                    "Kernel capability '{$requested}' is an explicit unresolved baseline: {$baseline['reason']}."
-                );
                 return;
             }
             $findings[] = $this->finding(

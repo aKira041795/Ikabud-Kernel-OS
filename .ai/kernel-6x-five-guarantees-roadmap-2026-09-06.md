@@ -71,11 +71,9 @@ status: READY_FOR_IMPLEMENTATION — objective 6.3 is the implementable unit (it
      kernel/Workbench/Audit/CapabilityAuthorityAuditor.php + `php ikabud capability:audit`
      checks A–E: exposed providers, compatible majors, declared consumer relationships (calls + depends),
      allow_callers policy (runtime-faithful), static handler-map implementation (token-wise)
-     baseline: zero criticals + ONE documented warning (`kernel.audit.list@1` — surfaced real latent gap)
+     baseline: ZERO findings; `kernel.audit.list@1` follow-up resolved by scoped kernel registration
      tests 19/19; evidence test_results/phase65-evidence-r3.log (R4 gate review-phase65-r4.log = PASS)
-     CHAIR FOLLOW-UP (separate, non-blocking): decide register vs retire `kernel.audit.list@1`
-     (called at kernel/DiSyL/Component/ComponentRenderer.php:1075; currently unregistered → degrades via
-     exception handling). Recommendation: register it as a kernel capability over audit_logs (next pass).
+     CHAIR FOLLOW-UP: resolved → baseline ZERO (`kernel.audit.list@1` registered over tenant-aware audit_logs).
 
 ## Merge status (2026-09-06)
 ```

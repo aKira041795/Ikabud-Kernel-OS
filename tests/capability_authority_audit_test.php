@@ -94,17 +94,9 @@ function caa_assert_finding(
 
 echo "=== Capability Authority Auditor ===\n";
 $real = (new CapabilityAuthorityAuditor(__DIR__ . '/../modules'))->audit();
-caa_assert_finding(
-    'real repository explicitly surfaces latent kernel.audit.list baseline',
-    $real,
-    'CAPABILITY_KERNEL_BASELINED_UNREGISTERED',
-    'kernel/DiSyL/Component/ComponentRenderer.php',
-    1075,
-    'warning'
-);
 caa_test(
-    'real repository has exactly one documented warning and zero critical findings',
-    count($real) === 1 && ($real[0]['severity'] ?? null) === 'warning',
+    'real repository has zero capability authority findings',
+    $real === [],
     json_encode($real, JSON_UNESCAPED_SLASHES)
 );
 
@@ -234,15 +226,15 @@ PHP;
         caa_line($unknownKernelManifest, '"kernel.unknown@1"')
     ];
 
-    $newAuditListRoot = $temp . '/new-audit-list';
-    $newAuditListPhp = "<?php\napp()->cap()->call('kernel.audit.list@1', []);\n";
-    caa_module($newAuditListRoot, 'consumer', ['exposes' => [], 'depends' => []], $newAuditListPhp);
+    $newKernelCallRoot = $temp . '/new-kernel-call';
+    $newKernelCallPhp = "<?php\napp()->cap()->call('kernel.new_unknown@1', []);\n";
+    caa_module($newKernelCallRoot, 'consumer', ['exposes' => [], 'depends' => []], $newKernelCallPhp);
     $cases[] = [
-        'A baseline is exact and a new audit.list call fails',
-        $newAuditListRoot,
+        'A new unknown kernel call still fails closed-world inventory',
+        $newKernelCallRoot,
         'CAPABILITY_CALL_UNEXPOSED',
         'modules/consumer/helpers.php',
-        caa_line($newAuditListPhp, "'kernel.audit.list@1'")
+        caa_line($newKernelCallPhp, "'kernel.new_unknown@1'")
     ];
 
     $kernelCRoot = $temp . '/kernel-c';
