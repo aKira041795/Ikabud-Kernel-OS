@@ -18,8 +18,8 @@ use SplFileInfo;
  *
  * Kernel authority is closed-world: KERNEL_CAPABILITIES lists every static
  * CapabilityRegistry registration in kernel/App.php, and
- * BASELINED_UNREGISTERED_KERNEL_CAPABILITIES surfaces (rather than suppresses)
- * a known latent call-site gap. Every non-kernel literal in src/kernel must be
+ * BASELINED_UNREGISTERED_KERNEL_CAPABILITIES can surface (rather than suppress)
+ * any explicitly approved latent call-site gap. Every non-kernel literal in src/kernel must be
  * present in OPTIONAL_KERNEL_CAPABILITIES; this is the exhaustive classification
  * inventory, and resolved providers are still checked with caller `kernel`.
  */
@@ -34,12 +34,13 @@ final class CapabilityAuthorityAuditor
         'kernel.auth.require@1' => 'kernel/App.php:163',
         'kernel.http.request_context@1' => 'kernel/App.php:172',
         'kernel.audit.record@1' => 'kernel/App.php:187',
-        'kernel.auth.delegate@1' => 'kernel/App.php:300',
-        'kernel.auth.validate_delegate@1' => 'kernel/App.php:388',
-        'kernel.render.context@1' => 'kernel/App.php:468',
-        'kernel.auth.authenticate@1' => 'kernel/App.php:480',
-        'workflow.state.get@1' => 'kernel/App.php:532',
-        'workflow.transition@1' => 'kernel/App.php:536',
+        'kernel.audit.list@1' => 'kernel/App.php:298',
+        'kernel.auth.delegate@1' => 'kernel/App.php:397',
+        'kernel.auth.validate_delegate@1' => 'kernel/App.php:485',
+        'kernel.render.context@1' => 'kernel/App.php:565',
+        'kernel.auth.authenticate@1' => 'kernel/App.php:577',
+        'workflow.state.get@1' => 'kernel/App.php:629',
+        'workflow.transition@1' => 'kernel/App.php:633',
     ];
 
     /**
@@ -48,13 +49,7 @@ final class CapabilityAuthorityAuditor
      *
      * @var array<string, array{file: string, line: int, reason: string}>
      */
-    private const BASELINED_UNREGISTERED_KERNEL_CAPABILITIES = [
-        'kernel.audit.list@1' => [
-            'file' => 'kernel/DiSyL/Component/ComponentRenderer.php',
-            'line' => 1075,
-            'reason' => 'latent ikb_audit_log call; no registration exists',
-        ],
-    ];
+    private const BASELINED_UNREGISTERED_KERNEL_CAPABILITIES = [];
 
     /**
      * Exhaustive inventory of non-kernel literals intentionally called by

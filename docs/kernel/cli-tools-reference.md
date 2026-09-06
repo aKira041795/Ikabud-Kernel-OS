@@ -59,16 +59,13 @@ Installed manifests are audited as enabled unless an isolated fixture explicitly
 than blanket-exempt: the static registrations inventoried from `kernel/App.php` are
 `kernel.auth.user@1` (line 159), `kernel.auth.require@1` (163),
 `kernel.http.request_context@1` (172), `kernel.audit.record@1` (187),
-`kernel.auth.delegate@1` (300), `kernel.auth.validate_delegate@1` (388),
-`kernel.render.context@1` (468), `kernel.auth.authenticate@1` (480), plus the
-kernel-provider registrations `workflow.state.get@1` (532) and
-`workflow.transition@1` (536).
+`kernel.audit.list@1` (298), `kernel.auth.delegate@1` (397),
+`kernel.auth.validate_delegate@1` (485), `kernel.render.context@1` (565),
+`kernel.auth.authenticate@1` (577), plus the kernel-provider registrations
+`workflow.state.get@1` (629) and `workflow.transition@1` (633).
 
-`kernel.audit.list@1` at `kernel/DiSyL/Component/ComponentRenderer.php:1075` is a
-known latent, unregistered capability. That exact ID/file/line is the sole explicit
-baseline and is always surfaced as `CAPABILITY_KERNEL_BASELINED_UNREGISTERED`
-warning; another call site using that ID, or any new unknown `kernel.*` literal, is
-critical (fail-on-new behavior). The exhaustive non-kernel
+The real-repository capability authority baseline is zero findings. Unknown
+`kernel.*` literals remain critical (fail-on-new behavior). The exhaustive non-kernel
 kernel-consumer classification is `ai.capability.suggest@1`
 (`src/http/admin-handlers.php:2138`), `ai.text.generate@1`
 (`kernel/Workbench/AI/WorkbenchAiAnalyzer.php:89`), and `antispam.check@1`

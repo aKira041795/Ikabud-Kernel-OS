@@ -43,6 +43,7 @@ return [
         'schema_validation_mode' => (string) ($_ENV['CAP_SCHEMA_MODE'] ?? 'warn'),
         'schema_modes' => [
             'kernel.audit.record@1' => 'enforce',
+            'kernel.audit.list@1' => 'enforce',
             'workflow.state.get@1' => 'enforce',
             'workflow.transition@1' => 'enforce',
         ],

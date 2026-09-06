@@ -292,6 +292,103 @@ final class App
             ],
         ]]));
 
+        // kernel.audit.list@1 (first):
+        // Payload: {entity_type: string, entity_id?: string|null, limit?: int}
+        // Return: {rows: array}
+        $caps->register('kernel.audit.list@1', 'kernel', function ($payload): array {
+            $user = $this->user();
+            if (!$user
+                || ($user['source'] ?? 'kernel') !== 'kernel'
+                || !in_array(($user['role'] ?? null), ['admin', 'superadmin'], true)) {
+                throw new \RuntimeException('Only kernel admin and superadmin users can view audit logs.');
+            }
+
+            if (!is_array($payload)) {
+                return ['rows' => []];
+            }
+
+            $entityType = trim((string)($payload['entity_type'] ?? ''));
+            if ($entityType === '') {
+                return ['rows' => []];
+            }
+            $entityId = $payload['entity_id'] ?? null;
+            $entityId = $entityId === null ? null : (string)$entityId;
+            $limit = max(1, min(100, (int)($payload['limit'] ?? 20)));
+
+            try {
+                // Match audit.record's tenant-aware DB and kernel table escalation.
+                KernelPDO::kernelEscalationEnter();
+                $db = $this->db();
+                $supportsActorColumns = false;
+                try {
+                    $moduleUserStmt = $db->query("SHOW COLUMNS FROM audit_logs LIKE 'actor_module_user_id'");
+                    $hasModuleUserId = $moduleUserStmt && $moduleUserStmt->fetchColumn() !== false;
+                    $sourceStmt = $db->query("SHOW COLUMNS FROM audit_logs LIKE 'actor_source'");
+                    $hasActorSource = $sourceStmt && $sourceStmt->fetchColumn() !== false;
+                    $supportsActorColumns = $hasModuleUserId && $hasActorSource;
+                } catch (\Throwable) {
+                    $supportsActorColumns = false;
+                }
+
+                $actorColumns = $supportsActorColumns
+                    ? ', a.actor_module_user_id, a.actor_source'
+                    : ', NULL AS actor_module_user_id, NULL AS actor_source';
+                $sql = 'SELECT a.id, a.module, a.actor_user_id' . $actorColumns
+                    . ', a.branch_id, a.action, a.entity_type, a.entity_id, a.old_data, a.new_data, '
+                    . 'a.created_at, u.username AS actor_username FROM audit_logs a '
+                    . 'LEFT JOIN users u ON u.id = a.actor_user_id WHERE a.entity_type = :entity_type';
+                $bindings = [':entity_type' => $entityType];
+                if ($entityId !== null) {
+                    $sql .= ' AND a.entity_id = :entity_id';
+                    $bindings[':entity_id'] = $entityId;
+                }
+                $sql .= ' ORDER BY a.id DESC LIMIT ' . $limit;
+
+                $stmt = $db->prepare($sql);
+                $stmt->execute($bindings);
+                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+                foreach ($rows as &$row) {
+                    $row['old_data'] = $row['old_data'] !== null ? json_decode((string)$row['old_data'], true) : null;
+                    $row['new_data'] = $row['new_data'] !== null ? json_decode((string)$row['new_data'], true) : null;
+                    $actorSource = trim((string)($row['actor_source'] ?? ''));
+                    $moduleActorId = (int)($row['actor_module_user_id'] ?? 0);
+                    $row['actor'] = (string)($row['actor_username'] ?? '');
+                    if ($row['actor'] === '' && $moduleActorId > 0) {
+                        $row['actor'] = ($actorSource !== '' ? $actorSource : 'Module') . ' user #' . $moduleActorId;
+                    }
+                    if ($row['actor'] === '') {
+                        $row['actor'] = 'System';
+                    }
+                    $row['detail'] = $row['entity_id'] !== null
+                        ? (string)$row['entity_type'] . ' #' . (string)$row['entity_id']
+                        : (string)$row['entity_type'];
+                }
+                unset($row);
+
+                return ['rows' => $rows];
+            } finally {
+                KernelPDO::kernelEscalationLeave();
+            }
+        }, 1000, ['first'], $kernelCapabilityMeta('kernel.audit.list@1', ['schema' => [
+            'input' => [
+                'type' => 'object',
+                'required' => ['entity_type'],
+                'properties' => [
+                    'entity_type' => ['type' => 'string'],
+                    // Nullable because the renderer uses null to request all IDs of a type.
+                    'entity_id' => [],
+                    'limit' => ['type' => 'integer'],
+                ],
+            ],
+            'output' => [
+                'type' => 'object',
+                'required' => ['rows'],
+                'properties' => [
+                    'rows' => ['type' => 'array', 'items' => ['type' => 'object']],
+                ],
+            ],
+        ]]));
+
         // kernel.auth.delegate@1 (first):
         // Issues a kernel-signed delegation JWT for cross-module identity transfer.
         // Payload: {from_module: string, to_module: string, identity_email: string,
