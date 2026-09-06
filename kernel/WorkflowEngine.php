@@ -7,7 +7,13 @@ namespace Ikabud\Kernel;
 use PDO;
 use Throwable;
 
-require_once __DIR__ . '/../src/helpers/workflow-retention.php';
+// This distribution does not currently ship the retention helper. Keep payload-
+// hash recording inert until the upstream sync gap restores it, rather than
+// making WorkflowEngine fatal during bootstrap.
+$workflowRetentionHelper = __DIR__ . '/../src/helpers/workflow-retention.php';
+if (is_file($workflowRetentionHelper)) {
+    require_once $workflowRetentionHelper;
+}
 
 /**
  * Multi-step workflow engine — runs ordered capability steps with retry,
@@ -22,11 +28,31 @@ final class WorkflowEngine
 {
     private const MAX_CONCURRENT_STEPS = 50;
 
+    /** Runtime-only defense for test/CI; disabled to preserve production behavior. */
+    private static bool $runtimeGuardEnabled = false;
+
+    /** @var (\Closure(PDO): void)|null Test seam used to simulate a dispatch-time transaction regression. */
+    private static ?\Closure $runtimeGuardBeforeDispatch = null;
+
     /** @var array<string, true>|null Registered event->workflow subscriptions (in-memory cache) */
     private ?array $subscriptionsCache = null;
 
     public function __construct(private readonly App $app)
     {
+    }
+
+    /**
+     * Enable the dispatch transaction invariant in tests/CI.
+     *
+     * The optional callback is a test-only fault-injection seam. It runs only
+     * while the guard is enabled and immediately before the transaction check.
+     */
+    public static function setRuntimeGuardEnabled(bool $enabled, ?callable $beforeDispatch = null): void
+    {
+        self::$runtimeGuardEnabled = $enabled;
+        self::$runtimeGuardBeforeDispatch = $enabled && $beforeDispatch !== null
+            ? \Closure::fromCallable($beforeDispatch)
+            : null;
     }
 
     // ── YAML Definition Loading ──────────────────────────────────────
@@ -516,79 +542,127 @@ final class WorkflowEngine
     // ── Run Lifecycle ────────────────────────────────────────────────
 
     /**
-     * Start a new workflow run.
+     * Start a workflow run, or return the active run for the same subject.
      *
-     * Creates a run record and executes the first pending step.
+     * A tuple-scoped MySQL advisory lock serializes the empty-range lookup and
+     * insert without requiring DDL. The run-creation transaction and advisory
+     * lock use the same connection.
      *
-     * @return array{ok: bool, run_id?: int, error?: string}
+     * @return array{ok: bool, run_id?: int, status?: string, deduplicated?: bool, error?: string}
      */
     public function start(string $workflowKey, string $module, array $payload = [], ?string $entityType = null, ?string $entityId = null): array
     {
         try {
             $db = $this->app->db();
+            $normalizedEntityType = $entityType ?? '';
+            $normalizedEntityId = $entityId ?? '';
 
-            // Resolve the definition
+            // Resolve the definition before opening the run-creation transaction.
             $definition = null;
-            if ($entityType !== null && $entityType !== '') {
-                $definition = $this->app->workflow()->getDefinition($workflowKey, $module, $entityType);
+            if ($normalizedEntityType !== '') {
+                $definition = $this->app->workflow()->getDefinition($workflowKey, $module, $normalizedEntityType);
             }
 
-            // Resolve steps from definition
             $steps = [];
             if ($definition !== null) {
                 $states = json_decode((string)($definition['states_json'] ?? '[]'), true);
-                $steps = $this->extractStepsFromStates($states);
+                $steps = $this->extractStepsFromStates(is_array($states) ? $states : []);
             }
 
-            $db->beginTransaction();
-            try {
-                $payloadJson = json_encode($payload);
-                $stmt = $db->prepare(
-                    'INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) '
-                    . 'VALUES (:wk, :mod, :et, :eid, :did, :status, :pj, :cj, NOW(), NOW())'
+            $lockName = $this->startLockName(
+                $workflowKey,
+                $module,
+                $normalizedEntityType,
+                $normalizedEntityId,
+            );
+            $lockStmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10)');
+            $lockStmt->execute([':lock_name' => $lockName]);
+            $hasStartLock = (int)$lockStmt->fetchColumn() === 1;
+
+            if (!$hasStartLock) {
+                // A timed-out contender may still observe the committed winner.
+                $activeRun = $this->findActiveRun(
+                    $db,
+                    $workflowKey,
+                    $module,
+                    $normalizedEntityType,
+                    $normalizedEntityId,
                 );
-                $stmt->execute([
-                    ':wk'  => $workflowKey,
-                    ':mod' => $module,
-                    ':et'  => $entityType ?? '',
-                    ':eid' => $entityId ?? '',
-                    ':did' => $definition ? (int)($definition['id'] ?? 0) : null,
-                    ':status' => $steps === [] ? 'completed' : 'running',
-                    ':pj'  => $payloadJson,
-                    ':cj'  => 'null',
-                ]);
-                $runId = (int)$db->lastInsertId();
-                if (is_string($payloadJson)) {
-                    \workflowRecordRunPayloadHash($db, $runId, $payloadJson);
+                if (is_array($activeRun)) {
+                    return $this->deduplicatedStartResult($activeRun);
                 }
 
-                // Create step records
-                foreach ($steps as $i => $step) {
-                    $idKey = 'step_' . $step['key'] . '_' . $runId . '_' . ($i + 1);
-                    $stmt2 = $db->prepare(
-                        'INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, created_at) '
-                        . 'VALUES (:rid, :ord, :sk, :lab, :cap, :args, :st, 0, :ma, :ik, NOW())'
-                    );
-                    $stmt2->execute([
-                        ':rid' => $runId,
-                        ':ord' => $i + 1,
-                        ':sk'  => $step['key'],
-                        ':lab' => $step['label'] ?? ucfirst($step['key']),
-                        ':cap' => $step['capability_id'] ?? '',
-                        ':args' => json_encode($step['args'] ?? []),
-                        ':st'  => 'pending',
-                        ':ma'  => $step['max_attempts'] ?? 1,
-                        ':ik'  => $idKey,
-                    ]);
-                }
-
-                $db->commit();
-            } catch (Throwable $e) {
-                $db->rollBack();
-                throw $e;
+                return ['ok' => false, 'error' => 'run_creation_busy'];
             }
 
-            // Execute first step if steps exist
+            try {
+                $db->beginTransaction();
+                try {
+                    $activeRun = $this->findActiveRun(
+                        $db,
+                        $workflowKey,
+                        $module,
+                        $normalizedEntityType,
+                        $normalizedEntityId,
+                        true,
+                    );
+
+                    if (is_array($activeRun)) {
+                        $db->commit();
+                        return $this->deduplicatedStartResult($activeRun);
+                    }
+
+                    $payloadJson = json_encode($payload);
+                    $stmt = $db->prepare(
+                        'INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) '
+                        . 'VALUES (:wk, :mod, :et, :eid, :did, :status, :pj, :cj, NOW(), NOW())'
+                    );
+                    $stmt->execute([
+                        ':wk'  => $workflowKey,
+                        ':mod' => $module,
+                        ':et'  => $normalizedEntityType,
+                        ':eid' => $normalizedEntityId,
+                        ':did' => $definition ? (int)($definition['id'] ?? 0) : null,
+                        ':status' => $steps === [] ? 'completed' : 'running',
+                        ':pj'  => $payloadJson,
+                        ':cj'  => 'null',
+                    ]);
+                    $runId = (int)$db->lastInsertId();
+                    if (is_string($payloadJson) && function_exists('workflowRecordRunPayloadHash')) {
+                        \workflowRecordRunPayloadHash($db, $runId, $payloadJson);
+                    }
+
+                    foreach ($steps as $i => $step) {
+                        $idKey = 'step_' . $step['key'] . '_' . $runId . '_' . ($i + 1);
+                        $stmt2 = $db->prepare(
+                            'INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, created_at) '
+                            . 'VALUES (:rid, :ord, :sk, :lab, :cap, :args, :st, 0, :ma, :ik, NOW())'
+                        );
+                        $stmt2->execute([
+                            ':rid' => $runId,
+                            ':ord' => $i + 1,
+                            ':sk'  => $step['key'],
+                            ':lab' => $step['label'] ?? ucfirst($step['key']),
+                            ':cap' => $step['capability_id'] ?? '',
+                            ':args' => json_encode($step['args'] ?? []),
+                            ':st'  => 'pending',
+                            ':ma'  => $step['max_attempts'] ?? 1,
+                            ':ik'  => $idKey,
+                        ]);
+                    }
+
+                    $db->commit();
+                } catch (Throwable $e) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    throw $e;
+                }
+            } finally {
+                $releaseStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+                $releaseStmt->execute([':lock_name' => $lockName]);
+            }
+
             if ($steps !== []) {
                 $this->advance($runId);
             }
@@ -608,90 +682,117 @@ final class WorkflowEngine
     }
 
     /**
-     * Advance a run — execute the next pending step.
+     * Advance a run — atomically claim and execute the next pending step.
      *
-     * Called automatically after start(). Can also be called manually
-     * to retry a failed step or resume a paused run.
+     * The run row is locked only while selecting and claiming a step. The
+     * transaction commits before capability dispatch, so long-running side
+     * effects never hold an InnoDB row lock.
      *
-     * @return array{ok: bool, run_id: int, step_id?: int, status?: string, error?: string}
+     * @return array{ok: bool, run_id: int, step_id?: int, status?: string, run_busy?: bool, error?: string}
      */
     public function advance(int $runId): array
     {
         try {
             $db = $this->app->db();
+            $db->beginTransaction();
 
-            // Get the run
-            $stmt = $db->prepare('SELECT * FROM workflow_runs WHERE id = :id LIMIT 1');
-            $stmt->execute([':id' => $runId]);
-            $run = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!is_array($run)) {
-                return ['ok' => false, 'run_id' => $runId, 'error' => 'Run not found'];
-            }
-
-            if (in_array($run['status'], ['completed', 'cancelled', 'failed'], true)) {
-                return ['ok' => false, 'run_id' => $runId, 'error' => "Run already {$run['status']}"];
-            }
-
-            // Get the next pending or failed step
-            $stepStmt = $db->prepare(
-                'SELECT * FROM workflow_run_steps WHERE run_id = :rid AND status IN (:st1, :st2) ORDER BY ordinal ASC LIMIT 1'
-            );
-            $stepStmt->execute([':rid' => $runId, ':st1' => 'pending', ':st2' => 'failed']);
-            $step = $stepStmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!is_array($step)) {
-                // No more steps — mark run completed
-                $updateStmt = $db->prepare('UPDATE workflow_runs SET status = :st, finished_at = NOW(), updated_at = NOW() WHERE id = :id');
-                $updateStmt->execute([':st' => 'completed', ':id' => $runId]);
-                write_log("WorkflowEngine: run {$runId} completed", 'info');
-                return ['ok' => true, 'run_id' => $runId, 'status' => 'completed'];
-            }
-
-            $stepId = (int)$step['id'];
-            $capabilityId = (string)($step['capability_id'] ?? '');
-            $argsJson = (string)($step['args_json'] ?? '{}');
-            $args = json_decode($argsJson, true) ?: [];
-            $payload = json_decode((string)($run['payload_json'] ?? '{}'), true) ?: [];
-            $maxAttempts = (int)($step['max_attempts'] ?? 1);
-            $attempt = (int)($step['attempt'] ?? 0) + 1;
-
-            // Resolve args — replace {payload.*} references
-            $resolvedArgs = $this->resolveStepArgs($args, $payload, $run);
-
-            // Mark step as running
-            $db->prepare('UPDATE workflow_run_steps SET status = :st, attempt = :att, started_at = NOW(), updated_at = NOW() WHERE id = :id')
-                ->execute([':st' => 'running', ':att' => $attempt, ':id' => $stepId]);
-
-            // Execute the capability
             try {
-                if ($capabilityId !== '' && function_exists('app')) {
-                    $result = app()->capabilities()->call($capabilityId, $resolvedArgs);
+                $stmt = $db->prepare('SELECT * FROM workflow_runs WHERE id = :id LIMIT 1 FOR UPDATE');
+                $stmt->execute([':id' => $runId]);
+                $run = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!is_array($run)) {
+                    $db->rollBack();
+                    return ['ok' => false, 'run_id' => $runId, 'error' => 'Run not found'];
+                }
+
+                if (in_array($run['status'], ['completed', 'cancelled', 'failed'], true)) {
+                    $db->commit();
+                    return ['ok' => false, 'run_id' => $runId, 'error' => "Run already {$run['status']}"];
+                }
+
+                $blockedStep = $this->findBlockedStep($db, $runId);
+                if (is_array($blockedStep)) {
+                    $db->commit();
+                    if ($blockedStep['status'] === 'running') {
+                        return $this->runBusyResult($runId);
+                    }
+                    return $this->interruptedStepResult($runId, (int)$blockedStep['id']);
+                }
+
+                $stepStmt = $db->prepare(
+                    "SELECT * FROM workflow_run_steps WHERE run_id = :rid AND status IN ('pending', 'failed') ORDER BY ordinal ASC LIMIT 1"
+                );
+                $stepStmt->execute([':rid' => $runId]);
+                $step = $stepStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!is_array($step)) {
+                    $updateStmt = $db->prepare(
+                        "UPDATE workflow_runs SET status = 'completed', finished_at = NOW(), updated_at = NOW() "
+                        . "WHERE id = :id AND status IN ('pending', 'running')"
+                    );
+                    $updateStmt->execute([':id' => $runId]);
+                    $db->commit();
+                    write_log("WorkflowEngine: run {$runId} completed", 'info');
+                    return ['ok' => true, 'run_id' => $runId, 'status' => 'completed'];
+                }
+
+                $stepId = (int)$step['id'];
+                $claimStmt = $db->prepare(
+                    "UPDATE workflow_run_steps SET status = 'running', attempt = attempt + 1, started_at = NOW(), updated_at = NOW() "
+                    . "WHERE id = :id AND run_id = :rid AND status IN ('pending', 'failed')"
+                );
+                $claimStmt->execute([':id' => $stepId, ':rid' => $runId]);
+                if ($claimStmt->rowCount() !== 1) {
+                    $db->rollBack();
+                    return $this->runBusyResult($runId);
+                }
+
+                $attempt = (int)($step['attempt'] ?? 0) + 1;
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                if ($this->isRunLockContention($e)) {
+                    return $this->runBusyResult($runId);
+                }
+                throw $e;
+            }
+
+            $capabilityId = (string)($step['capability_id'] ?? '');
+            $args = json_decode((string)($step['args_json'] ?? '{}'), true);
+            $payload = json_decode((string)($run['payload_json'] ?? '{}'), true);
+            $resolvedArgs = $this->resolveStepArgs(
+                is_array($args) ? $args : [],
+                is_array($payload) ? $payload : [],
+                $run,
+            );
+            $maxAttempts = (int)($step['max_attempts'] ?? 1);
+
+            // CapabilityBus is the canonical dispatch path. CapabilityRegistry
+            // intentionally has no call() method; App::cap() supplies the bus.
+            try {
+                if ($capabilityId !== '') {
+                    $guardFailure = $this->runtimeDispatchGuardFailure($db, $runId, $stepId);
+                    if ($guardFailure !== null) {
+                        return $guardFailure;
+                    }
+                    $result = $this->app->cap()->call($capabilityId, $resolvedArgs);
                 } else {
                     $result = ['ok' => true, 'data' => null];
                 }
-
-                // Mark step completed
-                $db->prepare('UPDATE workflow_run_steps SET status = :st, result_json = :rj, finished_at = NOW(), updated_at = NOW() WHERE id = :id')
-                    ->execute([':st' => 'completed', ':rj' => json_encode($result), ':id' => $stepId]);
-
-                write_log("WorkflowEngine: run {$runId} step {$stepId} ({$step['step_key']}) completed", 'info', [
-                    'run_id' => $runId,
-                    'step_key' => $step['step_key'],
-                    'capability' => $capabilityId,
-                ]);
-
-                // Process next step
-                return $this->advance($runId);
             } catch (Throwable $e) {
                 $isLastAttempt = $attempt >= $maxAttempts;
 
                 if ($isLastAttempt) {
-                    // Final attempt failed — mark step and run as failed
-                    $db->prepare('UPDATE workflow_run_steps SET status = :st, last_error = :err, finished_at = NOW(), updated_at = NOW() WHERE id = :id')
-                        ->execute([':st' => 'failed', ':err' => $e->getMessage(), ':id' => $stepId]);
-                    $db->prepare('UPDATE workflow_runs SET status = :st, finished_at = NOW(), updated_at = NOW() WHERE id = :id')
-                        ->execute([':st' => 'failed', ':id' => $runId]);
+                    $db->prepare(
+                        "UPDATE workflow_run_steps SET status = 'failed', last_error = :err, finished_at = NOW(), updated_at = NOW() "
+                        . "WHERE id = :id AND status = 'running'"
+                    )->execute([':err' => $e->getMessage(), ':id' => $stepId]);
+                    $db->prepare(
+                        "UPDATE workflow_runs SET status = 'failed', finished_at = NOW(), updated_at = NOW() WHERE id = :id"
+                    )->execute([':id' => $runId]);
 
                     write_log("WorkflowEngine: run {$runId} step {$stepId} failed after {$maxAttempts} attempts: " . $e->getMessage(), 'error', [
                         'run_id' => $runId,
@@ -702,14 +803,46 @@ final class WorkflowEngine
                     return ['ok' => false, 'run_id' => $runId, 'step_id' => $stepId, 'error' => $e->getMessage(), 'status' => 'failed'];
                 }
 
-                // Retry — reset step to pending for next advance call
-                $db->prepare('UPDATE workflow_run_steps SET status = :st, last_error = :err, updated_at = NOW() WHERE id = :id')
-                    ->execute([':st' => 'failed', ':err' => $e->getMessage(), ':id' => $stepId]);
+                $db->prepare(
+                    "UPDATE workflow_run_steps SET status = 'failed', last_error = :err, updated_at = NOW() "
+                    . "WHERE id = :id AND status = 'running'"
+                )->execute([':err' => $e->getMessage(), ':id' => $stepId]);
 
                 write_log("WorkflowEngine: run {$runId} step {$stepId} attempt {$attempt}/{$maxAttempts} failed, will retry: " . $e->getMessage(), 'warning');
 
                 return ['ok' => false, 'run_id' => $runId, 'step_id' => $stepId, 'error' => $e->getMessage(), 'status' => 'retry_pending'];
             }
+
+            // Dispatch returned, so its side effects may have happened. Any
+            // completion-persistence failure must fail closed and must never
+            // put this logical execution back into the retryable pool.
+            try {
+                $completeStmt = $db->prepare(
+                    "UPDATE workflow_run_steps SET status = 'completed', result_json = :rj, finished_at = NOW(), updated_at = NOW() "
+                    . "WHERE id = :id AND status = 'running'"
+                );
+                $completeStmt->execute([':rj' => json_encode($result), ':id' => $stepId]);
+                if ($completeStmt->rowCount() !== 1) {
+                    throw new \RuntimeException('Step state changed during completion persistence');
+                }
+            } catch (Throwable $e) {
+                $status = $this->interruptStepAfterDispatch($db, $stepId, $e);
+                return [
+                    'ok' => false,
+                    'run_id' => $runId,
+                    'step_id' => $stepId,
+                    'status' => $status,
+                    'error' => 'Step completion persistence failed after dispatch: ' . $e->getMessage(),
+                ];
+            }
+
+            write_log("WorkflowEngine: run {$runId} step {$stepId} ({$step['step_key']}) completed", 'info', [
+                'run_id' => $runId,
+                'step_key' => $step['step_key'],
+                'capability' => $capabilityId,
+            ]);
+
+            return $this->advance($runId);
         } catch (Throwable $e) {
             write_log("WorkflowEngine: advance failed for run {$runId}: " . $e->getMessage(), 'error');
             return ['ok' => false, 'run_id' => $runId, 'error' => $e->getMessage()];
@@ -718,42 +851,63 @@ final class WorkflowEngine
 
     /**
      * Cancel a workflow run.
+     *
+     * Cancellation is refused while a capability is in flight. This minimal
+     * safe semantic preserves the running marker until dispatch settles.
      */
     public function cancel(int $runId, string $reason = 'Cancelled by operator'): array
     {
         try {
             $db = $this->app->db();
+            $db->beginTransaction();
 
-            $stmt = $db->prepare('SELECT * FROM workflow_runs WHERE id = :id LIMIT 1');
-            $stmt->execute([':id' => $runId]);
-            $run = $stmt->fetch(PDO::FETCH_ASSOC);
+            try {
+                $stmt = $db->prepare('SELECT * FROM workflow_runs WHERE id = :id LIMIT 1 FOR UPDATE');
+                $stmt->execute([':id' => $runId]);
+                $run = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!is_array($run)) {
-                return ['ok' => false, 'error' => 'Run not found'];
+                if (!is_array($run)) {
+                    $db->rollBack();
+                    return ['ok' => false, 'run_id' => $runId, 'error' => 'Run not found'];
+                }
+
+                if (in_array($run['status'], ['completed', 'cancelled'], true)) {
+                    $db->commit();
+                    return ['ok' => false, 'run_id' => $runId, 'error' => "Run already {$run['status']}"];
+                }
+
+                $blockedStep = $this->findBlockedStep($db, $runId);
+                if (is_array($blockedStep)) {
+                    $db->commit();
+                    if ($blockedStep['status'] === 'running') {
+                        return $this->runBusyResult($runId);
+                    }
+                    return $this->interruptedStepResult($runId, (int)$blockedStep['id']);
+                }
+
+                $db->prepare(
+                    "UPDATE workflow_run_steps SET status = 'cancelled', last_error = :err, updated_at = NOW() "
+                    . "WHERE run_id = :rid AND status IN ('pending', 'failed')"
+                )->execute([':err' => $reason, ':rid' => $runId]);
+                $db->prepare(
+                    "UPDATE workflow_runs SET status = 'cancelled', cancelled_at = NOW(), cancel_reason = :cr, finished_at = NOW(), updated_at = NOW() WHERE id = :id"
+                )->execute([':cr' => $reason, ':id' => $runId]);
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                if ($this->isRunLockContention($e)) {
+                    return $this->runBusyResult($runId);
+                }
+                throw $e;
             }
-
-            if (in_array($run['status'], ['completed', 'cancelled'], true)) {
-                return ['ok' => false, 'error' => "Run already {$run['status']}"];
-            }
-
-            // Cancel any running steps
-            $db->prepare('UPDATE workflow_run_steps SET status = :st, last_error = :err, updated_at = NOW() WHERE run_id = :rid AND status = :rs')
-                ->execute([':st' => 'cancelled', ':err' => $reason, ':rid' => $runId, ':rs' => 'running']);
-
-            // Cancel pending steps
-            $db->prepare('UPDATE workflow_run_steps SET status = :st, last_error = :err, updated_at = NOW() WHERE run_id = :rid AND status = :rs')
-                ->execute([':st' => 'cancelled', ':err' => $reason, ':rid' => $runId, ':rs' => 'pending']);
-
-            // Mark run cancelled
-            $db->prepare('UPDATE workflow_runs SET status = :st, cancelled_at = NOW(), cancel_reason = :cr, finished_at = NOW(), updated_at = NOW() WHERE id = :id')
-                ->execute([':st' => 'cancelled', ':cr' => $reason, ':id' => $runId]);
 
             write_log("WorkflowEngine: run {$runId} cancelled: {$reason}", 'info');
-
             return ['ok' => true, 'run_id' => $runId, 'status' => 'cancelled'];
         } catch (Throwable $e) {
             write_log("WorkflowEngine: cancel failed for run {$runId}: " . $e->getMessage(), 'error');
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return ['ok' => false, 'run_id' => $runId, 'error' => $e->getMessage()];
         }
     }
 
@@ -767,41 +921,59 @@ final class WorkflowEngine
     {
         try {
             $db = $this->app->db();
+            $db->beginTransaction();
 
-            $stmt = $db->prepare('SELECT * FROM workflow_runs WHERE id = :id LIMIT 1');
-            $stmt->execute([':id' => $runId]);
-            $run = $stmt->fetch(PDO::FETCH_ASSOC);
+            try {
+                $stmt = $db->prepare('SELECT * FROM workflow_runs WHERE id = :id LIMIT 1 FOR UPDATE');
+                $stmt->execute([':id' => $runId]);
+                $run = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!is_array($run)) {
-                return ['ok' => false, 'error' => 'Run not found'];
-            }
+                if (!is_array($run)) {
+                    $db->rollBack();
+                    return ['ok' => false, 'run_id' => $runId, 'error' => 'Run not found'];
+                }
 
-            // Reset steps from the failure point
-            if ($fromStepKey !== null) {
-                $resetStmt = $db->prepare(
-                    'UPDATE workflow_run_steps SET status = :st, attempt = 0, last_error = NULL, result_json = NULL, started_at = NULL, finished_at = NULL, updated_at = NOW() '
-                    . 'WHERE run_id = :rid AND ordinal >= (SELECT MIN(ordinal) FROM workflow_run_steps WHERE run_id = :rid2 AND step_key = :sk)'
-                );
-                $resetStmt->execute([':st' => 'pending', ':rid' => $runId, ':rid2' => $runId, ':sk' => $fromStepKey]);
-            } else {
-                // Reset all failed/pending steps
+                $blockedStep = $this->findBlockedStep($db, $runId);
+                if (is_array($blockedStep)) {
+                    $db->commit();
+                    if ($blockedStep['status'] === 'running') {
+                        return $this->runBusyResult($runId);
+                    }
+                    return $this->interruptedStepResult($runId, (int)$blockedStep['id']);
+                }
+
+                if ($fromStepKey !== null) {
+                    $resetStmt = $db->prepare(
+                        "UPDATE workflow_run_steps SET status = 'pending', attempt = 0, last_error = NULL, result_json = NULL, started_at = NULL, finished_at = NULL, updated_at = NOW() "
+                        . 'WHERE run_id = :rid AND ordinal >= (SELECT MIN(ordinal) FROM workflow_run_steps WHERE run_id = :rid2 AND step_key = :sk)'
+                    );
+                    $resetStmt->execute([':rid' => $runId, ':rid2' => $runId, ':sk' => $fromStepKey]);
+                } else {
+                    $db->prepare(
+                        "UPDATE workflow_run_steps SET status = 'pending', attempt = 0, last_error = NULL, result_json = NULL, started_at = NULL, finished_at = NULL, updated_at = NOW() "
+                        . "WHERE run_id = :rid AND status IN ('failed', 'cancelled')"
+                    )->execute([':rid' => $runId]);
+                }
+
                 $db->prepare(
-                    'UPDATE workflow_run_steps SET status = :st, attempt = 0, last_error = NULL, result_json = NULL, started_at = NULL, finished_at = NULL, updated_at = NOW() '
-                    . 'WHERE run_id = :rid AND status IN (:s1, :s2)'
-                )->execute([':st' => 'pending', ':rid' => $runId, ':s1' => 'failed', ':s2' => 'cancelled']);
+                    "UPDATE workflow_runs SET status = 'running', finished_at = NULL, cancelled_at = NULL, updated_at = NOW() WHERE id = :id"
+                )->execute([':id' => $runId]);
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                if ($this->isRunLockContention($e)) {
+                    return $this->runBusyResult($runId);
+                }
+                throw $e;
             }
-
-            // Reset run status
-            $db->prepare('UPDATE workflow_runs SET status = :st, finished_at = NULL, cancelled_at = NULL, updated_at = NOW() WHERE id = :id')
-                ->execute([':st' => 'running', ':id' => $runId]);
 
             write_log("WorkflowEngine: replaying run {$runId}" . ($fromStepKey ? " from step {$fromStepKey}" : ''), 'info');
-
-            // Advance from the reset point
             return $this->advance($runId);
         } catch (Throwable $e) {
             write_log("WorkflowEngine: replay failed for run {$runId}: " . $e->getMessage(), 'error');
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return ['ok' => false, 'run_id' => $runId, 'error' => $e->getMessage()];
         }
     }
 
@@ -883,6 +1055,155 @@ final class WorkflowEngine
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
+
+    private function startLockName(string $workflowKey, string $module, string $entityType, string $entityId): string
+    {
+        $tuple = json_encode([$workflowKey, $module, $entityType, $entityId]);
+        return 'workflow:start:' . substr(hash('sha256', (string)$tuple), 0, 48);
+    }
+
+    /**
+     * @return array{ok: false, run_id: int, step_id: int, status: string, error: string}|null
+     */
+    private function runtimeDispatchGuardFailure(PDO $db, int $runId, int $stepId): ?array
+    {
+        if (!self::$runtimeGuardEnabled) {
+            return null;
+        }
+
+        if (self::$runtimeGuardBeforeDispatch !== null) {
+            (self::$runtimeGuardBeforeDispatch)($db);
+        }
+
+        if (!$db->inTransaction()) {
+            return null;
+        }
+
+        write_log(
+            "WorkflowEngine: runtime dispatch guard blocked capability for run {$runId} step {$stepId}: transaction is open",
+            'error',
+            ['run_id' => $runId, 'step_id' => $stepId],
+        );
+
+        // The already-committed running claim remains non-retryable. Roll back
+        // only the unexpected transaction opened after that claim so the
+        // connection is not leaked in a transactional state.
+        $db->rollBack();
+
+        return [
+            'ok' => false,
+            'run_id' => $runId,
+            'step_id' => $stepId,
+            'status' => 'running',
+            'error' => 'runtime_dispatch_guard_violation',
+        ];
+    }
+
+    /** @return array<string, mixed>|false */
+    private function findActiveRun(
+        PDO $db,
+        string $workflowKey,
+        string $module,
+        string $entityType,
+        string $entityId,
+        bool $forUpdate = false,
+    ): array|false {
+        $sql = 'SELECT id, status FROM workflow_runs '
+            . 'WHERE workflow_key = :wk AND module = :mod AND entity_type = :et AND entity_id = :eid '
+            . "AND status IN ('pending', 'running') ORDER BY id ASC LIMIT 1";
+        if ($forUpdate) {
+            $sql .= ' FOR UPDATE';
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute([':wk' => $workflowKey, ':mod' => $module, ':et' => $entityType, ':eid' => $entityId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * @param array<string, mixed> $run
+     * @return array{ok: true, run_id: int, status: string, deduplicated: true}
+     */
+    private function deduplicatedStartResult(array $run): array
+    {
+        return [
+            'ok' => true,
+            'run_id' => (int)$run['id'],
+            'status' => (string)$run['status'],
+            'deduplicated' => true,
+        ];
+    }
+
+    /** @return array{id: mixed, status: mixed}|false */
+    private function findBlockedStep(PDO $db, int $runId): array|false
+    {
+        $stmt = $db->prepare(
+            "SELECT id, status FROM workflow_run_steps WHERE run_id = :rid "
+            . "AND status IN ('running', 'interrupted') ORDER BY ordinal ASC LIMIT 1"
+        );
+        $stmt->execute([':rid' => $runId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    private function interruptStepAfterDispatch(PDO $db, int $stepId, Throwable $cause): string
+    {
+        try {
+            $stmt = $db->prepare(
+                "UPDATE workflow_run_steps SET status = 'interrupted', last_error = :err, updated_at = NOW() "
+                . "WHERE id = :id AND status = 'running'"
+            );
+            $stmt->execute([':err' => $cause->getMessage(), ':id' => $stepId]);
+            if ($stmt->rowCount() === 1) {
+                write_log("WorkflowEngine: step {$stepId} interrupted after dispatch: " . $cause->getMessage(), 'error');
+                return 'interrupted';
+            }
+
+            $statusStmt = $db->prepare('SELECT status FROM workflow_run_steps WHERE id = :id LIMIT 1');
+            $statusStmt->execute([':id' => $stepId]);
+            $currentStatus = $statusStmt->fetchColumn();
+            if ($currentStatus === 'interrupted') {
+                return 'interrupted';
+            }
+        } catch (Throwable $markError) {
+            write_log("WorkflowEngine: could not persist interrupted state for step {$stepId}: " . $markError->getMessage(), 'error');
+        }
+
+        // Leaving the claim as running is also fail-closed: no engine path can
+        // reclaim it automatically.
+        return 'running';
+    }
+
+    /** @return array{ok: false, run_id: int, step_id: int, status: string, error: string} */
+    private function interruptedStepResult(int $runId, int $stepId): array
+    {
+        return [
+            'ok' => false,
+            'run_id' => $runId,
+            'step_id' => $stepId,
+            'status' => 'interrupted',
+            'error' => 'step_interrupted',
+        ];
+    }
+
+    /**
+     * @return array{ok: false, run_id: int, run_busy: true, error: string}
+     */
+    private function runBusyResult(int $runId): array
+    {
+        return ['ok' => false, 'run_id' => $runId, 'run_busy' => true, 'error' => 'run_busy'];
+    }
+
+    private function isRunLockContention(Throwable $e): bool
+    {
+        $driverCode = $e instanceof \PDOException ? (int)($e->errorInfo[1] ?? 0) : 0;
+        if (in_array($driverCode, [1205, 1213, 3572], true)) {
+            return true;
+        }
+
+        $message = strtolower($e->getMessage());
+        return str_contains($message, 'lock wait timeout')
+            || str_contains($message, 'deadlock found')
+            || str_contains($message, 'could not obtain lock');
+    }
 
     /**
      * Extract step definitions from workflow definition states.

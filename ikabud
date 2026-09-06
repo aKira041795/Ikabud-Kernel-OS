@@ -1164,6 +1164,7 @@ switch ($command) {
         out('    ' . green('test:module') . ' <id> --php-only      Run PHP tests only');
         out('    ' . green('test:module') . ' <id> --browser-only  Run browser tests only');
         out('    ' . green('workbench:benchmark') . ' [--json]  Run competitive quality gates');
+        out('    ' . green('workbench:audit') . ' [--json]  Audit WorkflowEngine concurrency and MySQL 5.7 guards');
         out('    ' . green('workbench:init') . ' <module> [--force]  Create/migrate the v1 test contract');
         out('    ' . green('workbench:validate') . ' <module> [--json] Validate test contract claims');
         out('    ' . green('workbench:doctor') . ' <module> [--url=] [--user=] [--pass=] [--json]   Run the pre-browser release gate with optional env readiness');
@@ -6121,6 +6122,74 @@ MD;
             exit(1);
         }
         break;
+    // ── workbench:audit ────────────────────────────────────────────
+    case 'workbench:audit':
+        require_once __DIR__ . '/kernel/Workbench/Audit/WorkflowGuardAuditor.php';
+        require_once __DIR__ . '/kernel/Workbench/Issues/IssueLedger.php';
+        try {
+            $auditFile = __DIR__ . '/kernel/WorkflowEngine.php';
+            $auditor = new \Ikabud\Kernel\Workbench\Audit\WorkflowGuardAuditor();
+            $findings = $auditor->audit($auditFile);
+            $ledger = new \Ikabud\Kernel\Workbench\Issues\IssueLedger(
+                __DIR__ . '/storage/private/workbench/issues'
+            );
+            $relativeFile = 'kernel/WorkflowEngine.php';
+            foreach ($findings as $finding) {
+                $location = $relativeFile . ':' . $finding['line'];
+                $ledger->ingest([
+                    'module_id' => 'kernel',
+                    'action_id' => 'workbench:audit',
+                    'failing_node' => $location,
+                    'category' => 'workflow_guard.' . strtolower($finding['code']),
+                    'severity' => $finding['severity'],
+                    'summary' => $finding['code'] . ' at ' . $location . ': ' . $finding['message'],
+                    'source_fingerprint' => hash('sha256', $finding['code'] . '|' . $relativeFile),
+                ], [
+                    'source' => 'workbench:audit',
+                    'file' => $relativeFile,
+                    'line' => $finding['line'],
+                    'invariant_code' => $finding['code'],
+                ]);
+            }
+
+            $criticalCount = count(array_filter(
+                $findings,
+                static fn (array $finding): bool => $finding['severity'] === 'critical'
+            ));
+            if (hasFlag('--json')) {
+                out(json_encode([
+                    'ok' => $criticalCount === 0,
+                    'file' => $relativeFile,
+                    'finding_count' => count($findings),
+                    'critical_count' => $criticalCount,
+                    'findings' => array_map(
+                        static fn (array $finding): array => array_merge($finding, ['file' => $relativeFile]),
+                        $findings
+                    ),
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            } else {
+                out('');
+                out('  ' . bold('Workbench Workflow Guard Audit'));
+                out('  Target: ' . $relativeFile);
+                if ($findings === []) {
+                    out('  ' . green('✓') . ' No findings. Phase-1 hardening baseline is clean.');
+                } else {
+                    foreach ($findings as $finding) {
+                        $mark = $finding['severity'] === 'critical' ? red('✗') : yellow('⚠');
+                        out("  {$mark} [{$finding['severity']}] {$finding['code']} {$relativeFile}:{$finding['line']}");
+                        out('      ' . $finding['message']);
+                    }
+                    out('  Findings recorded in Workbench IssueLedger: ' . count($findings));
+                }
+                out('  Critical findings: ' . $criticalCount);
+                out('');
+            }
+            exit($criticalCount > 0 ? 1 : 0);
+        } catch (Throwable $e) {
+            out(red('  Workbench audit failed: ' . $e->getMessage()));
+            exit(2);
+        }
+
     // ── workbench:benchmark ────────────────────────────────────────
     case 'workbench:benchmark':
         require_once __DIR__ . '/kernel/Workbench/Comprehension/Analyzers/PatternClassifier.php';

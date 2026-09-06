@@ -2,7 +2,7 @@
 
 **Subsystem:** `kernel/EntityContext/`  
 **Status:** Production  
-**Last updated:** 2026-06-11
+**Last updated:** 2026-09-06
 
 ## Overview
 
@@ -228,6 +228,45 @@ The `$roleFields` mapping (`title→fieldName`, `subtitle→fieldName`, `image�
 ### Render Context Fallback
 
 `renderWithRowContext()` accepts an optional `$fallbackContext` parameter. When a template variable (e.g., `{base_url}`) is not found in the row data, the renderer falls back to the fallback context before rendering a literal `{base_url}`. This enables action URLs like `{base_url}/cms/blog/{slug}` to resolve even when `base_url` isn't in the entity row data.
+
+### Entity-View Render Fragment Cache
+
+Entity list and detail components support an opt-in rendered-HTML cache at the
+`ComponentRenderer` seam. Caching is off unless the component declares a TTL:
+
+```disyl
+{ikb_entity_list source="products.featured" view="card_grid" cache="60" /}
+{ikb_entity_detail source="products.one" id="{product.id}" cache="60" /}
+```
+
+The cache reuses DiSyL's file/APCu `FragmentStore`; it does not add database
+storage or change capability resolution. A miss resolves and renders normally,
+then stores the byte-identical HTML. A hit skips capability resolution and HTML
+rebuilding. Store lookup/write failures are logged and fail open to a normal
+render.
+
+Keys are canonical and tenant-partitioned. They include the tenant, component
+kind, source, view, detail ID, limit, sort, filters, page/offset, cursors,
+current-user role, rendering attributes, and compiled child content. List and
+detail entries depend on `entity.list.<type>` and `entity.detail.<type>` tags.
+
+Identified-user renders are **not cached by default**, even when `cache` is set.
+Only use `cache-user="true"` when the rendered content is safe to cache per user;
+the stable user identity is then included in the key. User-shaped contexts with
+no stable identity remain uncached. This prevents tenant, role, and user HTML
+from sharing a fragment.
+
+After a successful entity write, invalidate both render variants for that type
+and tenant:
+
+```php
+app()->entityViews()->invalidateEntityCache('products', $tenantId);
+```
+
+If `$tenantId` is omitted, the active tenant is used. Module write handlers are
+responsible for invoking this invalidator; otherwise opted-in HTML remains valid
+until its TTL expires. DiSyL `{invalidate}` may also invalidate the documented
+entity tag when a narrower list/detail refresh is intended.
 
 ### Timeout Handling
 

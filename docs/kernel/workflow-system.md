@@ -2,8 +2,8 @@
 
 **Subsystem:** `kernel/WorkflowRuntime.php` + `kernel/WorkflowEngine.php`  
 **Status:** Production  
-**Last updated:** 2026-06-26  
-**Version:** `WorkflowRuntime` 1.0.0 · `WorkflowEngine` 1.0.0 (new in 6.1)
+**Last updated:** 2026-09-06
+**Version:** `WorkflowRuntime` 1.0.0 · `WorkflowEngine` 1.1.0
 
 ## Overview
 
@@ -165,7 +165,7 @@ Modules can subscribe to these events for side effects (notifications, logging, 
 
 ## WorkflowEngine — Multi-Step Runner (New in 6.1)
 
-**File:** `kernel/WorkflowEngine.php` | **Version:** 1.0.0
+**File:** `kernel/WorkflowEngine.php` | **Version:** 1.1.0
 
 The `WorkflowEngine` extends the single-transition `WorkflowRuntime` with
 **multi-step ordered workflows** defined in YAML. Each step can be a validate,
@@ -288,19 +288,58 @@ steps:
 
 ### Multi-Step Execution
 
-When a YAML definition includes `steps:`, the `WorkflowEngine` creates `workflow_run_steps` records on `start()`. Each step references a capability ID — the engine calls it via `app()->capabilities()->call()`. Steps execute sequentially; if a step fails and `max_attempts` is > 1, it retries up to that limit before marking the run as failed.
+When a YAML definition includes `steps:`, the `WorkflowEngine` creates `workflow_run_steps` records on `start()`. Each step references a capability ID — the engine calls it through the capability bus (`app()->cap()->call()`). Steps execute sequentially; if a step fails and `max_attempts` is > 1, it retries up to that limit before marking the run as failed.
 
 Step argument values support `{payload.*}` references which are resolved against the run's original payload at execution time.
+
+### Concurrency and Delivery Idempotency
+
+`advance()` uses a short claim transaction:
+
+1. Lock the `workflow_runs` row with `SELECT ... FOR UPDATE`.
+2. Refuse the claim if another step for the run is already `running`.
+3. Select the next `pending` or `failed` step.
+4. Atomically claim it with a guarded `UPDATE ... WHERE status IN ('pending', 'failed')`, including `attempt = attempt + 1`; exactly one affected row is required.
+5. Commit the transaction **before** dispatching the capability.
+
+The database lock therefore protects only selection and claim. It is never held across a potentially long capability call. A competing `advance()` (including a lock timeout/deadlock while claiming) returns:
+
+```php
+['ok' => false, 'run_id' => $runId, 'run_busy' => true, 'error' => 'run_busy']
+```
+
+`cancel()` and `replay()` use the same run-row guard. If a step is currently `running`, both operations are refused with the same `run_busy` shape; neither can clear or reset an in-flight marker. This is the intentionally minimal cancellation semantic: callers retry cancellation only after the capability settles. Otherwise replay's reset commits before `advance()` claims the replayed step.
+
+Dispatch and completion persistence are separate phases. Capability exceptions retain the normal `failed`/`retry_pending` behavior. Once dispatch returns, a completion-write failure changes the step to non-retryable `interrupted` when possible (or leaves it `running` if even that write fails). `advance()` and `replay()` refuse either fail-closed state, so an uncertain side effect is never dispatched again automatically.
+
+`start()` deduplicates active runs by the tuple `(workflow_key, module, entity_type, entity_id)`. A tuple-scoped MySQL advisory lock (`GET_LOCK`/`RELEASE_LOCK`) on the same connection as the creation transaction serializes even an empty index range without DDL and is compatible with MySQL 5.7. A contender re-reads after acquiring the mutex (and once more after a lock timeout). If a matching `pending` or `running` run already exists, no row or steps are created and the existing identifier is returned without re-advancing it:
+
+```php
+[
+    'ok' => true,
+    'run_id' => $existingRunId,
+    'status' => 'pending', // or 'running'
+    'deduplicated' => true,
+]
+```
+
+This keeps the existing successful `start()` contract while making duplicate `handleEvent()` delivery converge on one active run. A completed, failed, or cancelled run does not block a later start for the same subject. If the advisory mutex times out and no committed winner can be read, `start()` fails explicitly with `error: run_creation_busy`.
+
+Capability dispatch uses the canonical CapabilityBus path, `app()->cap()->call()`. `App::capabilities()` exposes the registration/inspection registry and intentionally has no `call()` method.
+
+The generated `workflow_run_steps.idempotency_key` remains a trace identifier (`step_<step-key>_<run-id>_<ordinal>`). There is no caller-supplied key/result-reuse seam in the current API; durable result reuse by an external idempotency key remains follow-on work.
+
+`WorkflowRuntime` is not coupled to this guard. It stores state-machine subjects in `workflow_instances`, not `workflow_runs`, and retains its independent optimistic transition behavior.
 
 ### Methods
 
 | Method | Signature | Purpose |
 |---|---|---|
 | `loadDefinitions` | `(string $moduleDir, string $moduleId): array` | Scan `modules/<id>/workflows/*.yaml` and sync to DB. Returns list of loaded workflow keys. |
-| `start` | `(string $workflowKey, string $module, array $payload = [], ?string $entityType = null, ?string $entityId = null): array` | Start a new workflow run. Returns `['ok' => bool, 'run_id' => int]` |
-| `advance` | `(int $runId): array` | Execute next pending step. Auto-invoked by `start()` |
-| `cancel` | `(int $runId, string $reason): array` | Cancel active run |
-| `replay` | `(int $runId, ?string $fromStep): array` | Replay from a specific step |
+| `start` | `(string $workflowKey, string $module, array $payload = [], ?string $entityType = null, ?string $entityId = null): array` | Start a run or return the matching active run with `deduplicated: true` |
+| `advance` | `(int $runId): array` | Atomically claim and execute the next step; returns `run_busy: true` on contention |
+| `cancel` | `(int $runId, string $reason): array` | Guarded cancellation; refuses with `run_busy: true` while a step is running |
+| `replay` | `(int $runId, ?string $fromStep): array` | Guarded replay; refuses with `run_busy: true` while a step is running |
 | `subscribe` | `(string $module, string $eventId, string $workflowKey, ?array $filter = null, ?string $entityType = null): void` | Register event→workflow auto-start subscription |
 | `handleEvent` | `(string $eventId, array $payload = []): void` | Handle incoming event — auto-starts matching workflows |
 
@@ -319,12 +358,15 @@ Step argument values support `{payload.*}` references which are resolved against
 
 ### Test Coverage
 
-`tests/workflow_engine_test.php` — 32 tests covering:
-- Start / advance / cancel / replay lifecycle
-- Argument resolution from step context
-- Retry with max attempts
-- Event subscription and auto-start
-- Error handling and edge cases
+`tests/workflow_engine_test.php` — 32 tests covering the base engine lifecycle and API.
+
+`tests/workflow_concurrency_test.php` — real two-connection/fork coverage for:
+- empty-range concurrent start, active-run, and duplicate-event deduplication
+- overlapping advance refusal and exactly-once side effects
+- guarded cancel/replay while a capability is in flight
+- atomic attempt increments
+
+> Distribution note: `src/helpers/workflow-retention.php` is absent in this checkout due to an escalated upstream sync gap. The guarded include keeps engine bootstrap operational, and payload-hash recording remains inert until that helper is restored.
 
 ---
 

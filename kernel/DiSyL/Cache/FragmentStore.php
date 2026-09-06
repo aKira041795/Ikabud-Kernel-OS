@@ -29,22 +29,26 @@ final class FragmentStore
 {
     private string $root;
     private bool $apcu;
+    private ?\Closure $operationProbe;
 
-    public function __construct(?string $root = null)
+    /**
+     * @param \Closure(string): void|null $operationProbe Test seam for forcing lookup/write failures.
+     */
+    public function __construct(?string $root = null, ?\Closure $operationProbe = null)
     {
         $this->root = $root
             ?? (defined('STORAGE_PATH') ? STORAGE_PATH : __DIR__ . '/../../../storage')
                 . '/cache/disyl-fragments';
-        if (!is_dir($this->root)) {
-            @mkdir($this->root, 0775, true);
-        }
+        $this->ensureDirectory($this->root);
         $this->apcu = function_exists('apcu_fetch') && function_exists('apcu_store')
             && \ini_get('apc.enabled') !== '0';
+        $this->operationProbe = $operationProbe;
     }
 
     /** @param list<string> $deps */
     public function tryGet(string $key, array $deps, string $tenantId = '_global'): ?string
     {
+        $this->probe('lookup');
         $depsHash = $this->depsHash($deps, $tenantId);
         $apcKey = $this->apcKey($key, $tenantId);
         if ($this->apcu) {
@@ -59,7 +63,7 @@ final class FragmentStore
         }
         $raw = @file_get_contents($path);
         if (!is_string($raw)) {
-            return null;
+            throw new \RuntimeException("Unable to read fragment cache file: {$path}");
         }
         $entry = json_decode($raw, true);
         if (!is_array($entry) || !$this->valid($entry, $depsHash)) {
@@ -74,6 +78,7 @@ final class FragmentStore
     /** @param list<string> $deps */
     public function put(string $key, string $body, array $deps, int $ttl, string $tenantId = '_global'): void
     {
+        $this->probe('write');
         if ($ttl < 0) {
             return;
         }
@@ -83,7 +88,11 @@ final class FragmentStore
             'deps_hash'  => $this->depsHash($deps, $tenantId),
         ];
         $path = $this->path($key, $tenantId);
-        @file_put_contents($path, json_encode($entry), LOCK_EX);
+        $encoded = json_encode($entry);
+        $written = is_string($encoded) ? @file_put_contents($path, $encoded, LOCK_EX) : false;
+        if ($written === false || $written !== strlen($encoded)) {
+            throw new \RuntimeException("Unable to write fragment cache file: {$path}");
+        }
         if ($this->apcu) {
             \apcu_store($this->apcKey($key, $tenantId), $entry, $ttl > 0 ? $ttl : 0);
         }
@@ -153,7 +162,10 @@ final class FragmentStore
             return [];
         }
         $raw = @file_get_contents($file);
-        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_string($raw)) {
+            throw new \RuntimeException("Unable to read fragment dependency file: {$file}");
+        }
+        $decoded = json_decode($raw, true);
         $out = is_array($decoded) ? $decoded : [];
         if ($this->apcu) {
             \apcu_store($this->depApcKey($tenantId), $out, 60);
@@ -164,19 +176,29 @@ final class FragmentStore
     private function path(string $key, string $tenantId): string
     {
         $dir = $this->root . '/' . $this->safe($tenantId);
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
+        $this->ensureDirectory($dir);
         return $dir . '/' . hash('sha256', $key) . '.json';
     }
 
     private function depFile(string $tenantId): string
     {
         $dir = $this->root . '/' . $this->safe($tenantId);
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
+        $this->ensureDirectory($dir);
         return $dir . '/_dep_versions.json';
+    }
+
+    private function ensureDirectory(string $dir): void
+    {
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new \RuntimeException("Unable to create fragment cache directory: {$dir}");
+        }
+    }
+
+    private function probe(string $operation): void
+    {
+        if ($this->operationProbe !== null) {
+            ($this->operationProbe)($operation);
+        }
     }
 
     private function apcKey(string $key, string $tenantId): string
