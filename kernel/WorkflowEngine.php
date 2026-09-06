@@ -560,101 +560,18 @@ final class WorkflowEngine
         ?string $entityId = null,
         ?string $externalKey = null,
     ): array {
-        if ($externalKey === null) {
-            return $this->startWithoutExternalKey($workflowKey, $module, $payload, $entityType, $entityId);
-        }
         if ($externalKey === '') {
             return ['ok' => false, 'error' => 'idempotency_key_required'];
         }
 
-        $tenantId = $this->app->tenant()->current();
-        if ($tenantId === null || $tenantId <= 0) {
-            return ['ok' => false, 'error' => 'idempotency_tenant_required'];
-        }
-
-        try {
-            $payloadHash = $this->externalPayloadHash(
-                $workflowKey,
-                $module,
-                $payload,
-                $entityType ?? '',
-                $entityId ?? '',
-            );
-            $claim = Idempotency::claim($externalKey, $tenantId, $payloadHash, $this->app->db());
-        } catch (Throwable $e) {
-            write_log("WorkflowEngine: idempotency claim failed for {$workflowKey}: " . $e->getMessage(), 'error');
-            return ['ok' => false, 'error' => 'idempotency_claim_failed'];
-        }
-
-        if ($claim['status'] === 'conflict') {
-            return [
-                'ok' => false,
-                'conflict' => true,
-                'error' => 'idempotency_payload_conflict',
-            ];
-        }
-        if ($claim['status'] === 'duplicate') {
-            $outcome = is_array($claim['outcome'] ?? null) ? $claim['outcome'] : [];
-            $outcome['deduplicated'] = true;
-            return $outcome;
-        }
-        if ($claim['status'] === 'in_progress') {
-            return [
-                'ok' => false,
-                'in_progress' => true,
-                'error' => 'idempotency_in_progress',
-            ];
-        }
-
-        $started = $this->startWithoutExternalKey($workflowKey, $module, $payload, $entityType, $entityId);
-        if ($started['ok'] !== true) {
-            try {
-                Idempotency::release($externalKey, $tenantId, $this->app->db());
-            } catch (Throwable $releaseError) {
-                write_log("WorkflowEngine: idempotency release failed for {$workflowKey}: " . $releaseError->getMessage(), 'error');
+        $tenantId = null;
+        if ($externalKey !== null) {
+            $tenantId = $this->app->tenant()->current();
+            if ($tenantId === null || $tenantId <= 0) {
+                return ['ok' => false, 'error' => 'idempotency_tenant_required'];
             }
-            return $started;
         }
 
-        $runId = (int)($started['run_id'] ?? 0);
-        $outcome = [
-            'ok' => true,
-            'run_id' => $runId,
-            'deduplicated' => false,
-            'result' => $this->getRun($runId),
-        ];
-
-        try {
-            if (!Idempotency::commit($externalKey, $tenantId, $outcome, $this->app->db())) {
-                throw new \RuntimeException('Idempotency commit connection does not own the claim');
-            }
-        } catch (Throwable $e) {
-            // Dispatch may already have produced side effects. Keep the
-            // processing row fail-closed rather than releasing it for replay.
-            write_log("WorkflowEngine: idempotency commit failed for {$workflowKey}: " . $e->getMessage(), 'error');
-            return [
-                'ok' => false,
-                'run_id' => $runId,
-                'error' => 'idempotency_commit_failed',
-            ];
-        }
-
-        return $outcome;
-    }
-
-    /**
-     * Original keyless start path, kept separate to preserve its return shape.
-     *
-     * @param array<string, mixed> $payload
-     * @return array{ok: bool, run_id?: int, status?: string, deduplicated?: bool, error?: string}
-     */
-    private function startWithoutExternalKey(
-        string $workflowKey,
-        string $module,
-        array $payload = [],
-        ?string $entityType = null,
-        ?string $entityId = null,
-    ): array {
         try {
             $db = $this->app->db();
             $normalizedEntityType = $entityType ?? '';
@@ -678,110 +595,209 @@ final class WorkflowEngine
                 $normalizedEntityType,
                 $normalizedEntityId,
             );
-            $lockStmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10)');
-            $lockStmt->execute([':lock_name' => $lockName]);
-            $hasStartLock = (int)$lockStmt->fetchColumn() === 1;
-
-            if (!$hasStartLock) {
-                // A timed-out contender may still observe the committed winner.
-                $activeRun = $this->findActiveRun(
-                    $db,
-                    $workflowKey,
-                    $module,
-                    $normalizedEntityType,
-                    $normalizedEntityId,
-                );
-                if (is_array($activeRun)) {
-                    return $this->deduplicatedStartResult($activeRun);
-                }
-
-                return ['ok' => false, 'error' => 'run_creation_busy'];
-            }
 
             try {
-                $db->beginTransaction();
-                try {
+                if ($externalKey !== null) {
+                    // The external claim follows an active-run observation, and
+                    // the transactional check below remains the insert guard.
+                    $this->findActiveRun(
+                        $db,
+                        $workflowKey,
+                        $module,
+                        $normalizedEntityType,
+                        $normalizedEntityId,
+                    );
+
+                    try {
+                        $payloadHash = $this->externalPayloadHash(
+                            $workflowKey,
+                            $module,
+                            $payload,
+                            $normalizedEntityType,
+                            $normalizedEntityId,
+                        );
+                        $claim = Idempotency::claim($externalKey, $tenantId, $payloadHash, $db);
+                    } catch (Throwable $e) {
+                        write_log("WorkflowEngine: idempotency claim failed for {$workflowKey}: " . $e->getMessage(), 'error');
+                        return ['ok' => false, 'error' => 'idempotency_claim_failed'];
+                    }
+
+                    if ($claim['status'] === 'conflict') {
+                        return [
+                            'ok' => false,
+                            'conflict' => true,
+                            'error' => 'idempotency_payload_conflict',
+                        ];
+                    }
+                    if ($claim['status'] === 'duplicate') {
+                        $outcome = is_array($claim['outcome'] ?? null) ? $claim['outcome'] : [];
+                        $outcome['deduplicated'] = true;
+                        return $outcome;
+                    }
+                    if ($claim['status'] === 'in_progress') {
+                        return [
+                            'ok' => false,
+                            'in_progress' => true,
+                            'error' => 'idempotency_in_progress',
+                        ];
+                    }
+                }
+
+                $lockStmt = $db->prepare('SELECT GET_LOCK(:lock_name, 10)');
+                $lockStmt->execute([':lock_name' => $lockName]);
+                $hasStartLock = (int)$lockStmt->fetchColumn() === 1;
+                $created = false;
+
+                if (!$hasStartLock) {
+                    // A timed-out contender may still observe the committed winner.
                     $activeRun = $this->findActiveRun(
                         $db,
                         $workflowKey,
                         $module,
                         $normalizedEntityType,
                         $normalizedEntityId,
-                        true,
                     );
-
-                    if (is_array($activeRun)) {
-                        $db->commit();
-                        return $this->deduplicatedStartResult($activeRun);
+                    if (!is_array($activeRun)) {
+                        return ['ok' => false, 'error' => 'run_creation_busy'];
                     }
-
-                    $payloadJson = json_encode($payload);
-                    $stmt = $db->prepare(
-                        'INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) '
-                        . 'VALUES (:wk, :mod, :et, :eid, :did, :status, :pj, :cj, NOW(), NOW())'
-                    );
-                    $stmt->execute([
-                        ':wk'  => $workflowKey,
-                        ':mod' => $module,
-                        ':et'  => $normalizedEntityType,
-                        ':eid' => $normalizedEntityId,
-                        ':did' => $definition ? (int)($definition['id'] ?? 0) : null,
-                        ':status' => $steps === [] ? 'completed' : 'running',
-                        ':pj'  => $payloadJson,
-                        ':cj'  => 'null',
-                    ]);
-                    $runId = (int)$db->lastInsertId();
-                    if (is_string($payloadJson) && function_exists('workflowRecordRunPayloadHash')) {
-                        \workflowRecordRunPayloadHash($db, $runId, $payloadJson);
-                    }
-
-                    foreach ($steps as $i => $step) {
-                        $idKey = 'step_' . $step['key'] . '_' . $runId . '_' . ($i + 1);
-                        $stmt2 = $db->prepare(
-                            'INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, created_at) '
-                            . 'VALUES (:rid, :ord, :sk, :lab, :cap, :args, :st, 0, :ma, :ik, NOW())'
+                    $started = $this->deduplicatedStartResult($activeRun);
+                } else {
+                    $db->beginTransaction();
+                    try {
+                        $activeRun = $this->findActiveRun(
+                            $db,
+                            $workflowKey,
+                            $module,
+                            $normalizedEntityType,
+                            $normalizedEntityId,
+                            true,
                         );
-                        $stmt2->execute([
-                            ':rid' => $runId,
-                            ':ord' => $i + 1,
-                            ':sk'  => $step['key'],
-                            ':lab' => $step['label'] ?? ucfirst($step['key']),
-                            ':cap' => $step['capability_id'] ?? '',
-                            ':args' => json_encode($step['args'] ?? []),
-                            ':st'  => 'pending',
-                            ':ma'  => $step['max_attempts'] ?? 1,
-                            ':ik'  => $idKey,
-                        ]);
+
+                        if (is_array($activeRun)) {
+                            $db->commit();
+                            $started = $this->deduplicatedStartResult($activeRun);
+                        } else {
+                            $payloadJson = json_encode($payload);
+                            $stmt = $db->prepare(
+                                'INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) '
+                                . 'VALUES (:wk, :mod, :et, :eid, :did, :status, :pj, :cj, NOW(), NOW())'
+                            );
+                            $stmt->execute([
+                                ':wk'  => $workflowKey,
+                                ':mod' => $module,
+                                ':et'  => $normalizedEntityType,
+                                ':eid' => $normalizedEntityId,
+                                ':did' => $definition ? (int)($definition['id'] ?? 0) : null,
+                                ':status' => $steps === [] ? 'completed' : 'running',
+                                ':pj'  => $payloadJson,
+                                ':cj'  => 'null',
+                            ]);
+                            $runId = (int)$db->lastInsertId();
+                            if (is_string($payloadJson) && function_exists('workflowRecordRunPayloadHash')) {
+                                \workflowRecordRunPayloadHash($db, $runId, $payloadJson);
+                            }
+
+                            foreach ($steps as $i => $step) {
+                                $idKey = 'step_' . $step['key'] . '_' . $runId . '_' . ($i + 1);
+                                $stmt2 = $db->prepare(
+                                    'INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, created_at) '
+                                    . 'VALUES (:rid, :ord, :sk, :lab, :cap, :args, :st, 0, :ma, :ik, NOW())'
+                                );
+                                $stmt2->execute([
+                                    ':rid' => $runId,
+                                    ':ord' => $i + 1,
+                                    ':sk'  => $step['key'],
+                                    ':lab' => $step['label'] ?? ucfirst($step['key']),
+                                    ':cap' => $step['capability_id'] ?? '',
+                                    ':args' => json_encode($step['args'] ?? []),
+                                    ':st'  => 'pending',
+                                    ':ma'  => $step['max_attempts'] ?? 1,
+                                    ':ik'  => $idKey,
+                                ]);
+                            }
+
+                            $db->commit();
+                            $created = true;
+                            $started = ['ok' => true, 'run_id' => $runId];
+                        }
+                    } catch (Throwable $e) {
+                        if ($db->inTransaction()) {
+                            $db->rollBack();
+                        }
+                        throw $e;
                     }
 
-                    $db->commit();
-                } catch (Throwable $e) {
-                    if ($db->inTransaction()) {
-                        $db->rollBack();
-                    }
-                    throw $e;
+                    // Preserve the Phase-1 lock scope: dispatch runs only after
+                    // the tuple lock is released. The finally remains the
+                    // unconditional all-path cleanup for the same lock value.
+                    $this->releaseStartLock($db, $lockName);
                 }
+
+                if ($created && $steps !== []) {
+                    $this->advance($started['run_id']);
+                }
+
+                if ($created) {
+                    write_log("WorkflowEngine: started run {$started['run_id']} for {$workflowKey}", 'info', [
+                        'workflow_key' => $workflowKey,
+                        'module' => $module,
+                        'run_id' => $started['run_id'],
+                        'steps' => count($steps),
+                    ]);
+                }
+
+                if ($externalKey === null) {
+                    return $started;
+                }
+
+                $runId = $started['run_id'];
+                $outcome = [
+                    'ok' => true,
+                    'run_id' => $runId,
+                    'deduplicated' => false,
+                    'result' => $this->getRun($runId),
+                ];
+
+                try {
+                    if (!Idempotency::commit($externalKey, $tenantId, $outcome, $db)) {
+                        throw new \RuntimeException('Idempotency commit connection does not own the claim');
+                    }
+                } catch (Throwable $e) {
+                    // Dispatch may already have produced side effects. Keep the
+                    // processing row fail-closed rather than releasing it for replay.
+                    write_log("WorkflowEngine: idempotency commit failed for {$workflowKey}: " . $e->getMessage(), 'error');
+                    return [
+                        'ok' => false,
+                        'run_id' => $runId,
+                        'error' => 'idempotency_commit_failed',
+                    ];
+                }
+
+                return $outcome;
             } finally {
+                if ($externalKey !== null) {
+                    // No-op for duplicate/conflict and after commit(); for a
+                    // failed new start this removes the owned processing claim.
+                    try {
+                        Idempotency::release($externalKey, $tenantId, $db);
+                    } catch (Throwable $releaseError) {
+                        write_log("WorkflowEngine: idempotency release failed for {$workflowKey}: " . $releaseError->getMessage(), 'error');
+                    }
+                }
                 $releaseStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
                 $releaseStmt->execute([':lock_name' => $lockName]);
             }
-
-            if ($steps !== []) {
-                $this->advance($runId);
-            }
-
-            write_log("WorkflowEngine: started run {$runId} for {$workflowKey}", 'info', [
-                'workflow_key' => $workflowKey,
-                'module' => $module,
-                'run_id' => $runId,
-                'steps' => count($steps),
-            ]);
-
-            return ['ok' => true, 'run_id' => $runId];
         } catch (Throwable $e) {
             write_log("WorkflowEngine: start failed for {$workflowKey}: " . $e->getMessage(), 'error');
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /** Release the tuple lock before capability dispatch without weakening finally cleanup. */
+    private function releaseStartLock(PDO $db, string $lockName): void
+    {
+        $releaseStmt = $db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+        $releaseStmt->execute([':lock_name' => $lockName]);
     }
 
     /**
