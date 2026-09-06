@@ -327,6 +327,16 @@ This keeps the existing successful `start()` contract while making duplicate `ha
 
 Capability dispatch uses the canonical CapabilityBus path, `app()->cap()->call()`. `App::capabilities()` exposes the registration/inspection registry and intentionally has no `call()` method.
 
+#### Workflow/capability correlation
+
+Every WorkflowEngine step dispatch supplies an evidence-only `correlation_id` in this stable format:
+
+```text
+wf:run:<workflow_runs.id>:step:<workflow_run_steps.id>
+```
+
+The same value is written in the WorkflowEngine step-completed log context and the CapabilityBus `capability.call` context, allowing one workflow step and its capability dispatch to be found as a causal pair in `app.log`. Capability schema-violation and denied logs also preserve a supplied correlation ID. The option does not set `caller_user`, alter authorization or provider selection, or require database persistence. Direct, non-workflow capability calls remain compatible and have a null/absent correlation value unless their caller explicitly supplies one.
+
 The generated `workflow_run_steps.idempotency_key` remains a trace identifier (`step_<step-key>_<run-id>_<ordinal>`). It is not the caller's durable key and does not replace the external-key contract below.
 
 #### Durable external idempotency key

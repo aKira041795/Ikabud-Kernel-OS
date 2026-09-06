@@ -194,6 +194,7 @@ function loadModuleRoutes(array $routes): array
 
                 $callable = null;
                 $schema = is_array($exp['schema'] ?? null) ? $exp['schema'] : null;
+                $effects = is_array($exp['effects'] ?? null) ? $exp['effects'] : [];
                 $origin = $handlersMapOrigin;
                 if (isset($handlersMap[$capId]) && is_callable($handlersMap[$capId])) {
                     $callable = $handlersMap[$capId];
@@ -224,7 +225,7 @@ function loadModuleRoutes(array $routes): array
                         $wrappedCallable,
                         $priority,
                         $modes,
-                        ['policy' => $policy, 'schema' => $schema, 'origin' => array_merge($origin, ['capability' => $capId])]
+                        ['policy' => $policy, 'schema' => $schema, 'effects' => $effects, 'origin' => array_merge($origin, ['capability' => $capId])]
                     );
                 } else {
                     // Service modules run externally — register an HTTP proxy instead.
@@ -238,7 +239,7 @@ function loadModuleRoutes(array $routes): array
                                 $serviceProxy,
                                 $priority,
                                 $modes,
-                                ['policy' => $policy, 'schema' => $schema, 'origin' => array_merge($origin, ['capability' => $capId, 'type' => 'service_proxy'])]
+                                ['policy' => $policy, 'schema' => $schema, 'effects' => $effects, 'origin' => array_merge($origin, ['capability' => $capId, 'type' => 'service_proxy'])]
                             );
                             continue;
                         }

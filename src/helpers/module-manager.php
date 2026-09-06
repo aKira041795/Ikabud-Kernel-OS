@@ -1875,6 +1875,19 @@ function validateModuleCapabilities(array $manifest): array
                 return ['ok' => false, 'error' => 'Capability expose schema.output must be an object'];
             }
         }
+        if (isset($e['effects']) && !is_array($e['effects'])) {
+            return ['ok' => false, 'error' => 'Capability expose effects must be an object'];
+        }
+        if (isset($e['effects']['invalidates'])) {
+            if (!is_array($e['effects']['invalidates'])) {
+                return ['ok' => false, 'error' => 'Capability expose effects.invalidates must be an array'];
+            }
+            foreach ($e['effects']['invalidates'] as $tag) {
+                if (!is_string($tag) || preg_match('/^entity\.(?:list|detail)\.\S+$/', trim($tag)) !== 1) {
+                    return ['ok' => false, 'error' => 'Capability expose effects.invalidates entries must be entity list/detail tags'];
+                }
+            }
+        }
     }
 
     // Optional policy schema
