@@ -55,6 +55,40 @@ final class EntityViewResolver
         $this->resolvedCache = [];
     }
 
+    /**
+     * Invalidate cached list and detail HTML for an entity type in one tenant.
+     * Module write handlers should call this after a successful mutation.
+     */
+    public function invalidateEntityCache(string $entityType, string|int|null $tenantId = null): void
+    {
+        $entityType = trim($entityType);
+        if ($entityType === '') {
+            return;
+        }
+
+        try {
+            if (!\function_exists('app') || ($app = \app()) === null || !method_exists($app, 'templates')) {
+                return;
+            }
+            if ($tenantId === null && method_exists($app, 'tenant')) {
+                $tenantId = $app->tenant()->current();
+            }
+            $tenant = $tenantId === null ? '_global' : (string)$tenantId;
+            $app->templates()->fragmentStore()->invalidate([
+                'entity.list.' . $entityType,
+                'entity.detail.' . $entityType,
+            ], $tenant);
+        } catch (\Throwable $e) {
+            if (\function_exists('write_log')) {
+                \write_log('Entity view fragment cache invalidation failed open', 'warning', [
+                    'entity_type' => $entityType,
+                    'tenant' => $tenantId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     // ── Source parsing ──
 
     /**

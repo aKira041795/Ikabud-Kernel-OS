@@ -57,6 +57,24 @@ VS Code. Builder hardening closes 5 seams. Report approvals are end-to-end.
 
 ---
 
+## Kernel-Repo Roadmap Execution (September 6, 2026)
+
+> The adjudicated 2026-09-06 roadmap (`.ai/kernel-6x-roadmap-contract-2026-09-06.md`) executed the
+> kernel-implementable phases in the **Ikabud-Kernel-OS** repo. Each passed the governed `/implement` → `/review`
+> pipeline under GPT sol (Codex `gpt-5.6-sol`). ARK phases (3/5) target the CMS ARK theme in the main app repo and
+> are recorded separately (`.ai/phase3-ark-main-repo-record-2026-09-06.md`).
+
+| Phase | What landed | Status |
+|---|---|---|
+| **1 — WorkflowEngine concurrency + idempotency** (6.2 Trust Boundaries item #7) | tuple-scoped `GET_LOCK`/`RELEASE_LOCK` advisory mutex closes the empty-range `start()` race (no DDL); atomic step claims (guarded `UPDATE … WHERE status IN ('pending','failed')`, `rowCount()===1`, `attempt++` inside the claim); `cancel()`/`replay()` use run-row `FOR UPDATE` guards and never reclaim an in-flight `running` step; fail-closed non-retryable `interrupted` post-dispatch persistence (no double execution); canonical `cap()->call()` dispatch; guarded absent `workflow-retention.php` include | ✅ `kernel/WorkflowEngine.php` — concurrency suite 38/38, engine 32/32, lifecycle 12/12 |
+| **2 — Entity-view render-path cache** | opt-in `cache="ttl"` on entity list/detail via the tenant-partitioned DiSyL `FragmentStore` (file+APCu — MySQL-5.7-safe, no DDL); canonical key (tenant, namespaced pagination/sort/cursor, source/view/limit/sort/filters, render attrs/children, auth role); authoritative-principal leak protection (per-user content never cached by default); unsafe/session-variant renders (POST/CSRF, bulk/random IDs) never cached; observable fail-open; kernel invalidator | ✅ `kernel/DiSyL/Component/ComponentRenderer.php` — cache suite 32/32 |
+| **4 — Workbench guard (two-layer)** | `php ikabud workbench:audit` static regression tripwire (`kernel/Workbench/Audit/WorkflowGuardAuditor.php`, IssueLedger-routed, baseline zero on the real file) **+** off-by-default runtime dispatch guard in `WorkflowEngine` (fails closed if a capability ever dispatches under an open run-lock transaction) — the non-bypassable runtime authority | ✅ guard-audit 35/35, runtime guard 11/11 |
+| **3 / 5 — ARK authority layer + renderer breadth** | recorded for the main CMS app repo (ARK theme `storage/cms-themes/ark` is not present in the kernel repo); Phase-5 Workbench sliver satisfied by `workbench:audit` + the IssueLedger UI | 📋 main CMS repo |
+
+See the phase contracts under `.ai/` and raw evidence under `test_results/` for full round histories.
+
+---
+
 ## Phase 1 — Kernel + DiSyL Foundation ✅
 
 All April 2026 audit items resolved. Compiled mode is now the **default** (v4.7+) with lazy one-shot boot; component-tag templates auto-fallback to interpreted. Linter scans 398 templates with 0 errors. JWT algorithm validation, event caching, and dead code cleanup complete.

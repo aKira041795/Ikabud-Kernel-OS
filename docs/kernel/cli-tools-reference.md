@@ -524,6 +524,14 @@ its additive suite fields (`suite`/`kind`/`extends`/`extension_points`/`contribu
 
 ---
 
+## Workbench Governance
+
+| Command | Description |
+|---|---|
+| `workbench:audit` | Static regression tripwire over the hardened `kernel/WorkflowEngine.php` invariants (advisory-lock symmetry, atomic step claims, dispatch-outside-lock ordering, cancel/replay run-row guards, fail-closed post-dispatch persistence, MySQL-8-only SQL). Emits findings via the Workbench `IssueLedger` (issue.v1 format); exits non-zero on criticals. Runs statically (no live DB). Source: `kernel/Workbench/Audit/WorkflowGuardAuditor.php` |
+
+---
+
 ## Help
 
 ```

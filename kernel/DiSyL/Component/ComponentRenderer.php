@@ -2042,6 +2042,11 @@ final class ComponentRenderer
             }
         }
 
+        $cache = $this->prepareEntityCache('list', $source, $view, $attrs, $overrides, $children, $context, $app);
+        if ($cache !== null && $cache['hit'] !== null) {
+            return $cache['hit'];
+        }
+
         $resolved = null;
         try {
             if (method_exists($app, 'entityViews')) {
@@ -2101,10 +2106,12 @@ final class ComponentRenderer
 
         if (empty($rows)) {
             $msg = (string)($attrs['empty'] ?: $resolved['view']['empty_state'] ?? 'No records found.');
-            return '<div class="ikb-entity-list--empty text-center py-8 text-gray-500 ' . (string)($attrs['class'] ?? '') . '">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
+            $html = '<div class="ikb-entity-list--empty text-center py-8 text-gray-500 ' . (string)($attrs['class'] ?? '') . '">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
+            return $this->storeEntityCache($cache, $html);
         }
 
-        return $app->entityRenderers()->renderList($rows, $resolved['view'], $attrs, $context);
+        $html = $app->entityRenderers()->renderList($rows, $resolved['view'], $attrs, $context);
+        return $this->storeEntityCache($cache, $html);
     }
 
     /**
@@ -2133,6 +2140,20 @@ final class ComponentRenderer
                 . '<p class="text-sm text-red-600">Missing id attribute on ikb_entity_detail.</p></div>';
         }
 
+        $cache = $this->prepareEntityCache(
+            'detail',
+            $source,
+            $view,
+            $attrs,
+            ['entity_id' => $entityId],
+            $children,
+            $context,
+            $app
+        );
+        if ($cache !== null && $cache['hit'] !== null) {
+            return $cache['hit'];
+        }
+
         $resolved = null;
         try {
             if (method_exists($app, 'entityViews')) {
@@ -2157,6 +2178,312 @@ final class ComponentRenderer
         $attrs['_children'] = $children;
         $attrs['fields'] = $requestedFields ?? ($resolved['view']['fields'] ?? null);
 
-        return $app->entityRenderers()->renderDetail($entity, $resolved['view'], $attrs, $context);
+        $html = $app->entityRenderers()->renderDetail($entity, $resolved['view'], $attrs, $context);
+        return $this->storeEntityCache($cache, $html);
+    }
+
+    /**
+     * Build the opt-in entity fragment cache context and perform its lookup.
+     *
+     * @param array<string, mixed> $attrs
+     * @param array<string, mixed> $overrides
+     * @param array<string, mixed> $context
+     * @return array{key: string, tag: string, ttl: int, tenant: string, hit: string|null}|null
+     */
+    private function prepareEntityCache(
+        string $kind,
+        string $source,
+        string $view,
+        array $attrs,
+        array $overrides,
+        string $children,
+        array $context,
+        object $app
+    ): ?array {
+        if (!array_key_exists('cache', $attrs)) {
+            return null;
+        }
+
+        $ttl = filter_var($attrs['cache'], FILTER_VALIDATE_INT);
+        if ($ttl === false || $ttl < 0) {
+            $this->logEntityCacheFailure('invalid cache TTL', $kind, $source);
+            return null;
+        }
+
+        $user = $this->entityCacheUser($app, $context);
+        $cachePerUser = $this->truthyAttribute($attrs['cache-user'] ?? $attrs['cache_user'] ?? false);
+        if ($user === false || ($user !== null && !$cachePerUser)) {
+            return null;
+        }
+
+        $entityType = $this->entityTypeFromSource($source);
+        $viewContract = null;
+        try {
+            if (method_exists($app, 'entityViews')) {
+                $candidate = $app->entityViews()->viewContract($entityType, $view);
+                $viewContract = is_array($candidate) ? $candidate : null;
+            }
+        } catch (\Throwable $e) {
+            $this->logEntityCacheFailure($e->getMessage(), $kind, $source);
+            return null;
+        }
+
+        // POST actions carry request/session-specific CSRF values. Bulk lists also
+        // generate a random DOM id, so neither path can satisfy same-key equality.
+        $actionMethods = is_array($viewContract['action_methods'] ?? null)
+            ? $viewContract['action_methods']
+            : [];
+        foreach ($actionMethods as $method) {
+            if (strtolower((string)$method) === 'post') {
+                return null;
+            }
+        }
+        if (!empty($attrs['bulk-actions']) && !empty($attrs['bulk-action-url'])) {
+            return null;
+        }
+
+        $safeContext = true;
+        $renderContext = $this->normalizeEntityCacheContext($context, $safeContext);
+        if (!$safeContext) {
+            return null;
+        }
+
+        $queryState = null;
+        if ($kind === 'list') {
+            $queryState = $this->effectiveEntityListQueryState($attrs, $context, $viewContract);
+            if ($queryState === false) {
+                return null;
+            }
+        }
+
+        $tenant = '_global';
+        try {
+            if (method_exists($app, 'tenant')) {
+                $activeTenant = $app->tenant()->current();
+                if ($activeTenant !== null) {
+                    $tenant = (string)$activeTenant;
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->logEntityCacheFailure($e->getMessage(), $kind, $source);
+            return null;
+        }
+
+        $principal = method_exists($app, 'user') ? $app->user() : null;
+        $role = (string)($attrs['auth-role']
+            ?? $context['current_user_role']
+            ?? (is_array($principal) ? ($principal['role'] ?? '') : ''));
+        $payload = [
+            'version' => 2,
+            'kind' => $kind,
+            'tenant' => $tenant,
+            'source' => $source,
+            'view' => $view,
+            'entity_id' => $overrides['entity_id'] ?? null,
+            'limit' => $overrides['limit'] ?? ($attrs['limit'] ?? null),
+            'sort' => [
+                'field' => $overrides['sort_field'] ?? $attrs['sort_field'] ?? $attrs['sort'] ?? null,
+                'direction' => $overrides['sort_direction'] ?? $attrs['sort_direction'] ?? $attrs['dir'] ?? null,
+            ],
+            'filters' => $overrides['filters'] ?? [],
+            // This is exactly the state DefaultEntityRenderer consumes. Generic
+            // request keys are intentionally excluded when a list is namespaced.
+            'query_state' => $queryState,
+            'auth_scope' => $role,
+            'user_scope' => $cachePerUser ? $user : null,
+            'attrs' => $attrs,
+            'children' => $children,
+            // Action URL placeholders and explicit _queryState can consume context.
+            'render_context' => $renderContext,
+        ];
+
+        try {
+            $encoded = json_encode($this->canonicalizeEntityCacheValue($payload), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $key = 'entity.render.' . hash('sha256', $encoded);
+            $entityType = $this->entityTypeFromSource($source);
+            $tag = 'entity.' . $kind . '.' . $entityType;
+            $hit = $this->engine->fragmentStore()->tryGet($key, [$tag], $tenant);
+            return ['key' => $key, 'tag' => $tag, 'ttl' => $ttl, 'tenant' => $tenant, 'hit' => $hit];
+        } catch (\Throwable $e) {
+            $this->logEntityCacheFailure($e->getMessage(), $kind, $source);
+            return null;
+        }
+    }
+
+    /**
+     * @param array{key: string, tag: string, ttl: int, tenant: string, hit: string|null}|null $cache
+     */
+    private function storeEntityCache(?array $cache, string $html): string
+    {
+        if ($cache === null) {
+            return $html;
+        }
+
+        try {
+            $this->engine->fragmentStore()->put(
+                $cache['key'],
+                $html,
+                [$cache['tag']],
+                $cache['ttl'],
+                $cache['tenant']
+            );
+        } catch (\Throwable $e) {
+            $this->logEntityCacheFailure($e->getMessage(), 'store', $cache['tag']);
+        }
+
+        return $html;
+    }
+
+    /** @param array<string, mixed> $context */
+    private function entityCacheUser(object $app, array $context): mixed
+    {
+        try {
+            if (method_exists($app, 'user')) {
+                $principal = $app->user();
+                if (is_array($principal)) {
+                    return $this->stableEntityCacheIdentity($principal);
+                }
+            }
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        foreach (['current_user_id', 'user_id', 'subject_id'] as $key) {
+            if (isset($context[$key]) && $context[$key] !== '') {
+                return (string)$context[$key];
+            }
+        }
+        foreach (['user', 'current_user'] as $key) {
+            $candidate = $context[$key] ?? null;
+            if (!is_array($candidate) || $candidate === []) {
+                continue;
+            }
+            return $this->stableEntityCacheIdentity($candidate);
+        }
+        return null;
+    }
+
+    /** @param array<string, mixed> $principal */
+    private function stableEntityCacheIdentity(array $principal): string|false
+    {
+        foreach (['id', 'user_id', 'uuid', 'username', 'email'] as $identityKey) {
+            if (isset($principal[$identityKey]) && $principal[$identityKey] !== '') {
+                $source = (string)($principal['source'] ?? 'unknown');
+                return $source . ':' . $identityKey . ':' . (string)$principal[$identityKey];
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Resolve the same namespaced state used by DefaultEntityRenderer.
+     *
+     * @param array<string, mixed> $attrs
+     * @param array<string, mixed> $context
+     * @param array<string, mixed>|null $viewContract
+     * @return array<string, mixed>|null|false
+     */
+    private function effectiveEntityListQueryState(
+        array $attrs,
+        array $context,
+        ?array $viewContract
+    ): array|null|false {
+        if (array_key_exists('_queryState', $context)) {
+            if (!$context['_queryState'] instanceof \Ikabud\Kernel\EntityContext\EntityQueryState) {
+                return false;
+            }
+            return $this->entityQueryStatePayload($context['_queryState']);
+        }
+
+        $listId = (string)($attrs['id'] ?? '');
+        if ($listId === '') {
+            return null;
+        }
+
+        $resolver = new \Ikabud\Kernel\EntityContext\EntityQueryStateResolver();
+        $state = $resolver->resolve($listId, $_GET, [
+            'limit' => $viewContract['limit'] ?? \Ikabud\Kernel\EntityContext\EntityQueryStateResolver::DEFAULT_LIMIT,
+            'sort' => $viewContract['sort']['field'] ?? '',
+            'direction' => $viewContract['sort']['direction'] ?? 'desc',
+        ]);
+
+        return $this->entityQueryStatePayload($state);
+    }
+
+    /** @return array<string, mixed> */
+    private function entityQueryStatePayload(\Ikabud\Kernel\EntityContext\EntityQueryState $state): array
+    {
+        return [
+            'page' => $state->page,
+            'limit' => $state->limit,
+            'sort' => $state->sort,
+            'direction' => $state->direction,
+            'filters' => $state->filters,
+            'list_id' => $state->listId,
+            'cursor' => $state->cursor,
+            'has_more' => $state->hasMore,
+            'prev_cursor' => $state->prevCursor,
+        ];
+    }
+
+    /**
+     * @param bool $safe Set false for objects/resources the renderer may consume
+     */
+    private function normalizeEntityCacheContext(mixed $value, bool &$safe): mixed
+    {
+        if ($value instanceof \Ikabud\Kernel\EntityContext\EntityQueryState) {
+            return $this->entityQueryStatePayload($value);
+        }
+        if (is_object($value) || is_resource($value)) {
+            $safe = false;
+            return null;
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+        if (!array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->normalizeEntityCacheContext($item, $safe);
+        }
+        return $value;
+    }
+
+    private function truthyAttribute(mixed $value): bool
+    {
+        return $value === true || in_array(strtolower(trim((string)$value)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private function entityTypeFromSource(string $source): string
+    {
+        $source = trim($source);
+        $dot = strrpos($source, '.');
+        return $dot === false ? $source : substr($source, 0, $dot);
+    }
+
+    private function canonicalizeEntityCacheValue(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        if (!array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalizeEntityCacheValue($item);
+        }
+        return $value;
+    }
+
+    private function logEntityCacheFailure(string $error, string $kind, string $source): void
+    {
+        if (\function_exists('write_log')) {
+            \write_log('Entity view fragment cache failed open', 'warning', [
+                'kind' => $kind,
+                'source' => $source,
+                'error' => $error,
+            ]);
+        }
     }
 }
