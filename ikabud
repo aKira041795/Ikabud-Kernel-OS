@@ -19,6 +19,7 @@
  *   php ikabud module:status <id>        Show detailed module status and diagnostics
  *   php ikabud module:check-boundaries   Enforce module boundary rules
  *   php ikabud capability:validate       Validate capability versions and schemas
+ *   php ikabud capability:audit          Audit declared capability authority
  *   php ikabud event:list                List registered event listeners
  *   php ikabud routes                    List all registered routes
  *   php ikabud disyl:lint [path]         Lint templates for errors
@@ -1130,6 +1131,7 @@ switch ($command) {
         out('    ' . green('capability:describe') . ' <id>    Deep-dive: providers, consumers, schema, modes');
         out('    ' . green('capability:call') . ' <id> "<json>"  Call a capability');
         out('    ' . green('capability:validate') . '         Validate versions + schemas');
+        out('    ' . green('capability:audit') . ' [--json]  Audit declared providers, consumers, policies, and handlers');
         out('');
         out('  ' . bold('Platform'));
         out('    ' . green('platform:describe') . '           Full platform manifest (JSON)');
@@ -6122,6 +6124,73 @@ MD;
             exit(1);
         }
         break;
+    // ── capability:audit ───────────────────────────────────────────
+    case 'capability:audit':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud capability:audit [--json]');
+            out('  Static, no-DB audit of capability exposes, calls, dependencies, policies, and handler maps.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Audit/CapabilityAuthorityAuditor.php';
+        require_once __DIR__ . '/kernel/Workbench/Issues/IssueLedger.php';
+        try {
+            $auditor = new \Ikabud\Kernel\Workbench\Audit\CapabilityAuthorityAuditor(__DIR__ . '/modules');
+            $findings = $auditor->audit();
+            $ledger = new \Ikabud\Kernel\Workbench\Issues\IssueLedger(
+                __DIR__ . '/storage/private/workbench/issues'
+            );
+            foreach ($findings as $finding) {
+                $location = $finding['file'] . ':' . $finding['line'];
+                $ledger->ingest([
+                    'module_id' => 'kernel',
+                    'action_id' => 'capability:audit',
+                    'failing_node' => $location,
+                    'category' => 'capability_authority.' . strtolower($finding['code']),
+                    'severity' => $finding['severity'],
+                    'summary' => $finding['code'] . ' at ' . $location . ': ' . $finding['message'],
+                    'source_fingerprint' => hash('sha256', $finding['code'] . '|' . $location),
+                ], [
+                    'source' => 'capability:audit',
+                    'file' => $finding['file'],
+                    'line' => $finding['line'],
+                    'invariant_code' => $finding['code'],
+                ]);
+            }
+
+            $criticalCount = count(array_filter(
+                $findings,
+                static fn (array $finding): bool => $finding['severity'] === 'critical'
+            ));
+            if (hasFlag('--json')) {
+                out(json_encode([
+                    'ok' => $criticalCount === 0,
+                    'finding_count' => count($findings),
+                    'critical_count' => $criticalCount,
+                    'findings' => $findings,
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            } else {
+                out('');
+                out('  ' . bold('Capability Authority Audit'));
+                out('  Roots: modules/, src/, kernel/');
+                if ($findings === []) {
+                    out('  ' . green('✓') . ' No findings. Declared capability authority baseline is clean.');
+                } else {
+                    foreach ($findings as $finding) {
+                        $mark = $finding['severity'] === 'critical' ? red('✗') : yellow('⚠');
+                        out("  {$mark} [{$finding['severity']}] {$finding['code']} {$finding['file']}:{$finding['line']}");
+                        out('      ' . $finding['message']);
+                    }
+                    out('  Findings recorded in Workbench IssueLedger: ' . count($findings));
+                }
+                out('  Critical findings: ' . $criticalCount);
+                out('');
+            }
+            exit($criticalCount > 0 ? 1 : 0);
+        } catch (Throwable $e) {
+            out(red('  Capability authority audit failed: ' . $e->getMessage()));
+            exit(2);
+        }
+
     // ── workbench:audit ────────────────────────────────────────────
     case 'workbench:audit':
         require_once __DIR__ . '/kernel/Workbench/Audit/WorkflowGuardAuditor.php';
