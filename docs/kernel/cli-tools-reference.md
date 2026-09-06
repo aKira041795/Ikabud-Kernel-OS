@@ -37,6 +37,51 @@ php ikabud architecture:check
 
 ---
 
+### `capability:audit`
+
+Runs the deterministic, static Authority gate over installed module manifests and literal
+CapabilityBus calls in `modules/`, `src/`, and `kernel/`.
+
+```
+php ikabud capability:audit
+php ikabud capability:audit --json
+```
+
+**Detects:** unexposed calls and dependencies, unavailable requested major versions,
+consumer calls missing a compatible `capabilities.depends` or self-expose declaration,
+provider `allow_callers` denials, and exposed IDs missing from the module's
+`{prefix}_capability_handlers()` map or mapped to a missing function. Findings include
+`code`, `severity`, `file`, `line`, and `message`; critical findings produce exit code `1`.
+The command does not use a database or network.
+
+Installed manifests are audited as enabled unless an isolated fixture explicitly marks
+`enabled`/`_enabled` false. The reserved `kernel.*` namespace is closed-world rather
+than blanket-exempt: the static registrations inventoried from `kernel/App.php` are
+`kernel.auth.user@1` (line 159), `kernel.auth.require@1` (163),
+`kernel.http.request_context@1` (172), `kernel.audit.record@1` (187),
+`kernel.auth.delegate@1` (300), `kernel.auth.validate_delegate@1` (388),
+`kernel.render.context@1` (468), `kernel.auth.authenticate@1` (480), plus the
+kernel-provider registrations `workflow.state.get@1` (532) and
+`workflow.transition@1` (536).
+
+`kernel.audit.list@1` at `kernel/DiSyL/Component/ComponentRenderer.php:1075` is a
+known latent, unregistered capability. That exact ID/file/line is the sole explicit
+baseline and is always surfaced as `CAPABILITY_KERNEL_BASELINED_UNREGISTERED`
+warning; another call site using that ID, or any new unknown `kernel.*` literal, is
+critical (fail-on-new behavior). The exhaustive non-kernel
+kernel-consumer classification is `ai.capability.suggest@1`
+(`src/http/admin-handlers.php:2138`), `ai.text.generate@1`
+(`kernel/Workbench/AI/WorkbenchAiAnalyzer.php:89`), and `antispam.check@1`
+(`src/helpers/module-manager.php:2819`). Optional absence is allowed, but an installed
+provider's caller policy is evaluated with caller `kernel`.
+
+Handler validation token-parses only the map function's returned array and supports
+bare function strings and `[Class, method]` pairs. Caller policy combines default and
+per-capability allow/deny lists like `CapabilityBus`; an empty `allow_callers` is no
+whitelist.
+
+---
+
 ### `module:check-boundaries`
 
 Validates a single module's boundary compliance.
@@ -521,6 +566,7 @@ its additive suite fields (`suite`/`kind`/`extends`/`extension_points`/`contribu
 | `module:graph [id]` | Dependency graph + impact analysis |
 | `module:certify [module]` | Validate module against certification checklist (`--all` for all modules) |
 | `architecture:check` | Cross-module table/capability/template audit |
+| `capability:audit` | Static declared capability provider/consumer/policy/handler Authority gate (`--json` supported) |
 
 ---
 
