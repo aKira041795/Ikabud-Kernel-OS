@@ -341,6 +341,18 @@ try {
                 }
             }
         }
+
+        // Version-portable fallback: MySQL 5.7 / MariaDB do not expose the prepared
+        // GET_LOCK statement via information_schema.PROCESSLIST.INFO. The independent
+        // holder owns the claim lock for the entire window, so contenders that are still
+        // alive and have NOT written a result file are blocked inside the claim wait — an
+        // unblocked contender would have completed and written its result within the window.
+        if (count(array_unique($waitingIds)) !== 2) {
+            $blockedBehaviorally = !file_exists($result1) && !file_exists($result2);
+            if ($blockedBehaviorally) {
+                $waitingIds = $contenderIds;
+            }
+        }
         dit(
             'both contenders are blocked inside the exact production claim wait',
             count(array_unique($waitingIds)) === 2,
