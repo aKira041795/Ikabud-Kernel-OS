@@ -97,9 +97,17 @@ echo str_repeat('=', 64) . "\n";
 try {
     echo "\n[List miss, hit, invalidation]\n";
     $app->tenant()->setTenantId(101);
-    $first = $engine->renderString($listTag, ['current_user_role' => 'guest']);
+    try {
+        $first = $engine->renderString($listTag, ['current_user_role' => 'guest']);
+    } catch (Throwable $e) {
+        $first = '';
+        echo '  DEBUG  first render threw ' . get_class($e) . ': ' . $e->getMessage() . "\n";
+    }
     $second = $engine->renderString($listTag, ['current_user_role' => 'guest']);
     $tenantFiles = glob($tmpRoot . '/101/*.json') ?: [];
+    if ($listCalls === 0) {
+        echo '  DEBUG  capability not invoked; rendered=' . substr((string)$first, 0, 300) . "\n";
+    }
     $assert('cache miss renders and stores a fragment', $listCalls === 1 && count($tenantFiles) >= 1, 'calls=' . $listCalls);
     $assert('cache hit is byte-identical and skips capability', $second === $first && $listCalls === 1);
 

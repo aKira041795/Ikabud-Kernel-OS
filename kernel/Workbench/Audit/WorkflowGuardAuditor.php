@@ -82,7 +82,11 @@ final class WorkflowGuardAuditor
             && str_contains((string)$s['text'], 'findActiveRun('));
         if ($insert === null || $dedupe === null || $dedupe['offset'] > $insert['offset']) {
             $findings[] = $this->atStatement(
-                'WORKFLOW_START_DEDUPE', 'critical', $file, $method, $insert ?? $insertCandidate,
+                'WORKFLOW_START_DEDUPE',
+                'critical',
+                $file,
+                $method,
+                $insert ?? $insertCandidate,
                 'start() must reach findActiveRun() before executing a workflow-run INSERT.'
             );
         }
@@ -103,13 +107,21 @@ final class WorkflowGuardAuditor
         $claimSafe = $claim !== null && $this->statusInValues($claim, 'pending', 'failed');
         if (!$claimSafe) {
             $findings[] = $this->atStatement(
-                'WORKFLOW_STEP_CLAIM_GUARD', 'critical', $file, $method, $claim ?? $claimCandidate,
+                'WORKFLOW_STEP_CLAIM_GUARD',
+                'critical',
+                $file,
+                $method,
+                $claim ?? $claimCandidate,
                 'advance() must execute one claim UPDATE restricted to bound pending/failed statuses.'
             );
         }
         if ($claim === null || preg_match('~\battempt\s*=\s*attempt\s*\+\s*1\b~i', (string)$claim['sql']) !== 1) {
             $findings[] = $this->atStatement(
-                'WORKFLOW_STEP_ATTEMPT_ATOMIC', 'critical', $file, $method, $claim ?? $claimCandidate,
+                'WORKFLOW_STEP_ATTEMPT_ATOMIC',
+                'critical',
+                $file,
+                $method,
+                $claim ?? $claimCandidate,
                 'advance() must increment attempt in the executed conditional claim UPDATE.'
             );
         }
@@ -120,7 +132,11 @@ final class WorkflowGuardAuditor
             && $this->directStatementMatches($method, (string)$guard['id'], '~^\s*return\s+\$this->runBusyResult\s*\(~');
         if (!$rejects) {
             $findings[] = $this->atStatement(
-                'WORKFLOW_STEP_CLAIM_ROWCOUNT', 'critical', $file, $method, $claim ?? $claimCandidate,
+                'WORKFLOW_STEP_CLAIM_ROWCOUNT',
+                'critical',
+                $file,
+                $method,
+                $claim ?? $claimCandidate,
                 'The reachable claim-failure branch must directly roll back and return busy.'
             );
         }
@@ -148,7 +164,11 @@ final class WorkflowGuardAuditor
         }
         if (!$ordered) {
             $findings[] = $this->atStatement(
-                'WORKFLOW_DISPATCH_OUTSIDE_LOCK', 'critical', $file, $method, $dispatch ?? $runLock,
+                'WORKFLOW_DISPATCH_OUTSIDE_LOCK',
+                'critical',
+                $file,
+                $method,
+                $dispatch ?? $runLock,
                 'advance() must begin, execute the run lock and claim, reject contention, commit, then dispatch.'
             );
         }
@@ -184,7 +204,11 @@ final class WorkflowGuardAuditor
             && $busyGuard['end'] < $mutations[0]['offset'];
         if (!$effective) {
             $findings[] = $this->atStatement(
-                "WORKFLOW_{$upper}_RUN_GUARD", 'critical', $file, $method, $anchor,
+                "WORKFLOW_{$upper}_RUN_GUARD",
+                'critical',
+                $file,
+                $method,
+                $anchor,
                 "{$name}() must execute the run lock and reach an early running-step busy return before mutation."
             );
         }
@@ -196,7 +220,11 @@ final class WorkflowGuardAuditor
                 && preg_match('~\bordinal\s*>=\s*\(\s*SELECT\s+MIN\s*\(\s*ordinal\s*\)~i', $predicate) === 1;
             if (!$safeStatus && !$safeTargetedRange) {
                 $findings[] = $this->atStatement(
-                    "WORKFLOW_{$upper}_RUNNING_RECLAIM", 'critical', $file, $method, $mutation,
+                    "WORKFLOW_{$upper}_RUNNING_RECLAIM",
+                    'critical',
+                    $file,
+                    $method,
+                    $mutation,
                     "{$name}() step mutation predicate must prove exclusion of the bound running status."
                 );
             }
@@ -244,7 +272,11 @@ final class WorkflowGuardAuditor
                 return;
             }
             $findings[] = $this->atStatement(
-                'WORKFLOW_POST_DISPATCH_FAIL_CLOSED', 'critical', $file, $method, $complete ?? $completeCandidate,
+                'WORKFLOW_POST_DISPATCH_FAIL_CLOSED',
+                'critical',
+                $file,
+                $method,
+                $complete ?? $completeCandidate,
                 'The canonical completion UPDATE must be followed by the recognized fail-closed throw/interrupt pattern.'
             );
         }
