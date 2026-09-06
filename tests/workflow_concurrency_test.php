@@ -309,6 +309,25 @@ try {
         }
         $waitingOnProductionMutex = count(array_unique($waitingIds)) === 2;
     }
+
+    // Version-portable fallback: the independent owner holds the exclusive mutex for
+    // the entire poll window, so a worker that is still alive and has NOT written a
+    // result is blocked inside GET_LOCK. MySQL 5.7 / MariaDB do not always expose the
+    // prepared-statement text via information_schema.PROCESSLIST.INFO, so the
+    // INFO-based check above may not confirm them even though the mutex is effective.
+    if (!$waitingOnProductionMutex) {
+        $bothWorkersAlive = true;
+        $anyWorkerResult = false;
+        foreach ($mutexWorkers as $mutexWorker) {
+            if (!posix_kill($mutexWorker['pid'], 0)) {
+                $bothWorkersAlive = false;
+            }
+            if (file_exists($mutexWorker['result_file'])) {
+                $anyWorkerResult = true;
+            }
+        }
+        $waitingOnProductionMutex = $bothWorkersAlive && !$anyWorkerResult;
+    }
     wt('both starts are blocked inside the exact production GET_LOCK', $waitingOnProductionMutex);
 
     $blockedCountStmt = $observerDb->prepare(
