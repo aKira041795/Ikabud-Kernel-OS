@@ -91,6 +91,8 @@ status: READY_FOR_IMPLEMENTATION — objective 6.3 is the implementable unit (it
       (tests/unified_execution_trace_test.php; evidence test_results/phase66-evidence.log)
 ALL FIVE GUARANTEES COMPLETE (2026-09-06): Execution (PR #19) · Consistency (6.3 + 6.4) · Authority (6.5) ·
 Evidence (6.6) · Identity (cross-cutting). main HEAD 7be0857.
-Open follow-ups (recorded): (a) kernel.audit.list@1 register-vs-retire (chair recommendation: register over
-audit_logs); (b) HTTP payload-aware + EventBus fireDurable adoption of the 6.3 idempotency primitive;
-(c) ARK phases 3/5 in the main CMS app repo; (d) config/app.php env-boolean (bool) casts → filter_var.
+Open follow-ups (recorded): (a) kernel.audit.list@1 register-vs-retire — resolved by Gate 1;
+(b) EventBus `fireDurable` adoption of the 6.3 primitive — resolved by Stabilization Gate 2 with one sanctioned
+Kernel outbox, one canonicalizer, tenant validation, and safe legacy envelope-less observation; HTTP payload-aware
+adoption remains Gate 3; (c) ARK phases 3/5 in the main CMS app repo; (d) config/app.php env-boolean (bool) casts →
+filter_var.
