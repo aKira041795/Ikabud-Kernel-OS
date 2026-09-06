@@ -888,6 +888,7 @@ final class WorkflowEngine
                 $run,
             );
             $maxAttempts = (int)($step['max_attempts'] ?? 1);
+            $correlationId = "wf:run:{$runId}:step:{$stepId}";
 
             // CapabilityBus is the canonical dispatch path. CapabilityRegistry
             // intentionally has no call() method; App::cap() supplies the bus.
@@ -897,7 +898,9 @@ final class WorkflowEngine
                     if ($guardFailure !== null) {
                         return $guardFailure;
                     }
-                    $result = $this->app->cap()->call($capabilityId, $resolvedArgs);
+                    $result = $this->app->cap()->call($capabilityId, $resolvedArgs, [
+                        'correlation_id' => $correlationId,
+                    ]);
                 } else {
                     $result = ['ok' => true, 'data' => null];
                 }
@@ -917,6 +920,7 @@ final class WorkflowEngine
                         'run_id' => $runId,
                         'step_key' => $step['step_key'],
                         'error' => $e->getMessage(),
+                        'correlation_id' => $correlationId,
                     ]);
 
                     return ['ok' => false, 'run_id' => $runId, 'step_id' => $stepId, 'error' => $e->getMessage(), 'status' => 'failed'];
@@ -927,7 +931,12 @@ final class WorkflowEngine
                     . "WHERE id = :id AND status = 'running'"
                 )->execute([':err' => $e->getMessage(), ':id' => $stepId]);
 
-                write_log("WorkflowEngine: run {$runId} step {$stepId} attempt {$attempt}/{$maxAttempts} failed, will retry: " . $e->getMessage(), 'warning');
+                write_log("WorkflowEngine: run {$runId} step {$stepId} attempt {$attempt}/{$maxAttempts} failed, will retry: " . $e->getMessage(), 'warning', [
+                    'run_id' => $runId,
+                    'step_key' => $step['step_key'],
+                    'error' => $e->getMessage(),
+                    'correlation_id' => $correlationId,
+                ]);
 
                 return ['ok' => false, 'run_id' => $runId, 'step_id' => $stepId, 'error' => $e->getMessage(), 'status' => 'retry_pending'];
             }
@@ -959,6 +968,7 @@ final class WorkflowEngine
                 'run_id' => $runId,
                 'step_key' => $step['step_key'],
                 'capability' => $capabilityId,
+                'correlation_id' => $correlationId,
             ]);
 
             return $this->advance($runId);
