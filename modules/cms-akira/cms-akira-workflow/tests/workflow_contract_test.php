@@ -246,7 +246,7 @@ try {
     $check(($spoofRuns['ok'] ?? true) === false && ($spoofRuns['runs'] ?? null) === [], 'run introspection rejects payload tenant spoofing');
 
     $migration = (string) file_get_contents($module . '/database/migrations/001_initial.sql');
-    $check(!preg_match('/\bCREATE\s+TABLE\b/i', $migration) && str_contains($migration, 'SELECT 1'), 'migration marker is table-free and MySQL-5.7 safe');
+    $check(!preg_match('/\b(?:CREATE|SELECT|INSERT|UPDATE|DELETE|ALTER|DROP)\b/i', $migration), 'migration marker is table-free and MySQL-5.7 safe');
     $sourceFiles = [$module . '/module.json', $module . '/helpers.php', $module . '/handlers.php', $module . '/routes.php', $module . '/README.md', $module . '/database/migrations/001_initial.sql'];
     $source = implode("\n", array_map(static fn (string $file): string => (string) file_get_contents($file), $sourceFiles));
     $forbidden = ['cms' . '.content', 'akira' . '.content.get@1', 'cms' . 'RequireCap', 'cms' . 'Render', 'cms' . 'ActiveTheme'];
