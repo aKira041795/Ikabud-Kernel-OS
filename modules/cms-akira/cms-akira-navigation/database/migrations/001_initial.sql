@@ -1,0 +1,3 @@
+-- Historical dormant scaffold marker.
+-- Intentionally table-free: native navigation storage begins in 002 so tenants
+-- which previously ledgered this scaffold still receive the Phase 4 schema.
