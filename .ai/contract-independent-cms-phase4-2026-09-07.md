@@ -51,7 +51,7 @@ recommended_next_state: (Phase 5A/5B ready?)
 
 ## Implementation result — 2026-09-07
 
-status: PASS (local gate; CI confirmation recorded on the Phase 4 branch)
+status: PASS (local gate + CI 6/6 on PR #42)
 
 task: Native re-scope, track, and certify `cms-akira-navigation`.
 
@@ -69,6 +69,7 @@ verification:
 - Navigation shared/CRUD/governance suite: 35/35; dedicated tenant databases: 6/6.
 - Regression: P1 38/38; P2 38/38; shell 21/21; install 23/23; editor 25/25.
 - Authority audit 18/18; capability audit zero; `module:certify --all` all certified; Composer test 106/106; navigation PHPStan and CS Fixer clean; workbench audit clean; forbidden residue grep clean; logs clean.
+- CI 6/6 green on PR #42 (static-analysis, coding-standards, test mysql-8, test mysql-5.7, test mariadb-10.6, Kernel contracts).
 - Dedicated tenant #1/#2 migrations converged and live connection identities were distinct from each other and the Kernel/base database.
 
 scope: No Kernel source changed. Unrelated pre-existing/untracked `.ai` files were not added.
