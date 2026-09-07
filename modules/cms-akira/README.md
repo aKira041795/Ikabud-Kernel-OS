@@ -152,6 +152,21 @@ php tests/infrastructure_test.php
 php ikabud architecture:check
 ```
 
+## Bundling + Tenant Activation (Ikabud-Kernel-OS)
+
+The CMS Akira fork is **bundled** in the Ikabud-Kernel-OS repo (tracked: suite
+README + `cms-akira-core`; ARK theme under `storage/cms-themes/cms-akira-posts`)
+but is a **tenant-selected product — NOT auto-installed**:
+
+- `cms-akira-core`'s module.json carries `"_enabled": false` (like the 13
+  dormant suite members), so bundling never auto-activates it.
+- A user/tenant activates it explicitly: CMS Modules page → Activate,
+  `php ikabud module:enable cms-akira-core`, or per-tenant
+  `enableModuleForTenant('cms-akira-core', $tenantId)`. In multi-tenant mode a
+  module is "installed but inactive" until the tenant enables it.
+- Activation idempotently seeds the admin-only v2 authorization policy and runs
+  the module migrations (`cms_akira_posts`).
+
 ## Related Docs
 
 - `docs/kernel/entity-view-adoption-plan.md`

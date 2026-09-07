@@ -14,12 +14,15 @@ templates/modules/*
 !templates/modules/gui-settings/
 !templates/modules/gui-settings/**
 
-# CMS Akira fork — the ACTIVE product-core (content authority + canonical
-# Post read/render + mutation path, P1+P2 complete) is bundled in-repo like
-# gui-settings. Its 13 dormant suite members (providers/profiles/extensions
-# referencing the absent `cms`/`theme-studio`/`search` hosts) remain
-# runtime scaffolding: each is re-enabled + tracked individually at its phase
-# gate after its host residue is resolved.
+# CMS Akira fork — product-core (cms-akira-core) is bundled in-repo like
+# gui-settings, but it is a TENANT-SELECTED module, NOT auto-installed: its
+# module.json carries `_enabled: false`, so it stays inactive until a user/
+# tenant activates it (CMS Modules page, `php ikabud module:enable
+# cms-akira-core`, or per-tenant enableModuleForTenant). Its 13 dormant suite
+# members (providers/profiles/extensions referencing the absent
+# `cms`/`theme-studio`/`search` hosts) remain runtime scaffolding: each is
+# re-enabled + tracked individually at its phase gate after host-residue
+# cleanup.
 !modules/cms-akira/
 modules/cms-akira/*
 !modules/cms-akira/cms-akira-core/

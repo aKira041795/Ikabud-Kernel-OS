@@ -43,45 +43,61 @@
             {
                 "id": "cms.post.get@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Published Post lookup owned by CMS Akira Core"
             },
             {
                 "id": "cms.post.list@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Published Post list owned by CMS Akira Core"
             },
             {
                 "id": "cms.post.create@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
                 "effects": {
-                    "invalidates": ["entity.list.post"]
+                    "invalidates": [
+                        "entity.list.post"
+                    ]
                 },
                 "description": "Admin-only idempotent Post creation owned by CMS Akira Core"
             },
             {
                 "id": "cms.post.update@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
                 "effects": {
-                    "invalidates": ["entity.list.post"]
+                    "invalidates": [
+                        "entity.list.post"
+                    ]
                 },
                 "description": "Admin-only idempotent Post update owned by CMS Akira Core"
             },
             {
                 "id": "entity.list.post@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Entity View list bridge projecting published Posts"
             },
             {
                 "id": "entity.get.post@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Entity View detail bridge projecting one published Post"
             }
         ],
@@ -94,5 +110,6 @@
         ]
     },
     "routes": true,
-    "events": []
+    "events": [],
+    "_enabled": false
 }
