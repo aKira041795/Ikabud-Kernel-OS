@@ -119,7 +119,7 @@ via DiSyL entity components (`ikb_entity_detail`, `ikb_entity_list`).
 
 1. `resolve($source, $view)` parses the source string (e.g., `weather.forecast`)
 2. Looks up registered view contracts via `viewContract()` → `builtinDefaults()`
-3. Calls the appropriate `entity.get.{type}` or `entity.list.{type}` capability
+3. Calls the appropriate `entity.get.{type}` or `entity.list.{type}` capability, falling back to its `@1` registration when the unversioned ID is absent
 4. Returns `{entity, view contract}` for detail or `{rows, view contract}` for list
 
 ### Filtered Entity Lists

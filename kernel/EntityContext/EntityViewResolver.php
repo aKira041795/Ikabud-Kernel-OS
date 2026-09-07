@@ -504,6 +504,15 @@ final class EntityViewResolver
 
         $sanitizedType = str_replace('.', '_', $entityType);
         $capabilityId = "entity.list.{$sanitizedType}";
+        if (
+            \function_exists('app')
+            && ($app = \app()) !== null
+            && method_exists($app, 'capabilities')
+            && !$app->capabilities()->has($capabilityId)
+            && $app->capabilities()->has($capabilityId . '@1')
+        ) {
+            $capabilityId .= '@1';
+        }
 
         try {
             if (\function_exists('app') && ($app = \app()) !== null && method_exists($app, 'cap')) {
@@ -574,6 +583,15 @@ final class EntityViewResolver
 
         $sanitizedType = str_replace('.', '_', $entityType);
         $capabilityId = "entity.get.{$sanitizedType}";
+        if (
+            \function_exists('app')
+            && ($app = \app()) !== null
+            && method_exists($app, 'capabilities')
+            && !$app->capabilities()->has($capabilityId)
+            && $app->capabilities()->has($capabilityId . '@1')
+        ) {
+            $capabilityId .= '@1';
+        }
         $entity = null;
         $error = null;
 
