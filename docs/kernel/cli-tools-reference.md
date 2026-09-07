@@ -55,7 +55,7 @@ provider `allow_callers` denials, and exposed IDs missing from the module's
 The command does not use a database or network.
 
 Installed manifests are audited as enabled unless an isolated fixture explicitly marks
-`enabled`/`_enabled` false. The reserved `kernel.*` namespace is closed-world rather
+`enabled`/`_enabled` false; PHP beneath such disabled module directories is not scanned. The reserved `kernel.*` namespace is closed-world rather
 than blanket-exempt: the static registrations inventoried from `kernel/App.php` are
 `kernel.auth.user@1` (line 159), `kernel.auth.require@1` (163),
 `kernel.http.request_context@1` (172), `kernel.audit.record@1` (187),

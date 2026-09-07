@@ -13,8 +13,8 @@ use SplFileInfo;
  * Deterministic static audit of manifest-declared capability authority.
  *
  * Installed manifests are treated as enabled unless a fixture explicitly sets
- * `enabled` or `_enabled` to false. This preserves the no-DB contract while
- * auditing every installable relationship in a repository checkout.
+ * `enabled` or `_enabled` to false. Source beneath those disabled module
+ * directories is also excluded from consumer scanning.
  *
  * Kernel authority is closed-world: KERNEL_CAPABILITIES lists every static
  * CapabilityRegistry registration in kernel/App.php. Every non-kernel literal in
@@ -148,8 +148,7 @@ final class CapabilityAuthorityAuditor
                 );
                 continue;
             }
-            if ((array_key_exists('enabled', $manifest) && $manifest['enabled'] === false)
-                || (array_key_exists('_enabled', $manifest) && $manifest['_enabled'] === false)) {
+            if ($this->isDisabledManifest($manifest)) {
                 continue;
             }
 
@@ -752,11 +751,13 @@ final class CapabilityAuthorityAuditor
     private function scanFiles(): array
     {
         $files = [];
+        $disabledModuleDirectories = $this->disabledModuleDirectories();
         foreach ([$this->modulesRoot, $this->projectRoot . '/src', $this->projectRoot . '/kernel'] as $root) {
             if (!is_dir($root)) {
                 continue;
             }
-            foreach ($this->phpAndManifestFiles($root) as $file) {
+            $excludedDirectories = $root === $this->modulesRoot ? $disabledModuleDirectories : [];
+            foreach ($this->phpAndManifestFiles($root, $excludedDirectories) as $file) {
                 if (strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'php') {
                     $files[$this->normalizePath($file)] = true;
                 }
@@ -767,16 +768,48 @@ final class CapabilityAuthorityAuditor
         return $result;
     }
 
-    /** @return list<string> */
-    private function phpAndManifestFiles(string $root): array
+    /** @return array<string, true> */
+    private function disabledModuleDirectories(): array
+    {
+        $directories = [];
+        foreach ($this->phpAndManifestFiles($this->modulesRoot) as $file) {
+            if (basename($file) !== 'module.json') {
+                continue;
+            }
+            $source = @file_get_contents($file);
+            $manifest = is_string($source) ? json_decode($source, true) : null;
+            if (is_array($manifest) && $this->isDisabledManifest($manifest)) {
+                $directories[$this->normalizePath(dirname($file))] = true;
+            }
+        }
+        return $directories;
+    }
+
+    /** @param array<string, mixed> $manifest */
+    private function isDisabledManifest(array $manifest): bool
+    {
+        return (array_key_exists('enabled', $manifest) && $manifest['enabled'] === false)
+            || (array_key_exists('_enabled', $manifest) && $manifest['_enabled'] === false);
+    }
+
+    /**
+     * @param array<string, true> $excludedDirectories
+     * @return list<string>
+     */
+    private function phpAndManifestFiles(string $root, array $excludedDirectories = []): array
     {
         if (!is_dir($root)) {
             return [];
         }
         $iterator = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
             new RecursiveDirectoryIterator($root, RecursiveDirectoryIterator::SKIP_DOTS),
-            static function (SplFileInfo $entry): bool {
-                return !$entry->isDir() || !in_array($entry->getFilename(), ['vendor', 'node_modules', '.git'], true);
+            static function (SplFileInfo $entry) use ($excludedDirectories): bool {
+                if (!$entry->isDir()) {
+                    return true;
+                }
+                $path = str_replace('\\', '/', $entry->getPathname());
+                return !isset($excludedDirectories[$path])
+                    && !in_array($entry->getFilename(), ['vendor', 'node_modules', '.git'], true);
             }
         ));
         $files = [];

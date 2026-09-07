@@ -17,17 +17,20 @@ function caa_test(string $label, bool $ok, string $detail = ''): void
     echo ($ok ? '  ✓ ' : '  ✗ ') . $label . (!$ok && $detail !== '' ? " — {$detail}" : '') . "\n";
 }
 
-/** @param array<string, mixed> $capabilities */
-function caa_module(string $root, string $id, array $capabilities, string $php): string
+/**
+ * @param array<string, mixed> $capabilities
+ * @param array<string, mixed> $manifestOverrides
+ */
+function caa_module(string $root, string $id, array $capabilities, string $php, array $manifestOverrides = []): string
 {
     $path = $root . '/modules/' . $id;
     if (!mkdir($path, 0700, true) && !is_dir($path)) {
         throw new RuntimeException('Unable to create fixture module: ' . $id);
     }
-    file_put_contents($path . '/module.json', json_encode([
+    file_put_contents($path . '/module.json', json_encode(array_merge([
         'id' => $id,
         'capabilities' => $capabilities,
-    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    ], $manifestOverrides), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     file_put_contents($path . '/helpers.php', $php);
     return $path;
 }
@@ -149,7 +152,20 @@ PHP;
 app()->cap()->call('missing.orders@1', []);
 PHP;
     caa_module($aRoot, 'consumer', ['exposes' => [], 'depends' => []], $aPhp);
-    $cases[] = ['A unexposed call', $aRoot, 'CAPABILITY_CALL_UNEXPOSED', 'modules/consumer/helpers.php', caa_line($aPhp, "'missing.orders@1'")];
+    caa_module(
+        $aRoot,
+        'nested/disabled-consumer',
+        ['exposes' => [], 'depends' => []],
+        $aPhp,
+        ['enabled' => false]
+    );
+    $cases[] = [
+        'A same unexposed call is found in enabled module and skipped in nested disabled module',
+        $aRoot,
+        'CAPABILITY_CALL_UNEXPOSED',
+        'modules/consumer/helpers.php',
+        caa_line($aPhp, "'missing.orders@1'")
+    ];
 
     $bRoot = $temp . '/b';
     caa_module($bRoot, 'provider', [
