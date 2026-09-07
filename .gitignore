@@ -27,6 +27,8 @@ templates/modules/*
 modules/cms-akira/*
 !modules/cms-akira/cms-akira-core/
 !modules/cms-akira/cms-akira-core/**
+!modules/cms-akira/cms-akira-shell/
+!modules/cms-akira/cms-akira-shell/**
 !modules/cms-akira/README.md
 
 # ── Local agent/tool state ──────────────────────────────────────────

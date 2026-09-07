@@ -1109,6 +1109,8 @@ switch ($command) {
         out('    ' . green('tenant:db:check') . ' <tenant_id>    Show DB config + pass status');
         out('    ' . green('tenant:db:encrypt-legacy') . ' <tenant_id>|--all  Encrypt and clear legacy plaintext DB passwords');
         out('    ' . green('tenant:provision') . ' <tenant_id> [--skip-db-create] [--admin-user=..] [--admin-pass=..] [--admin-name=..]');
+        out('    ' . green('tenant:module:install') . ' <tenant> <module|profile> [--set-entry] [--generation=..]');
+        out('    ' . green('tenant:module:uninstall') . ' <tenant> <module[,module...]>  (data preserving)');
         out('    ' . dim('  bakeshop entry tenants require --admin-user and --admin-pass so the module gets a real first admin.') );
         out('    ' . green('tenant:verify') . ' <tenant_id>      Health-check a tenant (DB, tables, isolation, admin user)');
         out('');
@@ -1727,6 +1729,42 @@ switch ($command) {
                 $pdo->rollBack();
             }
             out('  ' . red('✗ Failed: ') . $e->getMessage());
+            out('');
+            exit(1);
+        }
+        break;
+
+    // ── tenant:module:install / uninstall ─────────────────────────
+    case 'tenant:module:install':
+    case 'tenant:module:uninstall':
+        $clean = paramsWithoutFlags($params);
+        $tenantSelector = trim((string)($clean[0] ?? ''));
+        $selection = trim((string)($clean[1] ?? ''));
+        $tenantId = cliResolveTenantId($tenantSelector);
+        banner();
+        if ($tenantId === null || $selection === '') {
+            out('  ' . red('✗ Usage: ') . 'php ikabud ' . $command . ' <tenant_id|key|domain> <module|profile> [--set-entry] [--generation=...]');
+            out('');
+            exit(1);
+        }
+        try {
+            $service = new \Ikabud\Kernel\Services\ModuleInstallService(app()->controlDb());
+            if ($command === 'tenant:module:uninstall') {
+                $result = $service->uninstall($tenantId, cliSplitList($selection));
+            } else {
+                $result = $service->install($tenantId, $selection, [
+                    'set_entry' => hasFlag('--set-entry'),
+                    'generation' => trim((string)(getFlagValue('--generation=') ?? '')),
+                    'headless' => hasFlag('--headless'),
+                ]);
+            }
+            out('  ' . (!empty($result['ok']) ? green('✓') : red('✗')) . ' ' . json_encode($result, JSON_UNESCAPED_SLASHES));
+            out('');
+            if (empty($result['ok'])) {
+                exit(1);
+            }
+        } catch (Throwable $e) {
+            out('  ' . red('✗ ') . $e->getMessage());
             out('');
             exit(1);
         }
