@@ -6,6 +6,20 @@ cms-akira-core is a CMS Akira submodule.
 
 Core content orchestration and provider-boundary contracts.
 
+## Bundling + Tenant Activation (Ikabud-Kernel-OS)
+
+cms-akira-core is **bundled** in the kernel repo (tracked in git) but is a
+**tenant-selected module — NOT auto-installed**. Its module.json carries
+`"_enabled": false`, so it stays inactive until a user/tenant activates it:
+
+- CMS Modules page → Activate, or
+- `php ikabud module:enable cms-akira-core` (global), or
+- per-tenant: `enableModuleForTenant('cms-akira-core', $tenantId)` / the tenant
+  module-selection gate.
+
+Activation seeds its admin-only v2 authorization policy idempotently and runs
+its migrations (`cms_akira_posts`).
+
 ## Suite Placement
 
 - Module path: modules/cms-akira/cms-akira-core
@@ -15,7 +29,10 @@ Core content orchestration and provider-boundary contracts.
 
 1. Run kernel migrations (including `016_capability_authorization_policies.sql`).
 2. Run module migrations: `php ikabud migrate cms-akira/cms-akira-core`.
-3. Enable the module and open `/admin/cms-akira-core`.
+3. Activate the module for the tenant (see above), then use its canonical
+   content routes: `GET /posts`, `GET /posts/{slug}` (render) and
+   `POST /api/v1/cms-akira/posts`, `PUT /api/v1/cms-akira/posts/{slug}`
+   (mutation).
 
 ## Validation
 
