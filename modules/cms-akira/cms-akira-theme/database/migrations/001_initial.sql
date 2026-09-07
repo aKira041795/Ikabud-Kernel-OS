@@ -1,0 +1,5 @@
+-- CMS Akira Theme — table-free native ledger marker.
+-- Phase 4A keeps activation tenant-scoped in the Kernel-owned
+-- `tenant_module_settings` table (module `cms-akira-theme`,
+-- setting key `active_theme_slug`). No Akira theme table is created;
+-- there is intentionally no 002 migration.

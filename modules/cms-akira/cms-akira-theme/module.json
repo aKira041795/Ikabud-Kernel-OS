@@ -1,0 +1,58 @@
+{
+    "id": "cms-akira-theme",
+    "name": "CMS Akira Theme",
+    "version": "1.0.0",
+    "description": "Native Akira ARK theme resolution and tenant-scoped activation authority.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "extension",
+    "extends": "cms-akira-core",
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [],
+    "reads_tables": [],
+    "migrations": [
+        "database/migrations/001_initial.sql"
+    ],
+    "capabilities": {
+        "exposes": [
+            {
+                "id": "akira.theme.resolve@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Resolve the tenant's active Akira theme slug deterministically and fail closed"
+            },
+            {
+                "id": "akira.theme.registry@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "List installed ARK-visible Akira themes as a projected-field allowlist"
+            },
+            {
+                "id": "akira.theme.validate@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Validate an Akira theme manifest, renderer registry, DiSyL, and traversal safety"
+            },
+            {
+                "id": "akira.theme.activate@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["theme.active"]},
+                "description": "Activate an Akira theme for the current tenant as an idempotent admin mutation"
+            }
+        ],
+        "depends": [
+            "kernel.idempotency.hash@1",
+            "kernel.idempotency.claim@1",
+            "kernel.idempotency.commit@1",
+            "kernel.idempotency.release@1",
+            "kernel.audit.record@1"
+        ]
+    },
+    "routes": true,
+    "events": [],
+    "_enabled": false
+}

@@ -1883,7 +1883,14 @@ function validateModuleCapabilities(array $manifest): array
                 return ['ok' => false, 'error' => 'Capability expose effects.invalidates must be an array'];
             }
             foreach ($e['effects']['invalidates'] as $tag) {
-                if (!is_string($tag) || preg_match('/^entity\.(?:list|detail)\.\S+$/', trim($tag)) !== 1) {
+                $tag = is_string($tag) ? trim($tag) : '';
+                // `theme.active` is the single canonical non-entity invalidation tag owned by the
+                // CMS Akira theme authority (Phase 4A). Kernel entity-cache effects remain the
+                // only auto-applied tags; theme.active is applied manually by its provider.
+                if ($tag === 'theme.active') {
+                    continue;
+                }
+                if ($tag === '' || preg_match('/^entity\.(?:list|detail)\.\S+$/', $tag) !== 1) {
                     return ['ok' => false, 'error' => 'Capability expose effects.invalidates entries must be entity list/detail tags'];
                 }
             }

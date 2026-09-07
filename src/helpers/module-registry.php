@@ -768,6 +768,56 @@ function tenantSetModuleActivationState(
 }
 
 /**
+ * Generic tenant-scoped module-setting upsert for an explicit tenant PDO.
+ *
+ * Used by table-free modules (e.g. `cms-akira-theme` activation) that need the
+ * same KernelPDO escalation and MySQL-5.7/SQLite upsert semantics as
+ * `tenantSetModuleActivationState()` for a single arbitrary setting key.
+ */
+function tenantWriteModuleSetting(PDO $db, int $tenantId, string $moduleId, string $settingKey, mixed $value): bool
+{
+    if ($tenantId <= 0 || $moduleId === '' || $settingKey === '') {
+        return false;
+    }
+    if (preg_match('/^[a-z0-9][a-z0-9._-]*$/', $moduleId) !== 1 || preg_match('/^[a-z0-9][a-z0-9._-]*$/', $settingKey) !== 1) {
+        return false;
+    }
+
+    \Ikabud\Kernel\Database\KernelPDO::kernelEscalationEnter();
+    try {
+        if (!function_exists('moduleTenantSettingsEnsureTable') || !moduleTenantSettingsEnsureTable($db)) {
+            return false;
+        }
+        $driver = strtolower((string) $db->getAttribute(PDO::ATTR_DRIVER_NAME));
+        $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($driver === 'sqlite') {
+            $sql = 'INSERT INTO tenant_module_settings (tenant_id, module_id, setting_key, setting_value, created_at, updated_at) '
+                . 'VALUES (:tenant, :module, :key, :value, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
+                . 'ON CONFLICT(tenant_id, module_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP';
+        } else {
+            $sql = 'INSERT INTO tenant_module_settings (tenant_id, module_id, setting_key, setting_value, created_at, updated_at) '
+                . 'VALUES (:tenant, :module, :key, :value, NOW(), NOW()) '
+                . 'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()';
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute([
+            ':tenant' => $tenantId,
+            ':module' => $moduleId,
+            ':key' => $settingKey,
+            ':value' => $json,
+        ]);
+        return true;
+    } catch (Throwable) {
+        return false;
+    } finally {
+        \Ikabud\Kernel\Database\KernelPDO::kernelEscalationLeave();
+        if (function_exists('invalidateTenantModuleSettingsCache')) {
+            invalidateTenantModuleSettingsCache();
+        }
+    }
+}
+
+/**
  * Disable a module for an explicit tenant ID (superadmin use).
  */
 function disableModuleForTenant(string $moduleId, int $tenantId): void
