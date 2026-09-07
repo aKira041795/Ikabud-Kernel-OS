@@ -28,7 +28,13 @@ function cacSeedPostMutationPolicies(): void
     }
     $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
-    foreach (['cms.post.create@1', 'cms.post.update@1'] as $capabilityId) {
+    foreach ([
+        'akira.post.create@1',
+        'akira.post.update@1',
+        'akira.post.publish@1',
+        'akira.post.unpublish@1',
+        'akira.post.delete@1',
+    ] as $capabilityId) {
         $rows[] = [
             'policy_version' => 1,
             'capability_id' => $capabilityId,

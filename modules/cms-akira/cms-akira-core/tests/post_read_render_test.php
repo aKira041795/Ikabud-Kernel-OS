@@ -47,7 +47,7 @@ try {
     echo "=== CMS Akira P1 canonical Post path ===\n";
     $manifest = kernelReadJsonFile(dirname(__DIR__) . '/module.json');
     $ids = array_column($manifest['capabilities']['exposes'], 'id');
-    $readIds = ['cms.post.get@1', 'cms.post.list@1', 'entity.list.post@1', 'entity.get.post@1'];
+    $readIds = ['akira.post.get@1', 'akira.post.list@1', 'entity.list.post@1', 'entity.get.post@1'];
     $check(array_values(array_intersect($ids, $readIds)) === $readIds, 'P1 four versioned read/bridge capabilities remain exposed');
     $dependencies = $manifest['capabilities']['depends'] ?? [];
     $check(!isset($manifest['depends']) && array_filter($dependencies, static fn (string $id): bool => !str_starts_with($id, 'kernel.')) === [], 'legacy module/capability dependencies are absent');
@@ -79,7 +79,7 @@ try {
         $check(array_diff($types, $primitiveTypes) === [] && !isset($contract['role_fields']), "{$key} separates primitive schema from field_contracts");
     }
 
-    $spoofed = app()->cap()->call('cms.post.list@1', [
+    $spoofed = app()->cap()->call('akira.post.list@1', [
         'tenant_id' => $tenantB,
         'status' => 'draft',
         'filters' => ['status' => 'draft'],

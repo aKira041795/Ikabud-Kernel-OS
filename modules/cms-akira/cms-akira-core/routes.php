@@ -20,8 +20,13 @@ return [
     ],
     'POST' => [
         '/api/v1/cms-akira/posts' => 'cms-akira-core:apiCmsAkiraPostCreate',
+        '/api/v1/cms-akira/posts/{slug}/publish' => 'cms-akira-core:apiCmsAkiraPostPublish',
+        '/api/v1/cms-akira/posts/{slug}/unpublish' => 'cms-akira-core:apiCmsAkiraPostUnpublish',
     ],
     'PUT' => [
         '/api/v1/cms-akira/posts/{slug}' => 'cms-akira-core:apiCmsAkiraPostUpdate',
+    ],
+    'DELETE' => [
+        '/api/v1/cms-akira/posts/{slug}' => 'cms-akira-core:apiCmsAkiraPostDelete',
     ],
 ];

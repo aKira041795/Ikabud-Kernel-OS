@@ -31,8 +31,10 @@ its migrations (`cms_akira_posts`).
 2. Run module migrations: `php ikabud migrate cms-akira/cms-akira-core`.
 3. Activate the module for the tenant (see above), then use its canonical
    content routes: `GET /posts`, `GET /posts/{slug}` (render) and
-   `POST /api/v1/cms-akira/posts`, `PUT /api/v1/cms-akira/posts/{slug}`
-   (mutation).
+   `POST /api/v1/cms-akira/posts`, `PUT /api/v1/cms-akira/posts/{slug}`,
+   `POST /api/v1/cms-akira/posts/{slug}/publish`,
+   `POST /api/v1/cms-akira/posts/{slug}/unpublish`, and
+   `DELETE /api/v1/cms-akira/posts/{slug}` (mutation).
 
 ## Validation
 
@@ -43,13 +45,20 @@ its migrations (`cms_akira_posts`).
 	- php tests/cms_akira_deploy_readiness_test.php
 	- php ikabud architecture:check
 
-## P2 governed Post mutations
+## Governed Post mutations and lifecycle
 
-- `POST /api/v1/cms-akira/posts` calls `cms.post.create@1`.
-- `PUT /api/v1/cms-akira/posts/{slug}` calls `cms.post.update@1`.
-- Both require a kernel-authenticated `admin`, kernel CSRF, and an
-  `Idempotency-Key` request header. Tenant and actor identity always come from
-  kernel context; body identity/JWT claims have no authority.
+- `akira.post.*@1` is the sole canonical Post family. Create produces a draft;
+  update cannot change lifecycle state. Publish transitions draft → published
+  and sets `published_at`; unpublish transitions published → draft and clears
+  it. Delete is soft: migration 003 adds indexed `deleted_at`, and all public
+  reads exclude deleted rows.
+- The routes listed above call `akira.post.create/update/publish/unpublish/delete@1`.
+  Update and lifecycle payloads require `expected_updated_at`; stale guards fail
+  with 409.
+- All mutations require a kernel-authenticated `admin`, an `Idempotency-Key`,
+  and either session CSRF or a Kernel-validated Bearer/JWT request. Tenant and
+  actor identity always come from kernel context; body identity/JWT claims have
+  no authority.
 - Activation idempotently seeds protocol-v2 `CapabilityAuthorizationRegistry`
   policies with `allowed_roles=admin`. The manifest also claims Entity Authority
   for `post` and declares exactly one effect tag: `entity.list.post`.
@@ -59,7 +68,7 @@ its migrations (`cms_akira_posts`).
   outcomes replay; conflict maps to 409 and in-progress to 425 with
   `Retry-After: 2`. A certain pre-publication failure is rolled back/released;
   uncertain commit publication remains processing and is never reclaimed.
-- CapabilityBus expands the single `entity.list.post` tag to
+- CapabilityBus expands each capability's single `entity.list.post` tag to
   `invalidateEntityCache('post', tenant)`, invalidating list and detail fragments
   after success. Invalidation is deliberately fail-open; the kernel emits
   `Capability entity-cache effect invalidation failed open` as an operational

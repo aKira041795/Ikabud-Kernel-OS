@@ -13,10 +13,13 @@ declare(strict_types=1);
 function cms_akira_core_capability_handlers(): array
 {
     return [
-        'cms.post.get@1' => 'cac_cap_cms_post_get_1',
-        'cms.post.list@1' => 'cac_cap_cms_post_list_1',
-        'cms.post.create@1' => 'cac_cap_cms_post_create_1',
-        'cms.post.update@1' => 'cac_cap_cms_post_update_1',
+        'akira.post.get@1' => 'cac_cap_akira_post_get_1',
+        'akira.post.list@1' => 'cac_cap_akira_post_list_1',
+        'akira.post.create@1' => 'cac_cap_akira_post_create_1',
+        'akira.post.update@1' => 'cac_cap_akira_post_update_1',
+        'akira.post.publish@1' => 'cac_cap_akira_post_publish_1',
+        'akira.post.unpublish@1' => 'cac_cap_akira_post_unpublish_1',
+        'akira.post.delete@1' => 'cac_cap_akira_post_delete_1',
         'entity.list.post@1' => 'cac_cap_entity_list_post_1',
         'entity.get.post@1' => 'cac_cap_entity_get_post_1',
     ];
@@ -101,7 +104,7 @@ function cacPostProject(array $post, bool $detail): array
 /**
  * @return array<string, mixed>
  */
-function cac_cap_cms_post_get_1(mixed $payload, string $capabilityId = 'cms.post.get@1', string $caller = 'unknown'): array
+function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.post.get@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {
         return ['ok' => false, 'error' => 'payload must be an object'];
@@ -115,7 +118,7 @@ function cac_cap_cms_post_get_1(mixed $payload, string $capabilityId = 'cms.post
         $stmt = cacDb()->prepare(
             "SELECT id, tenant_id, slug, title, subtitle, content, image, status, published_at, created_at, updated_at
              FROM cms_akira_posts
-             WHERE tenant_id = :tenant_id AND slug = :slug AND status = 'published'
+             WHERE tenant_id = :tenant_id AND slug = :slug AND status = 'published' AND deleted_at IS NULL
              LIMIT 1"
         );
         $stmt->execute([':tenant_id' => cacPostTenantId(), ':slug' => $slug]);
@@ -131,7 +134,7 @@ function cac_cap_cms_post_get_1(mixed $payload, string $capabilityId = 'cms.post
 /**
  * @return array<string, mixed>
  */
-function cac_cap_cms_post_list_1(mixed $payload, string $capabilityId = 'cms.post.list@1', string $caller = 'unknown'): array
+function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira.post.list@1', string $caller = 'unknown'): array
 {
     if ($payload !== null && !is_array($payload)) {
         return ['ok' => false, 'error' => 'payload must be an object'];
@@ -149,7 +152,7 @@ function cac_cap_cms_post_list_1(mixed $payload, string $capabilityId = 'cms.pos
         $tenantId = cacPostTenantId();
         $sql = "SELECT id, tenant_id, slug, title, subtitle, content, image, status, published_at, created_at, updated_at
                 FROM cms_akira_posts
-                WHERE tenant_id = :tenant_id AND status = 'published'
+                WHERE tenant_id = :tenant_id AND status = 'published' AND deleted_at IS NULL
                 ORDER BY {$field} {$direction}, id {$direction}
                 LIMIT {$limit} OFFSET {$offset}";
         $stmt = cacDb()->prepare($sql);
@@ -232,24 +235,11 @@ function cacPostMutationFields(array $payload, ?array $existing = null): array
         throw new CacPostMutationException('title and content are required.');
     }
 
-    if (array_key_exists('status', $payload) && !is_string($payload['status'])) {
-        throw new CacPostMutationException('status must be draft or published.');
+    if (array_key_exists('status', $payload) || array_key_exists('published_at', $payload)) {
+        throw new CacPostMutationException('Use the publish or unpublish lifecycle capability to change status.');
     }
-    $status = array_key_exists('status', $payload)
-        ? $payload['status']
-        : (string)($existing['status'] ?? 'draft');
-    if (!in_array($status, ['draft', 'published'], true)) {
-        throw new CacPostMutationException('status must be draft or published.');
-    }
-
-    $publishedAt = array_key_exists('published_at', $payload)
-        ? cacPostMutationPublishedAt($payload['published_at'])
-        : ($existing['published_at'] ?? null);
-    if ($status === 'draft') {
-        $publishedAt = null;
-    } elseif ($publishedAt === null) {
-        $publishedAt = date('Y-m-d H:i:s');
-    }
+    $status = (string)($existing['status'] ?? 'draft');
+    $publishedAt = $existing['published_at'] ?? null;
 
     return [
         'title' => $title,
@@ -299,6 +289,10 @@ function cacPostMutate(string $operation, array $payload): array
     if (array_key_exists('tenant_id', $payload)) {
         throw new CacPostMutationException('tenant_id is supplied by kernel context.', 422);
     }
+    if (in_array($operation, ['create', 'update'], true)
+        && (array_key_exists('status', $payload) || array_key_exists('published_at', $payload))) {
+        throw new CacPostMutationException('Use the publish or unpublish lifecycle capability to change status.', 422);
+    }
     if (!app()->entityAuthority()->isAuthoritative('post', 'cms-akira-core')) {
         throw new CacPostMutationException('Post authority is not active.', 503);
     }
@@ -314,7 +308,7 @@ function cacPostMutate(string $operation, array $payload): array
 
     // Identity/JWT-shaped payload members are intentionally neither read nor hashed.
     $mutationInput = array_intersect_key($payload, array_flip([
-        'slug', 'title', 'subtitle', 'content', 'image', 'status', 'published_at',
+        'slug', 'title', 'subtitle', 'content', 'image', 'expected_updated_at',
     ]));
     $envelope = ['operation' => $operation, 'post' => $mutationInput];
     $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
@@ -355,15 +349,19 @@ function cacPostMutate(string $operation, array $payload): array
         $claimed = true;
 
         $old = null;
-        if ($operation === 'update') {
+        if ($operation !== 'create') {
             $find = $db->prepare(
-                'SELECT id, slug, title, subtitle, content, image, status, published_at '
-                . 'FROM cms_akira_posts WHERE tenant_id = :tenant AND slug = :slug LIMIT 1 FOR UPDATE'
+                'SELECT id, slug, title, subtitle, content, image, status, published_at, updated_at, deleted_at '
+                . 'FROM cms_akira_posts WHERE tenant_id = :tenant AND slug = :slug AND deleted_at IS NULL LIMIT 1 FOR UPDATE'
             );
             $find->execute([':tenant' => $tenantId, ':slug' => $slug]);
             $old = $find->fetch(PDO::FETCH_ASSOC);
             if (!is_array($old)) {
                 throw new CacPostMutationException('Post not found.', 404);
+            }
+            $expected = cacPostMutationPublishedAt($mutationInput['expected_updated_at'] ?? null);
+            if ($expected === null || $expected !== (string)$old['updated_at']) {
+                throw new CacPostMutationException('Post was modified; refresh and retry.', 409);
             }
         }
         $fields = cacPostMutationFields($mutationInput, is_array($old) ? $old : null);
@@ -376,20 +374,48 @@ function cacPostMutate(string $operation, array $payload): array
             );
             $write->execute(array_merge([':tenant' => $tenantId, ':slug' => $slug], cacPostSqlFields($fields)));
             $postId = (int)$db->lastInsertId();
-        } else {
+        } elseif ($operation === 'update') {
             $write = $db->prepare(
                 'UPDATE cms_akira_posts SET title = :title, subtitle = :subtitle, content = :content, '
-                . 'image = :image, status = :status, published_at = :published_at '
-                . 'WHERE tenant_id = :tenant AND slug = :slug'
+                . 'image = :image WHERE tenant_id = :tenant AND slug = :slug AND updated_at = :expected'
             );
-            $write->execute(array_merge([':tenant' => $tenantId, ':slug' => $slug], cacPostSqlFields($fields)));
+            $write->execute([
+                ':tenant' => $tenantId, ':slug' => $slug, ':expected' => $old['updated_at'],
+                ':title' => $fields['title'], ':subtitle' => $fields['subtitle'],
+                ':content' => $fields['content'], ':image' => $fields['image'],
+            ]);
+            $postId = (int)$old['id'];
+        } else {
+            $requiredStatus = $operation === 'publish' ? 'draft' : 'published';
+            if ($operation !== 'delete' && (string)$old['status'] !== $requiredStatus) {
+                throw new CacPostMutationException("Post cannot {$operation} from its current status.", 409);
+            }
+            if ($operation === 'delete') {
+                $write = $db->prepare(
+                    'UPDATE cms_akira_posts SET deleted_at = CURRENT_TIMESTAMP '
+                    . 'WHERE tenant_id = :tenant AND slug = :slug AND updated_at = :expected AND deleted_at IS NULL'
+                );
+                $fields['deleted_at'] = date('Y-m-d H:i:s');
+            } else {
+                $fields['status'] = $operation === 'publish' ? 'published' : 'draft';
+                $fields['published_at'] = $operation === 'publish' ? date('Y-m-d H:i:s') : null;
+                $write = $db->prepare(
+                    'UPDATE cms_akira_posts SET status = :status, published_at = :published_at '
+                    . 'WHERE tenant_id = :tenant AND slug = :slug AND updated_at = :expected AND deleted_at IS NULL'
+                );
+                $write->bindValue(':status', $fields['status']);
+                $write->bindValue(':published_at', $fields['published_at']);
+            }
+            $write->bindValue(':tenant', $tenantId, PDO::PARAM_INT);
+            $write->bindValue(':slug', $slug);
+            $write->bindValue(':expected', $old['updated_at']);
+            $write->execute();
             $postId = (int)$old['id'];
         }
-
         $correlationId = cacPostMutationCorrelationId();
         $audit = app()->cap()->call('kernel.audit.record@1', [
             'module' => 'cms-akira-core',
-            'action' => 'cms.post.' . $operation,
+            'action' => 'akira.post.' . $operation,
             'entity_type' => 'post',
             'entity_id' => (string)$postId,
             'old_data' => $old,
@@ -452,7 +478,7 @@ function cacPostSqlFields(array $fields): array
 /**
  * @return array<string, mixed>
  */
-function cac_cap_cms_post_create_1(mixed $payload, string $capabilityId = 'cms.post.create@1', string $caller = 'unknown'): array
+function cac_cap_akira_post_create_1(mixed $payload, string $capabilityId = 'akira.post.create@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {
         throw new CacPostMutationException('payload must be an object.');
@@ -463,12 +489,39 @@ function cac_cap_cms_post_create_1(mixed $payload, string $capabilityId = 'cms.p
 /**
  * @return array<string, mixed>
  */
-function cac_cap_cms_post_update_1(mixed $payload, string $capabilityId = 'cms.post.update@1', string $caller = 'unknown'): array
+function cac_cap_akira_post_update_1(mixed $payload, string $capabilityId = 'akira.post.update@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {
         throw new CacPostMutationException('payload must be an object.');
     }
     return cacPostMutate('update', $payload);
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_publish_1(mixed $payload, string $capabilityId = 'akira.post.publish@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacPostMutationException('payload must be an object.');
+    }
+    return cacPostMutate('publish', $payload);
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_unpublish_1(mixed $payload, string $capabilityId = 'akira.post.unpublish@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacPostMutationException('payload must be an object.');
+    }
+    return cacPostMutate('unpublish', $payload);
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_delete_1(mixed $payload, string $capabilityId = 'akira.post.delete@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacPostMutationException('payload must be an object.');
+    }
+    return cacPostMutate('delete', $payload);
 }
 
 /**
@@ -477,7 +530,7 @@ function cac_cap_cms_post_update_1(mixed $payload, string $capabilityId = 'cms.p
 function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'entity.list.post@1', string $caller = 'unknown'): array
 {
     $args = is_array($payload) ? $payload : [];
-    $result = app()->cap()->call('cms.post.list@1', $args, [
+    $result = app()->cap()->call('akira.post.list@1', $args, [
         'caller' => ['module' => 'cms-akira-core'],
         'mode' => 'first',
     ]);
@@ -511,7 +564,7 @@ function cac_cap_entity_get_post_1(mixed $payload, string $capabilityId = 'entit
         return ['ok' => false, 'error' => 'A canonical slug is required'];
     }
 
-    $result = app()->cap()->call('cms.post.get@1', ['slug' => $slug], [
+    $result = app()->cap()->call('akira.post.get@1', ['slug' => $slug], [
         'caller' => ['module' => 'cms-akira-core'],
         'mode' => 'first',
     ]);
