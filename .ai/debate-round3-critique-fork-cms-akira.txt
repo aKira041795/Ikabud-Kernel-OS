@@ -1,0 +1,23 @@
+VERDICT: REVISIONS
+
+1. **Correct the `source_schema` contract.** `EntityViewResolver` permits only primitive schema types (`string`, `int`, `float`, `bool`, `json`, `date`, `datetime`, `reference`). Semantic roles such as `title`, `body`, and `image` are not valid `source_schema.fields` types. Put primitive types in `source_schema.fields` and semantic role/presentation metadata in `field_contracts`.
+
+2. **Make the two capability layers explicit.** The Entity View bridges must call `cms.post.list@1` / `cms.post.get@1` through `CapabilityBus`, then project their results into fresh allowlisted DTOs. They must not query `cms_akira_posts` directly. State the exact chains:
+   - `/posts` → `entity.list.post` → `cms.post.list@1`
+   - `/posts/{slug}` → detail view `post.detail` → `entity.get.post` → `cms.post.get@1`
+   This also removes the current ambiguity between the `entity.detail.post` renderer key and `entity.get.post` capability ID.
+
+3. **Do not expose inactive mutation capabilities in P1.** P1 manifests/registrations must expose only `cms.post.get@1`, `cms.post.list@1`, `entity.list.post`, and `entity.get.post`. Reserve create/update names in the ADR, but add their manifest exposure, handlers, authority policies, and effects atomically in P2; otherwise capability/dependency audits risk seeing declared capabilities without active handlers.
+
+4. **Resolve the transaction/database topology before READY status.** The proposed single-PDO transaction is unsupported until it is demonstrated that `cms_akira_posts`, `kernel_idempotency_keys`, and the selected durable audit store are reachable transactionally on the same PDO/database. The draft itself distinguishes tenant DBs from the control DB. Either:
+   - identify an existing same-connection audit/idempotency API and prove all three writes share one transaction, or
+   - replace the atomicity claim with an explicit cross-database recovery/outbox design.
+   Name the existing audit destination; no new audit table is allowed under the one-table DDL limit.
+
+5. **Specify tenant provisioning rather than only migration order.** State that `cms_akira_posts` is migrated in every applicable tenant database before that tenant can activate routes/capabilities, including failure and retry behavior. `CREATE TABLE IF NOT EXISTS` alone is not sufficient migration idempotency; rely on the repository migration ledger/version mechanism and test partial provisioning and reruns.
+
+6. **Add stored-output security requirements.** Require slug validation/canonical encoding when constructing `/posts/{slug}`, context-appropriate HTML/attribute/URL escaping by the DiSyL/component path, and negative stored-XSS tests for title, subtitle, body, metadata, image, and URL values. DTO allowlisting alone does not prevent stored XSS or unsafe URLs.
+
+7. **Clarify mutation HTTP scope and CSRF acceptance.** The intent requires a P2 mutation capability, not necessarily mutation routes. Either explicitly include a minimal P2 non-GET endpoint and its kernel CSRF enforcement, or remove “mutation routes” and browser-CSRF tests while retaining direct CapabilityBus authorization tests. Do not leave acceptance dependent on an undefined endpoint.
+
+8. **Tighten dependency acceptance wording.** Replace “`cms.*` dependencies are gone” with “legacy module dependency `cms`, `cms.content.*`, and `cms.themes.*` dependencies are gone”; fork-owned `cms.post.*` capabilities intentionally remain.
