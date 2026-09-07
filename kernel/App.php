@@ -29,6 +29,7 @@ use Ikabud\Kernel\EntityContext\ContextRegistry;
 use Ikabud\Kernel\EntityContext\DefaultEntityRenderer;
 use Ikabud\Kernel\EntityContext\EntityRendererInterface;
 use Ikabud\Kernel\EntityContext\EntityViewResolver;
+use Ikabud\Kernel\Services\ArkRendererResolver;
 use Ikabud\Kernel\Services\SlotRegistry;
 use PDO;
 
@@ -56,6 +57,7 @@ final class App
     private ?CellRendererRegistryInterface $entityCellRendererRegistry = null;
     private ?IntegrationBridge $integrationBridge = null;
     private ?TriggerService $triggerService = null;
+    private ?ArkRendererResolver $arkRendererResolver = null;
 
     /**
      * Module-declared source→user-table mapping.
@@ -1233,6 +1235,21 @@ final class App
     {
         $this->activeModule = null;
         \Ikabud\Kernel\Database\KernelPDO::setActiveModule(null);
+    }
+
+    /**
+     * Opt-in ARK entity-view renderer selection. Existing entity components do not call this service.
+     */
+    public function arkRenderers(): ArkRendererResolver
+    {
+        if ($this->arkRendererResolver === null) {
+            $themesPath = defined('CMS_THEMES_PATH')
+                ? CMS_THEMES_PATH
+                : (defined('STORAGE_PATH') ? STORAGE_PATH . '/cms-themes' : dirname(__DIR__) . '/storage/cms-themes');
+            $this->arkRendererResolver = new ArkRendererResolver($themesPath, $this->templates());
+        }
+
+        return $this->arkRendererResolver;
     }
 
     public function templates(): TemplateEngine
