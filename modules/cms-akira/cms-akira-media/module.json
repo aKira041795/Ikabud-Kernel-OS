@@ -1,0 +1,79 @@
+{
+    "id": "cms-akira-media",
+    "name": "CMS Akira Media",
+    "version": "1.0.0",
+    "description": "Native tenant-scoped media authority for CMS Akira.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "extension",
+    "extends": "cms-akira-core",
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [
+        "cms_akira_media"
+    ],
+    "reads_tables": [
+        "cms_akira_media"
+    ],
+    "migrations": [
+        "database/migrations/001_initial.sql",
+        "database/migrations/002_create_native_media.sql"
+    ],
+    "capabilities": {
+        "exposes": [
+            {
+                "id": "akira.media.library@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "List projected Akira media for the current tenant"
+            },
+            {
+                "id": "akira.media.get@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Return one projected Akira media record"
+            },
+            {
+                "id": "akira.media.resolve@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Resolve an Akira media reference to a public projection for rendering"
+            },
+            {
+                "id": "akira.media.upload@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.media"]},
+                "description": "Upload a media file as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.media.update@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.media"]},
+                "description": "Update Akira media metadata as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.media.delete@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.media"]},
+                "description": "Delete Akira media as an idempotent admin mutation"
+            }
+        ],
+        "depends": [
+            "kernel.idempotency.hash@1",
+            "kernel.idempotency.claim@1",
+            "kernel.idempotency.commit@1",
+            "kernel.idempotency.release@1",
+            "kernel.audit.record@1"
+        ]
+    },
+    "routes": true,
+    "events": [],
+    "_enabled": false
+}
