@@ -1,0 +1,2 @@
+<!-- Context: posts # -->
+<section data-ark-renderer="article-grid">{for post in posts}<article>{post.title}</article>{/for}</section>

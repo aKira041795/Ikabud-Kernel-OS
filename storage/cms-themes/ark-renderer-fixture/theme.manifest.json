@@ -1,0 +1,11 @@
+{
+  "name": "ark-renderer-fixture",
+  "version": "1.0.0",
+  "label": "ARK Renderer Runtime Fixture",
+  "supported_surfaces": ["public"],
+  "tokens": "tokens.json",
+  "fallback_views": {
+    "card": "public/article-grid.disyl",
+    "detail": "public/article-page.disyl"
+  }
+}
