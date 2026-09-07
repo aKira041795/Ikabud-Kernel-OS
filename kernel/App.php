@@ -183,6 +183,123 @@ final class App
             ];
         }, 1000, ['first'], $kernelCapabilityMeta('kernel.http.request_context@1'));
 
+        // Kernel-owned idempotency bridge. Mutating operations require the exact
+        // caller/application PDO so advisory-lock and row changes remain on the
+        // caller-owned transaction and connection.
+        $idempotencyContext = function ($payload): array {
+            if (!is_array($payload)) {
+                throw new \InvalidArgumentException('Idempotency capability payload must be an array');
+            }
+
+            $tenantId = $payload['tenant_id'] ?? null;
+            $currentTenantId = $this->tenant()->current();
+            if (!is_int($tenantId) || $tenantId <= 0 || $currentTenantId === null || $tenantId !== $currentTenantId) {
+                throw new \InvalidArgumentException('Idempotency capability tenant does not match the current tenant');
+            }
+
+            $db = $payload['db'] ?? null;
+            if (!$db instanceof PDO || $db !== $this->db()) {
+                throw new \InvalidArgumentException('Idempotency capability requires the caller application PDO');
+            }
+
+            return [$db, $tenantId];
+        };
+
+        $caps->register('kernel.idempotency.claim@1', 'kernel', function ($payload) use ($idempotencyContext): array {
+            [$db, $tenantId] = $idempotencyContext($payload);
+            $waitCapSeconds = $payload['wait_cap_seconds'] ?? null;
+            if ($waitCapSeconds !== null && !is_int($waitCapSeconds)) {
+                throw new \InvalidArgumentException('wait_cap_seconds must be an integer or null');
+            }
+
+            try {
+                KernelPDO::kernelEscalationEnter();
+                return Http\Idempotency::claim(
+                    (string)($payload['key'] ?? ''),
+                    $tenantId,
+                    (string)($payload['payload_hash'] ?? ''),
+                    $db,
+                    $waitCapSeconds,
+                );
+            } finally {
+                KernelPDO::kernelEscalationLeave();
+            }
+        }, 1000, ['first'], $kernelCapabilityMeta('kernel.idempotency.claim@1', ['schema' => [
+            'input' => [
+                'type' => 'object',
+                'required' => ['key', 'tenant_id', 'payload_hash', 'db'],
+                'properties' => [
+                    'key' => ['type' => 'string'],
+                    'tenant_id' => ['type' => 'integer'],
+                    'payload_hash' => ['type' => 'string'],
+                    'wait_cap_seconds' => ['type' => 'integer'],
+                ],
+            ],
+            'output' => [
+                'type' => 'object',
+                'required' => ['status'],
+                'properties' => ['status' => ['type' => 'string']],
+            ],
+        ]]));
+
+        $caps->register('kernel.idempotency.commit@1', 'kernel', function ($payload) use ($idempotencyContext): bool {
+            [$db, $tenantId] = $idempotencyContext($payload);
+            if (!array_key_exists('outcome', $payload)) {
+                throw new \InvalidArgumentException('Idempotency commit outcome is required');
+            }
+
+            try {
+                KernelPDO::kernelEscalationEnter();
+                return Http\Idempotency::commit((string)($payload['key'] ?? ''), $tenantId, $payload['outcome'], $db);
+            } finally {
+                KernelPDO::kernelEscalationLeave();
+            }
+        }, 1000, ['first'], $kernelCapabilityMeta('kernel.idempotency.commit@1', ['schema' => [
+            'input' => [
+                'type' => 'object',
+                'required' => ['key', 'tenant_id', 'outcome', 'db'],
+                'properties' => [
+                    'key' => ['type' => 'string'],
+                    'tenant_id' => ['type' => 'integer'],
+                ],
+            ],
+            'output' => ['type' => 'boolean'],
+        ]]));
+
+        $caps->register('kernel.idempotency.release@1', 'kernel', function ($payload) use ($idempotencyContext): bool {
+            [$db, $tenantId] = $idempotencyContext($payload);
+
+            try {
+                KernelPDO::kernelEscalationEnter();
+                return Http\Idempotency::release((string)($payload['key'] ?? ''), $tenantId, $db);
+            } finally {
+                KernelPDO::kernelEscalationLeave();
+            }
+        }, 1000, ['first'], $kernelCapabilityMeta('kernel.idempotency.release@1', ['schema' => [
+            'input' => [
+                'type' => 'object',
+                'required' => ['key', 'tenant_id', 'db'],
+                'properties' => [
+                    'key' => ['type' => 'string'],
+                    'tenant_id' => ['type' => 'integer'],
+                ],
+            ],
+            'output' => ['type' => 'boolean'],
+        ]]));
+
+        $caps->register('kernel.idempotency.hash@1', 'kernel', function ($payload): string {
+            if (!is_array($payload) || !array_key_exists('payload', $payload)) {
+                throw new \InvalidArgumentException('Idempotency hash payload is required');
+            }
+            return Http\Idempotency::canonicalPayloadHash($payload['payload']);
+        }, 1000, ['first'], $kernelCapabilityMeta('kernel.idempotency.hash@1', ['schema' => [
+            'input' => [
+                'type' => 'object',
+                'required' => ['payload'],
+            ],
+            'output' => ['type' => 'string'],
+        ]]));
+
         // kernel.audit.record@1 (first):
         // Payload: {module?: string, action: string, branch_id?: int, entity_type?: string, entity_id?: string, old_data?: mixed, new_data?: mixed, reason?: string}
         // Return: {ok: bool}

@@ -455,6 +455,20 @@ Global audit log endpoint (admin/supervisor only). Returns all auditable actions
 
 ---
 
+## Kernel Idempotency Capabilities
+
+Guarded PHP module handlers use the kernel-owned capability bridge instead of accessing
+`kernel_idempotency_keys` directly:
+
+- `kernel.idempotency.hash@1` — input `{payload: mixed}`; returns the canonical SHA-256 hash.
+- `kernel.idempotency.claim@1` — input `{key, tenant_id, payload_hash, db, wait_cap_seconds?}`; returns the primitive `new`, `duplicate`, `conflict`, or `in_progress` result.
+- `kernel.idempotency.commit@1` — input `{key, tenant_id, outcome, db}`; commits the reusable outcome.
+- `kernel.idempotency.release@1` — input `{key, tenant_id, db}`; releases only a certainly pre-side-effect processing claim.
+
+`db` must be the exact caller application PDO. The tenant must be a positive integer matching the current `TenantResolver` context. Claim, commit, and release run with kernel table authority on that connection, but never begin, commit, or roll back the caller's transaction.
+
+---
+
 ## Capability Introspection & Reliability (Admin)
 
 These endpoints are intended for internal dashboards, observability, and incident response. They require a kernel-scoped **admin** or **superadmin** user and must be called over **HTTPS**.

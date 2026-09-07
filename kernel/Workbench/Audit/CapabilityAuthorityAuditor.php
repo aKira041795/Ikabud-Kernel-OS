@@ -30,17 +30,21 @@ final class CapabilityAuthorityAuditor
 
     /** @var array<string, string> capability => registration source */
     private const KERNEL_CAPABILITIES = [
-        'kernel.auth.user@1' => 'kernel/App.php:159',
-        'kernel.auth.require@1' => 'kernel/App.php:163',
-        'kernel.http.request_context@1' => 'kernel/App.php:172',
-        'kernel.audit.record@1' => 'kernel/App.php:187',
-        'kernel.audit.list@1' => 'kernel/App.php:298',
-        'kernel.auth.delegate@1' => 'kernel/App.php:397',
-        'kernel.auth.validate_delegate@1' => 'kernel/App.php:485',
-        'kernel.render.context@1' => 'kernel/App.php:565',
-        'kernel.auth.authenticate@1' => 'kernel/App.php:577',
-        'workflow.state.get@1' => 'kernel/App.php:629',
-        'workflow.transition@1' => 'kernel/App.php:633',
+        'kernel.auth.user@1' => 'kernel/App.php:161',
+        'kernel.auth.require@1' => 'kernel/App.php:165',
+        'kernel.http.request_context@1' => 'kernel/App.php:174',
+        'kernel.idempotency.claim@1' => 'kernel/App.php:208',
+        'kernel.idempotency.commit@1' => 'kernel/App.php:245',
+        'kernel.idempotency.release@1' => 'kernel/App.php:269',
+        'kernel.idempotency.hash@1' => 'kernel/App.php:290',
+        'kernel.audit.record@1' => 'kernel/App.php:306',
+        'kernel.audit.list@1' => 'kernel/App.php:417',
+        'kernel.auth.delegate@1' => 'kernel/App.php:516',
+        'kernel.auth.validate_delegate@1' => 'kernel/App.php:604',
+        'kernel.render.context@1' => 'kernel/App.php:684',
+        'kernel.auth.authenticate@1' => 'kernel/App.php:696',
+        'workflow.state.get@1' => 'kernel/App.php:748',
+        'workflow.transition@1' => 'kernel/App.php:752',
     ];
 
     /**
