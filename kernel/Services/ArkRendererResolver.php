@@ -140,20 +140,12 @@ final class ArkRendererResolver
 
     private function resolveThemeSlug(?string $themeSlug): ?string
     {
-        if ($themeSlug !== null && trim($themeSlug) !== '') {
-            return trim($themeSlug);
-        }
-
-        if (!function_exists('cmsActiveTheme')) {
+        if ($themeSlug === null) {
             return null;
         }
 
-        try {
-            $active = trim((string)cmsActiveTheme());
-            return $active !== '' ? $active : null;
-        } catch (\Throwable $e) {
-            return null;
-        }
+        $themeSlug = trim($themeSlug);
+        return $themeSlug !== '' ? $themeSlug : null;
     }
 
     private function themePath(string $themeSlug): ?string

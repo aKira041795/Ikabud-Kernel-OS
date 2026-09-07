@@ -50,6 +50,23 @@ $tableExists = (int)$db->query(
 )->fetchColumn() === 1;
 capAuthzPolicyTest('migration creates the authorization policy table', $tableExists);
 
+$naturalKey = $db->query(
+    "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') "
+    . "FROM information_schema.statistics WHERE table_schema = DATABASE() "
+    . "AND table_name = 'capability_authorization_policies' "
+    . "AND index_name = 'uq_capability_authorization_policy' AND non_unique = 0"
+)->fetchColumn();
+capAuthzPolicyTest(
+    'information_schema confirms the seedPolicy natural-key unique index',
+    $naturalKey === 'policy_version,capability_id,capability_version,provider',
+    (string)$naturalKey
+);
+$migrationSource = (string)file_get_contents(__DIR__ . '/../migrations/016_capability_authorization_policies.sql');
+capAuthzPolicyTest(
+    'migration 016 declares the same seedPolicy natural key',
+    str_contains($migrationSource, 'UNIQUE KEY uq_capability_authorization_policy (policy_version, capability_id, capability_version, provider)')
+);
+
 $migrationRegistration = $db->prepare(
     "SELECT COUNT(*) FROM _migrations WHERE module = '_kernel' AND migration = ?"
 );
@@ -70,6 +87,7 @@ $policyVersion = 4000000000 + (getmypid() % 1000000);
 $suffix = 'x' . bin2hex(random_bytes(4));
 $capabilityId = 'test.authz.policy.' . $suffix . '@2';
 $providerId = 'authz-policy-provider-' . $suffix;
+$legacyProviderId = 'authz-policy-v1-provider-' . $suffix;
 $callerModule = 'authz-policy-caller-' . $suffix;
 $registry = new CapabilityAuthorizationRegistry($db);
 
@@ -87,6 +105,12 @@ try {
     ];
     $registry->seedPolicy([$policy]);
     $registry->seedPolicy([array_merge($policy, [
+        'caller_module' => $callerModule,
+        'allowed_roles' => 'admin',
+        'requires_protocol' => 'v2',
+    ])]);
+    $registry->seedPolicy([array_merge($policy, [
+        'provider' => $legacyProviderId,
         'caller_module' => $callerModule,
         'allowed_roles' => 'admin',
         'requires_protocol' => 'v2',
@@ -134,6 +158,14 @@ try {
         ['first'],
         $meta
     );
+    $capabilityRegistry->register(
+        $capabilityId,
+        $legacyProviderId,
+        static fn (): array => ['allowed' => false],
+        5,
+        ['first'],
+        []
+    );
     $bus = new CapabilityBus($capabilityRegistry);
     capAuthzPolicyTest(
         'module requires_protocol declaration propagates into capability bus metadata',
@@ -155,8 +187,15 @@ try {
         'caller_user' => ['role' => 'admin'],
     ]));
     capAuthzPolicyTest(
-        'real registry path authorizes the declared admin caller',
+        'protocol-v2 dispatch is allowed after canonical bus re-authorization',
         is_array($adminResult) && ($adminResult['allowed'] ?? false) === true
+    );
+    capAuthzPolicyTest(
+        'protocol-v2 policy denies a legacy dispatch in the canonical bus',
+        capAuthzPolicyDenied($bus, $capabilityId, array_merge($baseOptions, [
+            'provider' => $legacyProviderId,
+            'caller_user' => ['role' => 'admin'],
+        ]))
     );
     capAuthzPolicyTest(
         'real registry path denies a non-admin actor',
@@ -181,9 +220,9 @@ try {
 } finally {
     $cleanup = $db->prepare(
         'DELETE FROM capability_authorization_policies '
-        . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider = ?'
+        . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider IN (?, ?)'
     );
-    $cleanup->execute([$policyVersion, $capabilityId, '2', $providerId]);
+    $cleanup->execute([$policyVersion, $capabilityId, '2', $providerId, $legacyProviderId]);
     CapabilityAuthorizationRegistry::invalidate();
 }
 
