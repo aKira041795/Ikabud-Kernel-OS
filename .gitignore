@@ -14,6 +14,18 @@ templates/modules/*
 !templates/modules/gui-settings/
 !templates/modules/gui-settings/**
 
+# CMS Akira fork — the ACTIVE product-core (content authority + canonical
+# Post read/render + mutation path, P1+P2 complete) is bundled in-repo like
+# gui-settings. Its 13 dormant suite members (providers/profiles/extensions
+# referencing the absent `cms`/`theme-studio`/`search` hosts) remain
+# runtime scaffolding: each is re-enabled + tracked individually at its phase
+# gate after its host residue is resolved.
+!modules/cms-akira/
+modules/cms-akira/*
+!modules/cms-akira/cms-akira-core/
+!modules/cms-akira/cms-akira-core/**
+!modules/cms-akira/README.md
+
 # ── Local agent/tool state ──────────────────────────────────────────
 /.ai/current-task.md
 /.ai/debate/

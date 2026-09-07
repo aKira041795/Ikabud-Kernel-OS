@@ -1,0 +1,9 @@
+<!-- Context: post # projected detail DTO only -->
+<article data-ark-renderer="article-page" class="akira-article-page">
+  {if post.image}<img src="{post.image | esc_url | esc_attr}" alt="{post.title | esc_attr}">{/if}
+  <h1>{post.title | esc_html}</h1>
+  <p>{post.subtitle | esc_html}</p>
+  <div class="akira-article-body">{post.body | esc_html}</div>
+  <small>{post.metadata | esc_html}</small>
+  <a href="{post.url | esc_url | esc_attr}" aria-label="Canonical URL for {post.title | esc_attr}">Permalink</a>
+</article>

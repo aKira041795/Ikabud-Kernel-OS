@@ -1,0 +1,14 @@
+{
+  "renderers": {
+    "entity.list.post": {
+      "template": "public/article-grid.disyl",
+      "controls": ["columns"],
+      "context_keys": ["posts"]
+    },
+    "entity.detail.post": {
+      "template": "public/article-page.disyl",
+      "controls": ["show_metadata"],
+      "context_keys": ["post"]
+    }
+  }
+}
