@@ -56,7 +56,8 @@ function apiCmsAkiraCoreProvidersHealth(array $params = []): void
     echo json_encode([
         'ok' => true,
         'data' => [
-            'cms.post.get@1', 'cms.post.list@1', 'cms.post.create@1', 'cms.post.update@1',
+            'akira.post.get@1', 'akira.post.list@1', 'akira.post.create@1', 'akira.post.update@1',
+            'akira.post.publish@1', 'akira.post.unpublish@1', 'akira.post.delete@1',
             'entity.list.post@1', 'entity.get.post@1',
         ],
     ]);
@@ -90,12 +91,12 @@ function cacPostMutationJson(Throwable $error): void
  */
 function apiCmsAkiraPostCreate(array $params = []): void
 {
-    app()->csrfEnforce();
+    cacPostEnforceMutationCsrf();
     $payload = cacInput();
     $payload = is_array($payload) ? $payload : [];
     $payload['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ''));
     try {
-        $result = app()->cap()->call('cms.post.create@1', $payload, [
+        $result = app()->cap()->call('akira.post.create@1', $payload, [
             'caller' => ['module' => 'cms-akira-core', 'user' => app()->user()],
             'mode' => 'first',
         ]);
@@ -112,13 +113,13 @@ function apiCmsAkiraPostCreate(array $params = []): void
  */
 function apiCmsAkiraPostUpdate(array $params = []): void
 {
-    app()->csrfEnforce();
+    cacPostEnforceMutationCsrf();
     $payload = cacInput();
     $payload = is_array($payload) ? $payload : [];
     $payload['slug'] = $params['slug'] ?? null;
     $payload['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ''));
     try {
-        $result = app()->cap()->call('cms.post.update@1', $payload, [
+        $result = app()->cap()->call('akira.post.update@1', $payload, [
             'caller' => ['module' => 'cms-akira-core', 'user' => app()->user()],
             'mode' => 'first',
         ]);
@@ -128,24 +129,84 @@ function apiCmsAkiraPostUpdate(array $params = []): void
     }
 }
 
+function cacPostEnforceMutationCsrf(): void
+{
+    $authorization = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
+    $cookieNames = [(string)config('app.cookie_name', 'guidance_token')];
+    if (function_exists('declaredModuleAuthCookieNames')) {
+        foreach (declaredModuleAuthCookieNames() as $cookieName) {
+            if (is_string($cookieName)) {
+                $cookieNames[] = $cookieName;
+            }
+        }
+    }
+    $hasAuthCookie = false;
+    foreach (array_unique($cookieNames) as $cookieName) {
+        if ($cookieName !== '' && isset($_COOKIE[$cookieName])) {
+            $hasAuthCookie = true;
+            break;
+        }
+    }
+    if ($hasAuthCookie || preg_match('/^Bearer\\s+\\S+$/i', $authorization) !== 1) {
+        app()->csrfEnforce();
+    }
+}
+
+/**
+ * @param array<string, mixed> $params
+ */
+function apiCmsAkiraPostLifecycle(array $params = []): void
+{
+    cacPostEnforceMutationCsrf();
+    $operation = (string)($params['operation'] ?? '');
+    if (!in_array($operation, ['publish', 'unpublish', 'delete'], true)) {
+        app()->json(['ok' => false, 'error' => 'Unknown lifecycle operation.'], 404);
+        return;
+    }
+    $payload = cacInput();
+    $payload = is_array($payload) ? $payload : [];
+    $payload['slug'] = $params['slug'] ?? null;
+    $payload['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ''));
+    try {
+        $capabilityId = match ($operation) {
+            'publish' => 'akira.post.publish@1',
+            'unpublish' => 'akira.post.unpublish@1',
+            'delete' => 'akira.post.delete@1',
+        };
+        $result = app()->cap()->call($capabilityId, $payload, [
+            'caller' => ['module' => 'cms-akira-core', 'user' => app()->user()],
+            'mode' => 'first',
+        ]);
+        app()->json($result, 200);
+    } catch (Throwable $e) {
+        cacPostMutationJson($e);
+    }
+}
+
+/** @param array<string, mixed> $params */
+function apiCmsAkiraPostPublish(array $params = []): void
+{
+    apiCmsAkiraPostLifecycle(['operation' => 'publish'] + $params);
+}
+
+/** @param array<string, mixed> $params */
+function apiCmsAkiraPostUnpublish(array $params = []): void
+{
+    apiCmsAkiraPostLifecycle(['operation' => 'unpublish'] + $params);
+}
+
+/** @param array<string, mixed> $params */
+function apiCmsAkiraPostDelete(array $params = []): void
+{
+    apiCmsAkiraPostLifecycle(['operation' => 'delete'] + $params);
+}
+
 function cacPostThemeSlug(): string
 {
     $contextSlug = function_exists('kernel_request_context_get')
         ? trim((string)kernel_request_context_get('active_theme_slug', ''))
         : '';
-    if ($contextSlug !== '') {
-        return $contextSlug;
-    }
-    if (function_exists('cmsActiveTheme')) {
-        try {
-            $active = trim((string)cmsActiveTheme());
-            if ($active !== '') {
-                return $active;
-            }
-        } catch (Throwable $e) {
-        }
-    }
-    return 'cms-akira-posts';
+    return $contextSlug !== '' ? $contextSlug : 'cms-akira-posts';
 }
 
 function cacPostViewRegistrationValid(string $view): bool

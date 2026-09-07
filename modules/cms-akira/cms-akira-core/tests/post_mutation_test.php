@@ -28,7 +28,10 @@ foreach (cms_akira_core_capability_handlers() as $id => $handler) {
         continue;
     }
     $meta = [];
-    if (in_array($id, ['cms.post.create@1', 'cms.post.update@1'], true)) {
+    if (in_array($id, [
+        'akira.post.create@1', 'akira.post.update@1', 'akira.post.publish@1',
+        'akira.post.unpublish@1', 'akira.post.delete@1',
+    ], true)) {
         $meta = ['requires_protocol' => 'v2', 'effects' => ['invalidates' => ['entity.list.post']]];
     }
     $registry->register(
@@ -85,7 +88,10 @@ try {
     foreach ($manifest['capabilities']['exposes'] as $expose) {
         $exposes[$expose['id']] = $expose;
     }
-    foreach (['cms.post.create@1', 'cms.post.update@1'] as $id) {
+    foreach ([
+        'akira.post.create@1', 'akira.post.update@1', 'akira.post.publish@1',
+        'akira.post.unpublish@1', 'akira.post.delete@1',
+    ] as $id) {
         $entry = $exposes[$id] ?? [];
         $check(($entry['requires_protocol'] ?? '') === 'v2', "{$id} declares protocol v2");
         $check(($entry['effects']['invalidates'] ?? null) === ['entity.list.post'], "{$id} declares one canonical invalidation tag");
@@ -95,21 +101,24 @@ try {
 
     $policyDb = new CapabilityAuthorizationRegistry($db);
     $check(
-        $policyDb->hasPolicyFor('cms.post.create@1', '1', 'cms-akira-core')
-        && $policyDb->requiresProtocol('cms.post.update@1', '1', 'cms-akira-core') === 'v2',
+        $policyDb->hasPolicyFor('akira.post.create@1', '1', 'cms-akira-core')
+        && $policyDb->requiresProtocol('akira.post.delete@1', '1', 'cms-akira-core') === 'v2',
         'activation seeds idempotent admin mutation policies'
     );
-    $policyRows = $db->query("SELECT capability_id, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id IN ('cms.post.create@1','cms.post.update@1')")->fetchAll(PDO::FETCH_ASSOC);
-    $check(count($policyRows) === 2 && array_unique(array_column($policyRows, 'allowed_roles')) === ['admin'], 'registry policy permits admin only');
+    $policyRows = $db->query("SELECT capability_id, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
+    $check(count($policyRows) === 5 && array_unique(array_column($policyRows, 'allowed_roles')) === ['admin'], 'registry policy permits admin only');
 
     $routes = require dirname(__DIR__) . '/routes.php';
     $handlersSource = (string)file_get_contents(dirname(__DIR__) . '/handlers.php');
     $check(
         ($routes['POST']['/api/v1/cms-akira/posts'] ?? '') === 'cms-akira-core:apiCmsAkiraPostCreate'
-        && ($routes['PUT']['/api/v1/cms-akira/posts/{slug}'] ?? '') === 'cms-akira-core:apiCmsAkiraPostUpdate',
-        'named non-GET create and update routes are active'
+        && ($routes['PUT']['/api/v1/cms-akira/posts/{slug}'] ?? '') === 'cms-akira-core:apiCmsAkiraPostUpdate'
+        && ($routes['POST']['/api/v1/cms-akira/posts/{slug}/publish'] ?? '') === 'cms-akira-core:apiCmsAkiraPostPublish'
+        && ($routes['POST']['/api/v1/cms-akira/posts/{slug}/unpublish'] ?? '') === 'cms-akira-core:apiCmsAkiraPostUnpublish'
+        && ($routes['DELETE']['/api/v1/cms-akira/posts/{slug}'] ?? '') === 'cms-akira-core:apiCmsAkiraPostDelete',
+        'named create, update, and lifecycle routes are active'
     );
-    $check(substr_count($handlersSource, 'app()->csrfEnforce();') >= 2, 'both mutation handlers invoke kernel CSRF enforcement');
+    $check(str_contains($handlersSource, 'cacPostEnforceMutationCsrf();'), 'mutation handlers enforce session CSRF while accepting kernel-validated Bearer requests');
     $csrfDenied = false;
     unset($_SERVER['HTTP_X_CSRF_TOKEN']);
     CsrfManager::enforce(static function (array $data) use (&$csrfDenied): void {
@@ -131,11 +140,10 @@ try {
         'subtitle' => 'P2',
         'content' => 'Before body',
         'image' => '/media/p2.jpg',
-        'status' => 'published',
     ];
-    $created = $call('cms.post.create@1', $createPayload);
-    $check(($created['ok'] ?? false) === true && ($created['post']['status'] ?? '') === 'published', 'admin creates a published Post');
-    $replayed = $call('cms.post.create@1', $createPayload);
+    $created = $call('akira.post.create@1', $createPayload);
+    $check(($created['ok'] ?? false) === true && ($created['post']['status'] ?? '') === 'draft', 'admin creates a draft Post');
+    $replayed = $call('akira.post.create@1', $createPayload);
     $count = $db->prepare('SELECT COUNT(*) FROM cms_akira_posts WHERE tenant_id = ? AND slug = ?');
     $count->execute([$tenantA, 'p2-fresh-post']);
     $check($replayed === $created && (int)$count->fetchColumn() === 1, 'same key replays stored outcome with one write');
@@ -144,22 +152,33 @@ try {
     try {
         $changed = $createPayload;
         $changed['title'] = 'Conflict';
-        $call('cms.post.create@1', $changed);
+        $call('akira.post.create@1', $changed);
     } catch (Throwable $e) {
         $conflict = $thrownStatus($e) === 409;
     }
     $check($conflict, 'same key with a different canonical payload is rejected as 409');
 
+    $versionStmt = $db->prepare('SELECT updated_at FROM cms_akira_posts WHERE tenant_id = ? AND slug = ?');
+    $versionStmt->execute([$tenantA, 'p2-fresh-post']);
+    $publishPayload = [
+        'idempotency_key' => $keys[] = $prefix . '-publish',
+        'slug' => 'p2-fresh-post',
+        'expected_updated_at' => (string)$versionStmt->fetchColumn(),
+    ];
+    $published = $call('akira.post.publish@1', $publishPayload);
+    $check(($published['post']['status'] ?? '') === 'published' && $call('akira.post.publish@1', $publishPayload) === $published, 'publish transitions once and replays idempotently');
+
     $before = app()->entityViews()->resolveDetail('post', 'p2-fresh-post', 'detail');
     $fragmentStore = app()->templates()->fragmentStore();
     $fragmentStore->put($prefix . '-detail-fragment', 'Before HTML', ['entity.detail.post'], 300, (string)$tenantA);
     $updateKey = $keys[] = $prefix . '-update';
-    $updated = $call('cms.post.update@1', [
+    $versionStmt->execute([$tenantA, 'p2-fresh-post']);
+    $updated = $call('akira.post.update@1', [
         'idempotency_key' => $updateKey,
         'slug' => 'p2-fresh-post',
         'title' => 'After',
         'content' => 'After body',
-        'status' => 'published',
+        'expected_updated_at' => (string)$versionStmt->fetchColumn(),
     ]);
     $fragmentInvalidated = $fragmentStore->tryGet($prefix . '-detail-fragment', ['entity.detail.post'], (string)$tenantA) === null;
     $after = app()->entityViews()->resolveDetail('post', 'p2-fresh-post', 'detail');
@@ -169,7 +188,7 @@ try {
     );
     $check(($updated['operation'] ?? '') === 'update', 'update returns its committed outcome');
 
-    $audit = $db->prepare("SELECT new_data FROM audit_logs WHERE module = 'cms-akira-core' AND action = 'cms.post.update' AND entity_id = ? ORDER BY id DESC LIMIT 1");
+    $audit = $db->prepare("SELECT new_data FROM audit_logs WHERE module = 'cms-akira-core' AND action = 'akira.post.update' AND entity_id = ? ORDER BY id DESC LIMIT 1");
     $audit->execute([(string)$updated['post']['id']]);
     $auditPayload = json_decode((string)$audit->fetchColumn(), true);
     $check(
@@ -187,7 +206,7 @@ try {
     $setIdentity($tenantB, $admin);
     $tenantDenied = false;
     try {
-        $call('cms.post.update@1', ['idempotency_key' => $keys[] = $prefix . '-tenant-b', 'slug' => 'p2-fresh-post', 'title' => 'Stolen']);
+        $call('akira.post.update@1', ['idempotency_key' => $keys[] = $prefix . '-tenant-b', 'slug' => 'p2-fresh-post', 'title' => 'Stolen']);
     } catch (Throwable $e) {
         $tenantDenied = $thrownStatus($e) === 404;
     }
@@ -196,7 +215,7 @@ try {
 
     $tenantSpoof = false;
     try {
-        $call('cms.post.update@1', ['idempotency_key' => $keys[] = $prefix . '-spoof', 'slug' => 'p2-fresh-post', 'tenant_id' => $tenantB, 'title' => 'Stolen']);
+        $call('akira.post.update@1', ['idempotency_key' => $keys[] = $prefix . '-spoof', 'slug' => 'p2-fresh-post', 'tenant_id' => $tenantB, 'title' => 'Stolen']);
     } catch (Throwable $e) {
         $tenantSpoof = $thrownStatus($e) === 422;
     }
@@ -205,26 +224,34 @@ try {
     app()->setUser(['id' => 999002, 'role' => 'editor']);
     $editorDenied = false;
     try {
-        $call('cms.post.update@1', ['idempotency_key' => $keys[] = $prefix . '-editor', 'slug' => 'p2-fresh-post', 'title' => 'Editor']);
+        $call('akira.post.publish@1', [
+            'idempotency_key' => $keys[] = $prefix . '-editor',
+            'slug' => 'p2-fresh-post',
+            'expected_updated_at' => '2000-01-01 00:00:00',
+        ]);
     } catch (Throwable $e) {
         $editorDenied = str_contains($e->getMessage(), 'authorization denied');
     }
-    $check($editorDenied, 'CapabilityAuthorizationRegistry denies non-admin direct calls');
+    $check($editorDenied, 'CapabilityAuthorizationRegistry denies non-admin lifecycle calls');
 
     app()->setUser([]);
     $anonymousDenied = false;
     try {
-        $call('cms.post.update@1', ['idempotency_key' => $keys[] = $prefix . '-anonymous', 'slug' => 'p2-fresh-post', 'title' => 'Anonymous'], []);
+        $call('akira.post.delete@1', [
+            'idempotency_key' => $keys[] = $prefix . '-anonymous',
+            'slug' => 'p2-fresh-post',
+            'expected_updated_at' => '2000-01-01 00:00:00',
+        ], []);
     } catch (Throwable $e) {
         $anonymousDenied = str_contains($e->getMessage(), 'authorization denied');
     }
-    $check($anonymousDenied, 'CapabilityAuthorizationRegistry denies unauthenticated direct calls');
+    $check($anonymousDenied, 'CapabilityAuthorizationRegistry denies unauthenticated lifecycle calls');
 
     $setIdentity($tenantA, $admin);
     $jwtKey = $keys[] = $prefix . '-jwt';
-    $jwtResult = $call('cms.post.create@1', [
+    $jwtResult = $call('akira.post.create@1', [
         'idempotency_key' => $jwtKey, 'slug' => 'p2-jwt-ignored', 'title' => 'Kernel actor', 'content' => 'Safe',
-        'status' => 'published', 'role' => 'editor', 'user' => ['role' => 'editor'], 'jwt' => ['tenant_id' => $tenantB],
+        'role' => 'editor', 'user' => ['role' => 'editor'], 'jwt' => ['tenant_id' => $tenantB],
     ]);
     $jwtRow = $db->prepare('SELECT tenant_id, title FROM cms_akira_posts WHERE id = ?');
     $jwtRow->execute([$jwtResult['post']['id']]);
@@ -236,14 +263,14 @@ try {
 
     // A processing claim represents a concurrent winner. The contender must not write.
     $concurrentKey = $keys[] = $prefix . '-concurrent';
-    $concurrentPayload = ['slug' => 'p2-concurrent', 'title' => 'One', 'content' => 'One', 'status' => 'published'];
+    $concurrentPayload = ['slug' => 'p2-concurrent', 'title' => 'One', 'content' => 'One'];
     $concurrentHash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => ['operation' => 'create', 'post' => $concurrentPayload]]);
     $claim = app()->cap()->call('kernel.idempotency.claim@1', [
         'key' => $concurrentKey, 'tenant_id' => $tenantA, 'payload_hash' => $concurrentHash, 'db' => $db, 'wait_cap_seconds' => 0,
     ]);
     $contenderDenied = false;
     try {
-        $call('cms.post.create@1', ['idempotency_key' => $concurrentKey] + $concurrentPayload);
+        $call('akira.post.create@1', ['idempotency_key' => $concurrentKey] + $concurrentPayload);
     } catch (Throwable $e) {
         $contenderDenied = $thrownStatus($e) === 425;
     }
@@ -259,13 +286,19 @@ try {
     // directly. A surviving cached DTO proves the failed call did not invalidate.
     $failureSlug = 'p2-failure-cache';
     $failureKey = $keys[] = $prefix . '-failure-create';
-    $call('cms.post.create@1', ['idempotency_key' => $failureKey, 'slug' => $failureSlug, 'title' => 'Cached', 'content' => 'Cached', 'status' => 'published']);
+    $call('akira.post.create@1', ['idempotency_key' => $failureKey, 'slug' => $failureSlug, 'title' => 'Cached', 'content' => 'Cached']);
+    $versionStmt->execute([$tenantA, $failureSlug]);
+    $call('akira.post.publish@1', [
+        'idempotency_key' => $keys[] = $prefix . '-failure-publish',
+        'slug' => $failureSlug,
+        'expected_updated_at' => (string)$versionStmt->fetchColumn(),
+    ]);
     $cached = app()->entityViews()->resolveDetail('post', $failureSlug, 'detail');
     $fragmentStore->put($prefix . '-failure-fragment', 'Cached HTML', ['entity.detail.post'], 300, (string)$tenantA);
     $failedMutation = false;
-    $changedFailure = ['idempotency_key' => $failureKey, 'slug' => $failureSlug, 'title' => 'Different', 'content' => 'Cached', 'status' => 'published'];
+    $changedFailure = ['idempotency_key' => $failureKey, 'slug' => $failureSlug, 'title' => 'Different', 'content' => 'Cached'];
     try {
-        $call('cms.post.create@1', $changedFailure);
+        $call('akira.post.create@1', $changedFailure);
     } catch (Throwable $e) {
         $failedMutation = $thrownStatus($e) === 409;
     }
@@ -278,13 +311,90 @@ try {
     $badKey = $keys[] = $prefix . '-bad-write';
     $badWrite = false;
     try {
-        $call('cms.post.create@1', ['idempotency_key' => $badKey, 'slug' => 'p2-fresh-post', 'title' => 'Duplicate', 'content' => 'Duplicate']);
+        $call('akira.post.create@1', ['idempotency_key' => $badKey, 'slug' => 'p2-fresh-post', 'title' => 'Duplicate', 'content' => 'Duplicate']);
     } catch (Throwable) {
         $badWrite = true;
     }
     $idemCheck = $db->prepare('SELECT COUNT(*) FROM kernel_idempotency_keys WHERE tenant_id = ? AND idempotency_key_hash = ?');
     $idemCheck->execute([$tenantA, hash('sha256', $badKey)]);
     $check($badWrite && (int)$idemCheck->fetchColumn() === 0, 'failed write rolls back and releases its processing claim');
+
+    $lifecycleSlug = 'p2-lifecycle';
+    $call('akira.post.create@1', [
+        'idempotency_key' => $keys[] = $prefix . '-life-create',
+        'slug' => $lifecycleSlug,
+        'title' => 'Lifecycle',
+        'content' => 'Lifecycle body',
+    ]);
+    $versionStmt->execute([$tenantA, $lifecycleSlug]);
+    $lifeVersion = (string)$versionStmt->fetchColumn();
+    $call('akira.post.publish@1', [
+        'idempotency_key' => $keys[] = $prefix . '-life-publish',
+        'slug' => $lifecycleSlug,
+        'expected_updated_at' => $lifeVersion,
+    ]);
+    $fragmentStore->put($prefix . '-life-fragment', 'Published', ['entity.detail.post'], 300, (string)$tenantA);
+    $versionStmt->execute([$tenantA, $lifecycleSlug]);
+    $unpublished = $call('akira.post.unpublish@1', [
+        'idempotency_key' => $keys[] = $prefix . '-life-unpublish',
+        'slug' => $lifecycleSlug,
+        'expected_updated_at' => (string)$versionStmt->fetchColumn(),
+    ]);
+    $check(
+        ($unpublished['post']['status'] ?? '') === 'draft'
+        && app()->entityViews()->resolveDetail('post', $lifecycleSlug, 'detail')['entity'] === null
+        && $fragmentStore->tryGet($prefix . '-life-fragment', ['entity.detail.post'], (string)$tenantA) === null,
+        'unpublish hides the Post and invalidates fresh projections'
+    );
+    $invalidTransition = false;
+    try {
+        $versionStmt->execute([$tenantA, $lifecycleSlug]);
+        $call('akira.post.unpublish@1', [
+            'idempotency_key' => $keys[] = $prefix . '-life-deny',
+            'slug' => $lifecycleSlug,
+            'expected_updated_at' => (string)$versionStmt->fetchColumn(),
+        ]);
+    } catch (Throwable $e) {
+        $invalidTransition = $thrownStatus($e) === 409;
+    }
+    $check($invalidTransition, 'invalid lifecycle transition is denied');
+
+    $versionStmt->execute([$tenantA, $lifecycleSlug]);
+    $call('akira.post.publish@1', [
+        'idempotency_key' => $keys[] = $prefix . '-life-republish',
+        'slug' => $lifecycleSlug,
+        'expected_updated_at' => (string)$versionStmt->fetchColumn(),
+    ]);
+    $versionStmt->execute([$tenantA, $lifecycleSlug]);
+    $deleted = $call('akira.post.delete@1', [
+        'idempotency_key' => $keys[] = $prefix . '-life-delete',
+        'slug' => $lifecycleSlug,
+        'expected_updated_at' => (string)$versionStmt->fetchColumn(),
+    ]);
+    $deletedRow = $db->prepare('SELECT deleted_at FROM cms_akira_posts WHERE tenant_id = ? AND slug = ?');
+    $deletedRow->execute([$tenantA, $lifecycleSlug]);
+    $check(
+        ($deleted['operation'] ?? '') === 'delete'
+        && $deletedRow->fetchColumn() !== null
+        && app()->entityViews()->resolveDetail('post', $lifecycleSlug, 'detail')['entity'] === null,
+        'delete is audited soft deletion and disappears from public reads'
+    );
+    $lifeAudits = $db->prepare("SELECT COUNT(*) FROM audit_logs WHERE module = 'cms-akira-core' AND action IN ('akira.post.publish','akira.post.unpublish','akira.post.delete') AND entity_id = ?");
+    $lifeAudits->execute([(string)$deleted['post']['id']]);
+    $check((int)$lifeAudits->fetchColumn() === 4, 'every successful lifecycle mutation commits durable audit evidence');
+
+    $staleDenied = false;
+    try {
+        $call('akira.post.update@1', [
+            'idempotency_key' => $keys[] = $prefix . '-stale',
+            'slug' => 'p2-fresh-post',
+            'title' => 'Stale',
+            'expected_updated_at' => '2000-01-01 00:00:00',
+        ]);
+    } catch (Throwable $e) {
+        $staleDenied = $thrownStatus($e) === 409;
+    }
+    $check($staleDenied, 'optimistic concurrency rejects a stale version');
 
     $appLog = (string)@file_get_contents($root . '/storage/logs/app.log');
     $errorLog = (string)@file_get_contents($root . '/storage/logs/error.log');

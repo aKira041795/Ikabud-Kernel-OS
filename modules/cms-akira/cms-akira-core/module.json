@@ -29,19 +29,20 @@
     ],
     "migrations": [
         "database/migrations/001_initial.sql",
-        "database/migrations/002_create_posts.sql"
+        "database/migrations/002_create_posts.sql",
+        "database/migrations/003_add_posts_deleted_at.sql"
     ],
     "entities": {
         "post": {
             "authority": true,
-            "create_capability": "cms.post.create@1",
-            "update_capability": "cms.post.update@1"
+            "create_capability": "akira.post.create@1",
+            "update_capability": "akira.post.update@1"
         }
     },
     "capabilities": {
         "exposes": [
             {
-                "id": "cms.post.get@1",
+                "id": "akira.post.get@1",
                 "priority": 50,
                 "modes": [
                     "first"
@@ -49,7 +50,7 @@
                 "description": "Published Post lookup owned by CMS Akira Core"
             },
             {
-                "id": "cms.post.list@1",
+                "id": "akira.post.list@1",
                 "priority": 50,
                 "modes": [
                     "first"
@@ -57,7 +58,7 @@
                 "description": "Published Post list owned by CMS Akira Core"
             },
             {
-                "id": "cms.post.create@1",
+                "id": "akira.post.create@1",
                 "priority": 50,
                 "modes": [
                     "first"
@@ -71,7 +72,7 @@
                 "description": "Admin-only idempotent Post creation owned by CMS Akira Core"
             },
             {
-                "id": "cms.post.update@1",
+                "id": "akira.post.update@1",
                 "priority": 50,
                 "modes": [
                     "first"
@@ -83,6 +84,48 @@
                     ]
                 },
                 "description": "Admin-only idempotent Post update owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.post.publish@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.post"
+                    ]
+                },
+                "description": "Admin-only idempotent Post publish lifecycle operation owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.post.unpublish@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.post"
+                    ]
+                },
+                "description": "Admin-only idempotent Post unpublish lifecycle operation owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.post.delete@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.post"
+                    ]
+                },
+                "description": "Admin-only idempotent Post delete lifecycle operation owned by CMS Akira Core"
             },
             {
                 "id": "entity.list.post@1",
