@@ -1,0 +1,56 @@
+{
+  "id": "cms-akira-editor",
+  "name": "CMS Akira Editor",
+  "version": "1.0.0",
+  "description": "Native, deterministic content preparation for Akira Post projections.",
+  "author": "Ikabud",
+  "suite": "cms-akira",
+  "kind": "extension",
+  "extends": "cms-akira-core",
+  "depends": [
+    "cms-akira-core"
+  ],
+  "owns_tables": [],
+  "reads_tables": [],
+  "migrations": [],
+  "capabilities": {
+    "exposes": [
+      {
+        "id": "akira.editor.render@1",
+        "priority": 50,
+        "modes": ["first"],
+        "description": "Render a safe, canonical Akira Post body as HTML"
+      },
+      {
+        "id": "akira.editor.normalize@1",
+        "priority": 50,
+        "modes": ["first"],
+        "description": "Normalize an Akira Post body deterministically"
+      },
+      {
+        "id": "akira.editor.sanitize@1",
+        "priority": 50,
+        "modes": ["first"],
+        "description": "Sanitize an Akira Post body with the native allowlist"
+      },
+      {
+        "id": "akira.editor.validate@1",
+        "priority": 50,
+        "modes": ["first"],
+        "description": "Validate an Akira Post projection for editor preparation"
+      },
+      {
+        "id": "akira.editor.assets@1",
+        "priority": 50,
+        "modes": ["first"],
+        "description": "Return the local Akira editor runtime assets"
+      }
+    ],
+    "depends": [
+      "entity.get.post@1"
+    ]
+  },
+  "routes": true,
+  "events": [],
+  "_enabled": false
+}
