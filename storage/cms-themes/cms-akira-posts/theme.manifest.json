@@ -1,0 +1,16 @@
+{
+  "name": "cms-akira-posts",
+  "version": "1.0.0",
+  "label": "CMS Akira Posts",
+  "description": "Minimal P1 ARK theme for the canonical published Post path.",
+  "author": "Ikabud",
+  "kernel_os_compat": "6.1",
+  "disyl_compat": "4.0",
+  "supported_surfaces": ["public"],
+  "tokens": "tokens.json",
+  "entity_views": "public",
+  "fallback_views": {
+    "card": "public/article-grid.disyl",
+    "detail": "public/article-page.disyl"
+  }
+}

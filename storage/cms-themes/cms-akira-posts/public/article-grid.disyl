@@ -1,0 +1,12 @@
+<!-- Context: posts # projected list DTOs only -->
+<section data-ark-renderer="article-grid" class="akira-article-grid">
+{for post in posts}
+  <article class="akira-article-card">
+    {if post.image}<img src="{post.image | esc_url | esc_attr}" alt="{post.title | esc_attr}">{/if}
+    <h2><a href="{post.url | esc_url | esc_attr}">{post.title | esc_html}</a></h2>
+    <p>{post.subtitle | esc_html}</p>
+    <small>{post.metadata | esc_html}</small>
+    <a href="{post.url | esc_url | esc_attr}" aria-label="View {post.title | esc_attr}">View</a>
+  </article>
+{/for}
+</section>
