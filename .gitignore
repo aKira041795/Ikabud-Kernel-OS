@@ -31,6 +31,8 @@ modules/cms-akira/*
 !modules/cms-akira/cms-akira-shell/**
 !modules/cms-akira/cms-akira-editor/
 !modules/cms-akira/cms-akira-editor/**
+!modules/cms-akira/cms-akira-navigation/
+!modules/cms-akira/cms-akira-navigation/**
 !modules/cms-akira/README.md
 
 # ── Local agent/tool state ──────────────────────────────────────────

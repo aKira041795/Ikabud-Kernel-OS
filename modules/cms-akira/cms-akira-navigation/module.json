@@ -1,0 +1,105 @@
+{
+    "id": "cms-akira-navigation",
+    "name": "CMS Akira Navigation",
+    "version": "1.0.0",
+    "description": "Native tenant-scoped menu and navigation authority for CMS Akira.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "extension",
+    "extends": "cms-akira-core",
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [
+        "cms_akira_menus",
+        "cms_akira_menu_items"
+    ],
+    "reads_tables": [
+        "cms_akira_menus",
+        "cms_akira_menu_items"
+    ],
+    "migrations": [
+        "database/migrations/001_initial.sql",
+        "database/migrations/002_create_native_navigation.sql"
+    ],
+    "capabilities": {
+        "exposes": [
+            {
+                "id": "akira.navigation.menus@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "List projected Akira menus for the current tenant"
+            },
+            {
+                "id": "akira.navigation.tree@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Return an ordered projected Akira menu tree"
+            },
+            {
+                "id": "akira.navigation.resolve@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Resolve a menu location to an ordered projected tree"
+            },
+            {
+                "id": "akira.navigation.menu.create@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.navigation-menu"]},
+                "description": "Create an Akira menu as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.navigation.menu.update@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.navigation-menu"]},
+                "description": "Update an Akira menu as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.navigation.menu.delete@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.navigation-menu"]},
+                "description": "Delete an Akira menu as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.navigation.item.create@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.navigation-menu"]},
+                "description": "Create an Akira menu item as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.navigation.item.update@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.navigation-menu"]},
+                "description": "Update an Akira menu item as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.navigation.item.delete@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.navigation-menu"]},
+                "description": "Delete an Akira menu item as an idempotent admin mutation"
+            }
+        ],
+        "depends": [
+            "kernel.idempotency.hash@1",
+            "kernel.idempotency.claim@1",
+            "kernel.idempotency.commit@1",
+            "kernel.idempotency.release@1",
+            "kernel.audit.record@1"
+        ]
+    },
+    "routes": true,
+    "events": [],
+    "_enabled": false
+}
