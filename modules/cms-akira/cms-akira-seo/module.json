@@ -1,0 +1,65 @@
+{
+    "id": "cms-akira-seo",
+    "name": "CMS Akira SEO",
+    "version": "1.0.0",
+    "description": "Native tenant-scoped SEO metadata authority for CMS Akira.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "extension",
+    "extends": "cms-akira-core",
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [
+        "cms_akira_seo_metadata"
+    ],
+    "reads_tables": [
+        "cms_akira_seo_metadata"
+    ],
+    "migrations": [
+        "database/migrations/001_initial.sql",
+        "database/migrations/002_create_native_seo_metadata.sql"
+    ],
+    "capabilities": {
+        "exposes": [
+            {
+                "id": "akira.seo.get@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Return one projected Akira SEO metadata record for the current tenant"
+            },
+            {
+                "id": "akira.seo.meta.build@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Build final escaped SEO metadata for a rendering request from a stored record plus defaults"
+            },
+            {
+                "id": "akira.seo.upsert@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.seo-metadata"]},
+                "description": "Create or update Akira SEO metadata as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.seo.delete@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.seo-metadata"]},
+                "description": "Delete Akira SEO metadata as an idempotent admin mutation"
+            }
+        ],
+        "depends": [
+            "kernel.idempotency.hash@1",
+            "kernel.idempotency.claim@1",
+            "kernel.idempotency.commit@1",
+            "kernel.idempotency.release@1",
+            "kernel.audit.record@1"
+        ]
+    },
+    "routes": true,
+    "events": [],
+    "_enabled": false
+}
