@@ -52,7 +52,7 @@ $assert(($c13['severity'] ?? '') === 'advisory', 'C13 is advisory severity when 
 
 // ── well-formed suite module certifies ───────────────────────────────────
 $ext = $legacy;
-$ext['id'] = 'cms-akira-seo';
+$ext['id'] = 'cms-akira-seo-fixture';
 $ext['name'] = 'CMS Akira SEO';
 $ext['kind'] = 'extension';
 $ext['extends'] = 'cms-akira-core';

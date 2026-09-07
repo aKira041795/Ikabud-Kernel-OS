@@ -46,7 +46,7 @@ $fleet = [
 ];
 
 $baseExt = [
-    'id' => 'cms-akira-seo',
+    'id' => 'cms-akira-seo-fixture',
     'name' => 'SEO',
     'version' => '1.0.0',
     'kind' => 'extension',
