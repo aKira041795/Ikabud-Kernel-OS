@@ -106,6 +106,27 @@ function compareRoutePatternsForMatching(string $left, string $right): int
 // ─── Route Loading ────────────────────────────────────────────────────────
 
 /**
+ * Build the provider metadata consumed by CapabilityBus from one module expose declaration.
+ *
+ * @param array<string, mixed> $expose
+ * @param array<string, mixed> $policy
+ * @param array<string, mixed> $origin
+ * @return array<string, mixed>
+ */
+function moduleCapabilityProviderMeta(array $expose, array $policy, array $origin): array
+{
+    $requiresProtocol = $expose['requires_protocol'] ?? '';
+
+    return [
+        'policy' => $policy,
+        'schema' => is_array($expose['schema'] ?? null) ? $expose['schema'] : null,
+        'effects' => is_array($expose['effects'] ?? null) ? $expose['effects'] : [],
+        'requires_protocol' => is_string($requiresProtocol) ? trim($requiresProtocol) : '',
+        'origin' => $origin,
+    ];
+}
+
+/**
  * Load routes from all ENABLED modules.
  * @param array<string, array<string, string>> $routes
  * @return array<string, array<string, string>>
@@ -193,8 +214,6 @@ function loadModuleRoutes(array $routes): array
                 $modes = is_array($exp['modes'] ?? null) ? $exp['modes'] : ['first'];
 
                 $callable = null;
-                $schema = is_array($exp['schema'] ?? null) ? $exp['schema'] : null;
-                $effects = is_array($exp['effects'] ?? null) ? $exp['effects'] : [];
                 $origin = $handlersMapOrigin;
                 if (isset($handlersMap[$capId]) && is_callable($handlersMap[$capId])) {
                     $callable = $handlersMap[$capId];
@@ -225,7 +244,7 @@ function loadModuleRoutes(array $routes): array
                         $wrappedCallable,
                         $priority,
                         $modes,
-                        ['policy' => $policy, 'schema' => $schema, 'effects' => $effects, 'origin' => array_merge($origin, ['capability' => $capId])]
+                        moduleCapabilityProviderMeta($exp, $policy, array_merge($origin, ['capability' => $capId]))
                     );
                 } else {
                     // Service modules run externally — register an HTTP proxy instead.
@@ -239,7 +258,7 @@ function loadModuleRoutes(array $routes): array
                                 $serviceProxy,
                                 $priority,
                                 $modes,
-                                ['policy' => $policy, 'schema' => $schema, 'effects' => $effects, 'origin' => array_merge($origin, ['capability' => $capId, 'type' => 'service_proxy'])]
+                                moduleCapabilityProviderMeta($exp, $policy, array_merge($origin, ['capability' => $capId, 'type' => 'service_proxy']))
                             );
                             continue;
                         }
