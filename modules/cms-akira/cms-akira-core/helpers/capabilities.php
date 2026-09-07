@@ -7,6 +7,9 @@ declare(strict_types=1);
  * EntityViewResolver reaches the bridges through its kernel @1 fallback.
  * Bridges must traverse CapabilityBus; they never query storage.
  */
+/**
+ * @return array<string, string>
+ */
 function cms_akira_core_capability_handlers(): array
 {
     return [
@@ -61,7 +64,10 @@ function cacPostSafeImage(mixed $value): string
     return in_array($scheme, ['http', 'https'], true) && filter_var($url, FILTER_VALIDATE_URL) !== false ? $url : '';
 }
 
-/** @return array<string, mixed> */
+/**
+ * @param array<string, mixed> $post
+ * @return array<string, mixed>
+ */
 function cacPostProject(array $post, bool $detail): array
 {
     $slug = cacPostValidSlug($post['slug'] ?? null);
@@ -92,6 +98,9 @@ function cacPostProject(array $post, bool $detail): array
     return $dto;
 }
 
+/**
+ * @return array<string, mixed>
+ */
 function cac_cap_cms_post_get_1(mixed $payload, string $capabilityId = 'cms.post.get@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {
@@ -119,6 +128,9 @@ function cac_cap_cms_post_get_1(mixed $payload, string $capabilityId = 'cms.post
     }
 }
 
+/**
+ * @return array<string, mixed>
+ */
 function cac_cap_cms_post_list_1(mixed $payload, string $capabilityId = 'cms.post.list@1', string $caller = 'unknown'): array
 {
     if ($payload !== null && !is_array($payload)) {
@@ -143,7 +155,7 @@ function cac_cap_cms_post_list_1(mixed $payload, string $capabilityId = 'cms.pos
         $stmt = cacDb()->prepare($sql);
         $stmt->execute([':tenant_id' => $tenantId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return ['ok' => true, 'rows' => is_array($rows) ? $rows : [], 'total' => count($rows ?: [])];
+        return ['ok' => true, 'rows' => $rows, 'total' => count($rows)];
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => 'Post storage unavailable'];
     }
@@ -195,14 +207,18 @@ function cacPostMutationPublishedAt(mixed $value): ?string
     }
     $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value);
     $errors = DateTimeImmutable::getLastErrors();
-    if (!$date || (is_array($errors) && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0))
+    if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
         || $date->format('Y-m-d H:i:s') !== $value) {
         throw new CacPostMutationException('published_at must use Y-m-d H:i:s.');
     }
     return $value;
 }
 
-/** @return array<string, mixed> */
+/**
+ * @param array<string, mixed> $payload
+ * @param array<string, mixed>|null $existing
+ * @return array<string, mixed>
+ */
 function cacPostMutationFields(array $payload, ?array $existing = null): array
 {
     $creating = $existing === null;
@@ -273,6 +289,7 @@ function cacPostMutationCorrelationId(): string
  * Execute one mutation on the application PDO. The kernel idempotency and audit
  * capabilities escalate narrowly onto this exact caller-managed transaction.
  *
+ * @param array<string, mixed> $payload
  * @return array<string, mixed>
  */
 function cacPostMutate(string $operation, array $payload): array
@@ -420,7 +437,10 @@ function cacPostMutate(string $operation, array $payload): array
     }
 }
 
-/** @return array<string, mixed> */
+/**
+ * @param array<string, mixed> $fields
+ * @return array<string, mixed>
+ */
 function cacPostSqlFields(array $fields): array
 {
     return [
@@ -429,6 +449,9 @@ function cacPostSqlFields(array $fields): array
     ];
 }
 
+/**
+ * @return array<string, mixed>
+ */
 function cac_cap_cms_post_create_1(mixed $payload, string $capabilityId = 'cms.post.create@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {
@@ -437,6 +460,9 @@ function cac_cap_cms_post_create_1(mixed $payload, string $capabilityId = 'cms.p
     return cacPostMutate('create', $payload);
 }
 
+/**
+ * @return array<string, mixed>
+ */
 function cac_cap_cms_post_update_1(mixed $payload, string $capabilityId = 'cms.post.update@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {
@@ -445,6 +471,9 @@ function cac_cap_cms_post_update_1(mixed $payload, string $capabilityId = 'cms.p
     return cacPostMutate('update', $payload);
 }
 
+/**
+ * @return array<string, mixed>
+ */
 function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'entity.list.post@1', string $caller = 'unknown'): array
 {
     $args = is_array($payload) ? $payload : [];
@@ -469,6 +498,9 @@ function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'enti
     return ['ok' => true, 'rows' => $rows, 'total' => count($rows)];
 }
 
+/**
+ * @return array<string, mixed>
+ */
 function cac_cap_entity_get_post_1(mixed $payload, string $capabilityId = 'entity.get.post@1', string $caller = 'unknown'): array
 {
     if (!is_array($payload)) {

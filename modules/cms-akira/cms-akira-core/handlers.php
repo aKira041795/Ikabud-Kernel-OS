@@ -1,10 +1,12 @@
 <?php
+
 /** CMS Akira Core P1 route handlers. */
 
 declare(strict_types=1);
 
 require_once __DIR__ . '/helpers.php';
 
+/** @param array<string, mixed> $params */
 function pageCmsAkiraCoreHome(array $params = []): void
 {
     $user = cmsRequireCap('settings.manage');
@@ -19,6 +21,7 @@ function pageCmsAkiraCoreHome(array $params = []): void
     ]));
 }
 
+/** @param array<string, mixed> $params */
 function pageAkiraArkStatus(array $params = []): void
 {
     $user = cmsRequireCap('dashboard.view');
@@ -39,12 +42,14 @@ function pageAkiraArkStatus(array $params = []): void
     ]));
 }
 
+/** @param array<string, mixed> $params */
 function apiCmsAkiraCoreHealth(array $params = []): void
 {
     header('Content-Type: application/json');
     echo json_encode(['ok' => true, 'module' => 'cms-akira-core', 'version' => '1.0.0']);
 }
 
+/** @param array<string, mixed> $params */
 function apiCmsAkiraCoreProvidersHealth(array $params = []): void
 {
     header('Content-Type: application/json');
@@ -78,7 +83,11 @@ function cacPostMutationJson(Throwable $error): void
     exit;
 }
 
-/** POST /api/v1/cms-akira/posts (kernel-CSRF protected). */
+/**
+ * POST /api/v1/cms-akira/posts (kernel-CSRF protected).
+ *
+ * @param array<string, mixed> $params
+ */
 function apiCmsAkiraPostCreate(array $params = []): void
 {
     app()->csrfEnforce();
@@ -96,7 +105,11 @@ function apiCmsAkiraPostCreate(array $params = []): void
     }
 }
 
-/** PUT /api/v1/cms-akira/posts/{slug} (kernel-CSRF protected). */
+/**
+ * PUT /api/v1/cms-akira/posts/{slug} (kernel-CSRF protected).
+ *
+ * @param array<string, mixed> $params
+ */
 function apiCmsAkiraPostUpdate(array $params = []): void
 {
     app()->csrfEnforce();
@@ -157,7 +170,11 @@ function cacPostRouteError(int $status = 404): void
     echo '<h1>Not Found</h1>';
 }
 
-/** GET /posts: bridge -> domain capability -> projection -> ARK -> DiSyL. */
+/**
+ * GET /posts: bridge -> domain capability -> projection -> ARK -> DiSyL.
+ *
+ * @param array<string, mixed> $params
+ */
 function pageCmsAkiraPosts(array $params = []): void
 {
     // Mandatory fail-closed guard before EntityViewResolver or ARK resolution.
@@ -193,7 +210,11 @@ function pageCmsAkiraPosts(array $params = []): void
     echo $html;
 }
 
-/** GET /posts/{slug}: bridge -> domain capability -> projection -> ARK -> DiSyL. */
+/**
+ * GET /posts/{slug}: bridge -> domain capability -> projection -> ARK -> DiSyL.
+ *
+ * @param array<string, mixed> $params
+ */
 function pageCmsAkiraPostDetail(array $params = []): void
 {
     // Mandatory fail-closed guard before EntityViewResolver or ARK resolution.

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Cms Akira Core Module — Helpers
  *
@@ -58,7 +59,9 @@ function cacCtx(): \Ikabud\Kernel\Contracts\ModuleContext
 
 function cacDb(): \Ikabud\Kernel\Contracts\ModuleDB
 {
-    return cacCtx()->db();
+    /** @var \Ikabud\Kernel\Contracts\ModuleDB $db */
+    $db = cacCtx()->db();
+    return $db;
 }
 
 function cacInput(?string $key = null, mixed $default = null): mixed
@@ -66,6 +69,9 @@ function cacInput(?string $key = null, mixed $default = null): mixed
     return cacCtx()->input($key, $default);
 }
 
+/**
+ * @param array<string, mixed> $context
+ */
 function cacRender(string $template, array $context = []): string
 {
     $resolved = str_starts_with($template, 'modules/cms-akira-core/')

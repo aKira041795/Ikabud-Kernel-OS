@@ -1,4 +1,5 @@
 <?php
+
 /** CMS Akira P2 mutation, governance, idempotency, audit and freshness gate. */
 
 declare(strict_types=1);
@@ -93,24 +94,32 @@ try {
         && app()->entityAuthority()->isAuthoritative('post', 'cms-akira-core'), 'Post Entity Authority is registered');
 
     $policyDb = new CapabilityAuthorizationRegistry($db);
-    $check($policyDb->hasPolicyFor('cms.post.create@1', '1', 'cms-akira-core')
+    $check(
+        $policyDb->hasPolicyFor('cms.post.create@1', '1', 'cms-akira-core')
         && $policyDb->requiresProtocol('cms.post.update@1', '1', 'cms-akira-core') === 'v2',
-        'activation seeds idempotent admin mutation policies');
+        'activation seeds idempotent admin mutation policies'
+    );
     $policyRows = $db->query("SELECT capability_id, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id IN ('cms.post.create@1','cms.post.update@1')")->fetchAll(PDO::FETCH_ASSOC);
     $check(count($policyRows) === 2 && array_unique(array_column($policyRows, 'allowed_roles')) === ['admin'], 'registry policy permits admin only');
 
     $routes = require dirname(__DIR__) . '/routes.php';
     $handlersSource = (string)file_get_contents(dirname(__DIR__) . '/handlers.php');
-    $check(($routes['POST']['/api/v1/cms-akira/posts'] ?? '') === 'cms-akira-core:apiCmsAkiraPostCreate'
+    $check(
+        ($routes['POST']['/api/v1/cms-akira/posts'] ?? '') === 'cms-akira-core:apiCmsAkiraPostCreate'
         && ($routes['PUT']['/api/v1/cms-akira/posts/{slug}'] ?? '') === 'cms-akira-core:apiCmsAkiraPostUpdate',
-        'named non-GET create and update routes are active');
+        'named non-GET create and update routes are active'
+    );
     $check(substr_count($handlersSource, 'app()->csrfEnforce();') >= 2, 'both mutation handlers invoke kernel CSRF enforcement');
     $csrfDenied = false;
     unset($_SERVER['HTTP_X_CSRF_TOKEN']);
-    CsrfManager::enforce(static function (array $data) use (&$csrfDenied): void { $csrfDenied = ($data['ok'] ?? true) === false; });
+    CsrfManager::enforce(static function (array $data) use (&$csrfDenied): void {
+        $csrfDenied = ($data['ok'] ?? true) === false;
+    });
     $_SERVER['HTTP_X_CSRF_TOKEN'] = CsrfManager::token();
     $csrfAccepted = true;
-    CsrfManager::enforce(static function () use (&$csrfAccepted): void { $csrfAccepted = false; });
+    CsrfManager::enforce(static function () use (&$csrfAccepted): void {
+        $csrfAccepted = false;
+    });
     unset($_SERVER['HTTP_X_CSRF_TOKEN']);
     $check($csrfDenied && $csrfAccepted, 'kernel CSRF rejects missing and accepts matching tokens');
 
@@ -154,20 +163,26 @@ try {
     ]);
     $fragmentInvalidated = $fragmentStore->tryGet($prefix . '-detail-fragment', ['entity.detail.post'], (string)$tenantA) === null;
     $after = app()->entityViews()->resolveDetail('post', 'p2-fresh-post', 'detail');
-    $check($fragmentInvalidated && ($before['entity']['title'] ?? '') === 'Before' && ($after['entity']['title'] ?? '') === 'After',
-        'cache-then-mutate-then-render returns fresh content');
+    $check(
+        $fragmentInvalidated && ($before['entity']['title'] ?? '') === 'Before' && ($after['entity']['title'] ?? '') === 'After',
+        'cache-then-mutate-then-render returns fresh content'
+    );
     $check(($updated['operation'] ?? '') === 'update', 'update returns its committed outcome');
 
     $audit = $db->prepare("SELECT new_data FROM audit_logs WHERE module = 'cms-akira-core' AND action = 'cms.post.update' AND entity_id = ? ORDER BY id DESC LIMIT 1");
     $audit->execute([(string)$updated['post']['id']]);
     $auditPayload = json_decode((string)$audit->fetchColumn(), true);
-    $check(is_array($auditPayload) && ($auditPayload['correlation_id'] ?? '') === $updated['correlation_id'],
-        'durable audit independently carries the returned correlation_id');
+    $check(
+        is_array($auditPayload) && ($auditPayload['correlation_id'] ?? '') === $updated['correlation_id'],
+        'durable audit independently carries the returned correlation_id'
+    );
 
     $database = (string)$db->query('SELECT DATABASE()')->fetchColumn();
     $topology = $db->query("SELECT table_name, engine FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('cms_akira_posts','kernel_idempotency_keys','audit_logs')")->fetchAll(PDO::FETCH_KEY_PAIR);
-    $check($database !== '' && count($topology) === 3 && count(array_filter($topology, static fn ($engine): bool => strtoupper((string)$engine) === 'INNODB')) === 3,
-        'posts, idempotency and audit are InnoDB on the same application PDO/database');
+    $check(
+        $database !== '' && count($topology) === 3 && count(array_filter($topology, static fn ($engine): bool => strtoupper((string)$engine) === 'INNODB')) === 3,
+        'posts, idempotency and audit are InnoDB on the same application PDO/database'
+    );
 
     $setIdentity($tenantB, $admin);
     $tenantDenied = false;
@@ -214,8 +229,10 @@ try {
     $jwtRow = $db->prepare('SELECT tenant_id, title FROM cms_akira_posts WHERE id = ?');
     $jwtRow->execute([$jwtResult['post']['id']]);
     $jwtStored = $jwtRow->fetch(PDO::FETCH_ASSOC);
-    $check((int)($jwtStored['tenant_id'] ?? 0) === $tenantA && ($jwtStored['title'] ?? '') === 'Kernel actor',
-        'payload JWT/role claims are ignored in favor of kernel identity');
+    $check(
+        (int)($jwtStored['tenant_id'] ?? 0) === $tenantA && ($jwtStored['title'] ?? '') === 'Kernel actor',
+        'payload JWT/role claims are ignored in favor of kernel identity'
+    );
 
     // A processing claim represents a concurrent winner. The contender must not write.
     $concurrentKey = $keys[] = $prefix . '-concurrent';
@@ -232,8 +249,10 @@ try {
     }
     $concurrentCount = $db->prepare('SELECT COUNT(*) FROM cms_akira_posts WHERE tenant_id = ? AND slug = ?');
     $concurrentCount->execute([$tenantA, 'p2-concurrent']);
-    $check(($claim['status'] ?? '') === 'new' && $contenderDenied && (int)$concurrentCount->fetchColumn() === 0,
-        'concurrent same-key contender maps to 425 and performs no second write');
+    $check(
+        ($claim['status'] ?? '') === 'new' && $contenderDenied && (int)$concurrentCount->fetchColumn() === 0,
+        'concurrent same-key contender maps to 425 and performs no second write'
+    );
     app()->cap()->call('kernel.idempotency.release@1', ['key' => $concurrentKey, 'tenant_id' => $tenantA, 'db' => $db]);
 
     // Prime a cached row, fail with an idempotency conflict, then remove storage
@@ -251,8 +270,10 @@ try {
         $failedMutation = $thrownStatus($e) === 409;
     }
     $cachedFragment = $fragmentStore->tryGet($prefix . '-failure-fragment', ['entity.detail.post'], (string)$tenantA);
-    $check($failedMutation && ($cached['entity']['title'] ?? '') === 'Cached' && $cachedFragment === 'Cached HTML',
-        'failed mutation does not invalidate the entity cache');
+    $check(
+        $failedMutation && ($cached['entity']['title'] ?? '') === 'Cached' && $cachedFragment === 'Cached HTML',
+        'failed mutation does not invalidate the entity cache'
+    );
 
     $badKey = $keys[] = $prefix . '-bad-write';
     $badWrite = false;
@@ -267,8 +288,11 @@ try {
 
     $appLog = (string)@file_get_contents($root . '/storage/logs/app.log');
     $errorLog = (string)@file_get_contents($root . '/storage/logs/error.log');
-    $check(!str_contains($appLog, '[error]') && !str_contains($appLog, 'failed open') && trim($errorLog) === '',
-        'mutation run has no error or invalidation-failure log', trim($errorLog));
+    $check(
+        !str_contains($appLog, '[error]') && !str_contains($appLog, 'failed open') && trim($errorLog) === '',
+        'mutation run has no error or invalidation-failure log',
+        trim($errorLog)
+    );
 } catch (Throwable $e) {
     $check(false, 'P2 scenario completes', $e::class . ': ' . $e->getMessage());
 } finally {
