@@ -44,7 +44,11 @@ $check($list !== null && $list['renderer'] === 'article-grid' && $list['target']
 $check($detail !== null && $detail['renderer'] === 'article-page' && $detail['target'] === 'public/article-page.disyl', 'detail view resolves article-page template');
 $check($list !== null && $list['type'] === 'template' && is_file((string)$list['path']), 'resolved template exists');
 $check($resolver->resolve('entity.list.product', $fixtureSlug) === null, 'unknown view is a miss');
-$check($resolver->resolve('entity.list.post', 'missing-theme') === null, 'missing theme is a miss');
+$check(
+    $resolver->resolve('entity.list.post', 'missing-theme') === null
+    && $resolver->resolve('entity.list.post') === null,
+    'missing theme or explicit slug is a miss'
+);
 
 $tmpThemes = sys_get_temp_dir() . '/ark_renderer_themes_' . getmypid();
 @mkdir($tmpThemes . '/missing-registry', 0777, true);

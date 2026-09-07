@@ -449,6 +449,17 @@ final class CapabilityBus implements CapabilityBusContract
                 continue;
             }
 
+            $dispatchProtocol = $this->providerProtocol($provider);
+            $requiredProtocol = strtolower(trim((string)$registry->requiresProtocol(
+                $capabilityId,
+                $capabilityVersion,
+                $providerId
+            )));
+            if ($requiredProtocol === 'v2' && $dispatchProtocol !== 'v2') {
+                $lastDeniedReason = 'protocol_mismatch';
+                continue;
+            }
+
             $decision = $registry->authorize([
                 'capability_id' => $capabilityId,
                 'capability_version' => $capabilityVersion,
@@ -457,6 +468,9 @@ final class CapabilityBus implements CapabilityBusContract
                 'actor_role' => is_array($caller['user'] ?? null) ? (string)($caller['user']['role'] ?? '') : '',
                 'tenant_id' => $tenantId,
                 'provider_activation' => $providerId === 'kernel' || !function_exists('moduleIsActive') || moduleIsActive($providerId),
+                // Protocol is derived from trusted provider metadata/configuration, never caller options.
+                // A v2 policy therefore cannot be bypassed by claiming v2 at the call site.
+                'dispatch_protocol' => $dispatchProtocol,
                 'explicit_provider' => $explicitProvider,
             ]);
 
@@ -487,17 +501,23 @@ final class CapabilityBus implements CapabilityBusContract
     /** @param array<string, mixed> $provider */
     private function providerRequiresProtocolV2(array $provider): bool
     {
+        return $this->providerProtocol($provider) === 'v2';
+    }
+
+    /** @param array<string, mixed> $provider */
+    private function providerProtocol(array $provider): string
+    {
         $meta = is_array($provider['meta'] ?? null) ? $provider['meta'] : [];
         if (strtolower(trim((string)($meta['requires_protocol'] ?? ''))) === 'v2') {
-            return true;
+            return 'v2';
         }
 
         $handler = $provider['handler'] ?? null;
-        if ($handler instanceof ServiceProxy) {
-            return ServiceProxyV2::requiresProtocolV2($handler->serviceConfig());
+        if ($handler instanceof ServiceProxy && ServiceProxyV2::requiresProtocolV2($handler->serviceConfig())) {
+            return 'v2';
         }
 
-        return false;
+        return 'v1';
     }
 
     /** @param array<string, mixed> $options */

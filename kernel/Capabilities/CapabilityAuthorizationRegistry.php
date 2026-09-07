@@ -38,6 +38,7 @@ final class CapabilityAuthorizationRegistry
         $actorRole = trim((string)($ctx['actor_role'] ?? ''));
         $tenantId = trim((string)($ctx['tenant_id'] ?? ''));
         $providerActivation = (bool)($ctx['provider_activation'] ?? false);
+        $dispatchProtocol = strtolower(trim((string)($ctx['dispatch_protocol'] ?? '')));
         $explicitProvider = trim((string)($ctx['explicit_provider'] ?? ''));
         $override = isset($ctx['policy_version']) && $ctx['policy_version'] !== '' ? (int)$ctx['policy_version'] : null;
 
@@ -108,6 +109,14 @@ final class CapabilityAuthorizationRegistry
             }
             if (!is_array($exactRow)) {
                 return $this->audit(array_merge($result, ['reason' => 'version_mismatch']), 'warning');
+            }
+
+            // Protocol-v2 policy is a dispatch invariant, not informational metadata.
+            // The bus supplies this value from trusted provider metadata/configuration.
+            // Missing, legacy, and unknown dispatch protocols all fail closed for v2 rows.
+            $requiredProtocol = strtolower(trim((string)($exactRow['requires_protocol'] ?? '')));
+            if ($requiredProtocol === 'v2' && $dispatchProtocol !== 'v2') {
+                return $this->audit(array_merge($result, ['reason' => 'protocol_mismatch']), 'warning');
             }
 
             $rowCaller = trim((string)($exactRow['caller_module'] ?? ''));

@@ -14,10 +14,11 @@ if ($selection === null || $html === null) {
 }
 ```
 
-The optional theme slug defaults to `cmsActiveTheme()` when that function is available.
-Pass the request's already-resolved active theme slug explicitly when possible. Missing themes,
-registries, exact mappings, files, or component registrations return `null` and never select a
-generic renderer.
+The theme slug must be passed explicitly. The resolver has no legacy-CMS active-theme fallback and
+never derives a slug from a storage convention. Callers must obtain a trusted tenant theme slug from
+their owning module or a Kernel-owned activation resolver before invoking this service. A null, empty,
+or invalid slug—and missing themes, registries, exact mappings, files, or component registrations—returns
+`null` and never selects a generic renderer.
 
 Each exact key in `renderers` uses the existing validated fields:
 
