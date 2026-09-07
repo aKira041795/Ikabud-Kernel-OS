@@ -1,0 +1,4 @@
+-- CMS Akira Workflow is intentionally table-free.
+-- Definitions, instances, transition logs, runs, and run steps remain Kernel WorkflowEngine persistence.
+-- This marker gives the member an idempotent migration-ledger entry and creates no schema objects.
+SELECT 1;
