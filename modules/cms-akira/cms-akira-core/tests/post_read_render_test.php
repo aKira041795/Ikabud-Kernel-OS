@@ -59,7 +59,7 @@ try {
             ++$dormantCount;
         }
     }
-    $check($dormantCount === 13, 'all 13 non-core suite members are explicitly dormant');
+    $check($dormantCount === 14, 'all 14 non-core suite members are explicitly dormant');
 
     foreach ($readIds as $id) {
         $providers = $registry->providers($id);

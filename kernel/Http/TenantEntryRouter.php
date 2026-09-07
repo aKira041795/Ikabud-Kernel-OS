@@ -64,7 +64,7 @@ class TenantEntryRouter
                 return $uri;
             }
 
-            if (!$this->entryModuleAvailable($entry)) {
+            if (!$this->entryModuleAvailable($entry) || !$this->entryInstallationCommitted($entry, $tenantId)) {
                 $_SERVER['IK_ENTRY_MODULE_UNAVAILABLE'] = '1';
                 $_SERVER['IK_ENTRY_MODULE_ID'] = $entry;
                 $this->logRewriteWarning('tenant_entry_module_unavailable', [
@@ -193,6 +193,35 @@ class TenantEntryRouter
         }
 
         return moduleIsLoadable($entry);
+    }
+
+    /**
+     * Generation-aware routing applies to the independently installed shell.
+     * Older entry modules retain their existing routing contract. The shell is
+     * not routable while its newest generation is staged/failed/rolling back.
+     */
+    private function entryInstallationCommitted(string $entry, int $tenantId): bool
+    {
+        if ($entry !== 'cms-akira-shell') {
+            return true;
+        }
+        if ($tenantId <= 0) {
+            return false;
+        }
+        try {
+            $stmt = app()->controlDb()->prepare(
+                "SELECT 1 FROM kernel_module_install_generations WHERE tenant_id = :tenant AND entry_module_id = :entry AND status = 'active' AND committed_at IS NOT NULL ORDER BY id DESC LIMIT 1"
+            );
+            $stmt->execute([':tenant' => $tenantId, ':entry' => $entry]);
+            return (bool)$stmt->fetchColumn();
+        } catch (Throwable $e) {
+            $this->logRewriteWarning('tenant_entry_install_generation_unavailable', [
+                'tenant_id' => $tenantId,
+                'entry_module_id' => $entry,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 
     /**

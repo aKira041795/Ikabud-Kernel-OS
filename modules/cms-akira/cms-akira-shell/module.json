@@ -1,0 +1,36 @@
+{
+  "id": "cms-akira-shell",
+  "name": "CMS Akira Shell",
+  "version": "1.0.0",
+  "description": "Kernel-authenticated tenant entry and administration shell for CMS Akira.",
+  "author": "Ikabud",
+  "suite": "cms-akira",
+  "kind": "standalone-application",
+  "entry_module": true,
+  "depends": ["cms-akira-core"],
+  "owns_tables": [],
+  "reads_tables": [],
+  "migrations": [],
+  "capabilities": {
+    "exposes": [],
+    "depends": [
+      "akira.post.get@1",
+      "akira.post.list@1",
+      "akira.post.create@1",
+      "akira.post.update@1",
+      "akira.post.publish@1",
+      "akira.post.unpublish@1",
+      "akira.post.delete@1",
+      "entity.list.post@1",
+      "entity.get.post@1"
+    ]
+  },
+  "routes": true,
+  "events": [],
+  "nav": [
+    {"label": "Akira Dashboard", "url": "/cms-akira-shell", "icon": "layout-dashboard", "roles": ["admin"]},
+    {"label": "Posts", "url": "/cms-akira-shell/posts", "icon": "file-text", "roles": ["admin"]},
+    {"label": "Module Health", "url": "/cms-akira-shell/health", "icon": "activity", "roles": ["admin"]}
+  ],
+  "_enabled": false
+}

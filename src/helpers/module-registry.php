@@ -698,6 +698,76 @@ function enableModuleForTenant(string $moduleId, int $tenantId): void
 }
 
 /**
+ * Persist tenant activation for a migration plan.
+ *
+ * The optional generation/staged arguments are used by ModuleInstallService.
+ * A staged write never makes a module loadable; promotion atomically writes the
+ * committed generation marker and _module_enabled on the tenant PDO. The
+ * four-argument form remains compatible with TenantProvisioner.
+ *
+ * @param array<int|string,mixed> $plan
+ */
+function tenantSetModuleActivationState(
+    PDO $db,
+    int $tenantId,
+    array $plan,
+    bool $enabled,
+    ?string $generation = null,
+    bool $staged = false,
+): void {
+    if ($tenantId <= 0) {
+        throw new InvalidArgumentException('A positive tenant id is required for module activation.');
+    }
+
+    $moduleIds = [];
+    foreach ($plan as $key => $value) {
+        $candidate = is_string($value) ? $value : (is_string($key) ? $key : '');
+        $candidate = trim($candidate);
+        if ($candidate !== '' && preg_match('/^[a-z0-9][a-z0-9._-]*$/', $candidate) === 1) {
+            $moduleIds[$candidate] = true;
+        }
+    }
+    if ($moduleIds === []) {
+        return;
+    }
+
+    if (function_exists('moduleTenantSettingsEnsureTable') && !moduleTenantSettingsEnsureTable($db)) {
+        throw new RuntimeException('tenant_module_settings is unavailable for activation.');
+    }
+
+    $driver = strtolower((string)$db->getAttribute(PDO::ATTR_DRIVER_NAME));
+    $write = static function (string $moduleId, string $key, mixed $value) use ($db, $driver, $tenantId): void {
+        $json = json_encode($value, JSON_UNESCAPED_SLASHES);
+        if ($driver === 'sqlite') {
+            $sql = 'INSERT INTO tenant_module_settings (tenant_id, module_id, setting_key, setting_value, created_at, updated_at) '
+                . 'VALUES (:tenant, :module, :key, :value, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
+                . 'ON CONFLICT(tenant_id, module_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP';
+        } else {
+            $sql = 'INSERT INTO tenant_module_settings (tenant_id, module_id, setting_key, setting_value, created_at, updated_at) '
+                . 'VALUES (:tenant, :module, :key, :value, NOW(), NOW()) '
+                . 'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()';
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute([':tenant' => $tenantId, ':module' => $moduleId, ':key' => $key, ':value' => $json]);
+    };
+
+    foreach (array_keys($moduleIds) as $moduleId) {
+        if ($staged) {
+            $write($moduleId, '_module_activation_state', 'staged');
+            $write($moduleId, '_module_staged_generation', $generation);
+            continue;
+        }
+        $write($moduleId, '_module_enabled', $enabled);
+        $write($moduleId, '_module_activation_state', $enabled ? 'committed' : 'inactive');
+        $write($moduleId, '_module_committed_generation', $enabled ? $generation : null);
+        $write($moduleId, '_module_staged_generation', null);
+    }
+    if (function_exists('invalidateTenantModuleSettingsCache')) {
+        invalidateTenantModuleSettingsCache();
+    }
+}
+
+/**
  * Disable a module for an explicit tenant ID (superadmin use).
  */
 function disableModuleForTenant(string $moduleId, int $tenantId): void
