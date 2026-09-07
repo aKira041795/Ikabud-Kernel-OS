@@ -44,6 +44,10 @@ return [
         'schema_modes' => [
             'kernel.audit.record@1' => 'enforce',
             'kernel.audit.list@1' => 'enforce',
+            'kernel.idempotency.claim@1' => 'enforce',
+            'kernel.idempotency.commit@1' => 'enforce',
+            'kernel.idempotency.release@1' => 'enforce',
+            'kernel.idempotency.hash@1' => 'enforce',
             'workflow.state.get@1' => 'enforce',
             'workflow.transition@1' => 'enforce',
         ],
