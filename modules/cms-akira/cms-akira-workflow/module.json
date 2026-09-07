@@ -1,0 +1,54 @@
+{
+    "id": "cms-akira-workflow",
+    "name": "CMS Akira Workflow",
+    "version": "1.0.0",
+    "description": "Native table-free Akira Post lifecycle bridge to the Kernel workflow runtime.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "extension",
+    "extends": "cms-akira-core",
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [],
+    "reads_tables": [],
+    "migrations": [
+        "database/migrations/001_initial.sql"
+    ],
+    "capabilities": {
+        "exposes": [
+            {
+                "id": "akira.workflow.evaluate@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Project the current tenant's Akira Post workflow state and role-allowed actions"
+            },
+            {
+                "id": "akira.workflow.transition@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.workflow-run"]},
+                "description": "Perform an idempotent, audited, role-governed Akira Post workflow transition"
+            },
+            {
+                "id": "akira.workflow.runs@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Project Kernel workflow runs for one current-tenant Akira Post"
+            }
+        ],
+        "depends": [
+            "kernel.idempotency.hash@1",
+            "kernel.idempotency.claim@1",
+            "kernel.idempotency.commit@1",
+            "kernel.idempotency.release@1",
+            "kernel.audit.record@1",
+            "workflow.state.get@1",
+            "workflow.transition@1"
+        ]
+    },
+    "routes": true,
+    "events": [],
+    "_enabled": false
+}
