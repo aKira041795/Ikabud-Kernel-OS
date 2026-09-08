@@ -32,16 +32,25 @@
     .btn-disable:hover { background: #fef2f2; border-color: #f87171; }
     .optin-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; margin-top: 2px; padding-top: 12px; border-top: 1px solid #f1f5f9; }
     .optin-hint { color: #94a3b8; font-size: 11px; }
+    .module-suite { margin-bottom: 24px; border: 1px solid var(--kernel-panel-border); border-radius: var(--radius); background: #f8fafc; overflow: hidden; }
+    .module-suite-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--kernel-panel-border); background: #fff; }
+    .module-suite-name { font-size: 18px; font-weight: 700; color: #0f172a; }
+    .module-suite-summary { margin-top: 3px; font-size: 12px; color: #64748b; }
+    .module-suite-actions, .suite-toggle-label { display: flex; align-items: center; gap: 10px; }
+    .suite-toggle-label { font-size: 12px; color: #475569; }
+    .module-suite-members { padding: 18px; }
+    .module-standalone-grid { margin-top: 24px; }
 </style>
 <script>
     var BASE = '{base_url}';
     var CSRF = '{csrf_token}';
+    var SUITE_MODULES = {suite_modules_json|raw};
 
     function showToast(message, type) {
         window.dispatchEvent(new CustomEvent('cms-toast', { detail: { message: message || '', type: type || 'success' } }));
     }
 
-    function toggleModule(moduleId, enable) {
+    function toggleModule(moduleId, enable, reload) {
         var endpoint = enable ? '/api/v1/admin/modules/enable' : '/api/v1/admin/modules/disable';
         var btn = document.querySelector('#mod-' + moduleId + ' .btn-enable, #mod-' + moduleId + ' .btn-disable');
         if (btn) { btn.disabled = true; btn.textContent = enable ? 'Enabling…' : 'Disabling…'; }
@@ -50,25 +59,53 @@
         fd.append('module_id', moduleId);
         fd.append('_token', CSRF);
 
-        fetch(endpoint, {
+        return fetch(endpoint, {
             method: 'POST',
             body: fd
         })
         .then(function(r) { return r.json(); })
         .then(function(res) {
-            if (res.ok) {
+            if (!res.ok) throw new Error(res.error || 'Failed to toggle module');
+            if (reload !== false) {
                 showToast('Module ' + (enable ? 'enabled' : 'disabled'), 'success');
                 setTimeout(function() { window.location.reload(); }, 600);
-            } else {
-                showToast(res.error || 'Failed to toggle module', 'error');
-                if (btn) { btn.disabled = false; btn.textContent = enable ? 'Enable' : 'Disable'; }
             }
+            return res;
         })
-        .catch(function() {
-            showToast('Network error', 'error');
+        .catch(function(error) {
+            showToast(error.message || 'Network error', 'error');
             if (btn) { btn.disabled = false; btn.textContent = enable ? 'Enable' : 'Disable'; }
+            throw error;
         });
     }
+
+    function setSuiteModules(suiteId, enable) {
+        var members = SUITE_MODULES[suiteId] || [];
+        var controls = document.querySelectorAll('#suite-' + suiteId + ' button, #suite-' + suiteId + ' input');
+        controls.forEach(function(control) { control.disabled = true; });
+        var sequence = Promise.resolve();
+        members.forEach(function(moduleId) {
+            sequence = sequence.then(function() { return toggleModule(moduleId, enable, false); });
+        });
+        sequence.then(function() {
+            showToast('Suite modules ' + (enable ? 'enabled' : 'disabled'), 'success');
+            window.location.reload();
+        }).catch(function() {
+            controls.forEach(function(control) { control.disabled = false; });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.suite-toggle').forEach(function(toggle) {
+            var suite = toggle.getAttribute('data-suite');
+            var header = document.getElementById('suite-' + suite);
+            var summary = header ? header.querySelector('.module-suite-summary') : null;
+            if (summary) {
+                var match = summary.textContent.match(/(\d+)\/(\d+) enabled/);
+                toggle.indeterminate = !!match && Number(match[1]) > 0 && match[1] !== match[2];
+            }
+        });
+    });
 
     function toggleAdminOptin(moduleId, checked) {
         var fd = new FormData();
@@ -158,92 +195,37 @@
         <p>Upload a module .zip file above to get started.</p>
     </div>
     {else}
-    <div class="module-grid" id="module-grid">
-        {foreach modules as mod}
-        <div class="module-card" id="mod-{mod.id}">
-            <div class="module-card-header">
-                <div class="module-card-title">
-                    <span class="module-icon">{include "layouts/kernel-admin-icon.disyl" with {icon: mod.icon|default:'box'}}</span>
-                    <div class="module-title-text">
-                        <div class="module-name">{mod.name}</div>
-                        <div class="module-id">{mod.id}</div>
-                    </div>
+    <div id="module-grid">
+        {foreach module_suites as group}
+        <section class="module-suite" id="suite-{group.suite}">
+            <div class="module-suite-header">
+                <div>
+                    <div class="module-suite-name">{group.name}</div>
+                    <div class="module-suite-summary">{group.member_count} members &middot; {group.enabled_count}/{group.member_count} enabled</div>
                 </div>
-                <div class="module-head-right">
-                    <span class="module-version">v{mod.version}</span>
-                    {if mod.enabled}
-                    <span class="status-pill enabled"><span class="status-dot"></span> Enabled</span>
-                    {else}
-                    <span class="status-pill disabled"><span class="status-dot"></span> Disabled</span>
-                    {/if}
+                <div class="module-suite-actions">
+                    <label class="suite-toggle-label">
+                        <input type="checkbox" class="suite-toggle" data-suite="{group.suite}" {if group.all_enabled}checked{/if} onchange="setSuiteModules('{group.suite}', this.checked)">
+                        Enable all
+                    </label>
+                    <button class="btn-sm {if group.all_enabled}btn-disable{else}btn-enable{/if}" onclick="setSuiteModules('{group.suite}', {if group.all_enabled}false{else}true{/if})">{if group.all_enabled}Disable all{else}Enable all{/if}</button>
                 </div>
             </div>
-
-            {if mod.description}
-            <div class="module-desc">{mod.description}</div>
-            {/if}
-
-            <div class="module-meta" style="margin-bottom: 8px;">
-                {if mod.author}<span>By {mod.author}</span>{/if}
-                <span>{mod.route_count} routes</span>
-                <span>{mod.nav_count} nav items</span>
-                <span>{mod.capability_exposes_count} exposes</span>
-                <span>{mod.capability_depends_count} depends</span>
-            </div>
-
-            {if mod.entities_owned_count > 0}
-            <div style="margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 4px;">
-                <span class="entity-authority-badge" title="This module is the authoritative owner for these entities">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                    Authority
-                </span>
-                {foreach mod.entities_owned as entity}
-                    <span style="font-size: 11px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; color: var(--text-light); font-family: monospace;">{entity}</span>
+            <div class="module-grid module-suite-members">
+                {foreach group.members as mod}
+                {include "pages/partials/admin-module-card.disyl" with {mod: mod}}
                 {/foreach}
             </div>
-            {/if}
-
-            {if mod.capability_manifest_error}
-            <div class="cap-warning">
-                <strong>Capabilities:</strong> {mod.capability_manifest_error}
-            </div>
-            {/if}
-
-            {if (mod.capability_missing_depends | count) > 0}
-            <div class="cap-warning">
-                <strong>Missing capabilities:</strong>
-                <div style="margin-top:6px;">
-                    {foreach mod.capability_missing_depends as cap}
-                        <div style="font-family: monospace; font-size: 11px;">{cap}</div>
-                    {/foreach}
-                </div>
-            </div>
-            {/if}
-
-            <div class="module-actions">
-                {if mod.enabled}
-                <button class="btn-sm btn-disable" onclick="toggleModule('{mod.id}', false)">Disable</button>
-                {else}
-                    {if mod.capability_ready_to_enable}
-                    <button class="btn-sm btn-enable" onclick="toggleModule('{mod.id}', true)">Enable</button>
-                    {else}
-                    <button class="btn-sm btn-enable btn-disabled" disabled>Enable</button>
-                    {/if}
-                {/if}
-            </div>
-
-            {if mod.settings_context_notice}
-            <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">{mod.settings_context_notice}</div>
-            {/if}
-
-            {if mod.show_allow_kernel_admin}
-            <div class="optin-row">
-                <input type="checkbox" id="optin-{mod.id}" {if mod.kernel_admin_guaranteed}disabled{/if} {if mod.allow_kernel_admin}checked{/if} onchange="toggleAdminOptin('{mod.id}', this.checked)">
-                <label for="optin-{mod.id}">Allow kernel admin access{if mod.kernel_admin_guaranteed} <span class="optin-hint">(always allowed — module uses kernel auth)</span>{/if}</label>
-            </div>
-            {/if}
-        </div>
+        </section>
         {/foreach}
+
+        {if standalone_modules | count > 0}
+        <div class="module-grid module-standalone-grid">
+            {foreach standalone_modules as mod}
+            {include "pages/partials/admin-module-card.disyl" with {mod: mod}}
+            {/foreach}
+        </div>
+        {/if}
     </div>
     {/if}
 </div>

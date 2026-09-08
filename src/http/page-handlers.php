@@ -528,6 +528,71 @@ if (!function_exists('kernelHandlePageAdminPlatform')) {
     }
 }
 
+if (!function_exists('kernelGroupAdminModules')) {
+    /**
+     * Group multi-member suites for the module manager while leaving all other
+     * modules in the flat list.
+     *
+     * @param array<int, array<string, mixed>> $moduleList
+     * @param array<string, array<string, mixed>> $allModules
+     * @return array{module_suites: array<int, array<string, mixed>>, standalone_modules: array<int, array<string, mixed>>}
+     */
+    function kernelGroupAdminModules(array $moduleList, array $allModules): array
+    {
+        $suiteMembers = [];
+        foreach ($moduleList as $module) {
+            $suiteId = $module['suite'] ?? null;
+            if (is_string($suiteId) && $suiteId !== '') {
+                $suiteMembers[$suiteId][] = $module;
+            }
+        }
+
+        $moduleSuites = [];
+        $groupedSuiteIds = [];
+        foreach ($suiteMembers as $suiteId => $members) {
+            if (count($members) < 2) {
+                continue;
+            }
+
+            $coreId = moduleSuiteCore($suiteId, $allModules);
+            $coreManifest = $coreId !== null ? ($allModules[$coreId] ?? []) : [];
+            $product = is_array($coreManifest['product'] ?? null) ? $coreManifest['product'] : [];
+            $name = trim((string)($product['name'] ?? $coreManifest['name'] ?? ''));
+            if ($name === '') {
+                $name = ucwords(str_replace('-', ' ', $suiteId));
+            }
+
+            usort($members, static fn (array $a, array $b): int => strcasecmp(
+                (string)($a['name'] ?? $a['id'] ?? ''),
+                (string)($b['name'] ?? $b['id'] ?? '')
+            ));
+            $enabledCount = count(array_filter($members, static fn (array $member): bool => !empty($member['enabled'])));
+            $moduleSuites[] = [
+                'suite' => $suiteId,
+                'name' => $name,
+                'core_id' => $coreId,
+                'members' => $members,
+                'member_count' => count($members),
+                'enabled_count' => $enabledCount,
+                'all_enabled' => $enabledCount === count($members),
+                'any_enabled' => $enabledCount > 0,
+            ];
+            $groupedSuiteIds[$suiteId] = true;
+        }
+
+        usort($moduleSuites, static fn (array $a, array $b): int => strcasecmp((string)$a['name'], (string)$b['name']));
+        $standaloneModules = array_values(array_filter(
+            $moduleList,
+            static function (array $module) use ($groupedSuiteIds): bool {
+                $suiteId = $module['suite'] ?? null;
+                return !is_string($suiteId) || !isset($groupedSuiteIds[$suiteId]);
+            }
+        ));
+
+        return ['module_suites' => $moduleSuites, 'standalone_modules' => $standaloneModules];
+    }
+}
+
 if (!function_exists('kernelHandlePageAdminModules')) {
     function kernelHandlePageAdminModules(): void
     {
@@ -624,8 +689,11 @@ if (!function_exists('kernelHandlePageAdminModules')) {
                 ? true
                 : (bool)($modSettings['allow_kernel_admin'] ?? false);
 
+            $suiteId = moduleSuiteFromManifest($m) ?? moduleSuiteForModule($moduleId);
             $moduleList[] = [
                 'id' => $m['id'],
+                'suite' => $suiteId,
+                'is_suite_core' => $suiteId !== null && $moduleId === moduleSuiteCore($suiteId, $allModules),
                 'name' => $m['name'] ?? $m['id'],
                 'version' => $m['version'] ?? '0.0.0',
                 'description' => $m['description'] ?? '',
@@ -651,11 +719,19 @@ if (!function_exists('kernelHandlePageAdminModules')) {
             ];
         }
 
+        $groupedModules = kernelGroupAdminModules($moduleList, $allModules);
+        $suiteModuleMap = [];
+        foreach ($groupedModules['module_suites'] as $suite) {
+            $suiteModuleMap[(string)$suite['suite']] = array_column($suite['members'], 'id');
+        }
+
         echo app()->render('pages/admin-modules.disyl', array_merge(
             kernelAdminContext($user, 'modules'),
+            $groupedModules,
             [
                 'page_title' => 'Module Manager',
                 'modules' => $moduleList,
+                'suite_modules_json' => json_encode($suiteModuleMap, JSON_UNESCAPED_SLASHES),
             ]
         ));
         exit;
