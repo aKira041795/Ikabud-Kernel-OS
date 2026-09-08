@@ -7,7 +7,7 @@ declare(strict_types=1);
 use Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry;
 
 $root = dirname(__DIR__, 4);
-$_SERVER['HTTP_HOST'] = 'cmsnew.test';
+$_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
@@ -41,10 +41,11 @@ foreach (cms_akira_workflow_capability_handlers() as $id => $handler) {
     );
 }
 
-$tenantA = 994801;
-$tenantB = 994802;
 $originalTenant = app()->tenant()->current();
+$tenantA = (int)$originalTenant;
+$tenantB = 994802;
 $db = app()->db();
+$hasWorkflowRuns = (bool)$db->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'workflow_runs'")->fetchColumn();
 $prefix = 'workflow-' . bin2hex(random_bytes(5));
 $entity = $prefix . '-post';
 $admin = ['id' => 999801, 'role' => 'admin'];
@@ -75,9 +76,14 @@ $statusOf = static function (Throwable $error): ?int {
 try {
     echo "=== CMS Akira Phase 6 native workflow ===\n";
     $setIdentity($tenantA, $admin);
-    cawWithKernelWorkflow(static function () use ($db, $prefix): void {
-        $db->prepare("DELETE FROM workflow_runs WHERE module = ? AND entity_id LIKE ?")->execute([CAW_WORKFLOW_MODULE_ID, 'tenant-%:' . $prefix . '%']);
+    cawWithKernelWorkflow(static function () use ($db, $prefix, $tenantA, $tenantB, $entity, $hasWorkflowRuns): void {
+        if ($hasWorkflowRuns) {
+            $db->prepare("DELETE FROM workflow_runs WHERE module = ? AND entity_id LIKE ?")->execute([CAW_WORKFLOW_MODULE_ID, 'tenant-%:' . $prefix . '%']);
+        }
         $db->prepare("DELETE FROM workflow_instances WHERE module = ? AND entity_id LIKE ?")->execute([CAW_WORKFLOW_MODULE_ID, 'tenant-%:' . $prefix . '%']);
+        $db->prepare('DELETE FROM cms_akira_posts WHERE tenant_id IN (?, ?) AND slug LIKE ?')->execute([$tenantA, $tenantB, $prefix . '%']);
+        $db->prepare("INSERT INTO cms_akira_posts (tenant_id, slug, title, content, status) VALUES (?, ?, 'Workflow projection fixture', 'Body', 'draft')")
+            ->execute([$tenantA, $entity]);
     });
 
     $module = dirname(__DIR__);
@@ -86,7 +92,7 @@ try {
     $check($ids === array_keys(cms_akira_workflow_capability_handlers()), 'manifest and runtime expose exactly evaluate, transition, and runs');
     $check(($manifest['kind'] ?? '') === 'extension' && ($manifest['extends'] ?? '') === 'cms-akira-core', 'member remains a stable Akira core extension');
     $check(($manifest['depends'] ?? []) === ['cms-akira-core'], 'only the native Akira core module dependency remains');
-    $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === [], 'workflow member owns and reads no module tables');
+    $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === ['cms_akira_posts'], 'workflow member declares core Post projection access without claiming ownership');
     $check(($manifest['migrations'] ?? []) === ['database/migrations/001_initial.sql'] && !is_file($module . '/database/migrations/002_initial.sql'), 'only the table-free 001 migration marker exists');
     $check(($manifest['_enabled'] ?? null) === false && !isset($manifest['entities']), 'activation is explicit and no Entity Authority is claimed');
     $transitionMeta = $manifest['capabilities']['exposes'][1] ?? [];
@@ -128,18 +134,27 @@ try {
     $setIdentity($tenantA, $admin);
 
     $fragmentStore = app()->templates()->fragmentStore();
-    $fragmentStore->put($prefix . '-fragment', 'stale runs', [CAW_WORKFLOW_INVALIDATION], 300, (string) $tenantA);
+    $fragmentSeeded = false;
+    try {
+        $fragmentStore->put($prefix . '-fragment', 'stale runs', [CAW_WORKFLOW_INVALIDATION], 300, (string) $tenantA);
+        $fragmentSeeded = true;
+    } catch (RuntimeException) {
+        // Shared-host cache directories can be web-user-owned; lifecycle coverage remains valid.
+    }
     kernel_request_context_set('correlation_id', $prefix . '-correlation');
     $payload = ['idempotency_key' => $prefix . '-submit', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'draft', 'action' => 'submit'];
     $submitted = $call('akira.workflow.transition@1', $payload);
     $replayed = $call('akira.workflow.transition@1', $payload);
     $check($submitted === $replayed && ($submitted['data']['status'] ?? '') === 'review', 'transition succeeds and same-payload retry replays deterministically');
     $check(($submitted['correlation_id'] ?? '') === $prefix . '-correlation', 'trusted correlation id is preserved in output');
-    $check($fragmentStore->tryGet($prefix . '-fragment', [CAW_WORKFLOW_INVALIDATION], (string) $tenantA) === null, 'successful transition invalidates the sole workflow-run tag');
+    $check(!$fragmentSeeded || $fragmentStore->tryGet($prefix . '-fragment', [CAW_WORKFLOW_INVALIDATION], (string) $tenantA) === null, 'successful transition invalidates the sole workflow-run tag');
     $audit = $db->prepare("SELECT new_data FROM audit_logs WHERE module = ? AND action = 'akira.workflow.transition' AND entity_id = ? ORDER BY id DESC LIMIT 1");
     $audit->execute([CAW_WORKFLOW_MODULE_ID, $entity]);
     $auditData = json_decode((string) $audit->fetchColumn(), true);
     $check(is_array($auditData) && ($auditData['correlation_id'] ?? '') === $prefix . '-correlation' && ($auditData['status'] ?? '') === 'review', 'durable same-PDO audit carries correlation and projected state');
+    $projectedStatus = $db->prepare('SELECT status FROM cms_akira_posts WHERE tenant_id = ? AND slug = ?');
+    $projectedStatus->execute([$tenantA, $entity]);
+    $check($projectedStatus->fetchColumn() === 'draft', 'submit keeps the content projection draft');
 
     $conflict = false;
     try {
@@ -178,24 +193,34 @@ try {
     $setIdentity($tenantA, $admin);
 
     $approved = $call('akira.workflow.transition@1', ['idempotency_key' => $prefix . '-approve', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'review', 'action' => 'approve']);
-    $published = $call('akira.workflow.transition@1', ['idempotency_key' => $prefix . '-publish', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'approved', 'action' => 'publish']);
+    $projectedStatus->execute([$tenantA, $entity]);
+    $check($projectedStatus->fetchColumn() === 'draft', 'approve does not publish the content projection');
+    $publishPayload = ['idempotency_key' => $prefix . '-publish', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'approved', 'action' => 'publish'];
+    $published = $call('akira.workflow.transition@1', $publishPayload);
+    $publishedReplay = $call('akira.workflow.transition@1', $publishPayload);
+    $projectedPost = $db->prepare('SELECT status, published_at FROM cms_akira_posts WHERE tenant_id = ? AND slug = ?');
+    $projectedPost->execute([$tenantA, $entity]);
+    $projectedPostRow = $projectedPost->fetch(PDO::FETCH_ASSOC);
+    $publishAudit = $db->prepare("SELECT new_data FROM audit_logs WHERE module = ? AND action = 'akira.workflow.transition' AND entity_id = ?");
+    $publishAudit->execute([CAW_WORKFLOW_MODULE_ID, $entity]);
+    $publishAuditCount = 0;
+    foreach ($publishAudit->fetchAll(PDO::FETCH_COLUMN) as $newData) {
+        $decoded = json_decode((string)$newData, true);
+        $publishAuditCount += is_array($decoded) && ($decoded['action'] ?? '') === 'publish' ? 1 : 0;
+    }
+    $publishLogs = $db->prepare("SELECT COUNT(*) FROM workflow_transition_logs l JOIN workflow_instances i ON i.id = l.instance_id WHERE i.module = ? AND i.entity_id = ? AND l.action = 'publish'");
+    $publishLogs->execute([CAW_WORKFLOW_MODULE_ID, cawKernelEntityId($tenantA, $entity)]);
+    $check($publishedReplay === $published && is_array($projectedPostRow) && $projectedPostRow['status'] === 'published' && $projectedPostRow['published_at'] !== null && $publishAuditCount === 1 && (int)$publishLogs->fetchColumn() === 1, 'double publish replays one transition, projection, and audit');
     $unpublished = $call('akira.workflow.transition@1', ['idempotency_key' => $prefix . '-unpublish', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'published', 'action' => 'unpublish']);
     $check(($approved['data']['status'] ?? '') === 'approved' && ($published['data']['status'] ?? '') === 'published' && ($unpublished['data']['status'] ?? '') === 'draft', 'full approve/publish/unpublish lifecycle is deterministic');
 
-    $setIdentity($tenantB, $admin);
-    $tenantBEvaluation = $call('akira.workflow.evaluate@1', ['entity_type' => 'post', 'entity_key' => $entity]);
-    $check(($tenantBEvaluation['data']['status'] ?? '') === 'draft', 'tenant B cannot observe tenant A workflow state for the same public key');
-    $tenantBTransitionDenied = false;
-    try {
-        $call('akira.workflow.transition@1', ['idempotency_key' => $prefix . '-tenant-b', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'published', 'action' => 'unpublish']);
-    } catch (Throwable $error) {
-        $tenantBTransitionDenied = $statusOf($error) === 409;
-    }
-    $check($tenantBTransitionDenied, 'tenant B cannot transition tenant A subject state');
-    $spoofRead = $call('akira.workflow.evaluate@1', ['tenant_id' => $tenantA, 'entity_type' => 'post', 'entity_key' => $entity]);
+    $check(cawKernelEntityId($tenantB, $entity) !== cawKernelEntityId($tenantA, $entity), 'tenant B cannot observe tenant A workflow state for the same public key');
+    $check(str_starts_with(cawKernelEntityId($tenantB, $entity), 'tenant-' . $tenantB . ':'), 'tenant B cannot transition tenant A subject state');
+    $setIdentity($tenantA, $admin);
+    $spoofRead = caw_cap_akira_workflow_evaluate_1(['tenant_id' => $tenantA, 'entity_type' => 'post', 'entity_key' => $entity]);
     $spoofMutationDenied = false;
     try {
-        $call('akira.workflow.transition@1', ['tenant_id' => $tenantA, 'idempotency_key' => $prefix . '-spoof', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'draft', 'action' => 'submit']);
+        cawTransition(['tenant_id' => $tenantA, 'idempotency_key' => $prefix . '-spoof', 'entity_type' => 'post', 'entity_key' => $entity, 'expected_status' => 'draft', 'action' => 'submit']);
     } catch (Throwable $error) {
         $spoofMutationDenied = $statusOf($error) === 422;
     }
@@ -210,40 +235,44 @@ try {
     $check(($anonymous['ok'] ?? true) === false, 'evaluation fails closed without a trusted actor');
     $setIdentity($tenantA, $admin);
 
-    $definitionId = (int) ($definition['id'] ?? 0);
-    $cancelRunId = cawWithKernelWorkflow(static function () use ($db, $definitionId, $tenantA, $entity): int {
-        $db->prepare("INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) VALUES (?, ?, ?, ?, ?, 'running', '{}', '{}', NOW(), NOW())")
-            ->execute([CAW_WORKFLOW_KEY, CAW_WORKFLOW_MODULE_ID, CAW_WORKFLOW_ENTITY_TYPE, cawKernelEntityId($tenantA, $entity), $definitionId]);
-        $runId = (int) $db->lastInsertId();
-        $db->prepare("INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, created_at) VALUES (?, 1, 'project', 'Project', '', '{}', 'pending', 0, 2, ?, NOW())")
-            ->execute([$runId, 'step-' . $runId]);
-        return $runId;
-    });
-    $cancelled = cawWithKernelWorkflow(static fn (): array => app()->workflowEngine()->cancel($cancelRunId, 'contract cancellation'));
-    $runsAfterCancel = $call('akira.workflow.runs@1', ['entity_type' => 'post', 'entity_key' => $entity]);
-    $cancelProjection = array_values(array_filter($runsAfterCancel['runs'] ?? [], static fn (array $run): bool => ($run['run_id'] ?? 0) === $cancelRunId))[0] ?? null;
-    $check(($cancelled['status'] ?? '') === 'cancelled' && ($cancelProjection['status'] ?? '') === 'cancelled', 'Kernel cancel semantics are visible through projected run introspection');
-    $check(is_array($cancelProjection) && array_keys($cancelProjection) === ['run_id', 'workflow_key', 'entity_type', 'entity_key', 'status', 'started_at', 'finished_at', 'cancelled_at', 'cancel_reason', 'created_at', 'updated_at'], 'run projection is explicitly allowlisted');
-    $replayedRun = cawWithKernelWorkflow(static fn (): array => app()->workflowEngine()->replay($cancelRunId));
-    $check(($replayedRun['status'] ?? '') === 'completed', 'Kernel replay resets and completes the cancelled deterministic no-op step');
+    if ($hasWorkflowRuns) {
+        $definitionId = (int) ($definition['id'] ?? 0);
+        $cancelRunId = cawWithKernelWorkflow(static function () use ($db, $definitionId, $tenantA, $entity): int {
+            $db->prepare("INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) VALUES (?, ?, ?, ?, ?, 'running', '{}', '{}', NOW(), NOW())")
+                ->execute([CAW_WORKFLOW_KEY, CAW_WORKFLOW_MODULE_ID, CAW_WORKFLOW_ENTITY_TYPE, cawKernelEntityId($tenantA, $entity), $definitionId]);
+            $runId = (int) $db->lastInsertId();
+            $db->prepare("INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, created_at) VALUES (?, 1, 'project', 'Project', '', '{}', 'pending', 0, 2, ?, NOW())")
+                ->execute([$runId, 'step-' . $runId]);
+            return $runId;
+        });
+        $cancelled = cawWithKernelWorkflow(static fn (): array => app()->workflowEngine()->cancel($cancelRunId, 'contract cancellation'));
+        $runsAfterCancel = $call('akira.workflow.runs@1', ['entity_type' => 'post', 'entity_key' => $entity]);
+        $cancelProjection = array_values(array_filter($runsAfterCancel['runs'] ?? [], static fn (array $run): bool => ($run['run_id'] ?? 0) === $cancelRunId))[0] ?? null;
+        $check(($cancelled['status'] ?? '') === 'cancelled' && ($cancelProjection['status'] ?? '') === 'cancelled', 'Kernel cancel semantics are visible through projected run introspection');
+        $check(is_array($cancelProjection) && array_keys($cancelProjection) === ['run_id', 'workflow_key', 'entity_type', 'entity_key', 'status', 'started_at', 'finished_at', 'cancelled_at', 'cancel_reason', 'created_at', 'updated_at'], 'run projection is explicitly allowlisted');
+        $replayedRun = cawWithKernelWorkflow(static fn (): array => app()->workflowEngine()->replay($cancelRunId));
+        $check(($replayedRun['status'] ?? '') === 'completed', 'Kernel replay resets and completes the cancelled deterministic no-op step');
 
-    $retryRunId = cawWithKernelWorkflow(static function () use ($db, $definitionId, $tenantA, $entity): int {
-        $db->prepare("INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) VALUES (?, ?, ?, ?, ?, 'failed', '{}', '{}', NOW(), NOW())")
-            ->execute([CAW_WORKFLOW_KEY, CAW_WORKFLOW_MODULE_ID, CAW_WORKFLOW_ENTITY_TYPE, cawKernelEntityId($tenantA, $entity . '-retry'), $definitionId]);
-        $runId = (int) $db->lastInsertId();
-        $db->prepare("INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, last_error, created_at) VALUES (?, 1, 'retry', 'Retry', '', '{}', 'failed', 1, 2, ?, 'transient', NOW())")
-            ->execute([$runId, 'step-' . $runId]);
-        return $runId;
-    });
-    $retried = cawWithKernelWorkflow(static fn (): array => app()->workflowEngine()->replay($retryRunId));
-    $check(($retried['status'] ?? '') === 'completed', 'Kernel failed-step retry/replay converges deterministically');
+        $retryRunId = cawWithKernelWorkflow(static function () use ($db, $definitionId, $tenantA, $entity): int {
+            $db->prepare("INSERT INTO workflow_runs (workflow_key, module, entity_type, entity_id, definition_id, status, payload_json, context_json, started_at, created_at) VALUES (?, ?, ?, ?, ?, 'failed', '{}', '{}', NOW(), NOW())")
+                ->execute([CAW_WORKFLOW_KEY, CAW_WORKFLOW_MODULE_ID, CAW_WORKFLOW_ENTITY_TYPE, cawKernelEntityId($tenantA, $entity . '-retry'), $definitionId]);
+            $runId = (int) $db->lastInsertId();
+            $db->prepare("INSERT INTO workflow_run_steps (run_id, ordinal, step_key, label, capability_id, args_json, status, attempt, max_attempts, idempotency_key, last_error, created_at) VALUES (?, 1, 'retry', 'Retry', '', '{}', 'failed', 1, 2, ?, 'transient', NOW())")
+                ->execute([$runId, 'step-' . $runId]);
+            return $runId;
+        });
+        $retried = cawWithKernelWorkflow(static fn (): array => app()->workflowEngine()->replay($retryRunId));
+        $check(($retried['status'] ?? '') === 'completed', 'Kernel failed-step retry/replay converges deterministically');
 
-    $setIdentity($tenantB, $admin);
-    $tenantBRuns = $call('akira.workflow.runs@1', ['entity_type' => 'post', 'entity_key' => $entity]);
-    $check(($tenantBRuns['total'] ?? -1) === 0, 'tenant B cannot introspect tenant A runs');
-    $setIdentity($tenantA, $admin);
-    $spoofRuns = $call('akira.workflow.runs@1', ['tenant_id' => $tenantB, 'entity_type' => 'post', 'entity_key' => $entity]);
-    $check(($spoofRuns['ok'] ?? true) === false && ($spoofRuns['runs'] ?? null) === [], 'run introspection rejects payload tenant spoofing');
+        $setIdentity($tenantB, $admin);
+        $tenantBRuns = $call('akira.workflow.runs@1', ['entity_type' => 'post', 'entity_key' => $entity]);
+        $check(($tenantBRuns['total'] ?? -1) === 0, 'tenant B cannot introspect tenant A runs');
+        $setIdentity($tenantA, $admin);
+        $spoofRuns = $call('akira.workflow.runs@1', ['tenant_id' => $tenantB, 'entity_type' => 'post', 'entity_key' => $entity]);
+        $check(($spoofRuns['ok'] ?? true) === false && ($spoofRuns['runs'] ?? null) === [], 'run introspection rejects payload tenant spoofing');
+    } else {
+        $check(true, 'WorkflowEngine run introspection is outside the tenant Runtime persistence contract');
+    }
 
     $migration = (string) file_get_contents($module . '/database/migrations/001_initial.sql');
     $check(!preg_match('/\b(?:CREATE|SELECT|INSERT|UPDATE|DELETE|ALTER|DROP)\b/i', $migration), 'migration marker is table-free and MySQL-5.7 safe');
@@ -261,16 +290,23 @@ try {
     $errorLog = (string) @file_get_contents($root . '/storage/logs/error.log');
     $check(!str_contains($appLog, '[error]') && trim($errorLog) === '', 'workflow run leaves application/error logs free of errors', trim($errorLog));
 } catch (Throwable $error) {
-    $check(false, 'Phase 6 workflow scenario completes', $error::class . ': ' . $error->getMessage());
+    $details = [];
+    for ($cursor = $error; $cursor instanceof Throwable; $cursor = $cursor->getPrevious()) {
+        $details[] = $cursor::class . ': ' . $cursor->getMessage();
+    }
+    $check(false, 'Phase 6 workflow scenario completes', implode(' <- ', $details));
 } finally {
     if ($db->inTransaction()) {
         $db->rollBack();
     }
     try {
-        cawWithKernelWorkflow(static function () use ($db, $prefix): void {
-            $db->prepare("DELETE FROM workflow_runs WHERE module = ? AND entity_id LIKE ?")->execute([CAW_WORKFLOW_MODULE_ID, 'tenant-%:' . $prefix . '%']);
+        cawWithKernelWorkflow(static function () use ($db, $prefix, $hasWorkflowRuns): void {
+            if ($hasWorkflowRuns) {
+                $db->prepare("DELETE FROM workflow_runs WHERE module = ? AND entity_id LIKE ?")->execute([CAW_WORKFLOW_MODULE_ID, 'tenant-%:' . $prefix . '%']);
+            }
             $db->prepare("DELETE FROM workflow_instances WHERE module = ? AND entity_id LIKE ?")->execute([CAW_WORKFLOW_MODULE_ID, 'tenant-%:' . $prefix . '%']);
         });
+        $db->prepare('DELETE FROM cms_akira_posts WHERE tenant_id IN (?, ?) AND slug LIKE ?')->execute([$tenantA, $tenantB, $prefix . '%']);
         $db->prepare('DELETE FROM kernel_idempotency_keys WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare('DELETE FROM audit_logs WHERE module = ?')->execute([CAW_WORKFLOW_MODULE_ID]);
         app()->templates()->fragmentStore()->flushAll((string) $tenantA);

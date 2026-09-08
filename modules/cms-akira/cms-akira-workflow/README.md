@@ -1,6 +1,6 @@
 # CMS Akira Workflow
 
-Native, table-free Akira Post workflow authority. The stable module id is `cms-akira-workflow`; it extends `cms-akira-core` and owns or reads no module tables.
+Native Akira Post workflow authority. The stable module id is `cms-akira-workflow`; it extends `cms-akira-core` and owns no module tables. Core owns `cms_akira_posts`; the workflow bridge has one deliberate cross-member write that materializes its lifecycle projection atomically on the shared tenant PDO.
 
 ## Definition authority
 
@@ -17,16 +17,16 @@ Transition roles are encoded in the definition. Evaluation uses the current Kern
 ## Capabilities
 
 - `akira.workflow.evaluate@1` — accepts `entity_type` + opaque printable-ASCII `entity_key`; returns only `workflow_key`, `entity_type`, `entity_key`, `status`, and allowlisted `allowed_actions` (`action`, `to`, `label`). It fails closed without trusted tenant and actor context.
-- `akira.workflow.transition@1` — governed protocol-v2 mutation requiring `idempotency_key`, `expected_status`, and an allowed `action`. Kernel idempotency claim/commit/release and Kernel audit use the same application PDO transaction as `WorkflowRuntime::transition()`. Audit and output carry correlation. Its sole invalidation is `entity.list.workflow-run`.
+- `akira.workflow.transition@1` — governed protocol-v2 mutation requiring `idempotency_key`, `expected_status`, and an allowed `action`. Kernel idempotency claim/commit/release, `WorkflowRuntime::transition()`, the core Post status projection, and Kernel audit use the same tenant application PDO transaction. Published workflow state projects `status=published` plus `published_at`; every non-public state projects `status=draft`. Audit and output carry correlation. Its sole invalidation is `entity.list.workflow-run`.
 - `akira.workflow.runs@1` — read-only Kernel run projection for exactly one current-tenant entity. It returns only run id, public identity/status, lifecycle timestamps, and cancellation reason; payload/context/definition ids and internal tenant subject ids are never exposed.
 
 The implementation calls `app()->workflow()` directly for state and transition. Kernel registers the `workflow.*` capability provider before extensions load and freezes its caller allowlist at that point; the direct documented runtime surface preserves the outer capability actor context and permits the runtime write, idempotency evidence, and audit evidence to share one PDO transaction. A narrow wrapper temporarily removes only the extension's ModuleDB identity while the Kernel-owned service executes, then restores it unconditionally; this is required because the current `WorkflowRuntime` predates an internal KernelPDO escalation seam. The manifest still declares both Kernel workflow capabilities as installation prerequisites. Run introspection uses `app()->workflowEngine()` through the same narrow service wrapper.
 
 ## Tenant and persistence classification
 
-Kernel workflow tables are **shared Kernel-level persistence** and currently contain no `tenant_id` column. This is a recorded Kernel prerequisite, not claimed dedicated-DB parity. At this capability boundary every internal instance/run subject is deterministically namespaced with the trusted Kernel tenant id; tenant and role payload fields are rejected, run reads require an exact tenant-namespaced entity, and internal ids are never projected. Thus tenant B cannot evaluate, transition, or list tenant A's workflow subject.
+Kernel workflow tables and `cms_akira_posts` are colocated in each tenant database. Workflow instance subjects remain tenant-namespaced as defense in depth. At this capability boundary every internal instance/run subject is deterministically namespaced with the trusted Kernel tenant id; tenant and role payload fields are rejected, run reads require an exact tenant-namespaced entity, and internal ids are never projected. Thus tenant B cannot evaluate, transition, or list tenant A's workflow subject.
 
-The member creates no workflow tables and ships only the table-free `001_initial.sql` marker. Kernel dedicated-database migration/provisioning parity for workflow and audit tables remains a recorded Kernel prerequisite.
+The member creates no workflow or content tables and ships only the table-free `001_initial.sql` marker. Kernel dedicated-database migration/provisioning parity for workflow and audit tables remains a recorded Kernel prerequisite.
 
 ## Concurrency, retries, cancel/replay, and propagation
 

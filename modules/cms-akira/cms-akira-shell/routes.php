@@ -17,8 +17,7 @@ return [
     'POST' => [
         '/cms-akira-shell/posts' => 'cms-akira-shell:akiraShellPostCreate',
         '/cms-akira-shell/posts/{slug}' => 'cms-akira-shell:akiraShellPostUpdate',
-        '/cms-akira-shell/posts/{slug}/publish' => 'cms-akira-shell:akiraShellPostPublish',
-        '/cms-akira-shell/posts/{slug}/unpublish' => 'cms-akira-shell:akiraShellPostUnpublish',
+        '/cms-akira-shell/posts/{slug}/workflow' => 'cms-akira-shell:akiraShellPostWorkflowTransition',
         '/cms-akira-shell/posts/{slug}/delete' => 'cms-akira-shell:akiraShellPostDelete',
     ],
 ];

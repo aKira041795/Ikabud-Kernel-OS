@@ -192,6 +192,38 @@ function cawRuntimeState(string $kernelEntityId): array
 }
 
 /**
+ * Materialize core's Post lifecycle projection on the caller-managed tenant transaction.
+ * cms-akira-core retains table ownership; this bridge is the sole cross-member writer because
+ * the authoritative workflow transition and projection must commit on the same PDO.
+ */
+function cawProjectPostLifecycle(PDO $db, int $tenantId, string $slug, string $workflowState): void
+{
+    $status = $workflowState === 'published' ? 'published' : 'draft';
+    cawWithKernelWorkflow(static function () use ($db, $tenantId, $slug, $status): void {
+        $statement = $db->prepare(
+            'UPDATE cms_akira_posts SET status = :status, '
+            . 'published_at = CASE WHEN :publication_status = \'published\' THEN CURRENT_TIMESTAMP ELSE NULL END '
+            . 'WHERE tenant_id = :tenant AND slug = :slug AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            ':status' => $status,
+            ':publication_status' => $status,
+            ':tenant' => $tenantId,
+            ':slug' => $slug,
+        ]);
+        if ($statement->rowCount() === 0) {
+            $exists = $db->prepare(
+                'SELECT 1 FROM cms_akira_posts WHERE tenant_id = :tenant AND slug = :slug AND deleted_at IS NULL LIMIT 1 FOR UPDATE'
+            );
+            $exists->execute([':tenant' => $tenantId, ':slug' => $slug]);
+            if ($exists->fetchColumn() === false) {
+                throw new CawWorkflowException('Post projection target is unavailable.', 404);
+            }
+        }
+    });
+}
+
+/**
  * @param array<string, mixed> $workflow
  * @return array<string, mixed>
  */
@@ -324,6 +356,7 @@ function cawTransition(array $payload): array
             throw new RuntimeException('Transition state projection failed.');
         }
         $projection = cawProjectState($workflowAfter, $key);
+        cawProjectPostLifecycle($db, $tenantId, $key, (string) $projection['status']);
         $audit = app()->cap()->call('kernel.audit.record@1', [
             'module' => CAW_WORKFLOW_MODULE_ID,
             'action' => 'akira.workflow.transition',
