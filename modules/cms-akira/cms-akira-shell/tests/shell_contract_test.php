@@ -31,6 +31,7 @@ foreach (['create', 'update', 'publish', 'unpublish', 'delete'] as $operation) {
 }
 $check(str_contains($helpers, "app()->requireAnyRole('admin')"), 'Kernel role authorization');
 $check(str_contains($helpers, 'app()->csrfEnforce()'), 'Kernel CSRF enforcement');
+$check(str_contains($helpers, 'name="_token"') && !str_contains($helpers, 'name="_csrf_token"'), 'CSRF field name matches Kernel enforcer');
 $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|require.+modules\\/cms\\/)/', $handlers . $helpers), 'no forbidden content/auth/database shortcut');
 $check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
 $check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
