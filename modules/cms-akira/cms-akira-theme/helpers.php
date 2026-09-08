@@ -719,13 +719,7 @@ function catThemePage(string $title, string $body, array $data = []): string
 
 function catThemeCsrfField(): string
 {
-    $token = '';
-    if (method_exists(app(), 'csrfToken')) {
-        $token = (string) app()->csrfToken();
-    } elseif (isset($_SESSION['_csrf_token'])) {
-        $token = (string) $_SESSION['_csrf_token'];
-    }
-    return '<input type="hidden" name="_csrf_token" value="' . catThemeEscape($token) . '">';
+    return app()->csrfField();
 }
 
 /** @return array<string, mixed> */
