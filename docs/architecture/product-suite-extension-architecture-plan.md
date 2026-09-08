@@ -288,9 +288,9 @@ disappears. `ikabud module:certify cms-akira-seo` renders C12/C13 correctly.
    extension, `pal.report.providers`/`pal.sidebar` points), the sidebar
    contribution resolves for a non-CMS host, and the install gate enforces the
    same host/point/route/compatibility rules. See `product_suite_evidence_test.php`.
-3. **An adapter** — ✅ done (2026-08-05): `cms-akira-search-adapter` is a
-   provider-only adapter (no `admin_contributions`, no sidebar) that can be
-   disabled without affecting the suite core. See `product_suite_evidence_test.php`.
+3. **An adapter** — ✅ superseded by the Phase 7 native search gate: `cms-akira-search` is a
+   provider-only extension (no `admin_contributions`, no sidebar) that can be
+   disabled without affecting the suite core. See its member contract tests.
 
 ### Recommended next safeguards (not blockers for approval)
 1. **Duplicate contribution identities** — ✅ done (2026-08-05): each

@@ -1,0 +1,77 @@
+{
+    "id": "cms-akira-search",
+    "name": "CMS Akira Search",
+    "version": "1.0.0",
+    "description": "Native tenant-scoped search document authority for CMS Akira.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "extension",
+    "extends": "cms-akira-core",
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [
+        "cms_akira_search_documents"
+    ],
+    "reads_tables": [
+        "cms_akira_search_documents"
+    ],
+    "migrations": [
+        "database/migrations/001_initial.sql",
+        "database/migrations/002_create_native_search_documents.sql"
+    ],
+    "capabilities": {
+        "exposes": [
+            {
+                "id": "akira.search.document.build@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Build a fail-closed allowlisted search document projection"
+            },
+            {
+                "id": "akira.search.upsert@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.search-document"]},
+                "description": "Idempotently create or replace one current-tenant search document"
+            },
+            {
+                "id": "akira.search.delete@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.search-document"]},
+                "description": "Idempotently remove one current-tenant search document"
+            },
+            {
+                "id": "akira.search.query@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Query allowlisted current-tenant search projections with deterministic paging"
+            },
+            {
+                "id": "akira.search.rebuild@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.search-document"]},
+                "description": "Deterministically rebuild the current tenant index from published Akira Posts"
+            }
+        ],
+        "depends": [
+            "akira.post.get@1",
+            "akira.post.list@1",
+            "kernel.idempotency.hash@1",
+            "kernel.idempotency.claim@1",
+            "kernel.idempotency.commit@1",
+            "kernel.idempotency.release@1",
+            "kernel.audit.record@1"
+        ]
+    },
+    "routes": true,
+    "events": [
+        {"key": "akira.post.lifecycle.committed"}
+    ],
+    "_enabled": false
+}

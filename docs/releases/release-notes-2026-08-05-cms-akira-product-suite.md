@@ -43,7 +43,7 @@ modules/cms-akira/
 ├── cms-akira-theme/           — theme resolution provider
 ├── cms-akira-navigation/      — navigation resolution provider
 ├── cms-akira-workflow/        — workflow evaluation provider
-├── cms-akira-search-adapter/  — search document provider
+├── cms-akira-search/          — native search document authority (renamed in Phase 7)
 ├── cms-akira-media/           — media resolution and fallback behavior
 ├── cms-akira-builder/         — visual/builder integration surface
 └── cms-akira-profile-minimal/standard/visual/headless — install/enable bundles

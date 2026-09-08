@@ -21,7 +21,7 @@ modules/cms-akira/
 ├── cms-akira-theme/
 ├── cms-akira-navigation/
 ├── cms-akira-workflow/
-├── cms-akira-search-adapter/
+├── cms-akira-search/
 ├── cms-akira-media/
 ├── cms-akira-builder/
 └── cms-akira-profile-*/
@@ -36,7 +36,7 @@ modules/cms-akira/
 - `cms-akira-theme`: Theme resolution provider.
 - `cms-akira-navigation`: Navigation resolution provider.
 - `cms-akira-workflow`: Workflow evaluation provider.
-- `cms-akira-search-adapter`: Search document provider.
+- `cms-akira-search`: Native tenant-scoped search authority.
 - `cms-akira-media`: Media resolution and fallback behavior.
 - `cms-akira-builder`: Visual/builder integration surface.
 - `cms-akira-profile-*`: Install/enable bundles for runtime posture.
