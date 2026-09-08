@@ -178,6 +178,39 @@ function akiraShellCall(string $capability, array $payload = []): mixed
 }
 
 /** @return array<string,mixed> */
+function akiraShellWorkflow(string $slug): array
+{
+    try {
+        $result = akiraShellCall('akira.workflow.evaluate@1', ['entity_type' => 'post', 'entity_key' => $slug]);
+        return is_array($result) && ($result['ok'] ?? false) === true && is_array($result['data'] ?? null)
+            ? $result['data'] : ['status' => 'unavailable', 'allowed_actions' => []];
+    } catch (Throwable) {
+        return ['status' => 'unavailable', 'allowed_actions' => []];
+    }
+}
+
+/** @param list<array<string,mixed>> $actions */
+function akiraShellWorkflowActions(string $slug, array $actions): string
+{
+    if ($slug === '') {
+        return '<p class="mt-4 text-xs text-slate-500">Save the draft to begin its workflow.</p>';
+    }
+    if ($actions === []) {
+        return '<p class="mt-4 text-xs text-slate-500">No workflow actions are currently allowed.</p>';
+    }
+    $html = '<div data-akira-workflow-actions class="mt-4 space-y-2"><p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Allowed actions</p>';
+    foreach ($actions as $action) {
+        $name = (string)($action['action'] ?? '');
+        if ($name === '') {
+            continue;
+        }
+        $label = (string)($action['label'] ?? ucfirst($name));
+        $html .= '<button type="submit" name="action" value="' . akiraShellEscape($name) . '" formaction="/cms-akira-shell/posts/' . rawurlencode($slug) . '/workflow" formmethod="post" class="w-full rounded-xl border border-akira-200 bg-akira-50 px-4 py-2.5 text-sm font-semibold text-akira-700 hover:bg-akira-100">' . akiraShellEscape($label) . '</button>';
+    }
+    return $html . '</div>';
+}
+
+/** @return array<string,mixed> */
 function akiraShellPostPayload(?string $slug = null): array
 {
     $input = akiraShellInput();
@@ -252,35 +285,41 @@ function akiraShellSavePost(?string $existingSlug): void
     }
     app()->csrfEnforce();
     $input = akiraShellPostPayload($existingSlug);
-    $requestedStatus = in_array(($input['status'] ?? ''), ['draft', 'published'], true)
-        ? (string)$input['status'] : 'draft';
-    unset($input['status']);
+    unset($input['action'], $input['expected_status']);
     $capability = $existingSlug === null ? 'akira.post.create@1' : 'akira.post.update@1';
     try {
         akiraShellCall($capability, $input);
-        $slug = (string)($input['slug'] ?? $existingSlug ?? '');
-        $post = akiraShellFetchPost($slug);
-        if ($post === null) {
-            throw new RuntimeException('Saved post could not be reloaded.');
-        }
-        $currentStatus = (string)($post['status'] ?? 'draft');
-        if ($requestedStatus !== $currentStatus) {
-            $operation = $requestedStatus === 'published' ? 'publish' : 'unpublish';
-            akiraShellCall('akira.post.' . $operation . '@1', [
-                'slug' => $slug,
-                'expected_updated_at' => (string)($post['updated_at'] ?? ''),
-                'idempotency_key' => (string)($input['idempotency_key'] ?? '') . '-' . $operation,
-            ]);
-        }
         akiraShellRedirect('/cms-akira-shell/posts?saved=1');
     } catch (Throwable $e) {
         http_response_code(422);
-        $input['status'] = $requestedStatus;
         if ($existingSlug !== null) {
             $input['slug'] = $existingSlug;
             $input['updated_at'] = (string)($input['expected_updated_at'] ?? '');
         }
         echo akiraShellPage($existingSlug === null ? 'Create post' : 'Edit post', akiraShellPostForm($input, $e->getMessage()), ['active' => 'posts']);
+    }
+}
+
+function akiraShellWorkflowTransition(string $slug): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellPostPayload($slug);
+    try {
+        akiraShellCall('akira.workflow.transition@1', [
+            'entity_type' => 'post',
+            'entity_key' => $slug,
+            'action' => (string)($input['action'] ?? ''),
+            'expected_status' => (string)($input['expected_status'] ?? ''),
+            'idempotency_key' => (string)($input['idempotency_key'] ?? ''),
+        ]);
+        akiraShellRedirect('/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        $post = akiraShellFetchPost($slug) ?? ['slug' => $slug];
+        echo akiraShellPage('Edit post', akiraShellPostForm($post, $e->getMessage()), ['active' => 'posts']);
     }
 }
 
