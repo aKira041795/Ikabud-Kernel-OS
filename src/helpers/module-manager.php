@@ -2759,7 +2759,14 @@ function executeModuleHandler(string $handler, array $params = []): void
 
     if (!isset($modules[$moduleId])) {
         http_response_code(404);
-        echo app()->render('pages/404.disyl', ['page_title' => 'Module Not Available']);
+        // Unified error card (pages/404 → shared error-page partial).
+        echo app()->render('pages/404.disyl', [
+            'status_code' => 404,
+            'page_title' => 'Module Not Available',
+            'message' => 'The requested module is not available on this installation. It may have been disabled, removed, or moved to a different route.',
+            'back_url' => rtrim((string)kernel_request_base_path(), '/') . '/',
+            'action_label' => 'Open Home',
+        ]);
         return;
     }
 
@@ -3011,13 +3018,21 @@ function executeModuleHandler(string $handler, array $params = []): void
             http_response_code(500);
         }
 
-        // API routes get JSON error; page routes get rendered error page
+        // API routes get JSON error; page routes get the unified error card.
+        // The exception message/trace is only written to the log above — never
+        // passed to the template (safe copy + no show_detail on 500).
         if (str_starts_with($requestUri, '/api/')) {
             header('Content-Type: application/json');
             echo json_encode(['ok' => false, 'error' => 'An internal module error occurred.']);
         } else {
             try {
-                echo app()->render('pages/500.disyl', ['page_title' => 'Error']);
+                echo app()->render('pages/500.disyl', [
+                    'status_code' => 500,
+                    'page_title' => 'Application error',
+                    'message' => 'An unexpected error occurred. The issue has been logged for review.',
+                    'back_url' => rtrim((string)kernel_request_base_path(), '/') . '/',
+                    'action_label' => 'Open Home',
+                ]);
             } catch (\Throwable $_) {
                 echo '<!DOCTYPE html><html><body><h1>Application Error</h1><p>An unexpected error occurred.</p></body></html>';
             }

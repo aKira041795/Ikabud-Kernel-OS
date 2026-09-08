@@ -1831,13 +1831,29 @@ set_exception_handler(function (Throwable $e): void {
         http_response_code($statusCode);
         header('Content-Type: text/html; charset=utf-8');
     }
-    // Tier 1: attempt to render the styled 500 page via DiSyL. Guard carefully —
-    // the exception may have occurred during bootstrapping so app() or the template
-    // engine may itself be unavailable.
+    // Tier 1: attempt to render the unified error card via DiSyL (pages/500,
+    // which renders the shared error-page partial in the reference design).
+    // Guard carefully — the exception may have occurred during bootstrapping so
+    // app() or the template engine may itself be unavailable.
+    // Context contract: status_code + page_title + message are safe copy only —
+    // the exception text/trace is never passed (it was already logged above),
+    // and no back_url is offered because the kernel itself just failed.
     if (function_exists('app') && function_exists('external_base_url')) {
         try {
             $html500 = app()->templates()->render('pages/500', [
                 'base_url' => external_base_url(),
+                'status_code' => $statusCode,
+                'page_title' => match ($statusCode) {
+                    401 => 'Sign-in required',
+                    403 => 'Access denied',
+                    default => 'Application error',
+                },
+                'message' => match ($statusCode) {
+                    401 => 'Your session has expired or you are not signed in. Please sign in again to continue.',
+                    403 => 'You do not have permission to view this page. If you believe this is a mistake, please contact your administrator.',
+                    default => 'An unexpected error occurred. The issue has been logged for review.',
+                },
+                'show_detail' => false,
             ]);
             echo $html500;
             exit;
