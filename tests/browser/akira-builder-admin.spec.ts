@@ -5,8 +5,27 @@
 // Journey: shell login → compositions → create composition → save draft →
 // render preview → publish.
 //
+// Provisioning recipe (verified 2026-09-08 against a local single-tenant runtime):
+//   1. Ensure the Akira modules are loadable (php ikabud module:list shows the
+//      cms-akira-* set enabled in the global registry — single-tenant mode).
+//   2. Create a kernel tenant whose entry is the Akira shell and map your host:
+//        php ikabud tenant:create cmsakira <your-domain> --entry=cms-akira-shell
+//        (or insert kernel_tenants + kernel_tenant_domains rows for 127.0.0.1).
+//   3. Install the full visual graph through the Kernel module-install service:
+//        php ikabud tenant:module:install <tenant> cms-akira-profile-visual --set-entry
+//      (writes the committed install generation; entry cms-akira-shell becomes routable).
+//   4. Seed a published post + an admin user (users table, role 'admin'/'superadmin').
+//   5. Serve public/router.php (php -S) under the mapped host.
+//
+// Sandbox blocker (recorded): in a kernel-only installer repo (no DNS / canonical
+// host / working kernel login), the kernel /login middleware self-redirects
+// (303 /login -> /login; browser ERR_TOO_MANY_REDIRECTS) BEFORE any Akira page can
+// authenticate, independent of CMS Akira. This spec therefore requires a real
+// deployment whose kernel /login renders. It is deliberately kept as a runnable
+// spec rather than an executed gate for that reason.
+//
 // Run (from repo root, after `npm ci` with @playwright/test + a chromium browser):
-//   APP_URL=https://<tenant-host> npx playwright test tests/browser/akira-builder-admin.spec.ts
+//   APP_URL=https://<tenant-host> AKIRA_USER=<admin> AKIRA_PASS=<pass> npx playwright test tests/browser/akira-builder-admin.spec.ts
 //
 // Evidence: the console/playwright trace captures the create/save/preview/publish
 // steps against the authenticated capability bridge. The browser journey is the

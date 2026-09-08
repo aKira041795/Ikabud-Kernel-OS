@@ -59,9 +59,13 @@ Main HEAD: a0c4bd8 (after 10B docs).
 - Dedicated-tenant Kernel migration/audit/idempotency/outbox provisioning parity (Kernel prerequisite, not Akira).
 - Transactional outbox for guaranteed lifecycle publication (search/workflow) — recorded Kernel prerequisite.
 - Public Post-path integration consuming `akira.builder.render@1` if composition output is to replace Post body
-  output (separately-gated seam; no cross-member SQL writes).
-- Playwright PW-2 builder-admin journey delivered as a documented runnable spec (requires a live Akira tenant +
-  full-deployment harness absent from this kernel-only installer).
+  output — **RESOLVED 2026-09-08**: merged PR #62 (core `cacPostDetailCompositionHtml` optional override +
+  kernel `CapabilityBus::tryCall()` optional-consumer probe; 11/11 seam test, architecture 6/6, CI 6/6).
+- Playwright PW-2 builder-admin journey — **attempted 2026-09-08**: real Akira tenant provisioned via the Kernel
+  module-install service (profile-visual, entry cms-akira-shell) and shell routes verified; the sandbox kernel
+  `/login` middleware self-redirects (ERR_TOO_MANY_REDIRECTS) before Akira can authenticate — a full-deployment
+  prerequisite, not an Akira defect. Spec updated with the verified provisioning recipe + run command; remains a
+  runnable spec against a full deployment.
 
 ## Notes
 - Implementation delegated per the governed workflow: Codex Sol (GPT-5.6) primary; DeepSeek Pro then

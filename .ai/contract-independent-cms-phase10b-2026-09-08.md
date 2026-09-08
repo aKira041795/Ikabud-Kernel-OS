@@ -160,3 +160,39 @@ recommended_next_state: ALL independent-CMS member gates (0-10B) are complete. R
   separately-gated core/public-path integration consuming akira.builder.render@1 if composition output is
   to replace Post body output (recorded seam).
 
+## Follow-ups execution record — 2026-09-08
+
+### 1. Public Post-path published-composition override seam — RESOLVED (merged PR #62)
+- `modules/cms-akira/cms-akira-core/handlers.php`: added `cacPostDetailCompositionHtml($slug)` and wired it
+  into `pageCmsAkiraPostDetail`. When builder is enabled and a PUBLISHED composition is attached to a
+  published post's key, GET /posts/{slug} serves the composition render
+  (akira.builder.render@1 -> ARK -> DiSyL entity.detail.composition); every other case (builder absent,
+  no composition, draft-only, render/theme unavailable, cross-tenant) falls back to the byte-identical
+  canonical article-page body render. No core->builder manifest dependency; no cross-member SQL.
+- `kernel/Capabilities/CapabilityBus.php`: added the sanctioned optional-consumer probe `tryCall()` —
+  returns null when the capability has no provider and is exempt from the architecture checker's
+  "undeclared capability calls" rule by construction (base modules must not declare a depends entry for an
+  optional extension they extend). `call()` remains the strict must-be-declared path.
+- Test `modules/cms-akira/cms-akira-core/tests/post_composition_override_test.php` (11/11): override served,
+  draft-only never public, no-composition fallback, tenant isolation (no cross-tenant leak), builder-absent
+  baseline unchanged.
+- Verified: architecture:check 6/6 (Phase 2 undeclared-capability-calls clean), composer 106/106, core P1 38
+  + mutation 38 + seam 11, phpstan + php-cs-fixer clean; CI 6/6 on PR #62.
+
+### 2. PW-2 builder-admin browser journey — attempted; sandbox login-blocked (recorded, runnable spec)
+- Provisioned a real Akira tenant path against the local single-tenant runtime: kernel tenant 50 (cmsakira,
+  entry cms-akira-shell) + kernel_tenant_domains mapping for 127.0.0.1; installed the full visual graph via
+  the Kernel module-install service (`tenant:module:install 50 cms-akira-profile-visual --set-entry` ->
+  generation active, 10 members, entry shell); global module registry enabled; seeded an admin user
+  (akiraadmin) + a published post. Akira shell routes resolve correctly (unauthenticated 303 -> /login).
+- Blocker (environment, not Akira): the kernel /login middleware self-redirects in this kernel-only installer
+  sandbox (303 /login -> /login; browser ERR_TOO_MANY_REDIRECTS) before any Akira page can authenticate —
+  reproduces with zero Akira provisioning and persists after APCu clear + server restart; no DNS//etc-hosts
+  write (no sudo). This is the "full-deployment / live kernel login" prerequisite recorded at 10B.
+- Spec updated (`tests/browser/akira-builder-admin.spec.ts`) with the verified provisioning recipe + the
+  sandbox login blocker + the exact run command for a real deployment. The journey remains a runnable spec,
+  not an executed gate, for that reason.
+
+status (follow-ups): seam RESOLVED + merged; PW-2 = runnable spec with verified provisioning, blocked in this
+sandbox only by the kernel login middleware (outside CMS Akira).
+
