@@ -1,0 +1,37 @@
+{
+    "id": "cms-akira-profile-standard",
+    "name": "CMS Akira Standard Profile",
+    "version": "1.0.0",
+    "description": "CMS Akira Standard installation profile — the complete standard publishing configuration.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "profile",
+    "installs": [
+        "cms-akira-core",
+        "cms-akira-shell",
+        "cms-akira-editor",
+        "cms-akira-theme",
+        "cms-akira-navigation",
+        "cms-akira-media",
+        "cms-akira-seo"
+    ],
+    "depends": [
+        "cms-akira-core",
+        "cms-akira-shell",
+        "cms-akira-editor",
+        "cms-akira-theme",
+        "cms-akira-navigation",
+        "cms-akira-media",
+        "cms-akira-seo"
+    ],
+    "owns_tables": [],
+    "reads_tables": [],
+    "migrations": [],
+    "routes": false,
+    "capabilities": {
+        "exposes": [],
+        "depends": []
+    },
+    "events": [],
+    "_enabled": false
+}
