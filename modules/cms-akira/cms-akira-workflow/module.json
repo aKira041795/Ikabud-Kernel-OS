@@ -2,7 +2,7 @@
     "id": "cms-akira-workflow",
     "name": "CMS Akira Workflow",
     "version": "1.0.0",
-    "description": "Native table-free Akira Post lifecycle bridge to the Kernel workflow runtime.",
+    "description": "Native Akira Post lifecycle bridge with an atomic core status projection.",
     "author": "Ikabud",
     "suite": "cms-akira",
     "kind": "extension",
@@ -11,7 +11,7 @@
         "cms-akira-core"
     ],
     "owns_tables": [],
-    "reads_tables": [],
+    "reads_tables": ["cms_akira_posts"],
     "migrations": [
         "database/migrations/001_initial.sql"
     ],

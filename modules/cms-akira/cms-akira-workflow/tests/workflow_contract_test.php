@@ -92,7 +92,7 @@ try {
     $check($ids === array_keys(cms_akira_workflow_capability_handlers()), 'manifest and runtime expose exactly evaluate, transition, and runs');
     $check(($manifest['kind'] ?? '') === 'extension' && ($manifest['extends'] ?? '') === 'cms-akira-core', 'member remains a stable Akira core extension');
     $check(($manifest['depends'] ?? []) === ['cms-akira-core'], 'only the native Akira core module dependency remains');
-    $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === [], 'workflow member owns and reads no module tables');
+    $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === ['cms_akira_posts'], 'workflow member declares core Post projection access without claiming ownership');
     $check(($manifest['migrations'] ?? []) === ['database/migrations/001_initial.sql'] && !is_file($module . '/database/migrations/002_initial.sql'), 'only the table-free 001 migration marker exists');
     $check(($manifest['_enabled'] ?? null) === false && !isset($manifest['entities']), 'activation is explicit and no Entity Authority is claimed');
     $transitionMeta = $manifest['capabilities']['exposes'][1] ?? [];
