@@ -73,7 +73,22 @@ t(
     '007_tenant_module_settings.sql must be a tenant kernel artifact'
 );
 
-// 4. All declared artifacts must exist on disk (a missing file silently skips
+// 4. Policy seeding runs after kernel artifacts and requires its registry table
+//    to exist in the tenant DB before any module is installed.
+$policyArtifact = (string)($artifacts['016_capability_authorization_policies.sql'] ?? '');
+t(
+    'capability authorization policy artifact',
+    $policyArtifact !== '' && is_file($policyArtifact),
+    '016_capability_authorization_policies.sql must be a tenant kernel artifact'
+);
+t(
+    'capability authorization policy artifact creates the registry table',
+    $policyArtifact !== ''
+    && stripos((string) file_get_contents($policyArtifact), 'CREATE TABLE IF NOT EXISTS capability_authorization_policies') !== false,
+    'policy seeding requires capability_authorization_policies in the tenant DB'
+);
+
+// 5. All declared artifacts must exist on disk (a missing file silently skips
 //    the table, recreating the 1146/42S22 class of failures).
 $missing = [];
 foreach ($artifacts as $name => $path) {
@@ -83,7 +98,7 @@ foreach ($artifacts as $name => $path) {
 }
 t('all tenant kernel artifacts exist on disk', $missing === [], implode(', ', $missing));
 
-// 5. The module-settings table is what the module settings system reads.
+// 6. The module-settings table is what the module settings system reads.
 t(
     'tenant_module_settings.sql creates the table',
     is_file((string)($artifacts['007_tenant_module_settings.sql'] ?? ''))
@@ -91,7 +106,7 @@ t(
     'tenant_module_settings.sql must CREATE TABLE tenant_module_settings'
 );
 
-// 6. Auth-owned spec resolver contract (seed path): must handle modules that
+// 7. Auth-owned spec resolver contract (seed path): must handle modules that
 //    declare auth_owned without erroring when absent.
 if (function_exists('kernelAuthOwnedSpecForModule')) {
     $spec = kernelAuthOwnedSpecForModule('__no_such_module__');
