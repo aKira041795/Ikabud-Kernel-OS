@@ -249,11 +249,11 @@ function cacPostRouteError(int $status = 404): void
  */
 function cacPostDetailCompositionHtml(string $slug): ?string
 {
-    if (!app()->capabilities()->has('akira.builder.render@1')) {
-        return null;
-    }
+    // tryCall is the sanctioned optional-consumer probe: builder (an optional
+    // extension of core) is not declared in core's capabilities.depends, and
+    // tryCall returns null when it is not registered.
     try {
-        $render = app()->cap()->call('akira.builder.render@1', [
+        $render = app()->cap()->tryCall('akira.builder.render@1', [
             'entity_type' => 'post',
             'entity_key' => $slug,
             'source' => 'published',

@@ -115,35 +115,35 @@ $detail = static function (int $tenant, string $slug) use (&$check): string {
 echo "=== CMS Akira public Post-path composition-override seam ===\n";
 
 // Baseline: builder absent -> canonical body render (article-page), never composition-page.
-    $baseHtml = $detail($tenantA, 'composed-post');
-    $check(str_contains($baseHtml, 'data-ark-renderer="article-page"') && str_contains($baseHtml, 'BODY_A_SECRET'), 'builder absent -> canonical article-page body render (baseline unchanged)', '');
-    $check(!str_contains($baseHtml, 'data-ark-renderer="composition-page"'), 'builder absent -> no composition render', '');
+$baseHtml = $detail($tenantA, 'composed-post');
+$check(str_contains($baseHtml, 'data-ark-renderer="article-page"') && str_contains($baseHtml, 'BODY_A_SECRET'), 'builder absent -> canonical article-page body render (baseline unchanged)', '');
+$check(!str_contains($baseHtml, 'data-ark-renderer="composition-page"'), 'builder absent -> no composition render', '');
 
-    // Enable builder + theme providers (the extension that owns composition state).
-    $register('cms-akira-theme', cms_akira_theme_capability_handlers());
-    $register('cms-akira-builder', cms_akira_builder_capability_handlers());
-    $check($registry->has('akira.builder.render@1') && $registry->has('akira.theme.resolve@1'), 'builder render + theme resolve capabilities active', '');
+// Enable builder + theme providers (the extension that owns composition state).
+$register('cms-akira-theme', cms_akira_theme_capability_handlers());
+$register('cms-akira-builder', cms_akira_builder_capability_handlers());
+$check($registry->has('akira.builder.render@1') && $registry->has('akira.theme.resolve@1'), 'builder render + theme resolve capabilities active', '');
 
-    // Published composition present -> composition render replaces body.
-    $compHtml = $detail($tenantA, 'composed-post');
-    $check(str_contains($compHtml, 'data-ark-renderer="composition-page"') && str_contains($compHtml, 'Composed override title'), 'published composition overrides the public body render', '');
-    $check(str_contains($compHtml, 'COMPOSED_A_MARKER') && !str_contains($compHtml, 'BODY_A_SECRET'), 'published composition HTML served (marker present, post body absent)', '');
-    $check(!str_contains($compHtml, 'data-ark-renderer="article-page"'), 'canonical article-page not rendered when composition overrides', '');
+// Published composition present -> composition render replaces body.
+$compHtml = $detail($tenantA, 'composed-post');
+$check(str_contains($compHtml, 'data-ark-renderer="composition-page"') && str_contains($compHtml, 'Composed override title'), 'published composition overrides the public body render', '');
+$check(str_contains($compHtml, 'COMPOSED_A_MARKER') && !str_contains($compHtml, 'BODY_A_SECRET'), 'published composition HTML served (marker present, post body absent)', '');
+$check(!str_contains($compHtml, 'data-ark-renderer="article-page"'), 'canonical article-page not rendered when composition overrides', '');
 
-    // Draft-only composition -> canonical body render (draft never public).
-    $draftHtml = $detail($tenantA, 'draft-comp-post');
-    $check(str_contains($draftHtml, 'data-ark-renderer="article-page"') && str_contains($draftHtml, 'BODY_DRAFT_SECRET'), 'draft-only composition -> canonical article-page body render', '');
-    $check(!str_contains($draftHtml, 'DRAFT_ONLY_MARKER') && !str_contains($draftHtml, 'data-ark-renderer="composition-page"'), 'draft composition never surfaced publicly', '');
+// Draft-only composition -> canonical body render (draft never public).
+$draftHtml = $detail($tenantA, 'draft-comp-post');
+$check(str_contains($draftHtml, 'data-ark-renderer="article-page"') && str_contains($draftHtml, 'BODY_DRAFT_SECRET'), 'draft-only composition -> canonical article-page body render', '');
+$check(!str_contains($draftHtml, 'DRAFT_ONLY_MARKER') && !str_contains($draftHtml, 'data-ark-renderer="composition-page"'), 'draft composition never surfaced publicly', '');
 
-    // No composition -> canonical body render.
-    $plainHtml = $detail($tenantA, 'plain-post');
-    $check(str_contains($plainHtml, 'data-ark-renderer="article-page"') && str_contains($plainHtml, 'BODY_PLAIN_SECRET'), 'no composition -> canonical article-page body render', '');
+// No composition -> canonical body render.
+$plainHtml = $detail($tenantA, 'plain-post');
+$check(str_contains($plainHtml, 'data-ark-renderer="article-page"') && str_contains($plainHtml, 'BODY_PLAIN_SECRET'), 'no composition -> canonical article-page body render', '');
 
-    // Tenant isolation: tenant A's published composition must NOT leak to tenant B's identical slug.
-    $tenantBHtml = $detail($tenantB, 'composed-post');
-    $check(str_contains($tenantBHtml, 'data-ark-renderer="article-page"') && str_contains($tenantBHtml, 'BODY_B_SECRET'), 'tenant isolation -> tenant B identical slug renders its own body, not tenant A composition', '');
-    $check(!str_contains($tenantBHtml, 'COMPOSED_A_MARKER') && !str_contains($tenantBHtml, 'data-ark-renderer="composition-page"'), 'no cross-tenant composition leak', '');
+// Tenant isolation: tenant A's published composition must NOT leak to tenant B's identical slug.
+$tenantBHtml = $detail($tenantB, 'composed-post');
+$check(str_contains($tenantBHtml, 'data-ark-renderer="article-page"') && str_contains($tenantBHtml, 'BODY_B_SECRET'), 'tenant isolation -> tenant B identical slug renders its own body, not tenant A composition', '');
+$check(!str_contains($tenantBHtml, 'COMPOSED_A_MARKER') && !str_contains($tenantBHtml, 'data-ark-renderer="composition-page"'), 'no cross-tenant composition leak', '');
 
-    echo "\nCMS Akira public Post-path composition-override seam: {$passed} passed, {$failed} failed\n";
+echo "\nCMS Akira public Post-path composition-override seam: {$passed} passed, {$failed} failed\n";
 
 exit($failed === 0 ? 0 : 1);
