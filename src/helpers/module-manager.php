@@ -138,6 +138,34 @@ function moduleExtendsForModule(string $moduleId): ?string
 }
 
 /**
+ * Whether a module is a "kernel companion" — a module that legitimately lives
+ * inside the kernel admin shell (declared `kernel_companion`, e.g.
+ * gui-settings) or is an extension/adapter of another module. Kernel
+ * companions are the only modules surfaced to the kernel admin by default.
+ * Bundled independent products (standalone-application / entry modules,
+ * product suites) are NOT companions: they own their own auth + database and
+ * are never exposed to the kernel admin unless the operator explicitly opts in
+ * via `allow_kernel_admin`.
+ *
+ * @param array<string, mixed> $manifest
+ */
+function moduleIsKernelCompanion(string $moduleId, array $manifest): bool
+{
+    if (!empty($manifest['kernel_companion'] ?? false)) {
+        return true;
+    }
+
+    $kind = function_exists('moduleManifestKindFromManifest')
+        ? moduleManifestKindFromManifest($manifest)
+        : MODULE_KIND_STANDALONE;
+    if ($kind === MODULE_KIND_EXTENSION || $kind === MODULE_KIND_ADAPTER) {
+        return true;
+    }
+
+    return function_exists('moduleExtendsForModule') && moduleExtendsForModule($moduleId) !== null;
+}
+
+/**
  * Build the product suite graph from discovered modules.
  *
  * Returns a map keyed by normalized suite id:
@@ -2737,15 +2765,19 @@ function executeModuleHandler(string $handler, array $params = []): void
     $role = $user ? (string)($user['role'] ?? '') : '';
     $source = $user ? (string)($user['source'] ?? 'kernel') : '';
     if ($role === 'admin' && $source === 'kernel' && !$isModuleLoginRoute) {
-        // Modules that authenticate against the kernel `users` table have no
-        // separate auth surface: their administrators ARE kernel admins, so the
-        // opt-in gate is redundant and would lock out the module's own admin
-        // users. Only apply it to modules with module-owned auth.
+        // Kernel admin may only reach module routes that are kernel companions
+        // (kernel_companion, extensions/adapters) or explicitly opted-in via
+        // allow_kernel_admin. Bundled independent products (entry/standalone
+        // modules, e.g. cms-akira-shell) are never kernel-admin surfaces even
+        // when they authenticate against a `users` table in their own tenant
+        // context.
+        $isKernelCompanion = moduleIsKernelCompanion($moduleId, $modules[$moduleId]);
         $usesKernelUsers = function_exists('tenantEntryModuleUsesKernelUsers')
             && tenantEntryModuleUsesKernelUsers($moduleId);
-
-        $settings = $usesKernelUsers ? ['allow_kernel_admin' => true] : getModuleSettings($moduleId);
-        $allowKernelAdmin = (bool)($settings['allow_kernel_admin'] ?? false);
+        $settings = getModuleSettings($moduleId);
+        $allowKernelAdmin = $isKernelCompanion
+            ? ($usesKernelUsers || (bool)($settings['allow_kernel_admin'] ?? false))
+            : (bool)($settings['allow_kernel_admin'] ?? false);
         if (!$allowKernelAdmin) {
             $isApiRoute = \Ikabud\Kernel\Http\ContentNegotiator::isApiRoute();
 
@@ -3024,15 +3056,17 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
         }
 
         // Kernel admin should not see module links unless the module opts in.
-        // Mirror the route gate: modules authenticating against the kernel
-        // users table are always reachable by the kernel admin, so their nav
-        // links are shown even without an explicit opt-in.
+        // Bundled independent products (entry/standalone modules) own their own
+        // auth + database and are never surfaced to the kernel admin. Only
+        // kernel companions (kernel_companion, extensions/adapters) or modules
+        // the operator explicitly opted-in via allow_kernel_admin are shown.
         if ($isKernelAdmin) {
             $settings = $module['_settings'] ?? [];
+            $isKernelCompanion = moduleIsKernelCompanion($moduleId, $module);
             $usesKernelUsers = function_exists('tenantEntryModuleUsesKernelUsers')
                 && tenantEntryModuleUsesKernelUsers($moduleId);
-            $allowKernelAdmin = $usesKernelUsers
-                ? true
+            $allowKernelAdmin = $isKernelCompanion
+                ? ($usesKernelUsers || (bool)($settings['allow_kernel_admin'] ?? false))
                 : (bool)($settings['allow_kernel_admin'] ?? false);
             if (!$allowKernelAdmin) {
                 continue;

@@ -400,6 +400,29 @@ function moduleRegistryRuntimeDefaultModulesForTenant(int $tenantId): array
  * @see getEnabledModules()
  * @see tenantProvisionModulePlan()
  */
+/**
+ * Default enabled state in single-tenant / no-tenant contexts.
+ *
+ * Bundled modules that declare "_enabled": false in their manifest are
+ * intentionally inactive until an installer/user activates them (kernel
+ * module-install service, `module:enable`, or per-tenant activation). That
+ * declaration MUST be honored here so bundled-but-inactive modules (e.g. the
+ * cms-akira suite members) are not silently enabled on every fresh
+ * single-application install and exposed to the kernel admin. Modules that do
+ * not carry an explicit "_enabled" declaration stay enabled by default so
+ * drop-in modules remain immediately usable (backward compatible).
+ */
+function moduleRegistrySingleTenantDefaultEnabledState(string $moduleId): bool
+{
+    $allModules = moduleRegistryRawModuleManifests();
+    $manifest = $allModules[$moduleId] ?? null;
+    if (is_array($manifest) && array_key_exists('_enabled', $manifest)) {
+        return (bool) $manifest['_enabled'];
+    }
+
+    return true;
+}
+
 function moduleRegistryDefaultEnabledState(string $moduleId, ?int $tenantId = null): bool
 {
     $moduleId = trim($moduleId);
@@ -409,11 +432,11 @@ function moduleRegistryDefaultEnabledState(string $moduleId, ?int $tenantId = nu
 
     if ($tenantId === null) {
         if (!moduleTenantSettingsModeEnabled()) {
-            return true;
+            return moduleRegistrySingleTenantDefaultEnabledState($moduleId);
         }
         $tenantId = moduleTenantSettingsTenantId();
         if ($tenantId === null || $tenantId <= 0) {
-            return true;
+            return moduleRegistrySingleTenantDefaultEnabledState($moduleId);
         }
     }
 
