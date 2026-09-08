@@ -1,0 +1,5 @@
+<!-- Context: composition # validated builder composition projection only. -->
+<article data-ark-renderer="composition-page" data-composition-key="{composition.entity_key | esc_attr}">
+  <h1>{composition.title | esc_html}</h1>
+  <div class="akira-composition">{composition.html | raw}</div>
+</article>

@@ -9,6 +9,11 @@
       "template": "public/article-page.disyl",
       "controls": ["show_metadata"],
       "context_keys": ["post"]
+    },
+    "entity.detail.composition": {
+      "template": "public/composition-page.disyl",
+      "controls": ["source"],
+      "context_keys": ["composition"]
     }
   }
 }
