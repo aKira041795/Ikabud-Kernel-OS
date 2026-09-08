@@ -2,6 +2,34 @@
 
 declare(strict_types=1);
 
+final class AkiraShellRenderTestApp
+{
+    public function csrfField(): string
+    {
+        return '<input type="hidden" name="_token" value="rendered-token">';
+    }
+
+    public function cap(): object
+    {
+        return new class () {
+            /** @param array<string,mixed> $payload
+             * @param array<string,mixed> $options
+             * @return array<string,mixed>
+             */
+            public function call(string $capability, array $payload, array $options): array
+            {
+                return ['ok' => true, 'data' => ['status' => 'draft', 'allowed_actions' => []]];
+            }
+        };
+    }
+}
+
+function app(): mixed
+{
+    static $app;
+    return $app ??= new AkiraShellRenderTestApp();
+}
+
 $root = dirname(__DIR__);
 $manifest = json_decode((string)file_get_contents($root . '/module.json'), true);
 $routes = require $root . '/routes.php';
@@ -37,7 +65,6 @@ $mutationBody = explode('function akiraShellMutation', $helpers, 2)[1] ?? '';
 $mutationBody = explode("\n}", $mutationBody, 2)[0] ?? '';
 $check(str_contains($mutationBody, 'akiraShellAuthorize()') && !str_contains($mutationBody, 'akiraShellAdmin'), 'delete delegates role authority to its governed policy row');
 $check(str_contains($helpers, 'app()->csrfEnforce()'), 'Kernel CSRF enforcement');
-$check(str_contains($helpers, 'return app()->csrfField();'), 'CSRF field delegates to Kernel renderer');
 $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|require.+modules\\/cms\\/)/', $handlers . $helpers), 'no forbidden content/auth/database shortcut');
 $check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
 $check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
@@ -54,7 +81,10 @@ $check(str_contains($helpers, "akiraShellIsAdmin() ? ['edit', 'delete'] : ['edit
 $participantRoles = $manifest['nav'][0]['roles'] ?? [];
 $check($participantRoles === ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin'] && ($manifest['nav'][1]['roles'] ?? []) === $participantRoles, 'dashboard and posts navigation admits every seeded workflow participant');
 $check(!str_contains($handlers, '<select name="status" class="\' . $control') && str_contains($handlers, 'data-akira-workflow-state') && str_contains($helpers, 'data-akira-workflow-actions') && str_contains($handlers, 'x-text="body"'), 'editor exposes workflow state and allowed actions instead of a binary status input');
-$check(str_contains($handlers, 'x-data="akiraContentEditor()"') && str_contains($handlers, 'function akiraContentEditor()') && !str_contains($handlers, 'x-data="{body:'), 'editor state uses a named Alpine component safe for DiSyL parsing');
+require_once $root . '/handlers.php';
+$renderedForm = akiraShellPostForm(['slug' => 'render-contract', 'title' => 'Rendered contract', 'content' => 'Body', 'updated_at' => '2026-01-01 00:00:00']);
+$check(str_contains($renderedForm, 'name="_token" value="rendered-token"') && !str_contains($renderedForm, 'name="_csrf_token"'), 'rendered editor uses the canonical Kernel CSRF field');
+$check(str_contains($renderedForm, 'x-data="akiraContentEditor()"') && str_contains($renderedForm, 'function akiraContentEditor()') && !str_contains($renderedForm, 'x-data="{body:'), 'rendered editor uses a named Alpine component safe for DiSyL parsing');
 $check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'") && str_contains($helpers, "'expected_status'"), 'saves and workflow transitions preserve optimistic concurrency');
 $check(str_contains($handlers, "['Published', \$published") && str_contains($handlers, 'akiraShellRecentPosts'), 'dashboard presents governed counts and recent posts');
 
