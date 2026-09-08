@@ -238,6 +238,36 @@ final class CapabilityBus implements CapabilityBusContract
     }
 
     /**
+     * Call a capability ONLY if it is currently registered (optional probe).
+     *
+     * Sanctioned optional-consumer idiom: a base module may, at runtime, consume
+     * a capability exposed by an OPTIONAL extension that extends it (for example
+     * core probing an extension renderer). Because the extension may be absent,
+     * the caller MUST NOT declare it in capabilities.depends (that would force a
+     * dependency on an optional extension). tryCall() returns null when the
+     * capability has no provider, so the caller can fail closed / fall back.
+     *
+     * Unlike call(), tryCall() never throws for an unregistered capability. All
+     * other semantics (policy, authorization, mode) are identical to call(), so
+     * a registered-but-denied optional capability still surfaces its real error.
+     *
+     * The architecture checker only audits `->cap()->call(...)` against declared
+     * depends; `tryCall()` is the deliberate, by-construction-optional path and
+     * is therefore exempt from that "undeclared capability calls" rule. Required
+     * cross-module consumption must still use call() + a declared depends entry.
+     *
+     * @param array<string, mixed> $options
+     */
+    public function tryCall(string $capabilityId, mixed $payload = null, array $options = []): mixed
+    {
+        $resolved = $this->registry->resolve($capabilityId);
+        if (empty($this->registry->providers($resolved))) {
+            return null;
+        }
+        return $this->call($resolved, $payload, $options);
+    }
+
+    /**
      * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array}> $providers
      * @return array<int, array{provider: string, modes: string[], handler: callable, meta?: array}>
      */

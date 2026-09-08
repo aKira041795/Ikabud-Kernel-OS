@@ -232,6 +232,46 @@ function cacPostRouteError(int $status = 404): void
 }
 
 /**
+ * Optional published-composition override for the public Post detail path.
+ *
+ * cms-akira-builder (an extension of core) may attach a published composition
+ * to this published post's key. When builder is enabled and a valid published
+ * composition renders, its HTML replaces the canonical body render for this
+ * post. There is deliberately NO manifest dependency (core never depends on
+ * builder): the capability is probed at runtime and every failure mode falls
+ * back to the canonical entity.detail.post body render below, so the public
+ * path is byte-identical when builder is absent, disabled, has no published
+ * composition for the key, or cannot render (theme/view unavailable). No
+ * cross-member SQL is performed: composition state is read exclusively through
+ * the builder render capability. The caller only reaches this seam after
+ * akira.post.get@1 resolves the post (status='published', not deleted), so a
+ * draft post can never be surfaced through a composition override.
+ */
+function cacPostDetailCompositionHtml(string $slug): ?string
+{
+    // tryCall is the sanctioned optional-consumer probe: builder (an optional
+    // extension of core) is not declared in core's capabilities.depends, and
+    // tryCall returns null when it is not registered.
+    try {
+        $render = app()->cap()->tryCall('akira.builder.render@1', [
+            'entity_type' => 'post',
+            'entity_key' => $slug,
+            'source' => 'published',
+        ], [
+            'caller' => ['module' => 'cms-akira-core', 'user' => app()->user()],
+            'mode' => 'first',
+        ]);
+    } catch (Throwable $error) {
+        return null;
+    }
+    if (!is_array($render) || ($render['ok'] ?? false) !== true) {
+        return null;
+    }
+    $html = is_array($render['data'] ?? null) ? ($render['data']['html'] ?? null) : null;
+    return is_string($html) && $html !== '' ? $html : null;
+}
+
+/**
  * GET /posts: bridge -> domain capability -> projection -> ARK -> DiSyL.
  *
  * @param array<string, mixed> $params
@@ -292,6 +332,17 @@ function pageCmsAkiraPostDetail(array $params = []): void
     $resolved = app()->entityViews()->resolveDetail('post', $slug, 'detail');
     if (($resolved['error'] ?? null) !== null || !is_array($resolved['entity'] ?? null)) {
         cacPostRouteError();
+        return;
+    }
+
+    // Published-composition override (builder seam, runtime-probed, fail-closed):
+    // when a valid published composition renders for this published post, it
+    // replaces the canonical body render; otherwise fall through to the body
+    // render below (unchanged public behavior).
+    $compositionHtml = cacPostDetailCompositionHtml($slug);
+    if ($compositionHtml !== null) {
+        header('Content-Type: text/html; charset=UTF-8');
+        echo $compositionHtml;
         return;
     }
 
