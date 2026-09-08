@@ -42,6 +42,11 @@ $check(str_contains($login, 'https://cdn.tailwindcss.com') && str_contains($logi
 $check(str_contains($login, 'tailwind.config') && str_contains($login, 'CMS Akira') && !str_contains($login, '<style>'), 'login uses branded palette without bespoke CSS');
 $check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_contains($handlers, 'data-akira-entity-view="post-list"'), 'posts render through styled Kernel entity-view container');
 $check(str_contains($helpers, 'https://cdn.tailwindcss.com') && str_contains($helpers, 'aria-label="Akira administration"'), 'admin shell ingests design system and accessible navigation');
+$check(str_contains($handlers, "'filters' => ['include_unpublished' => true") && str_contains($handlers, 'akiraShellPagination'), 'admin list uses governed filtering and pagination');
+$check(str_contains($helpers, "['actions'] = ['edit', 'delete']") && str_contains($helpers, "'delete' => 'POST'") && str_contains($helpers, 'Delete this post?'), 'entity-view rows expose edit and confirmed delete actions');
+$check(str_contains($handlers, 'name="status"') && str_contains($handlers, 'x-text="body"'), 'editor exposes draft/published status and safe text preview');
+$check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'"), 'create and edit save through capabilities with optimistic concurrency');
+$check(str_contains($handlers, "['Published', \$published") && str_contains($handlers, 'akiraShellRecentPosts'), 'dashboard presents governed counts and recent posts');
 
 echo "shell contract: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);

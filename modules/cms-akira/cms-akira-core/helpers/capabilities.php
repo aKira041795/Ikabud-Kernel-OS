@@ -113,12 +113,15 @@ function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.
     if ($slug === null) {
         return ['ok' => false, 'error' => 'A canonical slug is required'];
     }
+    $adminRead = ($payload['include_unpublished'] ?? false) === true
+        && (string)(app()->user()['role'] ?? '') === 'admin';
 
     try {
+        $statusClause = $adminRead ? '' : " AND status = 'published'";
         $stmt = cacDb()->prepare(
             "SELECT id, tenant_id, slug, title, subtitle, content, image, status, published_at, created_at, updated_at
              FROM cms_akira_posts
-             WHERE tenant_id = :tenant_id AND slug = :slug AND status = 'published' AND deleted_at IS NULL
+             WHERE tenant_id = :tenant_id AND slug = :slug{$statusClause} AND deleted_at IS NULL
              LIMIT 1"
         );
         $stmt->execute([':tenant_id' => cacPostTenantId(), ':slug' => $slug]);
@@ -140,6 +143,7 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
         return ['ok' => false, 'error' => 'payload must be an object'];
     }
     $payload = is_array($payload) ? $payload : [];
+    $filters = is_array($payload['filters'] ?? null) ? $payload['filters'] : [];
     $sort = is_array($payload['sort'] ?? null) ? $payload['sort'] : [];
     $field = (string)($sort['field'] ?? $payload['sort_field'] ?? 'published_at');
     $direction = strtolower((string)($sort['direction'] ?? $payload['sort_direction'] ?? 'desc'));
@@ -147,18 +151,37 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
     $direction = in_array($direction, ['asc', 'desc'], true) ? $direction : 'desc';
     $limit = max(1, min(50, (int)($payload['limit'] ?? 25)));
     $offset = max(0, (int)($payload['offset'] ?? 0));
+    $adminRead = ($payload['include_unpublished'] ?? $filters['include_unpublished'] ?? false) === true
+        && (string)(app()->user()['role'] ?? '') === 'admin';
+    $requestedStatus = $payload['status'] ?? $filters['status'] ?? '';
+    $status = $adminRead && in_array($requestedStatus, ['draft', 'published'], true)
+        ? (string)$requestedStatus : '';
+    $search = $adminRead ? trim((string)($payload['search'] ?? $filters['search'] ?? '')) : '';
 
     try {
         $tenantId = cacPostTenantId();
+        $where = 'tenant_id = :tenant_id AND deleted_at IS NULL';
+        $bindings = [':tenant_id' => $tenantId];
+        if (!$adminRead) {
+            $where .= " AND status = 'published'";
+        } elseif ($status !== '') {
+            $where .= ' AND status = :status';
+            $bindings[':status'] = $status;
+        }
+        if ($search !== '') {
+            $where .= ' AND (title LIKE :search OR subtitle LIKE :search OR content LIKE :search OR slug LIKE :search)';
+            $bindings[':search'] = '%' . $search . '%';
+        }
+        $count = cacDb()->prepare("SELECT COUNT(*) FROM cms_akira_posts WHERE {$where}");
+        $count->execute($bindings);
         $sql = "SELECT id, tenant_id, slug, title, subtitle, content, image, status, published_at, created_at, updated_at
-                FROM cms_akira_posts
-                WHERE tenant_id = :tenant_id AND status = 'published' AND deleted_at IS NULL
+                FROM cms_akira_posts WHERE {$where}
                 ORDER BY {$field} {$direction}, id {$direction}
                 LIMIT {$limit} OFFSET {$offset}";
         $stmt = cacDb()->prepare($sql);
-        $stmt->execute([':tenant_id' => $tenantId]);
+        $stmt->execute($bindings);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return ['ok' => true, 'rows' => $rows, 'total' => count($rows)];
+        return ['ok' => true, 'rows' => $rows, 'total' => (int)$count->fetchColumn()];
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => 'Post storage unavailable'];
     }
@@ -530,6 +553,12 @@ function cac_cap_akira_post_delete_1(mixed $payload, string $capabilityId = 'aki
 function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'entity.list.post@1', string $caller = 'unknown'): array
 {
     $args = is_array($payload) ? $payload : [];
+    $filters = is_array($args['filters'] ?? null) ? $args['filters'] : [];
+    if (($filters['include_unpublished'] ?? false) === true) {
+        $args['include_unpublished'] = true;
+        $args['status'] = $filters['status'] ?? '';
+        $args['search'] = $filters['search'] ?? '';
+    }
     $result = app()->cap()->call('akira.post.list@1', $args, [
         'caller' => ['module' => 'cms-akira-core'],
         'mode' => 'first',
@@ -538,17 +567,33 @@ function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'enti
         return ['ok' => false, 'rows' => [], 'total' => 0, 'error' => (string)($result['error'] ?? 'Post list unavailable')];
     }
 
+    $adminRead = ($args['include_unpublished'] ?? false) === true
+        && (string)(app()->user()['role'] ?? '') === 'admin';
     $rows = [];
     foreach ($result['rows'] as $post) {
         if (is_array($post)) {
             try {
-                $rows[] = cacPostProject($post, false);
+                if ($adminRead) {
+                    $slug = cacPostValidSlug($post['slug'] ?? null);
+                    if ($slug === null) {
+                        continue;
+                    }
+                    $rows[] = [
+                        'slug' => $slug,
+                        'title' => (string)($post['title'] ?? ''),
+                        'status' => (string)($post['status'] ?? 'draft'),
+                        'updated_at' => (string)($post['updated_at'] ?? ''),
+                        'actions' => ['edit', 'delete'],
+                    ];
+                } else {
+                    $rows[] = cacPostProject($post, false);
+                }
             } catch (InvalidArgumentException $e) {
                 // Unsafe stored slugs are not presentation-safe records.
             }
         }
     }
-    return ['ok' => true, 'rows' => $rows, 'total' => count($rows)];
+    return ['ok' => true, 'rows' => $rows, 'total' => (int)($result['total'] ?? count($rows))];
 }
 
 /**

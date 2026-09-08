@@ -72,12 +72,23 @@ function akiraShellEntityList(array $resolved): string
     $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
     $view = is_array($resolved['view'] ?? null) ? $resolved['view'] : [];
     $view['view'] = 'table';
-    $view['empty_state'] = 'No posts yet. Create your first post to begin publishing.';
+    $view['fields'] = ['title', 'status', 'updated_at'];
+    $view['actions'] = ['edit', 'delete'];
+    $view['key_field'] = 'slug';
+    $view['action_urls'] = [
+        'edit' => '/cms-akira-shell/posts/{slug}/edit',
+        'delete' => '/cms-akira-shell/posts/{slug}/delete',
+    ];
+    $view['action_methods'] = ['delete' => 'POST'];
+    $view['action_confirm'] = ['delete' => 'Delete this post? This cannot be undone.'];
+    $view['action_labels'] = ['edit' => 'Edit', 'delete' => 'Delete'];
+    $view['renderers'] = ['status' => 'badge', 'updated_at' => 'datetime'];
+    $view['empty_state'] = 'No posts found. Create your first post or adjust the filters.';
     return app()->entityRenderers()->renderList($rows, $view, [
         'source' => 'post',
         'view' => 'table',
         'class' => 'akira-entity-list',
-    ], ['base_url' => '']);
+    ], ['base_url' => '', 'current_user_role' => 'admin']);
 }
 
 function akiraShellCsrfField(): string
@@ -104,6 +115,59 @@ function akiraShellInput(): array
     return $_POST;
 }
 
+/** @return array<string,mixed> */
+function akiraShellQuery(): array
+{
+    return $_GET;
+}
+
+function akiraShellJsString(string $value): string
+{
+    return (string)json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+}
+
+function akiraShellNotice(): string
+{
+    if ((akiraShellQuery()['saved'] ?? '') !== '1') {
+        return '';
+    }
+    return '<div x-data="{show:true}" x-show="show" x-init="setTimeout(()=>show=false,4000)" class="mb-5 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Post saved successfully.<button @click="show=false" aria-label="Dismiss">×</button></div>';
+}
+
+/** @param list<array<string,mixed>> $rows */
+function akiraShellRecentPosts(array $rows): string
+{
+    if ($rows === []) {
+        return '<p class="px-6 py-12 text-center text-sm text-slate-400">No posts yet.</p>';
+    }
+    $html = '';
+    foreach ($rows as $row) {
+        $status = (string)($row['status'] ?? 'draft');
+        $html .= '<a class="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4 last:border-0 hover:bg-slate-50" href="/cms-akira-shell/posts/' . rawurlencode((string)($row['slug'] ?? '')) . '/edit"><span><strong class="block text-sm text-slate-900">' . akiraShellEscape($row['title'] ?? '') . '</strong><span class="text-xs text-slate-400">Updated ' . akiraShellEscape($row['updated_at'] ?? '') . '</span></span><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . ($status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') . '">' . akiraShellEscape(ucfirst($status)) . '</span></a>';
+    }
+    return $html;
+}
+
+function akiraShellPagination(int $page, int $limit, int $total, string $search, string $status): string
+{
+    $pages = max(1, (int)ceil($total / $limit));
+    if ($pages <= 1) {
+        return '';
+    }
+    $query = static fn (int $target): string => http_build_query(['q' => $search, 'status' => $status, 'page' => $target]);
+    return '<nav aria-label="Post pagination" class="mt-5 flex items-center justify-between text-sm"><span class="text-slate-500">Page ' . $page . ' of ' . $pages . '</span><div class="flex gap-2">'
+        . ($page > 1 ? '<a class="rounded-xl border bg-white px-4 py-2" href="?' . akiraShellEscape($query($page - 1)) . '">Previous</a>' : '')
+        . ($page < $pages ? '<a class="rounded-xl border bg-white px-4 py-2" href="?' . akiraShellEscape($query($page + 1)) . '">Next</a>' : '') . '</div></nav>';
+}
+
+/** @return array<string,mixed>|null */
+function akiraShellFetchPost(string $slug): ?array
+{
+    $result = akiraShellCall('akira.post.get@1', ['slug' => $slug, 'include_unpublished' => true]);
+    return is_array($result) && ($result['ok'] ?? false) === true && is_array($result['data'] ?? null)
+        ? $result['data'] : null;
+}
+
 /** @param array<string,mixed> $payload */
 function akiraShellCall(string $capability, array $payload = []): mixed
 {
@@ -121,6 +185,9 @@ function akiraShellPostPayload(?string $slug = null): array
         $input['slug'] = $slug;
     }
     $input['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ($input['idempotency_key'] ?? '')));
+    if ($input['idempotency_key'] === '') {
+        $input['idempotency_key'] = 'shell-' . bin2hex(random_bytes(12));
+    }
     return $input;
 }
 
@@ -176,6 +243,45 @@ function akiraShellBuilderAdmin(array $bootstrap): string
     return '<div id="cms-akira-builder-root"></div>'
         . '<script id="cms-akira-builder-bootstrap" type="application/json">' . $json . '</script>'
         . $styles . $scripts;
+}
+
+function akiraShellSavePost(?string $existingSlug): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellPostPayload($existingSlug);
+    $requestedStatus = in_array(($input['status'] ?? ''), ['draft', 'published'], true)
+        ? (string)$input['status'] : 'draft';
+    unset($input['status']);
+    $capability = $existingSlug === null ? 'akira.post.create@1' : 'akira.post.update@1';
+    try {
+        akiraShellCall($capability, $input);
+        $slug = (string)($input['slug'] ?? $existingSlug ?? '');
+        $post = akiraShellFetchPost($slug);
+        if ($post === null) {
+            throw new RuntimeException('Saved post could not be reloaded.');
+        }
+        $currentStatus = (string)($post['status'] ?? 'draft');
+        if ($requestedStatus !== $currentStatus) {
+            $operation = $requestedStatus === 'published' ? 'publish' : 'unpublish';
+            akiraShellCall('akira.post.' . $operation . '@1', [
+                'slug' => $slug,
+                'expected_updated_at' => (string)($post['updated_at'] ?? ''),
+                'idempotency_key' => (string)($input['idempotency_key'] ?? '') . '-' . $operation,
+            ]);
+        }
+        akiraShellRedirect('/cms-akira-shell/posts?saved=1');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        $input['status'] = $requestedStatus;
+        if ($existingSlug !== null) {
+            $input['slug'] = $existingSlug;
+            $input['updated_at'] = (string)($input['expected_updated_at'] ?? '');
+        }
+        echo akiraShellPage($existingSlug === null ? 'Create post' : 'Edit post', akiraShellPostForm($input, $e->getMessage()), ['active' => 'posts']);
+    }
 }
 
 function akiraShellMutation(string $capability, string $slug = ''): void
