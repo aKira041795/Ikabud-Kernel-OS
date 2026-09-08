@@ -1,0 +1,2 @@
+-- CMS Akira AI table-free migration marker.
+-- Phase 8 intentionally has no module persistence or schema objects.

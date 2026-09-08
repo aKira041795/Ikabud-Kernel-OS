@@ -1,0 +1,34 @@
+{
+  "id": "cms-akira-ai",
+  "name": "CMS Akira AI",
+  "version": "1.0.0",
+  "description": "Deterministic local summary and keyword suggestions over Akira Post projections.",
+  "author": "Ikabud",
+  "suite": "cms-akira",
+  "kind": "extension",
+  "extends": "cms-akira-core",
+  "depends": [
+    "cms-akira-core"
+  ],
+  "owns_tables": [],
+  "reads_tables": [],
+  "migrations": [
+    "database/migrations/001_initial.sql"
+  ],
+  "capabilities": {
+    "exposes": [
+      {
+        "id": "akira.ai.summary.suggest@1",
+        "priority": 50,
+        "modes": ["first"],
+        "description": "Suggest a deterministic extractive summary and keywords for an Akira Post projection"
+      }
+    ],
+    "depends": [
+      "entity.get.post@1"
+    ]
+  },
+  "routes": true,
+  "events": [],
+  "_enabled": false
+}
