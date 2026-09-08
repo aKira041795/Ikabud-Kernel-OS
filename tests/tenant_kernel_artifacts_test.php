@@ -88,7 +88,26 @@ t(
     'policy seeding requires capability_authorization_policies in the tenant DB'
 );
 
-// 5. All declared artifacts must exist on disk (a missing file silently skips
+// 5. Governed writes and their event fan-out require this complete kernel
+//    table set in every provisioned tenant database.
+$governedWriteTables = [
+    'kernel_idempotency_keys' => '011_kernel_idempotency_keys.sql',
+    'kernel_durable_event_outbox' => '015_kernel_durable_event_outbox.sql',
+    'audit_logs' => '007_kernel_runtime_tables.sql',
+    'capability_authorization_policies' => '016_capability_authorization_policies.sql',
+];
+foreach ($governedWriteTables as $table => $artifactName) {
+    $artifactPath = (string)($artifacts[$artifactName] ?? '');
+    t(
+        "governed-write tenant table: {$table}",
+        $artifactPath !== ''
+        && is_file($artifactPath)
+        && stripos((string) file_get_contents($artifactPath), "CREATE TABLE IF NOT EXISTS {$table}") !== false,
+        "tenant provisioning must create {$table} via {$artifactName}"
+    );
+}
+
+// 6. All declared artifacts must exist on disk (a missing file silently skips
 //    the table, recreating the 1146/42S22 class of failures).
 $missing = [];
 foreach ($artifacts as $name => $path) {
@@ -98,7 +117,7 @@ foreach ($artifacts as $name => $path) {
 }
 t('all tenant kernel artifacts exist on disk', $missing === [], implode(', ', $missing));
 
-// 6. The module-settings table is what the module settings system reads.
+// 7. The module-settings table is what the module settings system reads.
 t(
     'tenant_module_settings.sql creates the table',
     is_file((string)($artifacts['007_tenant_module_settings.sql'] ?? ''))
@@ -106,7 +125,7 @@ t(
     'tenant_module_settings.sql must CREATE TABLE tenant_module_settings'
 );
 
-// 7. Auth-owned spec resolver contract (seed path): must handle modules that
+// 8. Auth-owned spec resolver contract (seed path): must handle modules that
 //    declare auth_owned without erroring when absent.
 if (function_exists('kernelAuthOwnedSpecForModule')) {
     $spec = kernelAuthOwnedSpecForModule('__no_such_module__');
