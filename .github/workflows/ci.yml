@@ -62,6 +62,9 @@ jobs:
       - name: Architecture boundary check
         run: php ikabud architecture:check
 
+      - name: CMS Akira rendered editor contract
+        run: php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+
   test:
     name: test (${{ matrix.db }})
     runs-on: ubuntu-latest
@@ -126,6 +129,22 @@ jobs:
 
       - name: Run kernel test suite
         run: composer test
+
+  akira-two-tenant-journey:
+    name: CMS Akira R6 HTTP journey
+    if: ${{ vars.RUN_TWO_TENANT_JOURNEY == '1' }}
+    runs-on: [self-hosted, akira-acceptance]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run HTTP-only two-tenant release gate
+        env:
+          RUN_TWO_TENANT_JOURNEY: '1'
+          JOURNEY_TENANT_A_PASS: ${{ secrets.JOURNEY_TENANT_A_PASS }}
+          JOURNEY_TENANT_B_PASS: ${{ secrets.JOURNEY_TENANT_B_PASS }}
+          JOURNEY_DB_USER: ${{ secrets.JOURNEY_DB_USER }}
+          JOURNEY_DB_PASS: ${{ secrets.JOURNEY_DB_PASS }}
+        run: bash scripts/akira-two-tenant-journey.sh
 
   static-analysis:
     runs-on: ubuntu-latest
