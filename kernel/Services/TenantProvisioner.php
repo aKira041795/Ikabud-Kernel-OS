@@ -400,6 +400,26 @@ class TenantProvisioner
     }
 
     /**
+     * Seed the admin for an already-installed entry module. This intentionally
+     * reuses the CLI provisioner's manifest-aware, idempotent seeding path.
+     *
+     * @return array{ok: bool, error?: string}
+     */
+    public function seedInstalledAdmin(PDO $tenantPdo, int $tenantId, string $entryModule, string $username, string $email, string $pass): array
+    {
+        app()->tenant()->setTenantId($tenantId);
+        return $this->seedAdminUser(
+            $tenantPdo,
+            $username,
+            $pass,
+            'Admin',
+            $entryModule,
+            $this->resolveAuthOwnedSpec($entryModule),
+            $email,
+        );
+    }
+
+    /**
      * Seed the admin user (fail-fast).
      *
      * Uses the canonical on-disk auth_owned spec when present; falls back to the
@@ -411,10 +431,10 @@ class TenantProvisioner
      * @param array<string, mixed>|null $spec Canonical auth_owned spec
      * @return array{ok: bool, error?: string}
      */
-    private function seedAdminUser(PDO $tenantPdo, string $user, string $pass, string $name, string $entryModule, ?array $spec = null): array
+    private function seedAdminUser(PDO $tenantPdo, string $user, string $pass, string $name, string $entryModule, ?array $spec = null, ?string $email = null): array
     {
         if (is_array($spec)) {
-            return $this->seedAdminUserFromAuthOwnedSpec($tenantPdo, $spec, $user, $pass, $name);
+            return $this->seedAdminUserFromAuthOwnedSpec($tenantPdo, $spec, $user, $pass, $name, $email);
         }
 
         // Legacy fallbacks for entry modules that have not yet declared
@@ -446,15 +466,15 @@ class TenantProvisioner
                     "INSERT INTO `cms_users` (username, email, password_hash, display_name, role, is_active) "
                     . "VALUES (:u, :e, :p, :n, 'administrator', 1)"
                 );
-                $stmt->execute([':u' => $user, ':e' => $user . '@localhost', ':p' => $hash, ':n' => $name]);
+                $stmt->execute([':u' => $user, ':e' => $email ?? ($user . '@localhost'), ':p' => $hash, ':n' => $name]);
             } else {
                 // Legacy kernel-users schema: password_hash/is_active (NOT the
                 // legacy password/status), consistent with tenantEnsureKernelUserTable().
                 $stmt = $tenantPdo->prepare(
-                    "INSERT INTO `users` (username, password_hash, full_name, role, is_active) "
-                    . "VALUES (:u, :p, :n, 'admin', 1)"
+                    "INSERT INTO `users` (username, email, password_hash, full_name, role, is_active) "
+                    . "VALUES (:u, :e, :p, :n, 'admin', 1)"
                 );
-                $stmt->execute([':u' => $user, ':p' => $hash, ':n' => $name]);
+                $stmt->execute([':u' => $user, ':e' => $email, ':p' => $hash, ':n' => $name]);
             }
 
             $this->log("Admin user '$user' seeded in $table");
@@ -474,7 +494,7 @@ class TenantProvisioner
      * @param array<string, mixed> $spec Canonical auth_owned spec
      * @return array{ok: bool, error?: string}
      */
-    private function seedAdminUserFromAuthOwnedSpec(PDO $tenantPdo, array $spec, string $user, string $pass, string $name): array
+    private function seedAdminUserFromAuthOwnedSpec(PDO $tenantPdo, array $spec, string $user, string $pass, string $name, ?string $email = null): array
     {
         $table = (string)$spec['users_table'];
         try {
@@ -537,7 +557,7 @@ class TenantProvisioner
             if ($emailCol !== '' && $emailCol !== $usernameCol) {
                 $cols[] = '`' . $emailCol . '`';
                 $vals[] = ':e';
-                $params[':e'] = $user . '@localhost';
+                $params[':e'] = $email ?? ($user . '@localhost');
             }
 
             $cols[] = '`' . $pwdCol . '`';

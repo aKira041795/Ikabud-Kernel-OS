@@ -208,6 +208,7 @@ if (!function_exists('kernelHandleApiTenantCreate')) {
         $adminEmail = trim((string)($input['admin_email'] ?? ''));
         $entryModuleNorm = normalizeTenantEntryModuleId($input['entry_module_id'] ?? '', true);
         $entryModuleId = $entryModuleNorm['value'];
+        $dbConfig = is_array($input['db'] ?? null) ? $input['db'] : null;
 
         if ($tenantKey === '' || !preg_match('/^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$/', $tenantKey)) {
             http_response_code(422);
@@ -233,6 +234,27 @@ if (!function_exists('kernelHandleApiTenantCreate')) {
             return;
         }
 
+        if ($dbConfig !== null) {
+            $dbConfig = [
+                'host' => trim((string)($dbConfig['host'] ?? '')),
+                'port' => trim((string)($dbConfig['port'] ?? '3306')),
+                'db_name' => trim((string)($dbConfig['name'] ?? '')),
+                'user' => trim((string)($dbConfig['user'] ?? '')),
+                'pass' => (string)($dbConfig['pass'] ?? ''),
+            ];
+            if ($dbConfig['host'] === '' || $dbConfig['db_name'] === '' || $dbConfig['user'] === '') {
+                http_response_code(422);
+                echo json_encode(['ok' => false, 'error' => 'Optional db requires host, name, and user']);
+                return;
+            }
+            $isolation = tenantRejectBaseDbConnection($dbConfig);
+            if (empty($isolation['ok'])) {
+                http_response_code(422);
+                echo json_encode(['ok' => false, 'error' => $isolation['error']]);
+                return;
+            }
+        }
+
         $pdo = app()->controlDb();
         try {
             $pdo->beginTransaction();
@@ -248,29 +270,20 @@ if (!function_exists('kernelHandleApiTenantCreate')) {
             $dStmt = $pdo->prepare('INSERT INTO kernel_tenant_domains (tenant_id, domain) VALUES (:tid, :d)');
             $dStmt->execute([':tid' => $tenantId, ':d' => $domain]);
 
-            $pdo->commit();
-            adminViewCacheInvalidate(['admin:view:tenants', 'admin:view:platform']);
-
-            // Auto-create a shared-DB connection record if none exists (development mode)
-            $connCheck = $pdo->prepare('SELECT id FROM kernel_tenant_db_connections WHERE tenant_id = :tid LIMIT 1');
-            $connCheck->execute([':tid' => $tenantId]);
-            if (!$connCheck->fetchColumn()) {
-                $dbHost = $_ENV['DB_HOST'] ?? 'localhost';
-                $dbPort = $_ENV['DB_PORT'] ?? '3306';
-                $dbName = $_ENV['DB_DATABASE'] ?? '';
-                $dbUser = $_ENV['DB_USERNAME'] ?? 'root';
-                $dbPass = $_ENV['DB_PASSWORD'] ?? '';
-                $crypto = new \Ikabud\Kernel\Crypto();
-                $enc = $crypto->encryptString($dbPass);
-                $insConn = $pdo->prepare(
+            if ($dbConfig !== null) {
+                $enc = (new \Ikabud\Kernel\Crypto())->encryptString($dbConfig['pass']);
+                $connStmt = $pdo->prepare(
                     'INSERT INTO kernel_tenant_db_connections '
                     . '(tenant_id, db_driver, db_host, db_port, db_name, db_user, db_pass, db_charset, db_pass_ciphertext, db_pass_iv, db_pass_tag) '
-                    . 'VALUES (:tid, :drv, :host, :port, :name, :user, NULL, :charset, :cipher, :iv, :tag)'
+                    . 'VALUES (:tid, :driver, :host, :port, :name, :user, NULL, :charset, :cipher, :iv, :tag)'
                 );
-                $insConn->execute([
-                    ':tid' => $tenantId, ':drv' => 'mysql',
-                    ':host' => $dbHost, ':port' => $dbPort,
-                    ':name' => $dbName, ':user' => $dbUser,
+                $connStmt->execute([
+                    ':tid' => $tenantId,
+                    ':driver' => 'mysql',
+                    ':host' => $dbConfig['host'],
+                    ':port' => $dbConfig['port'],
+                    ':name' => $dbConfig['db_name'],
+                    ':user' => $dbConfig['user'],
                     ':charset' => 'utf8mb4',
                     ':cipher' => $enc['ciphertext'] ?? null,
                     ':iv' => $enc['iv'] ?? null,
@@ -278,27 +291,9 @@ if (!function_exists('kernelHandleApiTenantCreate')) {
                 ]);
             }
 
-            $sync = kernelTenantScopedMigrationSync($tenantId, $entryModuleId !== '' ? $entryModuleId : null);
-            if (empty($sync['ok'])) {
-                write_log('tenant create migration sync failed', 'error', [
-                    'tenant_id' => $tenantId,
-                    'entry_module_id' => $entryModuleId,
-                    'stage' => (string)($sync['stage'] ?? 'sync'),
-                    'sync_error' => (string)($sync['error'] ?? 'Unknown error'),
-                    'request_id' => request_id(),
-                ]);
-                http_response_code(500);
-                echo json_encode([
-                    'ok' => false,
-                    'error' => 'db saved but migrations failed to synchronize',
-                    'details' => $sync['error'] ?? 'Unknown error',
-                    'stage' => $sync['stage'] ?? 'sync',
-                    'tenant_id' => $tenantId,
-                ]);
-                return;
-            }
-
-            echo json_encode(['ok' => true, 'tenant_id' => $tenantId, 'migration_sync' => $sync, 'request_id' => request_id()]);
+            $pdo->commit();
+            adminViewCacheInvalidate(['admin:view:tenants', 'admin:view:platform']);
+            echo json_encode(['ok' => true, 'tenant_id' => $tenantId, 'request_id' => request_id()]);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -357,36 +352,11 @@ if (!function_exists('kernelHandleApiTenantEntryModuleSet')) {
                 }
             }
 
-            $sync = kernelTenantScopedMigrationSync($tenantId, $entryModuleId);
-            if (empty($sync['ok'])) {
-                write_log('tenant entry module migration sync failed', 'error', [
-                    'tenant_id' => $tenantId,
-                    'entry_module_id' => $entryModuleId,
-                    'stage' => (string)($sync['stage'] ?? 'sync'),
-                    'sync_error' => (string)($sync['error'] ?? 'Unknown error'),
-                    'sync_modules' => $sync['migration_sync']['modules'] ?? [],
-                    'scope_repair_before' => $sync['scope_repair_before'] ?? null,
-                    'request_id' => request_id(),
-                ]);
-                http_response_code(500);
-                echo json_encode([
-                    'ok' => false,
-                    'error' => 'Tenant entry module updated, but tenant migrations failed to synchronize',
-                    'details' => $sync['error'] ?? 'Unknown error',
-                    'stage' => $sync['stage'] ?? 'sync',
-                    'tenant_id' => $tenantId,
-                ]);
-                return;
-            }
-
             adminViewCacheInvalidate(['admin:view:tenants', 'admin:view:platform', 'admin:view:modules']);
             echo json_encode([
                 'ok' => true,
                 'tenant_id' => $tenantId,
                 'entry_module_id' => $entryModuleId,
-                'migration_sync' => $sync['migration_sync'] ?? [],
-                'scope_repair_before' => $sync['scope_repair_before'] ?? null,
-                'scope_repair_after' => $sync['scope_repair_after'] ?? null,
                 'request_id' => request_id(),
             ]);
         } catch (Throwable $e) {
@@ -557,6 +527,13 @@ if (!function_exists('kernelHandleApiTenantDbUpsert')) {
             return;
         }
 
+        $isolation = tenantRejectBaseDbConnection(['host' => $dbHost, 'db_name' => $dbName]);
+        if (empty($isolation['ok'])) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'error' => $isolation['error']]);
+            return;
+        }
+
         $pdo = app()->controlDb();
         try {
             $pdo->beginTransaction();
@@ -616,34 +593,8 @@ if (!function_exists('kernelHandleApiTenantDbUpsert')) {
 
             $pdo->commit();
 
-            $entryModuleId = tenantEntryModuleIdForTenant($tenantId);
-            $sync = kernelTenantScopedMigrationSync($tenantId, $entryModuleId !== null ? trim((string)$entryModuleId) : null);
-            if (empty($sync['ok'])) {
-                write_log('tenant db upsert migration sync failed', 'error', [
-                    'tenant_id' => $tenantId,
-                    'entry_module_id' => $entryModuleId,
-                    'stage' => (string)($sync['stage'] ?? 'sync'),
-                    'sync_error' => (string)($sync['error'] ?? 'Unknown error'),
-                    'request_id' => request_id(),
-                ]);
-                http_response_code(500);
-                echo json_encode([
-                    'ok' => false,
-                    'error' => 'Tenant DB connection saved, but tenant migrations failed to synchronize',
-                    'details' => $sync['error'] ?? 'Unknown error',
-                    'stage' => $sync['stage'] ?? 'sync',
-                    'tenant_id' => $tenantId,
-                ]);
-                return;
-            }
-
             adminViewCacheInvalidate(['admin:view:tenants', 'admin:view:platform']);
-            echo json_encode([
-                'ok' => true,
-                'migration_sync' => $sync['migration_sync'] ?? [],
-                'scope_repair_before' => $sync['scope_repair_before'] ?? null,
-                'scope_repair_after' => $sync['scope_repair_after'] ?? null,
-            ]);
+            echo json_encode(['ok' => true]);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -666,6 +617,148 @@ if (!function_exists('kernelHandleApiTenantDbUpsert')) {
                 'ok' => false,
                 'error' => $debug ? ('Failed to save DB connection: ' . $e->getMessage()) : 'Failed to save DB connection',
             ]);
+        }
+    }
+}
+
+if (!function_exists('kernelTenantProvisionSelection')) {
+    /**
+     * Prefer a suite's conventional "standard" install profile; otherwise use
+     * its first profile. Modules without a profile install their hard closure.
+     *
+     * @param array<string, array<string, mixed>> $modules
+     */
+    function kernelTenantProvisionSelection(string $entryModuleId, array $modules): string
+    {
+        $suiteId = moduleSuiteForModule($entryModuleId);
+        if ($suiteId === null) {
+            return $entryModuleId;
+        }
+
+        $profiles = [];
+        foreach ($modules as $moduleId => $manifest) {
+            if (($manifest['kind'] ?? '') === 'profile' && moduleSuiteFromManifest($manifest) === $suiteId) {
+                $profiles[] = $moduleId;
+            }
+        }
+        sort($profiles);
+        $standard = $suiteId . '-profile-standard';
+        return in_array($standard, $profiles, true) ? $standard : ($profiles[0] ?? $entryModuleId);
+    }
+}
+
+if (!function_exists('kernelHandleApiTenantProvision')) {
+    function kernelHandleApiTenantProvision(): void
+    {
+        if (!kernelPrepareTenantAdminJsonRequest()) {
+            return;
+        }
+
+        $input = app()->input();
+        $tenantId = (int)($input['tenant_id'] ?? 0);
+        $password = (string)($input['admin_password'] ?? '');
+        if ($tenantId <= 0 || strlen($password) < 6) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'error' => 'tenant_id and an initial admin password of at least 6 characters are required']);
+            return;
+        }
+
+        try {
+            $controlDb = app()->controlDb();
+            $stmt = $controlDb->prepare(
+                'SELECT t.entry_module_id, t.admin_email, c.db_driver, c.db_host, c.db_port, c.db_name, c.db_user, '
+                . 'c.db_pass, c.db_charset, c.db_pass_ciphertext, c.db_pass_iv, c.db_pass_tag '
+                . 'FROM kernel_tenants t LEFT JOIN kernel_tenant_db_connections c ON c.tenant_id = t.id '
+                . 'WHERE t.id = :tenant LIMIT 1'
+            );
+            $stmt->execute([':tenant' => $tenantId]);
+            $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($tenant)) {
+                http_response_code(404);
+                echo json_encode(['ok' => false, 'error' => 'Tenant not found']);
+                return;
+            }
+
+            $entryModuleId = trim((string)($tenant['entry_module_id'] ?? ''));
+            $adminEmail = trim((string)($tenant['admin_email'] ?? ''));
+            $dbHost = trim((string)($tenant['db_host'] ?? ''));
+            $dbName = trim((string)($tenant['db_name'] ?? ''));
+            $dbUser = trim((string)($tenant['db_user'] ?? ''));
+            if ($entryModuleId === '' || $adminEmail === '' || $dbHost === '' || $dbName === '' || $dbUser === '') {
+                http_response_code(422);
+                echo json_encode(['ok' => false, 'error' => 'Entry module, dedicated DB, and admin email must be configured before provisioning']);
+                return;
+            }
+            $isolation = tenantRejectBaseDbConnection(['host' => $dbHost, 'db_name' => $dbName]);
+            if (empty($isolation['ok'])) {
+                http_response_code(422);
+                echo json_encode(['ok' => false, 'error' => $isolation['error']]);
+                return;
+            }
+
+            $dbPass = (string)($tenant['db_pass'] ?? '');
+            if (!empty($tenant['db_pass_ciphertext']) && !empty($tenant['db_pass_iv']) && !empty($tenant['db_pass_tag'])) {
+                $dbPass = (new \Ikabud\Kernel\Crypto())->decryptString(
+                    (string)$tenant['db_pass_ciphertext'],
+                    (string)$tenant['db_pass_iv'],
+                    (string)$tenant['db_pass_tag'],
+                );
+            }
+            $port = trim((string)($tenant['db_port'] ?? '3306')) ?: '3306';
+            $charset = trim((string)($tenant['db_charset'] ?? 'utf8mb4')) ?: 'utf8mb4';
+            $tenantDb = new PDO(
+                'mysql:host=' . $dbHost . ';port=' . $port . ';dbname=' . $dbName . ';charset=' . $charset,
+                $dbUser,
+                $dbPass,
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC],
+            );
+
+            // ModuleInstallService owns module migrations/generation activation;
+            // first establish the tenant-local kernel ledger/settings/users tables
+            // that the installer and admin seeder require.
+            $kernelMigrations = tenantSyncKernelMigrations($tenantDb, null, $entryModuleId);
+            $modules = discoverModules();
+            $selection = kernelTenantProvisionSelection($entryModuleId, $modules);
+            $installer = new \Ikabud\Kernel\Services\ModuleInstallService(
+                $controlDb,
+                static fn (int $resolvedTenantId): ?PDO => $resolvedTenantId === $tenantId ? $tenantDb : null,
+                static fn (): array => $modules,
+            );
+            $install = $installer->install($tenantId, $selection, ['set_entry' => true, 'entry_module' => $entryModuleId]);
+            if (empty($install['ok'])) {
+                http_response_code(500);
+                echo json_encode(['ok' => false, 'error' => (string)($install['error'] ?? 'Module installation failed'), 'details' => $install]);
+                return;
+            }
+
+            $localPart = strtolower((string)strstr($adminEmail, '@', true));
+            $username = preg_replace('/[^a-z0-9._-]+/', '-', $localPart) ?: 'admin';
+            $seed = (new \Ikabud\Kernel\Services\TenantProvisioner($controlDb))->seedInstalledAdmin(
+                $tenantDb,
+                $tenantId,
+                $entryModuleId,
+                $username,
+                $adminEmail,
+                $password,
+            );
+            if (empty($seed['ok'])) {
+                http_response_code(500);
+                echo json_encode(['ok' => false, 'error' => (string)($seed['error'] ?? 'Admin seed failed'), 'details' => $install]);
+                return;
+            }
+
+            adminViewCacheInvalidate(['admin:view:tenants', 'admin:view:platform', 'admin:view:modules']);
+            echo json_encode([
+                'ok' => true,
+                'tenant_id' => $tenantId,
+                'generation' => $install['generation'] ?? null,
+                'admin_seeded' => true,
+                'details' => ['selection' => $selection, 'kernel_migrations' => $kernelMigrations, 'members' => $install['members'] ?? []],
+            ]);
+        } catch (Throwable $e) {
+            write_log('apiTenantProvision failed: ' . $e->getMessage(), 'error', ['tenant_id' => $tenantId, 'request_id' => request_id()]);
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => 'Tenant provisioning failed: ' . $e->getMessage()]);
         }
     }
 }

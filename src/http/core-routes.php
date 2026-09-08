@@ -120,6 +120,7 @@ if (!function_exists('kernelCoreRoutes')) {
                 '/api/v1/admin/tenants/domain/remove' => 'apiTenantDomainRemove',
                 '/api/v1/admin/tenants/canonical-domain' => 'apiTenantCanonicalDomainSet',
                 '/api/v1/admin/tenants/db/upsert' => 'apiTenantDbUpsert',
+                '/api/v1/admin/tenants/provision' => 'apiTenantProvision',
                 '/api/v1/admin/tenants/repair-scope' => 'apiTenantRepairScope',
                 '/api/v1/admin/tenants/status' => 'apiTenantStatusSet',
                 '/api/v1/admin/tenants/delete' => 'apiTenantDelete',
