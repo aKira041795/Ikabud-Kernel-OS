@@ -1,0 +1,29 @@
+{
+    "id": "cms-akira-profile-headless",
+    "name": "CMS Akira Headless Profile",
+    "version": "1.0.0",
+    "description": "CMS Akira Headless installation profile — API-first content, workflow, and search without a shell.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "profile",
+    "installs": [
+        "cms-akira-core",
+        "cms-akira-workflow",
+        "cms-akira-search"
+    ],
+    "depends": [
+        "cms-akira-core",
+        "cms-akira-workflow",
+        "cms-akira-search"
+    ],
+    "owns_tables": [],
+    "reads_tables": [],
+    "migrations": [],
+    "routes": false,
+    "capabilities": {
+        "exposes": [],
+        "depends": []
+    },
+    "events": [],
+    "_enabled": false
+}

@@ -1,0 +1,29 @@
+{
+    "id": "cms-akira-profile-minimal",
+    "name": "CMS Akira Minimal Profile",
+    "version": "1.0.0",
+    "description": "CMS Akira Minimal installation profile — core content editing with the Akira shell.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "profile",
+    "installs": [
+        "cms-akira-core",
+        "cms-akira-shell",
+        "cms-akira-editor"
+    ],
+    "depends": [
+        "cms-akira-core",
+        "cms-akira-shell",
+        "cms-akira-editor"
+    ],
+    "owns_tables": [],
+    "reads_tables": [],
+    "migrations": [],
+    "routes": false,
+    "capabilities": {
+        "exposes": [],
+        "depends": []
+    },
+    "events": [],
+    "_enabled": false
+}

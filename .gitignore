@@ -18,11 +18,9 @@ templates/modules/*
 # gui-settings, but it is a TENANT-SELECTED module, NOT auto-installed: its
 # module.json carries `_enabled: false`, so it stays inactive until a user/
 # tenant activates it (CMS Modules page, `php ikabud module:enable
-# cms-akira-core`, or per-tenant enableModuleForTenant). Its 13 dormant suite
-# members (providers/profiles/extensions referencing the absent
-# `cms`/`theme-studio`/`search` hosts) remain runtime scaffolding: each is
-# re-enabled + tracked individually at its phase gate after host-residue
-# cleanup.
+# cms-akira-core`, or per-tenant enableModuleForTenant). Suite members are
+# enabled + tracked individually at their phase gate after host-residue cleanup;
+# profile-visual remains held until the Builder gate.
 !modules/cms-akira/
 modules/cms-akira/*
 !modules/cms-akira/cms-akira-core/
@@ -45,6 +43,12 @@ modules/cms-akira/*
 !modules/cms-akira/cms-akira-search/**
 !modules/cms-akira/cms-akira-ai/
 !modules/cms-akira/cms-akira-ai/**
+!modules/cms-akira/cms-akira-profile-minimal/
+!modules/cms-akira/cms-akira-profile-minimal/**
+!modules/cms-akira/cms-akira-profile-standard/
+!modules/cms-akira/cms-akira-profile-standard/**
+!modules/cms-akira/cms-akira-profile-headless/
+!modules/cms-akira/cms-akira-profile-headless/**
 !modules/cms-akira/README.md
 
 # ── Local agent/tool state ──────────────────────────────────────────

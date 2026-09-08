@@ -3465,6 +3465,15 @@ function validateModuleCertification(array $manifest): array
     $moduleId = (string)($manifest['id'] ?? 'unknown');
     $type = trim((string)($manifest['type'] ?? 'module'));
     $isServiceModule = ($type === 'service-module');
+    // Profiles are install/dependency-metadata-only bundles (no runtime surface:
+    // no routes, handlers, tables, or migrations). They certify like service-modules
+    // for the checks that assume a runtime surface. Kind is resolved via the same
+    // manifest kind inference used elsewhere (declared kind, or legacy inference
+    // from `installs`).
+    $manifestKind = function_exists('moduleManifestKindFromManifest')
+        ? moduleManifestKindFromManifest($manifest)
+        : null;
+    $isMetadataOnly = $isServiceModule || $manifestKind === MODULE_KIND_PROFILE;
 
     // C1: Basic identity
     $total++;
@@ -3558,10 +3567,10 @@ function validateModuleCertification(array $manifest): array
         $passed++;
     }
 
-    // C5: Routes declared (skip for service-modules)
+    // C5: Routes declared (skip for service-modules and metadata-only profiles)
     $total++;
-    if ($isServiceModule) {
-        $checks[] = ['check' => 'C5: Routes', 'passed' => true, 'detail' => 'N/A for service-module'];
+    if ($isMetadataOnly) {
+        $checks[] = ['check' => 'C5: Routes', 'passed' => true, 'detail' => $isServiceModule ? 'N/A for service-module' : 'N/A for profile (install-metadata only)'];
         $passed++;
     } else {
         $routes = (is_array($manifest['routes'] ?? null) && !empty($manifest['routes'])) || !empty($manifest['routes']);
