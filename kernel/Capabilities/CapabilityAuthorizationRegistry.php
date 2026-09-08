@@ -119,8 +119,8 @@ final class CapabilityAuthorizationRegistry
                 return $this->audit(array_merge($result, ['reason' => 'protocol_mismatch']), 'warning');
             }
 
-            $rowCaller = trim((string)($exactRow['caller_module'] ?? ''));
-            if ($rowCaller !== '' && $rowCaller !== $callerModule) {
+            $allowedCallers = $this->parseCsv($exactRow['caller_module'] ?? null);
+            if ($allowedCallers !== [] && !in_array($callerModule, $allowedCallers, true)) {
                 return $this->audit(array_merge($result, ['reason' => 'disabled_caller']), 'warning');
             }
 
@@ -346,6 +346,12 @@ final class CapabilityAuthorizationRegistry
 
     /** @return array<int, string> */
     private function parseAllowedRoles(mixed $value): array
+    {
+        return $this->parseCsv($value);
+    }
+
+    /** @return list<string> */
+    private function parseCsv(mixed $value): array
     {
         $roles = array_filter(array_map(
             static fn (string $role): string => trim($role),

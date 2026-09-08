@@ -100,7 +100,9 @@ try {
     $capDepends = $manifest['capabilities']['depends'] ?? [];
     $check(count($capDepends) === 7 && in_array('workflow.state.get@1', $capDepends, true) && in_array('workflow.transition@1', $capDepends, true), 'Kernel workflow, idempotency, and audit prerequisites are explicit');
     $policy = new CapabilityAuthorizationRegistry($db);
-    $check($policy->requiresProtocol('akira.workflow.transition@1', '1', CAW_WORKFLOW_MODULE_ID) === 'v2', 'transition policy seed is durable and protocol-v2');
+    $transitionPolicy = $db->query("SELECT caller_module FROM capability_authorization_policies WHERE capability_id = 'akira.workflow.transition@1' AND capability_version = '1' AND provider = 'cms-akira-workflow' AND policy_version = 1")->fetchColumn();
+    $check($policy->requiresProtocol('akira.workflow.transition@1', '1', CAW_WORKFLOW_MODULE_ID) === 'v2'
+        && $transitionPolicy === 'cms-akira-workflow,cms-akira-shell', 'transition policy binds both production callers and protocol v2');
 
     cawEnsureDefinition();
     cawEnsureDefinition();
