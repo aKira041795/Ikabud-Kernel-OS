@@ -81,6 +81,55 @@ function akiraShellRedirect(string $path): void
     header('Location: ' . $path, true, 303);
 }
 
+/**
+ * CSP-safe static assets for the Akira Builder admin bundle. These live under
+ * public/admin/assets/cms-akira-builder (committed build output, served as
+ * static 'self') — the prebuilt bundle never requires 'unsafe-eval'.
+ * @return array{js:list<string>,css:list<string>}
+ */
+function akiraShellBuilderAssets(): array
+{
+    $dir = realpath(dirname(__DIR__, 3) . '/public/admin/assets/cms-akira-builder');
+    $base = '/admin/assets/cms-akira-builder';
+    if ($dir === false) {
+        return ['js' => [], 'css' => []];
+    }
+    $js = [];
+    $css = [];
+    foreach (glob($dir . '/assets/*.js') ?: [] as $file) {
+        $js[] = $base . '/assets/' . rawurlencode(basename($file));
+    }
+    foreach (glob($dir . '/assets/*.css') ?: [] as $file) {
+        $css[] = $base . '/assets/' . rawurlencode(basename($file));
+    }
+    sort($js);
+    sort($css);
+    return ['js' => $js, 'css' => $css];
+}
+
+/**
+ * Boots the Akira builder admin React app inside the authenticated shell.
+ * Serves the committed static bundle + a mount container + an authorized JSON
+ * bootstrap (available Akira posts for attachment and the composition key).
+ * @param array<string,mixed> $bootstrap
+ */
+function akiraShellBuilderAdmin(array $bootstrap): string
+{
+    $assets = akiraShellBuilderAssets();
+    $styles = '';
+    foreach ($assets['css'] as $href) {
+        $styles .= '<link rel="stylesheet" href="' . akiraShellEscape($href) . '">';
+    }
+    $json = akiraShellEscape((string) json_encode($bootstrap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    $scripts = '';
+    foreach ($assets['js'] as $src) {
+        $scripts .= '<script type="module" src="' . akiraShellEscape($src) . '"></script>';
+    }
+    return '<div id="cms-akira-builder-root"></div>'
+        . '<script id="cms-akira-builder-bootstrap" type="application/json">' . $json . '</script>'
+        . $styles . $scripts;
+}
+
 function akiraShellMutation(string $capability, string $slug = ''): void
 {
     if (akiraShellAdmin() === null) {

@@ -28,3 +28,53 @@ Reads: `akira.builder.compositions/get/revisions/render@1`.
 Governed protocol-v2 operations: `akira.builder.create/update/publish/unpublish/delete/validate@1`. Every governed call requires an admin actor, Kernel idempotency claim/commit, durable audit on the caller-managed tenant PDO transaction, correlation id, and exactly one invalidation tag: `entity.list.composition`.
 
 The module remains `_enabled:false`: repository tracking never installs or activates it for a tenant.
+
+## Phase 10B — builder admin UI, JSON bridge, CSP build, preview transport
+
+The React/Vite/TypeScript builder admin lives under `admin-ui/` and is mounted by the
+authenticated `cms-akira-shell` pages (`/cms-akira-shell/compositions` and
+`/cms-akira-shell/compositions/{key}/edit`). The shell pages serve the committed build plus a
+mount container and an authorized JSON bootstrap (available Akira posts for attachment). No
+second entry module exists — the shell is the single admin host.
+
+### Authenticated JSON capability bridge (`/api/v1/cms-akira/builder/*`)
+
+`routes.php` maps thin HTTP handlers in `handlers.php` onto the `akira.builder.*@1` handler map
+(no new business logic). Endpoints: `GET /compositions`, `GET /compositions/{key}`,
+`GET /compositions/{key}/revisions`, `GET /compositions/{key}/render?source=preview|published`;
+`POST /validate`, `POST /compositions` (create), `POST /compositions/{key}` (save draft, base
+revision), and `POST /compositions/{key}/publish|unpublish|delete`. Every request is
+Kernel-auth + admin-role guarded (session cookie or JWT bearer — Kernel resolves `app()->user()`),
+reads a JSON body, and forwards it; the tenant is always taken from Kernel context. Typed
+`CabBuilderException` failures map to their HTTP status (e.g. stale base → 409); any unexpected
+error fails closed as 500.
+
+### Admin UI (React 18 + Vite ^5 + TypeScript ^5)
+
+The functional MVP (`admin-ui/src`) lists compositions and available posts, offers a JSON tree
+editor with an allowlisted validated-block form, saves drafts against the current base revision,
+validates, lists revisions, and renders server-rendered preview vs published HTML in a
+`sandbox`ed iframe (`srcDoc`) — React escapes by default and preview HTML is never injected as
+live markup.
+
+Build/run (node 18.19.1 + npm 9.2.0; do **not** use Vite 6/7):
+
+```bash
+cd admin-ui
+npm install          # or npm ci once package-lock.json is committed
+npm run type-check
+npm run build        # emits public/admin/assets/cms-akira-builder/*
+```
+
+`npm run build` outputs the production bundle under `public/admin/assets/cms-akira-builder` so it
+is served as static `self` assets. The committed bundle is minified with sourcemaps disabled and
+contains no `new Function`/`eval`; it never requires `script-src 'unsafe-eval'`. CSP posture:
+static `self` scripts/styles, preview HTML isolated in a sandboxed iframe, no runtime eval, no
+inline script payloads (the JSON bootstrap is a `text/json` element parsed at runtime).
+
+### Install / enable path
+
+Tracking stays `_enabled:false`. A tenant activates the full visual graph (including this module,
+core, editor, theme, and the shell) through the Kernel module-install planner using the
+`cms-akira-profile-visual` install bundle (certified/tracked in 10B). Only after activation does
+the shell expose the builder admin and the `/api/v1/cms-akira/builder/*` routes become routable.

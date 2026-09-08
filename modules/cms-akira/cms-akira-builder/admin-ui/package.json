@@ -1,0 +1,24 @@
+{
+  "name": "cms-akira-builder-admin-ui",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CMS Akira Builder admin — functional composition-editor MVP (React + Vite + TypeScript).",
+  "scripts": {
+    "dev": "vite",
+    "type-check": "tsc --noEmit",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.0"
+  }
+}

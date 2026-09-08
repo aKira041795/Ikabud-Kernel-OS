@@ -1,0 +1,32 @@
+.ab {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  color: #1f2937;
+}
+.ab h2 { margin: 0 0 0.25rem; }
+.ab h3 { margin: 1rem 0 0.5rem; }
+.ab h4 { margin: 1rem 0 0.25rem; font-size: 0.9rem; }
+.ab-muted { color: #6b7280; font-size: 0.9rem; }
+.ab a { color: #0f6ab4; }
+.ab code { background: #f3f4f6; padding: 0 0.25rem; border-radius: 4px; }
+.ab-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+@media (max-width: 900px) { .ab-cols { grid-template-columns: 1fr; } }
+.ab-row { display: flex; align-items: center; gap: 0.75rem; }
+.ab-list { list-style: none; margin: 0; padding: 0; }
+.ab-list li { margin: 0.25rem 0; }
+.ab-pill { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: #e5e7eb; }
+.ab-pill-pub { background: #d1fae5; color: #065f46; }
+.ab-error { color: #b91c1c; background: #fee2e2; padding: 0.5rem; border-radius: 6px; }
+.ab-ok { color: #065f46; background: #d1fae5; padding: 0.5rem; border-radius: 6px; }
+.ab label { display: block; margin: 0.5rem 0; font-weight: 600; }
+.ab input, .ab textarea { display: block; width: 100%; margin-top: 0.25rem; font: inherit; padding: 0.4rem; border: 1px solid #d1d5db; border-radius: 6px; }
+.ab textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }
+.ab-btnrow { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
+.ab-btn { border: 1px solid #d1d5db; background: #ffffff; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; font: inherit; }
+.ab-btn:hover { background: #f9fafb; }
+.ab-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ab-btn-primary { background: #0f6ab4; color: #fff; border-color: #0f6ab4; }
+.ab-btn-primary:hover { background: #0d5ea0; }
+.ab-btn-danger { background: #ffffff; color: #b91c1c; border-color: #fecaca; }
+.ab-btn-danger:hover { background: #fef2f2; }
+.ab-preview iframe { width: 100%; min-height: 320px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; }

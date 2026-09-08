@@ -9,6 +9,8 @@ return [
         '/cms-akira-shell/posts' => 'cms-akira-shell:akiraShellPostList',
         '/cms-akira-shell/posts/new' => 'cms-akira-shell:akiraShellPostCreateForm',
         '/cms-akira-shell/posts/{slug}/edit' => 'cms-akira-shell:akiraShellPostEditForm',
+        '/cms-akira-shell/compositions' => 'cms-akira-shell:akiraShellCompositions',
+        '/cms-akira-shell/compositions/{key}/edit' => 'cms-akira-shell:akiraShellCompositionEdit',
         '/cms-akira-shell/health' => 'cms-akira-shell:akiraShellModuleHealth',
         '/cms-akira-shell/forbidden' => 'cms-akira-shell:akiraShellForbidden',
     ],
