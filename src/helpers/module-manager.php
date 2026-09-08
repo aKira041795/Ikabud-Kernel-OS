@@ -1700,6 +1700,28 @@ function tenantEntryModuleDelegateId(string $entryModuleId): string
 }
 
 /**
+ * Whether a module is the routed application surface for the current tenant host.
+ */
+function moduleIsCurrentTenantEntrySurface(string $moduleId): bool
+{
+    if (empty($_SERVER['IK_TENANT_HOST'])) {
+        return false;
+    }
+
+    $tenantId = app()->tenant()->current();
+    if ($tenantId === null || $tenantId <= 0) {
+        return false;
+    }
+
+    $entryModuleId = trim((string)($_SERVER['IK_ENTRY_MODULE_ID'] ?? ''));
+    if ($entryModuleId === '') {
+        return false;
+    }
+
+    return tenantEntryModuleDelegateId($entryModuleId) === $moduleId;
+}
+
+/**
  * Get only enabled modules.
  * @return array<string, array<string, mixed>>
  */
@@ -2764,13 +2786,10 @@ function executeModuleHandler(string $handler, array $params = []): void
     }
     $role = $user ? (string)($user['role'] ?? '') : '';
     $source = $user ? (string)($user['source'] ?? 'kernel') : '';
-    if ($role === 'admin' && $source === 'kernel' && !$isModuleLoginRoute) {
-        // Kernel admin may only reach module routes that are kernel companions
-        // (kernel_companion, extensions/adapters) or explicitly opted-in via
-        // allow_kernel_admin. Bundled independent products (entry/standalone
-        // modules, e.g. cms-akira-shell) are never kernel-admin surfaces even
-        // when they authenticate against a `users` table in their own tenant
-        // context.
+    if ($role === 'admin' && $source === 'kernel' && !$isModuleLoginRoute && !moduleIsCurrentTenantEntrySurface($moduleId)) {
+        // Outside its routed tenant host, a Kernel admin may only reach module
+        // routes that are kernel companions (kernel_companion, extensions/adapters)
+        // or explicitly opted-in via allow_kernel_admin.
         $isKernelCompanion = moduleIsKernelCompanion($moduleId, $modules[$moduleId]);
         $usesKernelUsers = function_exists('tenantEntryModuleUsesKernelUsers')
             && tenantEntryModuleUsesKernelUsers($moduleId);

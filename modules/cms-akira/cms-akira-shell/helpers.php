@@ -41,6 +41,7 @@ function akiraShellPage(string $title, string $body, array $data = []): string
 {
     $nav = '<nav aria-label="Akira administration"><a href="/cms-akira-shell">Dashboard</a> '
         . '<a href="/cms-akira-shell/posts">Posts</a> '
+        . '<a href="/cms-akira-shell/compositions">Compositions</a> '
         . '<a href="/cms-akira-shell/health">Module health</a> '
         . '<a href="/auth/logout">Sign out</a></nav>';
     return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
