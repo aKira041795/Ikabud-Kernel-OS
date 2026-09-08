@@ -3055,16 +3055,35 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
         ];
     }
 
+    if ($isTenantAdmin) {
+        $modules = discoverModules();
+        $entryModule = is_string($tenantEntryDelegateId) && is_array($modules[$tenantEntryDelegateId] ?? null)
+            ? $modules[$tenantEntryDelegateId]
+            : [];
+        $tenantNavItems = [];
+        foreach ((array)($entryModule['nav'] ?? []) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $roles = is_array($item['roles'] ?? null) ? $item['roles'] : [];
+            if (!in_array($role, $roles, true) && !in_array('*', $roles, true)) {
+                continue;
+            }
+            $tenantNavItems[] = [
+                'label' => $item['label'] ?? '',
+                'url' => $item['url'] ?? '#',
+                'icon' => $item['icon'] ?? 'box',
+                'module' => $tenantEntryDelegateId,
+                'target' => $item['target'] ?? null,
+            ];
+        }
+        return $tenantNavItems;
+    }
+
     $navItems = [];
     foreach (getEnabledModules() as $module) {
         $moduleId = (string)($module['id'] ?? '');
         if ($moduleId === '') {
-            continue;
-        }
-
-        // A tenant admin belongs to the host's entry application. Its shell is
-        // intentionally isolated from both the control plane and unrelated apps.
-        if ($isTenantAdmin && $moduleId !== $tenantEntryDelegateId) {
             continue;
         }
 

@@ -39,8 +39,9 @@ if (!function_exists('kernelHandlePageLogin')) {
         }
 
         $enabledModules = getEnabledModules();
-        if (isset($enabledModules[$entryModuleId]) && is_array($enabledModules[$entryModuleId])) {
-            loadModuleHelpers($enabledModules[$entryModuleId]);
+        $entryModule = $enabledModules[$entryModuleId] ?? (discoverModules()[$entryModuleId] ?? null);
+        if (is_array($entryModule)) {
+            loadModuleHelpers($entryModule);
         }
 
         $contextFunction = preg_replace('/[^a-z0-9]+/i', '_', $entryModuleId) . 'LoginPageContext';
@@ -48,14 +49,14 @@ if (!function_exists('kernelHandlePageLogin')) {
         if (is_string($contextFunction) && function_exists($contextFunction)) {
             $context = $contextFunction($overrides);
             if (is_array($context)) {
-                if (is_file(BASE_PATH . '/templates/' . $moduleLoginTemplate)) {
+                if (is_file(dirname(__DIR__, 2) . '/templates/' . $moduleLoginTemplate)) {
                     $context['login_template'] = $context['login_template'] ?? $moduleLoginTemplate;
                 }
                 return $context;
             }
         }
 
-        if (is_file(BASE_PATH . '/templates/' . $moduleLoginTemplate)) {
+        if (is_file(dirname(__DIR__, 2) . '/templates/' . $moduleLoginTemplate)) {
             $defaultContext['login_template'] = $moduleLoginTemplate;
         }
         return $defaultContext;
