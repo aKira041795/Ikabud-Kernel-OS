@@ -2,6 +2,30 @@
 
 declare(strict_types=1);
 
+/**
+ * Reject a tenant connection that points at the kernel control database.
+ * Both host and database must match; common loopback host aliases are equivalent.
+ *
+ * @param array<string, mixed> $config
+ * @return array{ok: bool, error?: string}
+ */
+function tenantRejectBaseDbConnection(array $config): array
+{
+    $host = strtolower(trim((string)($config['host'] ?? $config['db_host'] ?? '')));
+    $name = strtolower(trim((string)($config['db_name'] ?? $config['name'] ?? '')));
+    $baseHost = strtolower(trim((string)($_ENV['DB_HOST'] ?? 'localhost')));
+    $baseName = strtolower(trim((string)($_ENV['DB_DATABASE'] ?? '')));
+    $localHosts = ['localhost', '127.0.0.1', '::1'];
+    $sameHost = $host === $baseHost
+        || (in_array($host, $localHosts, true) && in_array($baseHost, $localHosts, true));
+
+    if ($baseName !== '' && $sameHost && $name === $baseName) {
+        return ['ok' => false, 'error' => 'Tenant database must not be the kernel base database.'];
+    }
+
+    return ['ok' => true];
+}
+
 function tenantEntryModuleUsesKernelUsers(?string $entryModuleId): bool
 {
     $entryModuleId = trim((string)$entryModuleId);

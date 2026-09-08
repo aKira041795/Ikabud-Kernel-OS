@@ -600,6 +600,10 @@ switch ($handler) {
         kernelHandleApiTenantDbUpsert();
         exit;
 
+    case 'apiTenantProvision':
+        kernelHandleApiTenantProvision();
+        exit;
+
     case 'apiTenantRepairScope':
         kernelHandleApiTenantRepairScope();
         exit;
@@ -707,7 +711,7 @@ switch ($handler) {
     case 'pageKernelIntegrations':
         kernelHandlePageKernelIntegrations();
         exit;
-    
+
     case 'apiKernelIntegrations':
         $kernelIntegrationsRawBody = file_get_contents('php://input');
         kernelHandleApiKernelIntegrations(is_string($kernelIntegrationsRawBody) ? $kernelIntegrationsRawBody : '');
@@ -753,7 +757,7 @@ switch ($handler) {
         kernelHandleApiSuperadminToggleModule();
         exit;
 
-    // ── 5.1 Observability APIs ──────────────────────────────────────
+        // ── 5.1 Observability APIs ──────────────────────────────────────
     case 'apiSuperadminServiceHealth':
         kernelHandleApiSuperadminServiceHealth();
         exit;
@@ -778,7 +782,7 @@ switch ($handler) {
         kernelHandleApiSuperadminEntityViewDebug();
         exit;
 
-    // ── 5.3 Report Management APIs ───────────────────────────────
+        // ── 5.3 Report Management APIs ───────────────────────────────
     case 'apiSuperadminReportTemplates':
         kernelHandleApiSuperadminReportTemplates();
         exit;
@@ -803,7 +807,7 @@ switch ($handler) {
         kernelHandleApiSuperadminSignaturePresets();
         exit;
 
-    // ── 5.4 AI Governance APIs ──────────────────────────────────
+        // ── 5.4 AI Governance APIs ──────────────────────────────────
     case 'apiSuperadminAiConfig':
         kernelHandleApiSuperadminAiConfig();
         exit;

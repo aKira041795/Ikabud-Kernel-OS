@@ -208,6 +208,23 @@
     </div>
 </div>
 
+<!-- Provision modal -->
+<div class="modal-overlay" id="modal-provision" role="dialog" aria-modal="true" aria-labelledby="modal-provision-title" onclick="onBackdrop(event, 'modal-provision')">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 id="modal-provision-title">Provision Tenant</h3>
+        <input type="hidden" id="provision-tenant-id">
+        <div class="form-group">
+            <label class="form-label">Initial Admin Password</label>
+            <input class="form-input" id="provision-password" type="password" placeholder="Min 6 chars" autocomplete="new-password">
+            <div class="hint">Installs the entry module into this tenant's dedicated database, activates it, and creates the admin user. Safe to run again.</div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal('modal-provision')">Cancel</button>
+            <button class="btn btn-primary" onclick="provisionTenant()">Provision</button>
+        </div>
+    </div>
+</div>
+
 <!-- Admin email modal -->
 <div class="modal-overlay" id="modal-admin-email" role="dialog" aria-modal="true" aria-labelledby="modal-ae-title" onclick="onBackdrop(event, 'modal-admin-email')">
     <div class="modal" onclick="event.stopPropagation()">
@@ -423,6 +440,8 @@
                 ? ('host=' + escapeHtml(db.db_host || '-') + ', db=' + escapeHtml(db.db_name || '-') + ', user=' + escapeHtml(db.db_user || '-'))
                 : '-';
             var dbBtn = t.db_configured ? 'Edit DB' : 'Add DB';
+            var canProvision = Boolean(t.entry_module_id && t.db_configured && t.admin_email);
+            var provisionHint = canProvision ? 'Install and activate this tenant' : 'Configure entry module, dedicated DB, and admin email first';
             var statusBtnLabel = (status === 'active') ? 'Disable' : 'Enable';
             var statusBtnCls = (status === 'active') ? '' : 'primary';
             var entryDisplay = escapeHtml(t.entry_module_id || '-');
@@ -471,6 +490,7 @@
                 + '    <button class="btn btn-primary btn-sm" onclick="openDbConn(' + (t.id||0) + ')">' + dbBtn + '</button>'
                 + '    <button class="btn btn-outline btn-sm" onclick="openEntryModule(' + (t.id||0) + ')">Edit entry</button>'
                 + '    <button class="btn btn-outline btn-sm" onclick="openAdminEmail(' + (t.id||0) + ')">Admin email</button>'
+                + '    <button class="btn btn-primary btn-sm" title="' + provisionHint + '" ' + (canProvision ? 'onclick="openProvision(' + (t.id||0) + ')"' : 'disabled') + '>Provision</button>'
                 + '    <button class="btn btn-outline btn-sm" onclick="openAdminPassword(' + (t.id||0) + ')">Password</button>'
                 + (t.entry_module_id === 'bakeshop' && t.db_configured
                     ? '    <button class="btn btn-outline btn-sm" onclick="runTenantSeed(' + (t.id||0) + ',\'bakeshop_julies_bread_pastry\',\'Julie\\\'s seed\')">Run Julie\'s seed</button>'
@@ -601,6 +621,37 @@
         TENANT_VIEW_STATE.list = list;
         renderTenantModuleOptions(list);
         applyTenantFilters();
+    }
+
+    function openProvision(tenantId) {
+        document.getElementById('provision-tenant-id').value = String(tenantId || '');
+        document.getElementById('provision-password').value = '';
+        openModal('modal-provision');
+    }
+
+    function provisionTenant() {
+        var tenantId = parseInt(document.getElementById('provision-tenant-id').value || '0', 10);
+        var password = document.getElementById('provision-password').value;
+        if (password.length < 6) {
+            showToast('Initial admin password must be at least 6 characters');
+            return;
+        }
+        fetch(BASE + '/api/v1/admin/tenants/provision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenant_id: tenantId, admin_password: password, _token: CSRF })
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(res){
+            if (res.ok) {
+                closeModal('modal-provision');
+                showToast('Tenant provisioned. Generation: ' + String(res.generation || 'active'));
+                reloadTenants();
+            } else {
+                showToast(res.error || 'Provisioning failed');
+            }
+        })
+        .catch(function(){ showToast('Network error'); });
     }
 
     function openAdminEmail(tenantId) {
