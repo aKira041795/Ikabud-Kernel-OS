@@ -45,6 +45,7 @@ $check(str_contains($helpers, 'https://cdn.tailwindcss.com') && str_contains($he
 $check(str_contains($handlers, "'filters' => ['include_unpublished' => true") && str_contains($handlers, 'akiraShellPagination'), 'admin list uses governed filtering and pagination');
 $check(str_contains($helpers, "['actions'] = ['edit', 'delete']") && str_contains($helpers, "'delete' => 'POST'") && str_contains($helpers, 'Delete this post?'), 'entity-view rows expose edit and confirmed delete actions');
 $check(str_contains($handlers, 'name="status"') && str_contains($handlers, 'x-text="body"'), 'editor exposes draft/published status and safe text preview');
+$check(str_contains($handlers, 'x-data="akiraContentEditor()"') && str_contains($handlers, 'function akiraContentEditor()') && !str_contains($handlers, 'x-data="{body:'), 'editor state uses a named Alpine component safe for DiSyL parsing');
 $check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'"), 'create and edit save through capabilities with optimistic concurrency');
 $check(str_contains($handlers, "['Published', \$published") && str_contains($handlers, 'akiraShellRecentPosts'), 'dashboard presents governed counts and recent posts');
 
