@@ -42,6 +42,31 @@ function cawWithKernelWorkflow(callable $operation): mixed
     }
 }
 
+/** @return list<array{from:string,action:string,to:string,roles:list<string>}> */
+function cawPostLifecycleTransitions(): array
+{
+    return [
+        ['from' => 'draft', 'action' => 'submit', 'to' => 'review', 'roles' => ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin']],
+        ['from' => 'review', 'action' => 'approve', 'to' => 'approved', 'roles' => ['editor', 'admin', 'administrator', 'superadmin']],
+        ['from' => 'review', 'action' => 'reject', 'to' => 'draft', 'roles' => ['editor', 'admin', 'administrator', 'superadmin']],
+        ['from' => 'approved', 'action' => 'publish', 'to' => 'published', 'roles' => ['author', 'editor', 'admin', 'administrator', 'superadmin']],
+        ['from' => 'approved', 'action' => 'unapprove', 'to' => 'review', 'roles' => ['editor', 'admin', 'administrator', 'superadmin']],
+        ['from' => 'published', 'action' => 'unpublish', 'to' => 'draft', 'roles' => ['author', 'editor', 'admin', 'administrator', 'superadmin']],
+    ];
+}
+
+/** @return list<string> */
+function cawPostLifecycleParticipantRoles(): array
+{
+    $roles = [];
+    foreach (cawPostLifecycleTransitions() as $transition) {
+        foreach ($transition['roles'] as $role) {
+            $roles[$role] = true;
+        }
+    }
+    return array_keys($roles);
+}
+
 /** The one Akira-owned definition. Extra definitions and member-owned persistence are forbidden. */
 function cawEnsureDefinition(): void
 {
@@ -62,14 +87,7 @@ function cawEnsureDefinition(): void
                 ['key' => 'approved', 'label' => 'Approved'],
                 ['key' => 'published', 'label' => 'Published'],
             ],
-            [
-                ['from' => 'draft', 'action' => 'submit', 'to' => 'review', 'roles' => ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin']],
-                ['from' => 'review', 'action' => 'approve', 'to' => 'approved', 'roles' => ['editor', 'admin', 'administrator', 'superadmin']],
-                ['from' => 'review', 'action' => 'reject', 'to' => 'draft', 'roles' => ['editor', 'admin', 'administrator', 'superadmin']],
-                ['from' => 'approved', 'action' => 'publish', 'to' => 'published', 'roles' => ['author', 'editor', 'admin', 'administrator', 'superadmin']],
-                ['from' => 'approved', 'action' => 'unapprove', 'to' => 'review', 'roles' => ['editor', 'admin', 'administrator', 'superadmin']],
-                ['from' => 'published', 'action' => 'unpublish', 'to' => 'draft', 'roles' => ['author', 'editor', 'admin', 'administrator', 'superadmin']],
-            ],
+            cawPostLifecycleTransitions(),
         );
     });
 }
@@ -86,7 +104,7 @@ function cawSeedTransitionPolicy(): void
         'capability_version' => '1',
         'provider' => CAW_WORKFLOW_MODULE_ID,
         'caller_module' => null,
-        'allowed_roles' => 'contributor,author,editor,admin,administrator,superadmin',
+        'allowed_roles' => implode(',', cawPostLifecycleParticipantRoles()),
         'provider_activation_required' => true,
         'requires_protocol' => 'v2',
         'is_active' => true,

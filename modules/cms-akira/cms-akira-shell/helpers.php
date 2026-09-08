@@ -24,16 +24,30 @@ function cms_akira_shellLoginPageContext(array $overrides = []): array
 }
 
 /** @return array<string,mixed>|null */
+function akiraShellParticipant(): ?array
+{
+    $user = app()->user();
+    if (!is_array($user)) {
+        return null;
+    }
+    $roles = function_exists('cawPostLifecycleParticipantRoles') ? cawPostLifecycleParticipantRoles() : [];
+    return in_array((string) ($user['role'] ?? ''), $roles, true) ? $user : [];
+}
+
+/** @return array<string,mixed>|null */
 function akiraShellAdmin(): ?array
 {
     $user = app()->user();
     if (!is_array($user)) {
         return null;
     }
-    if (($user['role'] ?? '') !== 'admin') {
-        return [];
-    }
-    return app()->requireAnyRole('admin');
+    return in_array((string) ($user['role'] ?? ''), ['admin', 'administrator', 'superadmin'], true) ? $user : [];
+}
+
+function akiraShellIsAdmin(): bool
+{
+    $admin = akiraShellAdmin();
+    return is_array($admin) && $admin !== [];
 }
 
 /** @param array<string,mixed> $data */
@@ -43,9 +57,11 @@ function akiraShellPage(string $title, string $body, array $data = []): string
     $links = [
         'dashboard' => ['/cms-akira-shell', 'Dashboard'],
         'posts' => ['/cms-akira-shell/posts', 'Posts'],
-        'compositions' => ['/cms-akira-shell/compositions', 'Compositions'],
-        'health' => ['/cms-akira-shell/health', 'Module health'],
     ];
+    if (akiraShellIsAdmin()) {
+        $links['compositions'] = ['/cms-akira-shell/compositions', 'Compositions'];
+        $links['health'] = ['/cms-akira-shell/health', 'Module health'];
+    }
     $nav = '';
     foreach ($links as $key => [$url, $label]) {
         $classes = $key === $active ? 'bg-akira-600 text-white shadow-lg shadow-akira-950/20' : 'text-slate-300 hover:bg-white/10 hover:text-white';
@@ -73,7 +89,7 @@ function akiraShellEntityList(array $resolved): string
     $view = is_array($resolved['view'] ?? null) ? $resolved['view'] : [];
     $view['view'] = 'table';
     $view['fields'] = ['title', 'status', 'updated_at'];
-    $view['actions'] = ['edit', 'delete'];
+    $view['actions'] = akiraShellIsAdmin() ? ['edit', 'delete'] : ['edit'];
     $view['key_field'] = 'slug';
     $view['action_urls'] = [
         'edit' => '/cms-akira-shell/posts/{slug}/edit',
@@ -88,7 +104,7 @@ function akiraShellEntityList(array $resolved): string
         'source' => 'post',
         'view' => 'table',
         'class' => 'akira-entity-list',
-    ], ['base_url' => '', 'current_user_role' => 'admin']);
+    ], ['base_url' => '', 'current_user_role' => (string) ((app()->user()['role'] ?? ''))]);
 }
 
 function akiraShellCsrfField(): string

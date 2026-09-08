@@ -28,8 +28,8 @@
   "routes": true,
   "events": [],
   "nav": [
-    {"label": "Akira Dashboard", "url": "/cms-akira-shell", "icon": "layout-dashboard", "roles": ["admin"]},
-    {"label": "Posts", "url": "/cms-akira-shell/posts", "icon": "file-text", "roles": ["admin"]},
+    {"label": "Akira Dashboard", "url": "/cms-akira-shell", "icon": "layout-dashboard", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
+    {"label": "Posts", "url": "/cms-akira-shell/posts", "icon": "file-text", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
     {"label": "Compositions", "url": "/cms-akira-shell/compositions", "icon": "layers", "roles": ["admin"]},
     {"label": "Module Health", "url": "/cms-akira-shell/health", "icon": "activity", "roles": ["admin"]}
   ],

@@ -115,6 +115,7 @@ try {
     $transitions = json_decode((string) ($definition['transitions_json'] ?? ''), true);
     $check(array_column(is_array($states) ? $states : [], 'key') === ['draft', 'review', 'approved', 'published'], 'definition freezes the four Post lifecycle states');
     $check(array_column(is_array($transitions) ? $transitions : [], 'action') === ['submit', 'approve', 'reject', 'publish', 'unapprove', 'unpublish'], 'definition freezes all lifecycle actions');
+    $check(cawPostLifecycleParticipantRoles() === ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin'], 'shell participant roles derive from every role seeded in lifecycle transitions');
 
     $evaluated = $call('akira.workflow.evaluate@1', ['entity_type' => 'post', 'entity_key' => $entity]);
     $check(($evaluated['ok'] ?? false) === true && ($evaluated['data']['status'] ?? '') === 'draft', 'new tenant subject evaluates to draft');
@@ -181,6 +182,8 @@ try {
     $check($notAllowed, 'state-invalid action fails closed');
 
     app()->setUser(['id' => 999803, 'role' => 'author']);
+    $authorDraft = $call('akira.workflow.evaluate@1', ['entity_type' => 'post', 'entity_key' => $prefix . '-author-draft']);
+    $check(array_column($authorDraft['data']['allowed_actions'] ?? [], 'action') === ['submit'], 'author draft action set renders submit only');
     $authorEvaluation = $call('akira.workflow.evaluate@1', ['entity_type' => 'post', 'entity_key' => $entity]);
     $check(($authorEvaluation['data']['allowed_actions'] ?? null) === [], 'author cannot approve or reject a review-state Post');
     $authorDenied = false;

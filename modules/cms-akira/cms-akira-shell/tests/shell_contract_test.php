@@ -31,7 +31,8 @@ foreach (['create', 'update', 'delete'] as $operation) {
 }
 $check(str_contains($helpers, "akira.workflow.evaluate@1") && str_contains($helpers, "akira.workflow.transition@1"), 'publication evaluates and transitions through workflow capabilities');
 $check(!str_contains($handlers . $helpers, 'akira.post.publish@1') && !str_contains($handlers . $helpers, 'akira.post.unpublish@1'), 'shell has no direct publish or unpublish capability path');
-$check(str_contains($helpers, "app()->requireAnyRole('admin')"), 'Kernel role authorization');
+$check(str_contains($helpers, 'function akiraShellParticipant()') && str_contains($helpers, "function_exists('cawPostLifecycleParticipantRoles')"), 'editorial entry derives participants from the workflow definition');
+$check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($helpers, "['admin', 'administrator', 'superadmin']"), 'compositions and health retain their administrator gate');
 $check(str_contains($helpers, 'app()->csrfEnforce()'), 'Kernel CSRF enforcement');
 $check(str_contains($helpers, 'name="_token"') && !str_contains($helpers, 'name="_csrf_token"'), 'CSRF field name matches Kernel enforcer');
 $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|require.+modules\\/cms\\/)/', $handlers . $helpers), 'no forbidden content/auth/database shortcut');
@@ -46,7 +47,9 @@ $check(str_contains($login, 'tailwind.config') && str_contains($login, 'CMS Akir
 $check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_contains($handlers, 'data-akira-entity-view="post-list"'), 'posts render through styled Kernel entity-view container');
 $check(str_contains($helpers, 'https://cdn.tailwindcss.com') && str_contains($helpers, 'aria-label="Akira administration"'), 'admin shell ingests design system and accessible navigation');
 $check(str_contains($handlers, "'filters' => ['include_unpublished' => true") && str_contains($handlers, 'akiraShellPagination'), 'admin list uses governed filtering and pagination');
-$check(str_contains($helpers, "['actions'] = ['edit', 'delete']") && str_contains($helpers, "'delete' => 'POST'") && str_contains($helpers, 'Delete this post?'), 'entity-view rows expose edit and confirmed delete actions');
+$check(str_contains($helpers, "akiraShellIsAdmin() ? ['edit', 'delete'] : ['edit']") && str_contains($helpers, "'delete' => 'POST'") && str_contains($helpers, 'Delete this post?'), 'participants can edit while administrator rows also expose confirmed delete');
+$participantRoles = $manifest['nav'][0]['roles'] ?? [];
+$check($participantRoles === ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin'] && ($manifest['nav'][1]['roles'] ?? []) === $participantRoles, 'dashboard and posts navigation admits every seeded workflow participant');
 $check(!str_contains($handlers, '<select name="status" class="\' . $control') && str_contains($handlers, 'data-akira-workflow-state') && str_contains($helpers, 'data-akira-workflow-actions') && str_contains($handlers, 'x-text="body"'), 'editor exposes workflow state and allowed actions instead of a binary status input');
 $check(str_contains($handlers, 'x-data="akiraContentEditor()"') && str_contains($handlers, 'function akiraContentEditor()') && !str_contains($handlers, 'x-data="{body:'), 'editor state uses a named Alpine component safe for DiSyL parsing');
 $check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'") && str_contains($helpers, "'expected_status'"), 'saves and workflow transitions preserve optimistic concurrency');
