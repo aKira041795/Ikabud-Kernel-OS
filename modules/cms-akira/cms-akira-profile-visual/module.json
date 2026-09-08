@@ -1,0 +1,43 @@
+{
+    "id": "cms-akira-profile-visual",
+    "name": "CMS Akira Visual Profile",
+    "version": "1.0.0",
+    "description": "CMS Akira Visual installation profile — the full visual composition and publishing graph.",
+    "author": "Ikabud",
+    "suite": "cms-akira",
+    "kind": "profile",
+    "installs": [
+        "cms-akira-builder",
+        "cms-akira-core",
+        "cms-akira-shell",
+        "cms-akira-editor",
+        "cms-akira-theme",
+        "cms-akira-navigation",
+        "cms-akira-media",
+        "cms-akira-seo",
+        "cms-akira-workflow",
+        "cms-akira-search"
+    ],
+    "depends": [
+        "cms-akira-builder",
+        "cms-akira-core",
+        "cms-akira-shell",
+        "cms-akira-editor",
+        "cms-akira-theme",
+        "cms-akira-navigation",
+        "cms-akira-media",
+        "cms-akira-seo",
+        "cms-akira-workflow",
+        "cms-akira-search"
+    ],
+    "owns_tables": [],
+    "reads_tables": [],
+    "migrations": [],
+    "routes": false,
+    "capabilities": {
+        "exposes": [],
+        "depends": []
+    },
+    "events": [],
+    "_enabled": false
+}

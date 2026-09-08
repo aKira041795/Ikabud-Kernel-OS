@@ -31,7 +31,11 @@ foreach (['create', 'update', 'publish', 'unpublish', 'delete'] as $operation) {
 $check(str_contains($helpers, "app()->requireAnyRole('admin')"), 'Kernel role authorization');
 $check(str_contains($helpers, 'app()->csrfEnforce()'), 'Kernel CSRF enforcement');
 $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|require.+modules\\/cms\\/)/', $handlers . $helpers), 'no forbidden content/auth/database shortcut');
-$check(count($manifest['nav'] ?? []) === 3, 'dashboard, posts and health navigation');
+$check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
+$check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
+$check(str_contains($helpers, 'cms-akira-builder-root') && str_contains($helpers, '/admin/assets/cms-akira-builder'), 'shell serves the CSP-safe builder bundle container');
+$check(count($manifest['nav'] ?? []) === 4, 'dashboard, posts, compositions and health navigation');
+$check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
 $check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/delete']), 'delete route');
 
 echo "shell contract: {$pass} passed, {$fail} failed\n";

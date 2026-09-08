@@ -139,6 +139,52 @@ function akiraShellPostDelete(array $params = []): void
     akiraShellMutation('akira.post.delete@1', (string)($params['slug'] ?? ''));
 }
 
+/**
+ * Compositions admin — mounts the Akira Builder React app (list + create).
+ * @param array<string,mixed> $params
+ */
+function akiraShellCompositions(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    $resolved = app()->entityViews()->resolve('post', 'list', ['limit' => 200, 'offset' => 0]);
+    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
+    $posts = array_values(array_filter(array_map(static fn (mixed $row): array => [
+        'entity_type' => 'post',
+        'entity_key' => (string) ($row['slug'] ?? ''),
+        'title' => (string) ($row['title'] ?? ''),
+    ], $rows), static fn (array $post): bool => $post['entity_key'] !== ''));
+    echo akiraShellPage('Compositions', akiraShellBuilderAdmin([
+        'mode' => 'list',
+        'apiBase' => '/api/v1/cms-akira/builder',
+        'posts' => $posts,
+    ]));
+}
+
+/**
+ * Composition editor page — mounts the Akira Builder React app for one entity.
+ * @param array<string,mixed> $params
+ */
+function akiraShellCompositionEdit(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    $key = trim((string) ($params['key'] ?? ''));
+    if ($key === '' || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $key) !== 1) {
+        http_response_code(422);
+        echo akiraShellPage('Invalid composition', '<p>The composition key is invalid.</p>');
+        return;
+    }
+    echo akiraShellPage('Edit composition', akiraShellBuilderAdmin([
+        'mode' => 'edit',
+        'apiBase' => '/api/v1/cms-akira/builder',
+        'entity_key' => $key,
+        'posts' => [],
+    ]));
+}
+
 /** @param array<string,mixed> $params */
 function akiraShellModuleHealth(array $params = []): void
 {

@@ -30,6 +30,7 @@
   "nav": [
     {"label": "Akira Dashboard", "url": "/cms-akira-shell", "icon": "layout-dashboard", "roles": ["admin"]},
     {"label": "Posts", "url": "/cms-akira-shell/posts", "icon": "file-text", "roles": ["admin"]},
+    {"label": "Compositions", "url": "/cms-akira-shell/compositions", "icon": "layers", "roles": ["admin"]},
     {"label": "Module Health", "url": "/cms-akira-shell/health", "icon": "activity", "roles": ["admin"]}
   ],
   "_enabled": false
