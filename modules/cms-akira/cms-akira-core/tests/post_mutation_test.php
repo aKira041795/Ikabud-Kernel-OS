@@ -8,7 +8,7 @@ use Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry;
 use Ikabud\Kernel\Http\CsrfManager;
 
 $root = dirname(__DIR__, 4);
-$_SERVER['HTTP_HOST'] = 'cmsnew.test';
+$_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
@@ -48,7 +48,7 @@ foreach (cms_akira_core_capability_handlers() as $id => $handler) {
 app()->entityAuthority()->registerAuthority('post', 'cms-akira-core', ['authority' => true]);
 cacRegisterPostEntityViews(app()->entityViews());
 
-$tenantA = 992101;
+$tenantA = (int) app()->tenant()->current();
 $tenantB = 992102;
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
@@ -105,12 +105,15 @@ try {
         && $policyDb->requiresProtocol('akira.post.delete@1', '1', 'cms-akira-core') === 'v2',
         'activation seeds idempotent admin mutation policies'
     );
-    $policyRows = $db->query("SELECT capability_id, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
+    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
+    $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
     $check(count($policyRows) === 5
         && ($policyRoles['akira.post.create@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.post.update@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
-        && ($policyRoles['akira.post.delete@1'] ?? '') === 'admin', 'registry policy admits editorial creation/update while destructive legacy operations remain admin-only');
+        && ($policyRoles['akira.post.delete@1'] ?? '') === 'admin'
+        && ($policyCallers['akira.post.create@1'] ?? '') === 'cms-akira-core,cms-akira-shell'
+        && ($policyCallers['akira.post.publish@1'] ?? '') === 'cms-akira-core', 'registry policy binds roles and actual production callers');
 
     $routes = require dirname(__DIR__) . '/routes.php';
     $handlersSource = (string)file_get_contents(dirname(__DIR__) . '/handlers.php');

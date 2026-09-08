@@ -29,18 +29,18 @@ function cacSeedPostMutationPolicies(): void
     $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
     foreach ([
-        'akira.post.create@1' => 'contributor,author,editor,admin,administrator,superadmin',
-        'akira.post.update@1' => 'contributor,author,editor,admin,administrator,superadmin',
-        'akira.post.publish@1' => 'admin',
-        'akira.post.unpublish@1' => 'admin',
-        'akira.post.delete@1' => 'admin',
-    ] as $capabilityId => $allowedRoles) {
+        'akira.post.create@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+        'akira.post.update@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+        'akira.post.publish@1' => ['admin', 'cms-akira-core'],
+        'akira.post.unpublish@1' => ['admin', 'cms-akira-core'],
+        'akira.post.delete@1' => ['admin', 'cms-akira-core,cms-akira-shell'],
+    ] as $capabilityId => [$allowedRoles, $allowedCallers]) {
         $rows[] = [
             'policy_version' => 1,
             'capability_id' => $capabilityId,
             'capability_version' => '1',
             'provider' => 'cms-akira-core',
-            'caller_module' => null,
+            'caller_module' => $allowedCallers,
             'allowed_roles' => $allowedRoles,
             'provider_activation_required' => true,
             'requires_protocol' => 'v2',

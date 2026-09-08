@@ -68,6 +68,10 @@ its migrations (`cms_akira_posts`).
   outcomes replay; conflict maps to 409 and in-progress to 425 with
   `Retry-After: 2`. A certain pre-publication failure is rolled back/released;
   uncertain commit publication remains processing and is never reclaimed.
+- Mutation authorization rows are the role and caller authority. Create/update/delete are
+  called by the core JSON routes and `cms-akira-shell`; their `caller_module` allowlist binds
+  both. Legacy publish/unpublish remain callable only by the core JSON routes (the shell uses
+  workflow transitions), so those rows bind only `cms-akira-core`.
 - CapabilityBus expands each capability's single `entity.list.post` tag to
   `invalidateEntityCache('post', tenant)`, invalidating list and detail fragments
   after success. Invalidation is deliberately fail-open; the kernel emits

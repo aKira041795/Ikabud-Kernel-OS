@@ -32,7 +32,10 @@ foreach (['create', 'update', 'delete'] as $operation) {
 $check(str_contains($helpers, "akira.workflow.evaluate@1") && str_contains($helpers, "akira.workflow.transition@1"), 'publication evaluates and transitions through workflow capabilities');
 $check(!str_contains($handlers . $helpers, 'akira.post.publish@1') && !str_contains($handlers . $helpers, 'akira.post.unpublish@1'), 'shell has no direct publish or unpublish capability path');
 $check(str_contains($helpers, 'function akiraShellParticipant()') && str_contains($helpers, "function_exists('cawPostLifecycleParticipantRoles')"), 'editorial entry derives participants from the workflow definition');
-$check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($helpers, "['admin', 'administrator', 'superadmin']"), 'compositions and health retain their administrator gate');
+$check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($helpers, "['admin', 'administrator', 'superadmin']"), 'compositions and health retain their presentation administrator gate');
+$mutationBody = explode('function akiraShellMutation', $helpers, 2)[1] ?? '';
+$mutationBody = explode("\n}", $mutationBody, 2)[0] ?? '';
+$check(str_contains($mutationBody, 'akiraShellAuthorize()') && !str_contains($mutationBody, 'akiraShellAdmin'), 'delete delegates role authority to its governed policy row');
 $check(str_contains($helpers, 'app()->csrfEnforce()'), 'Kernel CSRF enforcement');
 $check(str_contains($helpers, 'return app()->csrfField();'), 'CSRF field delegates to Kernel renderer');
 $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|require.+modules\\/cms\\/)/', $handlers . $helpers), 'no forbidden content/auth/database shortcut');

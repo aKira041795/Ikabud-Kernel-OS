@@ -101,6 +101,7 @@ $capabilityId = 'test.authz.policy.' . $suffix . '@2';
 $providerId = 'kernel';
 $legacyProviderId = 'authz-policy-v1-provider-' . $suffix;
 $callerModule = 'authz-policy-caller-' . $suffix;
+$alternateCallerModule = 'authz-policy-alternate-caller-' . $suffix;
 $registry = new CapabilityAuthorizationRegistry($db);
 $tenantResolver = app()->tenant();
 $previousTenantId = $tenantResolver->current();
@@ -119,7 +120,7 @@ try {
     ];
     $registry->seedPolicy([$policy]);
     $registry->seedPolicy([array_merge($policy, [
-        'caller_module' => $callerModule,
+        'caller_module' => $callerModule . ',' . $alternateCallerModule,
         'allowed_roles' => 'admin',
         'requires_protocol' => 'v2',
     ])]);
@@ -142,7 +143,7 @@ try {
         'seedPolicy upserts its natural key and updates governed fields',
         is_array($storedPolicy)
             && (int)$storedPolicy['row_count'] === 1
-            && $storedPolicy['caller_module'] === $callerModule
+            && $storedPolicy['caller_module'] === $callerModule . ',' . $alternateCallerModule
             && $storedPolicy['allowed_roles'] === 'admin'
             && $storedPolicy['requires_protocol'] === 'v2',
         json_encode($storedPolicy, JSON_UNESCAPED_SLASHES)
@@ -228,6 +229,14 @@ try {
     capAuthzPolicyTest(
         'protocol-v2 dispatch is allowed after canonical bus re-authorization',
         is_array($adminResult) && ($adminResult['allowed'] ?? false) === true
+    );
+    $alternateCallerResult = $bus->call($capabilityId, [], array_merge($baseOptions, [
+        'caller_module' => $alternateCallerModule,
+        'caller_user' => ['role' => 'admin'],
+    ]));
+    capAuthzPolicyTest(
+        'caller_module accepts every member of a bounded comma-separated allowlist',
+        is_array($alternateCallerResult) && ($alternateCallerResult['allowed'] ?? false) === true
     );
     capAuthzPolicyTest(
         'protocol-v2 policy denies a legacy dispatch in the canonical bus',

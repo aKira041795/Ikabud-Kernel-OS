@@ -335,13 +335,7 @@ function akiraShellWorkflowTransition(string $slug): void
 
 function akiraShellMutation(string $capability, string $slug = ''): void
 {
-    if (akiraShellAdmin() === null) {
-        akiraShellRedirect('/login');
-        return;
-    }
-    if (akiraShellAdmin() === []) {
-        http_response_code(403);
-        echo akiraShellPage('Access denied', '<p>Your Kernel role cannot administer CMS Akira.</p>');
+    if (!akiraShellAuthorize()) {
         return;
     }
     app()->csrfEnforce();

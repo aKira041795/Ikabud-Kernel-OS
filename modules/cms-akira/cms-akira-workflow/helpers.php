@@ -103,7 +103,7 @@ function cawSeedTransitionPolicy(): void
         'capability_id' => 'akira.workflow.transition@1',
         'capability_version' => '1',
         'provider' => CAW_WORKFLOW_MODULE_ID,
-        'caller_module' => null,
+        'caller_module' => CAW_WORKFLOW_MODULE_ID . ',cms-akira-shell',
         'allowed_roles' => implode(',', cawPostLifecycleParticipantRoles()),
         'provider_activation_required' => true,
         'requires_protocol' => 'v2',
