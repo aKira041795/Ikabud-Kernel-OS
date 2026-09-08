@@ -912,6 +912,51 @@ function write_log(string $message, string $level = 'error', array $context = []
         return '/ecommerce/my-stores';
     }
 
+    /**
+     * Entry module for a host-resolved tenant request, or null on the control-plane host.
+     */
+    function kernelCurrentTenantEntryModuleId(): ?string
+    {
+        if (!function_exists('app') || empty($_SERVER['IK_TENANT_HOST'])) {
+            return null;
+        }
+
+        $tenantId = app()->tenant()->current();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        $entryModuleId = trim((string)($_SERVER['IK_ENTRY_MODULE_ID'] ?? ''));
+        if ($entryModuleId === '' && function_exists('tenantEntryModuleIdForTenant')) {
+            $entryModuleId = trim((string)tenantEntryModuleIdForTenant((int)$tenantId));
+        }
+
+        return $entryModuleId !== '' ? $entryModuleId : null;
+    }
+
+    function kernelTenantEntryModuleHomeUrl(string $entryModuleId, string $role): string
+    {
+        $delegateId = function_exists('tenantEntryModuleDelegateId')
+            ? tenantEntryModuleDelegateId($entryModuleId)
+            : $entryModuleId;
+        $delegateId = trim($delegateId) !== '' ? trim($delegateId) : $entryModuleId;
+
+        $modules = function_exists('discoverModules') ? discoverModules() : [];
+        $manifest = is_array($modules[$delegateId] ?? null) ? $modules[$delegateId] : [];
+        foreach ((array)($manifest['nav'] ?? []) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $roles = is_array($item['roles'] ?? null) ? $item['roles'] : [];
+            $url = trim((string)($item['url'] ?? ''));
+            if ($url !== '' && $url !== '#' && (in_array($role, $roles, true) || in_array('*', $roles, true))) {
+                return $url;
+            }
+        }
+
+        return '/' . $delegateId;
+    }
+
     function kernelResolveAuthenticatedHomeRedirect(?array $user = null, bool $fallbackToRoot = false): ?string
     {
         if ($user === null && function_exists('app')) {
@@ -925,6 +970,11 @@ function write_log(string $message, string $level = 'error', array $context = []
 
         $role = trim((string)($user['role'] ?? ''));
         $source = trim((string)($user['source'] ?? ''));
+        $tenantEntryModuleId = kernelCurrentTenantEntryModuleId();
+        if ($role === 'admin' && $tenantEntryModuleId !== null) {
+            return kernelTenantEntryModuleHomeUrl($tenantEntryModuleId, $role);
+        }
+
         if ($role === 'superadmin' && $source === 'kernel') {
             return '/superadmin/settings';
         }

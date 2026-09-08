@@ -11,6 +11,7 @@ class TenantEntryRouter
 {
     public function rewriteUri(string $uri): string
     {
+        unset($_SERVER['IK_TENANT_HOST'], $_SERVER['IK_ENTRY_MODULE_ID']);
         $uri = $uri === '' ? '/' : $uri;
         if ($uri[0] !== '/') {
             $uri = '/' . $uri;
@@ -31,6 +32,7 @@ class TenantEntryRouter
             $tenantId = isset($row['tenant_id']) ? (int)$row['tenant_id'] : 0;
             if ($tenantId > 0) {
                 app()->tenant()->setTenantId($tenantId);
+                $_SERVER['IK_TENANT_HOST'] = '1';
             }
 
             $status = strtolower(trim((string)($row['status'] ?? 'active')));
@@ -54,6 +56,7 @@ class TenantEntryRouter
             if ($entry === '') {
                 return $uri;
             }
+            $_SERVER['IK_ENTRY_MODULE_ID'] = $entry;
 
             if ($this->shouldFastReject($uri)) {
                 $_SERVER['IK_FAST_404'] = '1';

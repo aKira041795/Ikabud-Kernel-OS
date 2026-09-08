@@ -18,16 +18,11 @@ if (!function_exists('kernelHandlePageLogin')) {
 
     function kernelCurrentEntryModuleId(): string
     {
-        $entryModuleId = 'kernel';
-        $loginTenantId = app()->tenant()->current();
-        if ($loginTenantId !== null && function_exists('tenantEntryModuleIdForTenant')) {
-            $resolvedEntryModuleId = tenantEntryModuleIdForTenant((int)$loginTenantId);
-            if (is_string($resolvedEntryModuleId) && $resolvedEntryModuleId !== '') {
-                $entryModuleId = $resolvedEntryModuleId;
-            }
-        }
+        $entryModuleId = function_exists('kernelCurrentTenantEntryModuleId')
+            ? kernelCurrentTenantEntryModuleId()
+            : null;
 
-        return $entryModuleId;
+        return is_string($entryModuleId) && $entryModuleId !== '' ? $entryModuleId : 'kernel';
     }
 
     function kernelResolveEntryModuleLoginContext(array $overrides = []): array
@@ -49,13 +44,20 @@ if (!function_exists('kernelHandlePageLogin')) {
         }
 
         $contextFunction = preg_replace('/[^a-z0-9]+/i', '_', $entryModuleId) . 'LoginPageContext';
+        $moduleLoginTemplate = 'modules/' . $entryModuleId . '/pages/login.disyl';
         if (is_string($contextFunction) && function_exists($contextFunction)) {
             $context = $contextFunction($overrides);
             if (is_array($context)) {
+                if (is_file(BASE_PATH . '/templates/' . $moduleLoginTemplate)) {
+                    $context['login_template'] = $context['login_template'] ?? $moduleLoginTemplate;
+                }
                 return $context;
             }
         }
 
+        if (is_file(BASE_PATH . '/templates/' . $moduleLoginTemplate)) {
+            $defaultContext['login_template'] = $moduleLoginTemplate;
+        }
         return $defaultContext;
     }
 
@@ -115,7 +117,8 @@ if (!function_exists('kernelHandlePageLogin')) {
         }
 
         $renderStart = microtime(true);
-        $html = app()->render('pages/login.disyl', $loginContext);
+        $loginTemplate = trim((string)($loginContext['login_template'] ?? 'pages/login.disyl'));
+        $html = app()->render($loginTemplate !== '' ? $loginTemplate : 'pages/login.disyl', $loginContext);
         $renderMs = round((microtime(true) - $renderStart) * 1000, 2);
         if (extension_loaded('apcu') && apcu_enabled()) {
             apcu_store($cacheKey, $html, 60);  // 60-second TTL for higher hit rate under concurrency

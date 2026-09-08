@@ -3032,7 +3032,14 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
     }
 
     $source = $user ? (string)($user['source'] ?? '') : '';
-    $isKernelAdmin = $source === 'kernel' && $role === 'admin';
+    $tenantEntryModuleId = function_exists('kernelCurrentTenantEntryModuleId')
+        ? kernelCurrentTenantEntryModuleId()
+        : null;
+    $tenantEntryDelegateId = is_string($tenantEntryModuleId) && function_exists('tenantEntryModuleDelegateId')
+        ? tenantEntryModuleDelegateId($tenantEntryModuleId)
+        : $tenantEntryModuleId;
+    $isTenantAdmin = $role === 'admin' && is_string($tenantEntryModuleId) && $tenantEntryModuleId !== '';
+    $isKernelAdmin = !$isTenantAdmin && $source === 'kernel' && $role === 'admin';
     $isKernelSuperadmin = $source === 'kernel' && $role === 'superadmin';
 
     // Kernel superadmin: settings-only role — no module navigation.
@@ -3052,6 +3059,12 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
     foreach (getEnabledModules() as $module) {
         $moduleId = (string)($module['id'] ?? '');
         if ($moduleId === '') {
+            continue;
+        }
+
+        // A tenant admin belongs to the host's entry application. Its shell is
+        // intentionally isolated from both the control plane and unrelated apps.
+        if ($isTenantAdmin && $moduleId !== $tenantEntryDelegateId) {
             continue;
         }
 

@@ -64,10 +64,9 @@ return [
     ],
 
     'multi_tenant' => [
-        // Application-first: multi-tenancy is an optional compatibility
-        // architecture (legacy shared-database capability), NOT the default
-        // design target. New modules assume database ownership.
-        'enabled' => (bool) ($_ENV['APP_MULTI_TENANT_ENABLED'] ?? false),
+        // Standard deployment: one control plane with an isolated database,
+        // entry module, and administration surface for every tenant.
+        'enabled' => (bool) ($_ENV['APP_MULTI_TENANT_ENABLED'] ?? true),
         'strategy' => (string) ($_ENV['APP_TENANT_STRATEGY'] ?? 'control_host'),
         'header' => (string) ($_ENV['APP_TENANT_HEADER'] ?? 'X-Tenant'),
         'default' => isset($_ENV['APP_TENANT_DEFAULT']) && trim((string) $_ENV['APP_TENANT_DEFAULT']) !== ''

@@ -1,7 +1,8 @@
 # Ikabud Kernel OS — Application-First Philosophy
 
-> **Declaration (Kernel OS 6.0):** Ikabud is now **application-first**. Multi-tenancy
-> becomes an **optional compatibility architecture**, not the default design target.
+> **Standard (Kernel OS 6.0):** Ikabud is an **application-first, multi-tenant**
+> control plane. Every tenant deployment owns its database, entry module, auth
+> surface, and administration shell.
 
 The bare-bones installer is more than a deployment package — it is the foundation
 for **Ikabud as an application OS**, where every business capability is added
@@ -9,8 +10,8 @@ intentionally rather than inherited from legacy assumptions.
 
 ## Principles
 
-1. **One application, clean boundary.** The kernel ships as a single-application
-   kernel optimized for product development, not for SaaS multi-tenancy by default.
+1. **One control plane, clean tenant boundaries.** The kernel manages isolated
+   tenant applications and resolves each tenant by host.
 2. **The kernel renders nothing beyond essential administration; everything else
    is a module.** The installer bundles only the `gui-settings` companion so the
    distribution stays clean while remaining immediately usable.
@@ -19,15 +20,16 @@ intentionally rather than inherited from legacy assumptions.
 4. **Legacy skin is shed.** Deprecated capabilities are explicitly marked and
    documented — never silently carried forward.
 
-## Legacy compatibility (deprecated, not deleted)
+## Standard tenancy posture
 
 | Capability | Status | Default |
 |---|---|---|
-| Shared-database / multi-tenant (`APP_MULTI_TENANT_ENABLED`) | **Deprecated — compatibility only** | `0` (off) |
-| Control-plane tenancy (`APP_TENANT_STRATEGY=control_host`) | Compatibility | `control_host` (only active when multi-tenant enabled) |
+| Multi-tenant control plane (`APP_MULTI_TENANT_ENABLED`) | **Standard** | `1` (on) |
+| Host-based tenant resolution (`APP_TENANT_STRATEGY=control_host`) | **Standard** | `control_host` |
+| Separate database and entry module per tenant | **Required** | enabled |
 
-When multi-tenancy is enabled, the older SaaS hosting model is available for
-backward compatibility. New development targets the single-application kernel.
+The host without a resolved tenant remains the kernel control-plane surface.
+Tenant hosts expose only their entry application's login and administration shell.
 
 ## Repository identity
 
