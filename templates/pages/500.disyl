@@ -1,10 +1,9 @@
-{extends "layouts/app.disyl"}
-
-{block content}
-<div style="text-align:center; padding: 80px 20px;">
-    <h1 style="font-size: calc(var(--font-size-h1) * 3); font-weight: 700; color: var(--danger);">500</h1>
-    <p style="font-size: var(--font-size-h2); color: var(--text-muted); margin-top: 8px;">Something went wrong</p>
-    <p style="color: var(--text-light); margin-top: 8px;">An internal error occurred. The issue has been logged.</p>
-    <a href="{base_url}/" class="btn btn-primary" style="margin-top: 24px;">Go Home</a>
-</div>
-{/block}
+{include "pages/partials/error-page.disyl" with {
+    status_code: status_code|default:500,
+    page_title:  page_title|default:''
+}}
+{* 500 — Internal Server Error.
+   Renders the shared kernel error card (also used by the kernel exception
+   handler for 401/403 when status_code is supplied). Callers must never pass
+   exception text or stack traces here — only safe copy, and detail stays
+   gated behind show_detail which 500 surfaces never enable. *}

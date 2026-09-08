@@ -452,24 +452,48 @@ if (!empty($_SERVER['IK_CANONICAL_DOMAIN']) && PHP_SAPI !== 'cli') {
 
 // If the resolved tenant is suspended, show maintenance mode.
 // This is intentionally done after the router has resolved tenant_id from host.
+// Renders the shared error card (pages/maintenance → error-page partial).
 if (!empty($_SERVER['IK_TENANT_SUSPENDED'])) {
     http_response_code(503);
-    echo app()->render('pages/maintenance.disyl', ['page_title' => 'Maintenance']);
+    echo app()->render('pages/maintenance.disyl', [
+        'status_code' => 503,
+        'page_title' => 'Maintenance',
+        'message' => 'This site is temporarily offline while scheduled maintenance is in progress. Please check back shortly.',
+        'back_url' => $basePath . '/admin/tenants',
+        'action_label' => 'Control Panel',
+    ]);
     exit;
 }
 
 if (!empty($_SERVER['IK_ENTRY_MODULE_UNAVAILABLE'])) {
     http_response_code(503);
-    echo app()->render('pages/entry-module-unavailable.disyl', [
+    $entryModuleId = (string)($_SERVER['IK_ENTRY_MODULE_ID'] ?? '');
+    $entryModuleContext = [
+        'status_code' => 503,
         'page_title' => 'Tenant Unavailable',
-        'entry_module_id' => (string)($_SERVER['IK_ENTRY_MODULE_ID'] ?? ''),
-    ]);
+        'message' => 'The entry module for this tenant could not be loaded safely. Please check module health and recent runtime logs.',
+        'back_url' => $basePath . '/admin/modules',
+        'action_label' => 'Go to Modules',
+    ];
+    // The entry module id is a safe, already-validated module identifier — it is
+    // surfaced through the opt-in detail block (show_detail), never as raw HTML.
+    if ($entryModuleId !== '') {
+        $entryModuleContext['detail'] = 'Entry module: ' . $entryModuleId;
+        $entryModuleContext['show_detail'] = true;
+    }
+    echo app()->render('pages/entry-module-unavailable.disyl', $entryModuleContext);
     exit;
 }
 
 if (!empty($_SERVER['IK_FAST_404'])) {
     http_response_code(404);
-    echo app()->render('pages/404.disyl', ['page_title' => 'Not Found']);
+    echo app()->render('pages/404.disyl', [
+        'status_code' => 404,
+        'page_title' => 'Not Found',
+        'message' => 'The page you requested could not be found. It may have moved, the link may be out of date, or the address may be incorrect.',
+        'back_url' => $basePath . '/',
+        'action_label' => 'Open Home',
+    ]);
     exit;
 }
 
@@ -551,7 +575,13 @@ foreach ($routePatterns as $pattern) {
 
 if ($handler === null) {
     http_response_code(404);
-    echo app()->render('pages/404.disyl', ['page_title' => 'Not Found']);
+    echo app()->render('pages/404.disyl', [
+        'status_code' => 404,
+        'page_title' => 'Not Found',
+        'message' => 'The page you requested could not be found. It may have moved, the link may be out of date, or the address may be incorrect.',
+        'back_url' => $basePath . '/',
+        'action_label' => 'Open Home',
+    ]);
     exit;
 }
 
