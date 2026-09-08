@@ -7,6 +7,22 @@ function akiraShellEscape(mixed $value): string
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+/** @param array<string,mixed> $overrides
+ * @return array<string,mixed>
+ */
+function cms_akira_shellLoginPageContext(array $overrides = []): array
+{
+    return array_merge([
+        'page_title' => 'CMS Akira Sign In',
+        'app_name' => 'CMS Akira',
+        'login_endpoint' => '/api/v1/auth/login',
+        'login_username_label' => 'Username or Email',
+        'login_button_text' => 'Enter Akira',
+        'login_loading_text' => 'Opening your workspace...',
+        'login_forgot_url' => external_base_url() . '/forgot-password',
+    ], $overrides);
+}
+
 /** @return array<string,mixed>|null */
 function akiraShellAdmin(): ?array
 {

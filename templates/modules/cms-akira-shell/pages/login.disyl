@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{page_title}</title>
+    <style>
+        *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#312e81 0,transparent 38%),linear-gradient(145deg,#09090b,#18181b 52%,#172554);color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}.card{width:min(100%,410px);padding:38px;border:1px solid rgba(165,180,252,.24);border-radius:24px;background:rgba(9,9,11,.82);box-shadow:0 30px 90px rgba(0,0,0,.5);backdrop-filter:blur(18px)}.mark{width:58px;height:58px;display:grid;place-items:center;margin-bottom:24px;border-radius:18px;background:linear-gradient(135deg,#818cf8,#c084fc);font-size:25px;font-weight:800;box-shadow:0 14px 35px rgba(129,140,248,.35)}h1{margin:0;font-size:31px;letter-spacing:-.04em}p{margin:8px 0 30px;color:#a5b4fc}.field{margin-bottom:18px}label{display:block;margin-bottom:7px;color:#cbd5e1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}input{width:100%;padding:13px 14px;border:1px solid #3f3f46;border-radius:11px;background:#18181b;color:#fff;font:inherit}input:focus{outline:3px solid rgba(129,140,248,.22);border-color:#818cf8}.links{text-align:right;margin:-7px 0 20px}.links a{color:#a5b4fc;font-size:13px;text-decoration:none}button{width:100%;padding:13px;border:0;border-radius:11px;background:linear-gradient(135deg,#6366f1,#9333ea);color:white;font:inherit;font-weight:750;cursor:pointer}button:disabled{opacity:.65}.error{display:none;margin-bottom:18px;padding:11px 13px;border:1px solid rgba(248,113,113,.35);border-radius:10px;background:rgba(127,29,29,.3);color:#fecaca;font-size:13px}.error.show{display:block}.eyebrow{margin-bottom:8px;color:#a5b4fc;font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="mark">A</div>
+        <div class="eyebrow">Content workspace</div>
+        <h1>CMS Akira</h1>
+        <p>Sign in to manage your stories and compositions.</p>
+        <div id="login-error" class="error"></div>
+        <form onsubmit="return akiraLogin(event)">
+            <div class="field"><label for="username">{login_username_label}</label><input id="username" autocomplete="username" required autofocus></div>
+            <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+            <div class="links"><a href="{login_forgot_url}">Forgot password?</a></div>
+            <button id="login-button" type="submit">{login_button_text}</button>
+        </form>
+    </main>
+    <script>
+        function akiraLogin(event){event.preventDefault();var button=document.getElementById('login-button'),error=document.getElementById('login-error');button.disabled=true;button.textContent='{login_loading_text}';error.classList.remove('show');fetch('{login_endpoint}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})}).then(function(response){return response.json()}).then(function(result){if(result.ok&&result.redirect){window.location.href=result.redirect;return}throw new Error(result.error||'Login failed')}).catch(function(reason){error.textContent=reason.message||'Login failed';error.classList.add('show');button.disabled=false;button.textContent='{login_button_text}'});return false}
+    </script>
+</body>
+</html>

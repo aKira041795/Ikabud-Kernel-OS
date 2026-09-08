@@ -4,16 +4,15 @@ description: Tenancy roadmap (separate DB per tenant + domain-based entry)
 
 # Tenancy Roadmap (Separate DB per tenant, Domain/Subdomain Entry)
 
-> **⛔ LEGACY COMPATIBILITY — DEPRECATED (Kernel 6.0)**
-> Ikabud is now **application-first**. This roadmap describes the legacy
-> shared-database / multi-tenant hosting model, which is **compatibility-only**
-> (`APP_MULTI_TENANT_ENABLED=0` by default) and is **not** the default design
-> target. New modules assume database ownership and are not built on shared
-> tables. See [Application-First Philosophy](application-os-philosophy.md).
+> **STANDARD TENANCY MODEL (Kernel 6.0)**
+> Ikabud operates as a multi-tenant control plane with host-resolved tenant
+> deployments. `APP_MULTI_TENANT_ENABLED` defaults to `1`; every tenant owns a
+> separate database, entry module, login, and administration shell. See
+> [Application-First Philosophy](application-os-philosophy.md).
 
 ## Goals
 
-- **One Ikabud Kernel OS codebase** serving many tenants (legacy compatibility mode).
+- **One Ikabud Kernel OS control plane** serving many isolated tenants.
 - **Tenant selection by full domain / subdomain** (preferred convention: full domain per client).
 - **Hard data isolation**: **separate database per tenant**.
 - **Module independence preserved**: modules communicate through **capability contracts only**.

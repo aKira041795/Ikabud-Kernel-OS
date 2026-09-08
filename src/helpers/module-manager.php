@@ -3032,7 +3032,14 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
     }
 
     $source = $user ? (string)($user['source'] ?? '') : '';
-    $isKernelAdmin = $source === 'kernel' && $role === 'admin';
+    $tenantEntryModuleId = function_exists('kernelCurrentTenantEntryModuleId')
+        ? kernelCurrentTenantEntryModuleId()
+        : null;
+    $tenantEntryDelegateId = is_string($tenantEntryModuleId) && function_exists('tenantEntryModuleDelegateId')
+        ? tenantEntryModuleDelegateId($tenantEntryModuleId)
+        : $tenantEntryModuleId;
+    $isTenantAdmin = $role === 'admin' && is_string($tenantEntryModuleId) && $tenantEntryModuleId !== '';
+    $isKernelAdmin = !$isTenantAdmin && $source === 'kernel' && $role === 'admin';
     $isKernelSuperadmin = $source === 'kernel' && $role === 'superadmin';
 
     // Kernel superadmin: settings-only role — no module navigation.
@@ -3046,6 +3053,31 @@ function getModuleNavItems(?string $role = null, ?array $user = null): array
             ['label' => 'Workbench',         'url' => '/superadmin/workbench','icon' => 'terminal',  'module' => '_kernel', 'target' => null],
             ['label' => 'Profile',           'url' => '/admin/profile',       'icon' => 'user',     'module' => '_kernel', 'target' => null],
         ];
+    }
+
+    if ($isTenantAdmin) {
+        $modules = discoverModules();
+        $entryModule = is_string($tenantEntryDelegateId) && is_array($modules[$tenantEntryDelegateId] ?? null)
+            ? $modules[$tenantEntryDelegateId]
+            : [];
+        $tenantNavItems = [];
+        foreach ((array)($entryModule['nav'] ?? []) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $roles = is_array($item['roles'] ?? null) ? $item['roles'] : [];
+            if (!in_array($role, $roles, true) && !in_array('*', $roles, true)) {
+                continue;
+            }
+            $tenantNavItems[] = [
+                'label' => $item['label'] ?? '',
+                'url' => $item['url'] ?? '#',
+                'icon' => $item['icon'] ?? 'box',
+                'module' => $tenantEntryDelegateId,
+                'target' => $item['target'] ?? null,
+            ];
+        }
+        return $tenantNavItems;
     }
 
     $navItems = [];

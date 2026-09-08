@@ -15,14 +15,12 @@
  *   4. Session                  — stored after login
  *   5. Config default           — single-tenant fallback
  *
- * When multi-tenancy is DISABLED (the default for Ikabud),
- * the resolver returns null — meaning no tenant scoping is applied.
- * This makes the system zero-friction for single-tenant deployments
- * while being ready for multi-tenant when the config flag is flipped.
+ * Multi-tenancy is enabled by default. A request with no resolved tenant is
+ * the control-plane host; resolved tenant hosts use their isolated database.
  *
  * Config (config/app.php):
  *   'multi_tenant' => [
- *       'enabled'  => false,        // flip to true to activate
+ *       'enabled'  => true,         // standard runtime posture
  *       'strategy' => 'jwt',        // 'jwt', 'header', 'subdomain', 'config'
  *       'header'   => 'X-Tenant',   // for strategy=header
  *       'default'  => null,         // fallback tenant_id
@@ -65,7 +63,7 @@ class TenantResolver
     public function __construct(array $config = [])
     {
         $mt = $config['multi_tenant'] ?? $config ?? [];
-        $this->enabled  = (bool) ($mt['enabled'] ?? false);
+        $this->enabled  = (bool) ($mt['enabled'] ?? true);
         $this->strategy = (string) ($mt['strategy'] ?? 'jwt');
         $this->header   = (string) ($mt['header'] ?? 'X-Tenant');
         $this->default  = isset($mt['default']) ? (int) $mt['default'] : null;
