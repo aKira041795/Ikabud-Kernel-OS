@@ -43,6 +43,8 @@ modules/cms-akira/*
 !modules/cms-akira/cms-akira-search/**
 !modules/cms-akira/cms-akira-ai/
 !modules/cms-akira/cms-akira-ai/**
+!modules/cms-akira/cms-akira-builder/
+!modules/cms-akira/cms-akira-builder/**
 !modules/cms-akira/cms-akira-profile-minimal/
 !modules/cms-akira/cms-akira-profile-minimal/**
 !modules/cms-akira/cms-akira-profile-standard/
