@@ -99,7 +99,7 @@ function akiraShellCsrfField(): string
     } elseif (isset($_SESSION['_csrf_token'])) {
         $token = (string)$_SESSION['_csrf_token'];
     }
-    return '<input type="hidden" name="_csrf_token" value="' . akiraShellEscape($token) . '">';
+    return '<input type="hidden" name="_token" value="' . akiraShellEscape($token) . '">';
 }
 
 /** @return array<string,mixed> */
