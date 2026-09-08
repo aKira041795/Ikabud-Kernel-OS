@@ -40,7 +40,11 @@ function akiraShellDashboard(array $params = []): void
     }
     $list = app()->entityViews()->resolve('post', 'list', ['limit' => 5, 'offset' => 0]);
     $count = is_array($list['rows'] ?? null) ? count($list['rows']) : 0;
-    echo akiraShellPage('CMS Akira Dashboard', '<p>Kernel-authenticated content administration.</p><section><h2>Published posts</h2><p>' . $count . '</p></section>');
+    $body = '<p class="mb-6 text-slate-500">Kernel-authenticated content administration powered by the Akira capability layer.</p>'
+        . '<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><p class="text-sm font-medium text-slate-500">Published posts</p><p class="mt-2 text-4xl font-bold text-slate-950">' . $count . '</p></div>'
+        . '<a href="/cms-akira-shell/posts/new" class="rounded-2xl border border-akira-100 bg-akira-50 p-6 shadow-sm hover:border-akira-500"><p class="text-sm font-medium text-akira-700">Quick action</p><p class="mt-2 text-lg font-bold text-slate-950">Create a post →</p></a>'
+        . '<a href="/cms-akira-shell/compositions" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-akira-300"><p class="text-sm font-medium text-slate-500">Visual content</p><p class="mt-2 text-lg font-bold text-slate-950">Open compositions →</p></a></section>';
+    echo akiraShellPage('CMS Akira Dashboard', $body, ['active' => 'dashboard']);
 }
 
 /** @param array<string,mixed> $params */
@@ -50,18 +54,11 @@ function akiraShellPostList(array $params = []): void
         return;
     }
     $resolved = app()->entityViews()->resolve('post', 'list', ['limit' => 100, 'offset' => 0]);
-    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
-    $body = '<p><a href="/cms-akira-shell/posts/new">Create post</a></p><table><thead><tr><th>Title</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
-    foreach ($rows as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
-        $slug = akiraShellEscape($row['slug'] ?? '');
-        $body .= '<tr><td>' . akiraShellEscape($row['title'] ?? '') . '</td><td>' . akiraShellEscape($row['status'] ?? 'published') . '</td>'
-            . '<td><a href="/cms-akira-shell/posts/' . $slug . '/edit">Edit</a></td></tr>';
-    }
-    $body .= '</tbody></table>';
-    echo akiraShellPage('Posts', $body);
+    $count = is_array($resolved['rows'] ?? null) ? count($resolved['rows']) : 0;
+    $body = '<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><span class="inline-flex rounded-full bg-akira-100 px-3 py-1 text-xs font-semibold text-akira-700">' . $count . ' post' . ($count === 1 ? '' : 's') . '</span><p class="mt-2 text-sm text-slate-500">Rendered through the registered Kernel entity-view contract.</p></div>'
+        . '<a href="/cms-akira-shell/posts/new" class="inline-flex items-center justify-center rounded-xl bg-akira-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-akira-700">+ Create post</a></div>'
+        . '<section data-akira-entity-view="post-list" class="akira-entity-list overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">' . akiraShellEntityList($resolved) . '</section>';
+    echo akiraShellPage('Posts', $body, ['active' => 'posts']);
 }
 
 /** @param array<string,mixed> $post */
@@ -69,21 +66,22 @@ function akiraShellPostForm(array $post = []): string
 {
     $slug = trim((string)($post['slug'] ?? ''));
     $action = $slug === '' ? '/cms-akira-shell/posts' : '/cms-akira-shell/posts/' . rawurlencode($slug);
-    return '<form method="post" action="' . akiraShellEscape($action) . '">' . akiraShellCsrfField()
-        . '<label>Slug <input name="slug" value="' . akiraShellEscape($slug) . '" required></label>'
-        . '<label>Title <input name="title" value="' . akiraShellEscape($post['title'] ?? '') . '" required></label>'
-        . '<label>Excerpt <textarea name="excerpt">' . akiraShellEscape($post['excerpt'] ?? '') . '</textarea></label>'
-        . '<label>Content <textarea name="content" required>' . akiraShellEscape($post['content'] ?? '') . '</textarea></label>'
-        . '<input type="hidden" name="expected_version" value="' . akiraShellEscape($post['version'] ?? 0) . '">'
-        . '<input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '">'
-        . '<button type="submit">Save</button></form>';
+    $field = 'mb-1 block text-sm font-semibold text-slate-700';
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20';
+    return '<form class="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" method="post" action="' . akiraShellEscape($action) . '">' . akiraShellCsrfField()
+        . '<div><label class="' . $field . '">Slug</label><input class="' . $control . '" name="slug" value="' . akiraShellEscape($slug) . '" required></div>'
+        . '<div><label class="' . $field . '">Title</label><input class="' . $control . '" name="title" value="' . akiraShellEscape($post['title'] ?? '') . '" required></div>'
+        . '<div><label class="' . $field . '">Excerpt</label><textarea class="' . $control . '" rows="3" name="excerpt">' . akiraShellEscape($post['excerpt'] ?? '') . '</textarea></div>'
+        . '<div><label class="' . $field . '">Content</label><textarea class="' . $control . '" rows="14" name="content" required>' . akiraShellEscape($post['content'] ?? '') . '</textarea></div>'
+        . '<input type="hidden" name="expected_version" value="' . akiraShellEscape($post['version'] ?? 0) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '">'
+        . '<button class="rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button></form>';
 }
 
 /** @param array<string,mixed> $params */
 function akiraShellPostCreateForm(array $params = []): void
 {
     if (akiraShellAuthorize()) {
-        echo akiraShellPage('Create post', akiraShellPostForm());
+        echo akiraShellPage('Create post', akiraShellPostForm(), ['active' => 'posts']);
     }
 }
 
@@ -106,7 +104,7 @@ function akiraShellPostEditForm(array $params = []): void
                 . '<input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '">'
                 . '<button type="submit">' . $label . '</button></form>';
         }
-        echo akiraShellPage('Edit post', akiraShellPostForm($post) . '<section><h2>Lifecycle</h2>' . $actions . '</section>');
+        echo akiraShellPage('Edit post', akiraShellPostForm($post) . '<section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6"><h2 class="mb-4 text-lg font-bold">Lifecycle</h2><div class="flex flex-wrap gap-3">' . $actions . '</div></section>', ['active' => 'posts']);
     } catch (Throwable $e) {
         http_response_code(404);
         echo akiraShellPage('Post not found', '<p>The requested post is unavailable.</p>');
@@ -155,11 +153,11 @@ function akiraShellCompositions(array $params = []): void
         'entity_key' => (string) ($row['slug'] ?? ''),
         'title' => (string) ($row['title'] ?? ''),
     ], $rows), static fn (array $post): bool => $post['entity_key'] !== ''));
-    echo akiraShellPage('Compositions', akiraShellBuilderAdmin([
+    echo akiraShellPage('Compositions', '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">' . akiraShellBuilderAdmin([
         'mode' => 'list',
         'apiBase' => '/api/v1/cms-akira/builder',
         'posts' => $posts,
-    ]));
+    ]) . '</div>', ['active' => 'compositions']);
 }
 
 /**
@@ -177,12 +175,12 @@ function akiraShellCompositionEdit(array $params = []): void
         echo akiraShellPage('Invalid composition', '<p>The composition key is invalid.</p>');
         return;
     }
-    echo akiraShellPage('Edit composition', akiraShellBuilderAdmin([
+    echo akiraShellPage('Edit composition', '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">' . akiraShellBuilderAdmin([
         'mode' => 'edit',
         'apiBase' => '/api/v1/cms-akira/builder',
         'entity_key' => $key,
         'posts' => [],
-    ]));
+    ]) . '</div>', ['active' => 'compositions']);
 }
 
 /** @param array<string,mixed> $params */
@@ -197,12 +195,12 @@ function akiraShellModuleHealth(array $params = []): void
     foreach ($required as $capability) {
         $present = app()->capabilities()->has($capability);
         $ok = $ok && $present;
-        $items .= '<li>' . akiraShellEscape($capability) . ': ' . ($present ? 'available' : 'missing') . '</li>';
+        $items .= '<li class="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-3 last:border-0"><code class="text-sm text-slate-700">' . akiraShellEscape($capability) . '</code><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . ($present ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700') . '">' . ($present ? 'Available' : 'Missing') . '</span></li>';
     }
     if (!$ok) {
         http_response_code(503);
     }
-    echo akiraShellPage('Module health', '<p>Overall: ' . ($ok ? 'healthy' : 'degraded') . '</p><ul>' . $items . '</ul>');
+    echo akiraShellPage('Module health', '<div class="mb-5 inline-flex rounded-full px-3 py-1 text-sm font-semibold ' . ($ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700') . '">Overall: ' . ($ok ? 'Healthy' : 'Degraded') . '</div><ul class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">' . $items . '</ul>', ['active' => 'health']);
 }
 
 /** @param array<string,mixed> $params */

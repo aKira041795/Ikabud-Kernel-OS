@@ -1,29 +1,39 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{page_title}</title>
-    <style>
-        *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#312e81 0,transparent 38%),linear-gradient(145deg,#09090b,#18181b 52%,#172554);color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}.card{width:min(100%,410px);padding:38px;border:1px solid rgba(165,180,252,.24);border-radius:24px;background:rgba(9,9,11,.82);box-shadow:0 30px 90px rgba(0,0,0,.5);backdrop-filter:blur(18px)}.mark{width:58px;height:58px;display:grid;place-items:center;margin-bottom:24px;border-radius:18px;background:linear-gradient(135deg,#818cf8,#c084fc);font-size:25px;font-weight:800;box-shadow:0 14px 35px rgba(129,140,248,.35)}h1{margin:0;font-size:31px;letter-spacing:-.04em}p{margin:8px 0 30px;color:#a5b4fc}.field{margin-bottom:18px}label{display:block;margin-bottom:7px;color:#cbd5e1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}input{width:100%;padding:13px 14px;border:1px solid #3f3f46;border-radius:11px;background:#18181b;color:#fff;font:inherit}input:focus{outline:3px solid rgba(129,140,248,.22);border-color:#818cf8}.links{text-align:right;margin:-7px 0 20px}.links a{color:#a5b4fc;font-size:13px;text-decoration:none}button{width:100%;padding:13px;border:0;border-radius:11px;background:linear-gradient(135deg,#6366f1,#9333ea);color:white;font:inherit;font-weight:750;cursor:pointer}button:disabled{opacity:.65}.error{display:none;margin-bottom:18px;padding:11px 13px;border:1px solid rgba(248,113,113,.35);border-radius:10px;background:rgba(127,29,29,.3);color:#fecaca;font-size:13px}.error.show{display:block}.eyebrow{margin-bottom:8px;color:#a5b4fc;font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { akira: {
+            50:'#f5f3ff',100:'#ede9fe',200:'#ddd6fe',300:'#c4b5fd',400:'#a78bfa',
+            500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9',800:'#5b21b6',900:'#4c1d95',950:'#2e1065'
+        } } } } };
+    </script>
 </head>
-<body>
-    <main class="card">
-        <div class="mark">A</div>
-        <div class="eyebrow">Content workspace</div>
-        <h1>CMS Akira</h1>
-        <p>Sign in to manage your stories and compositions.</p>
-        <div id="login-error" class="error"></div>
-        <form onsubmit="return akiraLogin(event)">
-            <div class="field"><label for="username">{login_username_label}</label><input id="username" autocomplete="username" required autofocus></div>
-            <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
-            <div class="links"><a href="{login_forgot_url}">Forgot password?</a></div>
-            <button id="login-button" type="submit">{login_button_text}</button>
-        </form>
+<body class="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-akira-950 px-4">
+    <main class="w-full max-w-md" x-data="akiraLogin()">
+        <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/95 shadow-2xl backdrop-blur">
+            <div class="px-8 pb-7 pt-8">
+                <div class="flex items-center justify-center gap-3">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-akira-600 text-xl font-extrabold text-white shadow-lg shadow-akira-600/20">A</div>
+                    <div><h1 class="text-xl font-extrabold tracking-tight text-slate-900">CMS Akira</h1><p class="text-xs text-slate-500">Sign in to manage content</p></div>
+                </div>
+                <div x-show="error" x-cloak x-text="error" role="alert" class="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+                <form @submit.prevent="submit()" class="mt-6 space-y-4">
+                    <div><label for="username" class="mb-1 block text-xs font-semibold text-slate-600">{login_username_label}</label><input id="username" type="text" x-model="form.username" autocomplete="username" autofocus required class="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20"></div>
+                    <div><label for="password" class="mb-1 block text-xs font-semibold text-slate-600">Password</label><input id="password" type="password" x-model="form.password" autocomplete="current-password" required class="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20"></div>
+                    <div class="flex justify-end"><a href="{login_forgot_url}" class="text-xs font-medium text-akira-700 hover:text-akira-900">Forgot password?</a></div>
+                    <button type="submit" :disabled="loading" class="w-full rounded-lg bg-akira-600 py-3 font-semibold text-white transition-colors hover:bg-akira-700 disabled:opacity-60"><span x-text="loading ? '{login_loading_text}' : '{login_button_text}'"></span></button>
+                </form>
+            </div>
+            <div class="border-t border-slate-100 bg-slate-50 px-8 py-4 text-center text-[11px] text-slate-500">Powered by Ikabud Kernel OS</div>
+        </div>
     </main>
     <script>
-        function akiraLogin(event){event.preventDefault();var button=document.getElementById('login-button'),error=document.getElementById('login-error');button.disabled=true;button.textContent='{login_loading_text}';error.classList.remove('show');fetch('{login_endpoint}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})}).then(function(response){return response.json()}).then(function(result){if(result.ok&&result.redirect){window.location.href=result.redirect;return}throw new Error(result.error||'Login failed')}).catch(function(reason){error.textContent=reason.message||'Login failed';error.classList.add('show');button.disabled=false;button.textContent='{login_button_text}'});return false}
+        function akiraLogin(){return{loading:false,error:'',form:{username:'',password:''},async submit(){this.error='';this.loading=true;try{const response=await fetch('{login_endpoint}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.form)});const result=await response.json();if(result.ok&&result.redirect){window.location.href=result.redirect;return}this.error=result.error||'Login failed'}catch(e){this.error='Network error'}this.loading=false}}}
     </script>
 </body>
 </html>

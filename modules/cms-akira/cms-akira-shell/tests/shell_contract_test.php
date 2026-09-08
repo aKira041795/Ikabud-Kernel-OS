@@ -7,6 +7,7 @@ $manifest = json_decode((string)file_get_contents($root . '/module.json'), true)
 $routes = require $root . '/routes.php';
 $handlers = (string)file_get_contents($root . '/handlers.php');
 $helpers = (string)file_get_contents($root . '/helpers.php');
+$login = (string)file_get_contents(dirname($root, 3) . '/templates/modules/cms-akira-shell/pages/login.disyl');
 $pass = 0;
 $fail = 0;
 $check = static function (bool $ok, string $label) use (&$pass, &$fail): void {
@@ -37,6 +38,10 @@ $check(str_contains($helpers, 'cms-akira-builder-root') && str_contains($helpers
 $check(count($manifest['nav'] ?? []) === 4, 'dashboard, posts, compositions and health navigation');
 $check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
 $check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/delete']), 'delete route');
+$check(str_contains($login, 'https://cdn.tailwindcss.com') && str_contains($login, 'alpinejs@3.14.3'), 'login ingests reference Tailwind and Alpine assets');
+$check(str_contains($login, 'tailwind.config') && str_contains($login, 'CMS Akira') && !str_contains($login, '<style>'), 'login uses branded palette without bespoke CSS');
+$check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_contains($handlers, 'data-akira-entity-view="post-list"'), 'posts render through styled Kernel entity-view container');
+$check(str_contains($helpers, 'https://cdn.tailwindcss.com') && str_contains($helpers, 'aria-label="Akira administration"'), 'admin shell ingests design system and accessible navigation');
 
 echo "shell contract: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);
