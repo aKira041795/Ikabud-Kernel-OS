@@ -109,13 +109,7 @@ function akiraShellEntityList(array $resolved): string
 
 function akiraShellCsrfField(): string
 {
-    $token = '';
-    if (method_exists(app(), 'csrfToken')) {
-        $token = (string)app()->csrfToken();
-    } elseif (isset($_SESSION['_csrf_token'])) {
-        $token = (string)$_SESSION['_csrf_token'];
-    }
-    return '<input type="hidden" name="_token" value="' . akiraShellEscape($token) . '">';
+    return app()->csrfField();
 }
 
 /** @return array<string,mixed> */

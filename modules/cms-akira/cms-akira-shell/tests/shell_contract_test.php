@@ -34,7 +34,7 @@ $check(!str_contains($handlers . $helpers, 'akira.post.publish@1') && !str_conta
 $check(str_contains($helpers, 'function akiraShellParticipant()') && str_contains($helpers, "function_exists('cawPostLifecycleParticipantRoles')"), 'editorial entry derives participants from the workflow definition');
 $check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($helpers, "['admin', 'administrator', 'superadmin']"), 'compositions and health retain their administrator gate');
 $check(str_contains($helpers, 'app()->csrfEnforce()'), 'Kernel CSRF enforcement');
-$check(str_contains($helpers, 'name="_token"') && !str_contains($helpers, 'name="_csrf_token"'), 'CSRF field name matches Kernel enforcer');
+$check(str_contains($helpers, 'return app()->csrfField();'), 'CSRF field delegates to Kernel renderer');
 $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|require.+modules\\/cms\\/)/', $handlers . $helpers), 'no forbidden content/auth/database shortcut');
 $check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
 $check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
