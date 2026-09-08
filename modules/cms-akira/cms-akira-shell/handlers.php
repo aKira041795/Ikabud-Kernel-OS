@@ -6,14 +6,27 @@ require_once __DIR__ . '/helpers.php';
 
 function akiraShellAuthorize(): bool
 {
-    $user = akiraShellAdmin();
+    $user = akiraShellParticipant();
     if ($user === null) {
         akiraShellRedirect('/login');
         return false;
     }
     if ($user === []) {
         http_response_code(403);
-        echo akiraShellPage('Access denied', '<p>Your Kernel role cannot administer CMS Akira.</p><p><a href="/">Return home</a></p>');
+        echo akiraShellPage('Access denied', '<p>Your Kernel role does not participate in the Akira editorial workflow.</p><p><a href="/">Return home</a></p>');
+        return false;
+    }
+    return true;
+}
+
+function akiraShellAuthorizeAdmin(): bool
+{
+    if (!akiraShellAuthorize()) {
+        return false;
+    }
+    if (!akiraShellIsAdmin()) {
+        http_response_code(403);
+        echo akiraShellPage('Access denied', '<p>This surface is reserved for Akira administrators.</p>');
         return false;
     }
     return true;
@@ -56,10 +69,11 @@ function akiraShellDashboard(array $params = []): void
         $cards .= '<div class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><span class="inline-flex rounded-full bg-' . $color . '-100 px-2.5 py-1 text-xs font-semibold text-' . $color . '-700">' . $label . '</span><p class="mt-4 text-4xl font-bold text-slate-950">' . $value . '</p></div>';
     }
     $recent = array_slice($rows, 0, 5);
+    $adminQuickAction = akiraShellIsAdmin() ? '<a class="rounded-2xl bg-slate-50 p-4 font-semibold text-slate-700" href="/cms-akira-shell/compositions">Open compositions →</a>' : '';
     $body = '<section class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><p class="max-w-2xl text-sm text-slate-500">Here is what is live, what is in progress, and what your team touched recently.</p><div class="flex gap-2"><a href="/cms-akira-shell/posts" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">View all posts</a><a href="/cms-akira-shell/posts/new" class="rounded-2xl bg-akira-600 px-4 py-2.5 text-sm font-semibold text-white">+ Quick create</a></div></section>'
         . '<section class="grid gap-4 sm:grid-cols-3">' . $cards . '</section>'
         . '<section class="mt-6 grid gap-4 lg:grid-cols-[1.2fr_.8fr]"><div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="border-b border-slate-100 px-6 py-4"><h2 class="font-bold text-slate-950">Recent posts</h2></div>' . akiraShellRecentPosts($recent) . '</div>'
-        . '<div class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><h2 class="font-bold text-slate-950">Quick actions</h2><div class="mt-4 grid gap-3"><a class="rounded-2xl bg-akira-50 p-4 font-semibold text-akira-700" href="/cms-akira-shell/posts/new">Write a new post →</a><a class="rounded-2xl bg-slate-50 p-4 font-semibold text-slate-700" href="/cms-akira-shell/compositions">Open compositions →</a></div></div></section>';
+        . '<div class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><h2 class="font-bold text-slate-950">Quick actions</h2><div class="mt-4 grid gap-3"><a class="rounded-2xl bg-akira-50 p-4 font-semibold text-akira-700" href="/cms-akira-shell/posts/new">Write a new post →</a>' . $adminQuickAction . '</div></div></section>';
     echo akiraShellPage('CMS Akira Dashboard', $body, ['active' => 'dashboard']);
 }
 
@@ -155,7 +169,7 @@ function akiraShellPostDelete(array $params = []): void
  */
 function akiraShellCompositions(array $params = []): void
 {
-    if (!akiraShellAuthorize()) {
+    if (!akiraShellAuthorizeAdmin()) {
         return;
     }
     $resolved = app()->entityViews()->resolve('post', 'list', ['limit' => 200, 'offset' => 0]);
@@ -178,7 +192,7 @@ function akiraShellCompositions(array $params = []): void
  */
 function akiraShellCompositionEdit(array $params = []): void
 {
-    if (!akiraShellAuthorize()) {
+    if (!akiraShellAuthorizeAdmin()) {
         return;
     }
     $key = trim((string) ($params['key'] ?? ''));
@@ -198,7 +212,7 @@ function akiraShellCompositionEdit(array $params = []): void
 /** @param array<string,mixed> $params */
 function akiraShellModuleHealth(array $params = []): void
 {
-    if (!akiraShellAuthorize()) {
+    if (!akiraShellAuthorizeAdmin()) {
         return;
     }
     $required = ['akira.post.get@1', 'akira.post.list@1', 'akira.post.create@1', 'akira.post.update@1', 'akira.post.delete@1', 'akira.workflow.evaluate@1', 'akira.workflow.transition@1', 'entity.list.post@1', 'entity.get.post@1'];

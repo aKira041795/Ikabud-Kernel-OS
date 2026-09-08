@@ -714,7 +714,7 @@ final class App
                 );
                 $stmt->execute([':username' => $username]);
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-                if (!is_array($row) || !in_array(($row['role'] ?? null), ['admin', 'superadmin'], true) || !password_verify($password, (string)$row['password_hash'])) {
+                if (!is_array($row) || trim((string) ($row['role'] ?? '')) === '' || !password_verify($password, (string)$row['password_hash'])) {
                     return null;
                 }
                 if (!$hasEmailColumn) {

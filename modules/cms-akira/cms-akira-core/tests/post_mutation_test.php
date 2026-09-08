@@ -106,7 +106,11 @@ try {
         'activation seeds idempotent admin mutation policies'
     );
     $policyRows = $db->query("SELECT capability_id, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
-    $check(count($policyRows) === 5 && array_unique(array_column($policyRows, 'allowed_roles')) === ['admin'], 'registry policy permits admin only');
+    $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
+    $check(count($policyRows) === 5
+        && ($policyRoles['akira.post.create@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
+        && ($policyRoles['akira.post.update@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
+        && ($policyRoles['akira.post.delete@1'] ?? '') === 'admin', 'registry policy admits editorial creation/update while destructive legacy operations remain admin-only');
 
     $routes = require dirname(__DIR__) . '/routes.php';
     $handlersSource = (string)file_get_contents(dirname(__DIR__) . '/handlers.php');

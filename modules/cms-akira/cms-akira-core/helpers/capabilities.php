@@ -113,8 +113,7 @@ function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.
     if ($slug === null) {
         return ['ok' => false, 'error' => 'A canonical slug is required'];
     }
-    $adminRead = ($payload['include_unpublished'] ?? false) === true
-        && (string)(app()->user()['role'] ?? '') === 'admin';
+    $adminRead = ($payload['include_unpublished'] ?? false) === true && cacPostEditorialParticipant();
 
     try {
         $statusClause = $adminRead ? '' : " AND status = 'published'";
@@ -152,7 +151,7 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
     $limit = max(1, min(50, (int)($payload['limit'] ?? 25)));
     $offset = max(0, (int)($payload['offset'] ?? 0));
     $adminRead = ($payload['include_unpublished'] ?? $filters['include_unpublished'] ?? false) === true
-        && (string)(app()->user()['role'] ?? '') === 'admin';
+        && cacPostEditorialParticipant();
     $requestedStatus = $payload['status'] ?? $filters['status'] ?? '';
     $status = $adminRead && in_array($requestedStatus, ['draft', 'published'], true)
         ? (string)$requestedStatus : '';
@@ -195,15 +194,21 @@ final class CacPostMutationException extends RuntimeException
     }
 }
 
+function cacPostEditorialParticipant(): bool
+{
+    $actor = app()->user();
+    $roles = function_exists('cawPostLifecycleParticipantRoles')
+        ? cawPostLifecycleParticipantRoles()
+        : ['admin', 'administrator', 'superadmin'];
+    return is_array($actor) && in_array((string) ($actor['role'] ?? ''), $roles, true);
+}
+
 /** @return array{id: int, role: string, source?: string} */
 function cacPostMutationActor(): array
 {
     $actor = app()->user();
     if (!is_array($actor) || (int)($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CacPostMutationException('Authentication required.', 401);
-    }
-    if ((string)($actor['role'] ?? '') !== 'admin') {
-        throw new CacPostMutationException('Administrator role required.', 403);
     }
     return $actor;
 }
@@ -567,8 +572,7 @@ function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'enti
         return ['ok' => false, 'rows' => [], 'total' => 0, 'error' => (string)($result['error'] ?? 'Post list unavailable')];
     }
 
-    $adminRead = ($args['include_unpublished'] ?? false) === true
-        && (string)(app()->user()['role'] ?? '') === 'admin';
+    $adminRead = ($args['include_unpublished'] ?? false) === true && cacPostEditorialParticipant();
     $rows = [];
     foreach ($result['rows'] as $post) {
         if (is_array($post)) {
