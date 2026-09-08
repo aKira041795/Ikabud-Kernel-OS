@@ -160,9 +160,9 @@ once). Builder and all four profiles have zero matches; their migration/runtime 
 - `modules/cms-akira/cms-akira-media/module.json`: 30, 31
 - `modules/cms-akira/cms-akira-navigation/helpers.php`: 67, 71, 78
 - `modules/cms-akira/cms-akira-navigation/module.json`: 30, 31, 32
-- `modules/cms-akira/cms-akira-search-adapter/handlers.php`: 25
-- `modules/cms-akira/cms-akira-search-adapter/helpers.php`: 107
-- `modules/cms-akira/cms-akira-search-adapter/module.json`: 30, 31
+- `modules/cms-akira/cms-akira-search/handlers.php`: former scaffold line 25 (superseded at Phase 7)
+- `modules/cms-akira/cms-akira-search/helpers.php`: former scaffold line 107 (superseded at Phase 7)
+- `modules/cms-akira/cms-akira-search/module.json`: former scaffold lines 30, 31 (superseded at Phase 7)
 - `modules/cms-akira/cms-akira-seo/helpers.php`: 74, 78
 - `modules/cms-akira/cms-akira-seo/module.json`: 40, 41
 - `modules/cms-akira/cms-akira-theme/handlers.php`: 27

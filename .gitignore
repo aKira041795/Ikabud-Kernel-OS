@@ -41,6 +41,8 @@ modules/cms-akira/*
 !modules/cms-akira/cms-akira-theme/**
 !modules/cms-akira/cms-akira-workflow/
 !modules/cms-akira/cms-akira-workflow/**
+!modules/cms-akira/cms-akira-search/
+!modules/cms-akira/cms-akira-search/**
 !modules/cms-akira/README.md
 
 # ── Local agent/tool state ──────────────────────────────────────────
