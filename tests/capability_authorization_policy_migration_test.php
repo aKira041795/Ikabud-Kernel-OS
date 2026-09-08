@@ -38,6 +38,18 @@ function capAuthzPolicyDenied(CapabilityBus $bus, string $capabilityId, array $o
     return false;
 }
 
+/** @param array<string, mixed> $options */
+function capAuthzPolicyDeniedForReason(CapabilityBus $bus, string $capabilityId, array $options, string $reason): bool
+{
+    try {
+        $bus->call($capabilityId, [], $options);
+    } catch (CapabilityCallException $e) {
+        return str_contains($e->getMessage(), 'authorization denied: ' . $reason);
+    }
+
+    return false;
+}
+
 echo "=== CAPABILITY AUTHORIZATION POLICY MIGRATION ===\n";
 
 $db = app()->db();
@@ -86,10 +98,12 @@ $migrationRegistration->closeCursor();
 $policyVersion = 4000000000 + (getmypid() % 1000000);
 $suffix = 'x' . bin2hex(random_bytes(4));
 $capabilityId = 'test.authz.policy.' . $suffix . '@2';
-$providerId = 'authz-policy-provider-' . $suffix;
+$providerId = 'kernel';
 $legacyProviderId = 'authz-policy-v1-provider-' . $suffix;
 $callerModule = 'authz-policy-caller-' . $suffix;
 $registry = new CapabilityAuthorizationRegistry($db);
+$tenantResolver = app()->tenant();
+$previousTenantId = $tenantResolver->current();
 
 try {
     $policy = [
@@ -178,6 +192,31 @@ try {
         ($legacyMeta['requires_protocol'] ?? null) === ''
     );
 
+    $resolverOptions = [
+        'provider' => $providerId,
+        'caller_module' => $callerModule,
+        'caller_user' => ['role' => 'admin'],
+    ];
+    $tenantResolver->setTenantId(54);
+    $tenantRegistry = new CapabilityAuthorizationRegistry();
+    $tenantRegistry->seedPolicy([array_merge($policy, [
+        'caller_module' => $callerModule,
+        'allowed_roles' => 'admin',
+        'requires_protocol' => 'v2',
+    ])]);
+    $resolverResult = $bus->call($capabilityId, [], $resolverOptions);
+    capAuthzPolicyTest(
+        'governed dispatch resolves tenant from the app tenant resolver without options or request context',
+        is_array($resolverResult) && ($resolverResult['allowed'] ?? false) === true
+    );
+
+    $tenantResolver->setTenantId(null);
+    CapabilityAuthorizationRegistry::invalidate();
+    capAuthzPolicyTest(
+        'governed dispatch without a tenant anywhere remains fail-closed',
+        capAuthzPolicyDeniedForReason($bus, $capabilityId, $resolverOptions, 'missing_tenant')
+    );
+
     $baseOptions = [
         'provider' => $providerId,
         'caller_module' => $callerModule,
@@ -218,6 +257,13 @@ try {
         ])
     );
 } finally {
+    $tenantResolver->setTenantId(54);
+    $tenantCleanup = app()->db()->prepare(
+        'DELETE FROM capability_authorization_policies '
+        . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider = ?'
+    );
+    $tenantCleanup->execute([$policyVersion, $capabilityId, '2', $providerId]);
+    $tenantResolver->setTenantId($previousTenantId);
     $cleanup = $db->prepare(
         'DELETE FROM capability_authorization_policies '
         . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider IN (?, ?)'

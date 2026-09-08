@@ -556,7 +556,13 @@ final class CapabilityBus implements CapabilityBusContract
         $tenantId = $options['tenant_id'] ?? kernel_request_context_get('tenant_id') ?? null;
         if ($tenantId === null && function_exists('app')) {
             try {
-                $tenantId = app()->tenantId ?? null;
+                $tenant = app()->tenant();
+                if (is_object($tenant) && method_exists($tenant, 'current')) {
+                    $tenantId = $tenant->current();
+                }
+                if ($tenantId === null && method_exists(app(), 'user')) {
+                    $tenantId = $tenant->resolve(app()->user());
+                }
             } catch (\Throwable $e) {
                 $tenantId = null;
             }
