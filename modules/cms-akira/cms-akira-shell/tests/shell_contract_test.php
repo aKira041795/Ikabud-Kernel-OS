@@ -69,9 +69,27 @@ $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|r
 $check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
 $check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
 $check(str_contains($helpers, 'cms-akira-builder-root') && str_contains($helpers, '/admin/assets/cms-akira-builder'), 'shell serves the CSP-safe builder bundle container');
-$check(count($manifest['nav'] ?? []) === 4, 'dashboard, posts, compositions and health navigation');
-$check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
+$check(count($manifest['nav'] ?? []) === 5, 'dashboard, posts, categories, compositions and health navigation');
+$check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/categories' && ($manifest['nav'][2]['label'] ?? '') === 'Categories', 'categories nav entry present in shell module.json');
+$check(($manifest['nav'][3]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
 $check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/delete']), 'delete route');
+$check(
+    isset($routes['GET']['/cms-akira-shell/categories']) && isset($routes['POST']['/cms-akira-shell/categories'])
+    && isset($routes['POST']['/cms-akira-shell/categories/{id}']) && isset($routes['POST']['/cms-akira-shell/categories/{id}/delete']),
+    'categories list, create, rename and delete routes mounted'
+);
+foreach (['list', 'get', 'create', 'update', 'delete'] as $operation) {
+    $check(in_array("akira.taxonomy.{$operation}@1", $manifest['capabilities']['depends'] ?? [], true), "shell declares akira.taxonomy.{$operation}@1 dependency");
+}
+$check(str_contains($handlers, 'akiraShellAuthorizeTaxonomyManager()') && str_contains($handlers, 'akiraShellCategoryList') && str_contains($handlers, 'akiraShellCategoryCreate') && str_contains($handlers, 'akiraShellCategoryUpdate') && str_contains($handlers, 'akiraShellCategoryDelete'), 'categories handlers mounted with their own editorial gate');
+$check(str_contains($helpers, 'function akiraShellIsTaxonomyManager()') && str_contains($helpers, "'admin', 'editor', 'administrator', 'superadmin'"), 'taxonomy manage presentation mirrors the seeded policy roles');
+$check(
+    str_contains($handlers, "akiraShellCall('akira.taxonomy.list@1'") && str_contains($handlers, "akiraShellCall('akira.taxonomy.create@1'")
+    && str_contains($handlers, "akiraShellCall('akira.taxonomy.update@1'") && str_contains($handlers, "akiraShellCall('akira.taxonomy.delete@1'"),
+    'categories page reads and mutates exclusively through governed taxonomy capabilities'
+);
+$check(str_contains($handlers, 'akiraShellCsrfField()') && !str_contains($handlers . $helpers, 'name="_csrf_token"'), 'categories forms render the canonical Kernel CSRF field only');
+$check(str_contains($handlers, 'expected_updated_at') && str_contains($handlers, 'return confirm('), 'renames preserve optimistic concurrency and deletes are confirmed');
 $check(str_contains($login, 'https://cdn.tailwindcss.com') && str_contains($login, 'alpinejs@3.14.3'), 'login ingests reference Tailwind and Alpine assets');
 $check(str_contains($login, 'tailwind.config') && str_contains($login, 'CMS Akira') && !str_contains($login, '<style>'), 'login uses branded palette without bespoke CSS');
 $check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_contains($handlers, 'data-akira-entity-view="post-list"'), 'posts render through styled Kernel entity-view container');

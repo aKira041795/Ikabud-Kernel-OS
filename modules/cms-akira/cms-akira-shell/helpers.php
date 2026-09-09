@@ -57,6 +57,7 @@ function akiraShellPage(string $title, string $body, array $data = []): string
     $links = [
         'dashboard' => ['/cms-akira-shell', 'Dashboard'],
         'posts' => ['/cms-akira-shell/posts', 'Posts'],
+        'categories' => ['/cms-akira-shell/categories', 'Categories'],
     ];
     if (akiraShellIsAdmin()) {
         $links['compositions'] = ['/cms-akira-shell/compositions', 'Compositions'];
@@ -346,4 +347,46 @@ function akiraShellMutation(string $capability, string $slug = ''): void
         http_response_code(422);
         echo akiraShellPage('Post operation failed', '<p>' . akiraShellEscape($e->getMessage()) . '</p>');
     }
+}
+
+// ── Taxonomy administration (P1 content model) ──────────────────────────
+// Managed via governed akira.taxonomy.* capabilities only. Role authority for
+// the manage actions lives in the seeded policy rows (admin/editor/administrator/
+// superadmin); this helper only mirrors that allowlist for presentation.
+
+function akiraShellIsTaxonomyManager(): bool
+{
+    $user = app()->user();
+    if (!is_array($user)) {
+        return false;
+    }
+    return in_array((string)($user['role'] ?? ''), ['admin', 'editor', 'administrator', 'superadmin'], true);
+}
+
+function akiraShellTaxonomyNotice(): string
+{
+    $saved = (string)(akiraShellQuery()['saved'] ?? '');
+    if (!in_array($saved, ['create', 'update', 'delete'], true)) {
+        return '';
+    }
+    $message = match ($saved) {
+        'create' => 'Taxonomy term created.',
+        'update' => 'Taxonomy term updated.',
+        default => 'Taxonomy term deleted.',
+    };
+    return '<div x-data="{show:true}" x-show="show" x-init="setTimeout(()=>show=false,4000)" class="mb-5 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">' . akiraShellEscape($message) . '<button @click="show=false" aria-label="Dismiss">×</button></div>';
+}
+
+/** @return array<string, mixed> */
+function akiraShellTaxonomyPayload(?int $id = null): array
+{
+    $input = akiraShellInput();
+    if ($id !== null) {
+        $input['id'] = $id;
+    }
+    $input['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ($input['idempotency_key'] ?? '')));
+    if ($input['idempotency_key'] === '') {
+        $input['idempotency_key'] = 'taxonomy-' . bin2hex(random_bytes(12));
+    }
+    return $input;
 }

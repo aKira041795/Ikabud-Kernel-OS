@@ -22,21 +22,29 @@
         "cms.dashboard.widgets"
     ],
     "owns_tables": [
-        "cms_akira_posts"
+        "cms_akira_posts",
+        "cms_akira_taxonomies"
     ],
     "reads_tables": [
-        "cms_akira_posts"
+        "cms_akira_posts",
+        "cms_akira_taxonomies"
     ],
     "migrations": [
         "database/migrations/001_initial.sql",
         "database/migrations/002_create_posts.sql",
-        "database/migrations/003_add_posts_deleted_at.sql"
+        "database/migrations/003_add_posts_deleted_at.sql",
+        "database/migrations/004_create_taxonomies.sql"
     ],
     "entities": {
         "post": {
             "authority": true,
             "create_capability": "akira.post.create@1",
             "update_capability": "akira.post.update@1"
+        },
+        "taxonomy": {
+            "authority": true,
+            "create_capability": "akira.taxonomy.create@1",
+            "update_capability": "akira.taxonomy.update@1"
         }
     },
     "capabilities": {
@@ -126,6 +134,64 @@
                     ]
                 },
                 "description": "Admin-only idempotent Post delete lifecycle operation owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.taxonomy.get@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Taxonomy term lookup owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.taxonomy.list@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Taxonomy term list owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.taxonomy.create@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.taxonomy"
+                    ]
+                },
+                "description": "Editor-governed idempotent Taxonomy term creation owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.taxonomy.update@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.taxonomy"
+                    ]
+                },
+                "description": "Editor-governed idempotent Taxonomy term update owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.taxonomy.delete@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.taxonomy"
+                    ]
+                },
+                "description": "Editor-governed idempotent Taxonomy term delete owned by CMS Akira Core"
             },
             {
                 "id": "entity.list.post@1",
