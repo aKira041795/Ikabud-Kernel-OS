@@ -36,12 +36,32 @@
                 "description": "Validate an Akira theme manifest, renderer registry, DiSyL, and traversal safety"
             },
             {
+                "id": "akira.theme.customizer.schema@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Read the active theme's projected declarative customizer schema"
+            },
+            {
+                "id": "akira.theme.customizer.values@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Read the active theme's tenant-scoped customizer values"
+            },
+            {
                 "id": "akira.theme.activate@1",
                 "priority": 50,
                 "modes": ["first"],
                 "requires_protocol": "v2",
                 "effects": {"invalidates": ["theme.active"]},
                 "description": "Activate an Akira theme for the current tenant as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.theme.customize@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["theme.active"]},
+                "description": "Persist validated per-tenant theme customization as an idempotent audited mutation"
             }
         ],
         "depends": [

@@ -12,6 +12,8 @@ return [
     ],
     'POST' => [
         '/api/v1/cms-akira-theme/themes/{slug}/activate' => 'cms-akira-theme:catThemeActivateJson',
+        '/api/v1/cms-akira-theme/customize' => 'cms-akira-theme:catThemeCustomizeJson',
         '/cms-akira-theme/activate' => 'cms-akira-theme:catThemeActivateForm',
+        '/cms-akira-theme/customize' => 'cms-akira-theme:catThemeCustomizeForm',
     ],
 ];

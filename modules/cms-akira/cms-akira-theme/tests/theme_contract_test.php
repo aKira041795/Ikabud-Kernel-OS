@@ -23,6 +23,7 @@ $check = static function (bool $ok, string $label, string $detail = '') use (&$p
 
 $mutations = [
     'akira.theme.activate@1',
+    'akira.theme.customize@1',
 ];
 $registry = app()->capabilities();
 foreach (cms_akira_theme_capability_handlers() as $id => $handler) {
@@ -104,6 +105,10 @@ try {
     echo "=== CMS Akira Phase 4A native theme ===\n";
     $setIdentity($tenantA, $admin);
     $db->prepare('DELETE FROM tenant_module_settings WHERE tenant_id IN (?, ?) AND module_id = ?')->execute([$tenantA, $tenantB, 'cms-akira-theme']);
+    foreach ([$tenantA, $tenantB] as $fixtureTenant) {
+        tenantWriteModuleSetting($db, $fixtureTenant, 'cms-akira-theme', '_module_enabled', true);
+    }
+    kernel_request_context_delete('_tenant_module_settings_cache');
     $db->prepare('DELETE FROM kernel_idempotency_keys WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
     $db->prepare("DELETE FROM audit_logs WHERE module = 'cms-akira-theme'")->execute();
     app()->templates()->fragmentStore()->flushAll((string) $tenantA);
@@ -113,7 +118,7 @@ try {
     $manifest = kernelReadJsonFile($module . '/module.json');
     $ids = array_column($manifest['capabilities']['exposes'] ?? [], 'id');
     $expectedIds = array_keys(cms_akira_theme_capability_handlers());
-    $check($ids === $expectedIds, 'manifest and runtime expose exactly the four native theme capabilities');
+    $check($ids === $expectedIds, 'manifest and runtime expose the native theme and customizer capabilities');
     $check(($manifest['depends'] ?? []) === ['cms-akira-core'], 'only the native Akira core module dependency remains');
     $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === [], 'theme is table-free with explicit empty owns/reads');
     $check(($manifest['migrations'] ?? []) === ['database/migrations/001_initial.sql'], 'only the table-free 001 ledger marker remains (no 002)');
@@ -128,8 +133,9 @@ try {
 
     $policies = new CapabilityAuthorizationRegistry($db);
     $check(
-        $policies->requiresProtocol('akira.theme.activate@1', '1', 'cms-akira-theme') === 'v2',
-        'activation policy seed is durable and protocol-v2'
+        $policies->requiresProtocol('akira.theme.activate@1', '1', 'cms-akira-theme') === 'v2'
+        && $policies->requiresProtocol('akira.theme.customize@1', '1', 'cms-akira-theme') === 'v2',
+        'activation and customization policy seeds are durable and protocol-v2'
     );
 
     // ── Resolve: setting → context → fallback, unvalidated rejected ──
@@ -301,6 +307,58 @@ try {
         $invalidActivate = $statusOf($error) === 422;
     }
     $check($invalidActivate, 'activation rejects an unvalidated theme slug');
+
+    // ── Customizer: schema reads + governed tenant persistence ──
+    $call('akira.theme.activate@1', [
+        'idempotency_key' => $prefix . '-activate-ark',
+        'theme_slug' => 'akira-ark',
+    ]);
+    $schema = $call('akira.theme.customizer.schema@1');
+    $check(
+        ($schema['ok'] ?? false) === true
+        && isset($schema['data']['sections']['header']['controls']['brand'])
+        && isset($schema['data']['sections']['footer']['controls']['message']),
+        'customizer schema read projects the active declarative provider definition'
+    );
+    $customizePayload = [
+        'idempotency_key' => $prefix . '-customize',
+        'theme_slug' => 'akira-ark',
+        'values' => ['header' => ['brand' => 'Tenant A Studio'], 'footer' => ['message' => 'Governed footer']],
+    ];
+    $customized = $call('akira.theme.customize@1', $customizePayload);
+    $customizedReplay = $call('akira.theme.customize@1', $customizePayload);
+    $values = $call('akira.theme.customizer.values@1');
+    $check(
+        $customized === $customizedReplay && ($values['values']['header']['brand'] ?? '') === 'Tenant A Studio',
+        'customization is idempotent and the read returns tenant-scoped values'
+    );
+    $customizerSetting = $db->prepare('SELECT setting_value FROM tenant_module_settings WHERE tenant_id = ? AND module_id = ? AND setting_key = ?');
+    $customizerSetting->execute([$tenantA, CAT_THEME_MODULE_ID, CAT_THEME_SETTING_CUSTOMIZER]);
+    $storedCustomizer = json_decode((string)$customizerSetting->fetchColumn(), true);
+    $check(($storedCustomizer['theme_slug'] ?? '') === 'akira-ark', 'customization persists only in tenant module settings');
+    $customizerAudit = $db->prepare("SELECT COUNT(*) FROM audit_logs WHERE module = 'cms-akira-theme' AND action = 'akira.theme.customize' AND entity_id = 'akira-ark'");
+    $customizerAudit->execute();
+    $check((int)$customizerAudit->fetchColumn() === 1, 'customization records one durable audit row on replay');
+    $invalidCustomizer = false;
+    try {
+        $call('akira.theme.customize@1', [
+            'idempotency_key' => $prefix . '-invalid-customize',
+            'theme_slug' => 'akira-ark',
+            'values' => ['header' => ['unknown' => 'value']],
+        ]);
+    } catch (Throwable $error) {
+        $invalidCustomizer = $statusOf($error) === 422 && str_contains($error->getPrevious()?->getMessage() ?? $error->getMessage(), 'unknown field');
+    }
+    $check($invalidCustomizer, 'invalid customizer values fail with a clear 422 error');
+    app()->setUser(['id' => 999703, 'role' => 'author']);
+    $authorDenied = false;
+    try {
+        $call('akira.theme.customize@1', $customizePayload + ['idempotency_key' => $prefix . '-author-customize']);
+    } catch (Throwable $error) {
+        $authorDenied = str_contains($error->getMessage(), 'authorization denied');
+    }
+    $check($authorDenied, 'customization policy denies authors');
+    $setIdentity($tenantA, $admin);
 
     // ── Tenant isolation (shared schema) ──
     $setIdentity($tenantB, $admin);

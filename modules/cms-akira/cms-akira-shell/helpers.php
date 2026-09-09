@@ -75,9 +75,15 @@ function akiraPublicThemeRender(string $viewId, array $context): ?string
             return null;
         }
         $definition = $provider->definition();
+        $customizer = akiraShellCall('akira.theme.customizer.values@1');
+        $persisted = is_array($customizer) && ($customizer['ok'] ?? false) === true
+            && ($customizer['theme_slug'] ?? '') === $slug && is_array($customizer['values'] ?? null)
+            ? $customizer['values'] : [];
         $settings = [];
         foreach ($definition->sectionNames() as $section) {
-            $settings[$section] = $definition->section($section)?->defaults ?? [];
+            $defaults = $definition->section($section)?->defaults ?? [];
+            $overrides = is_array($persisted[$section] ?? null) ? $persisted[$section] : [];
+            $settings[$section] = array_merge($defaults, $overrides);
         }
         $scope = \Ikabud\Kernel\Contracts\ThemeCustomizationScope::fromString('native_' . $slug);
         $themeContext = new \Ikabud\Kernel\Contracts\ThemeRenderContext(
