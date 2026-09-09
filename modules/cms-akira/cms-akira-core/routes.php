@@ -15,6 +15,7 @@ return [
         '/admin/ark-status' => 'cms-akira-core:pageAkiraArkStatus',
         '/api/v1/cms-akira-core/health' => 'cms-akira-core:apiCmsAkiraCoreHealth',
         '/api/v1/cms-akira-core/providers/health' => 'cms-akira-core:apiCmsAkiraCoreProvidersHealth',
+        '/api/v1/cms-akira/editorial/posts' => 'cms-akira-core:apiCmsAkiraPostAdminList',
         '/posts' => 'cms-akira-core:pageCmsAkiraPosts',
         '/posts/{slug}' => 'cms-akira-core:pageCmsAkiraPostDetail',
     ],

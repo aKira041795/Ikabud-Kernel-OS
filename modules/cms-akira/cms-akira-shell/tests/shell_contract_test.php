@@ -60,7 +60,8 @@ $check(isset($routes['GET']['/cms-akira-shell/health']), 'health route');
 $check(isset($routes['GET']['/cms-akira-shell/forbidden']), 'authorization failure route');
 $check(str_contains($handlers, "akiraShellRedirect('/login')"), 'anonymous login redirects to Kernel');
 $check(str_contains($handlers, "akiraShellRedirect('/cms-akira-shell')"), 'authenticated login redirects to dashboard');
-$check(str_contains($handlers, "entityViews()->resolve('post', 'list'"), 'public, list and dashboard consume Entity Views');
+$check(substr_count($handlers, "entityViews()->resolve('post', 'list'") === 2, 'public pages and published-only selector consume Entity Views');
+$check(substr_count($handlers, 'akiraShellAdminPostList(') === 4 && str_contains($helpers, "akira.post.admin.list@1"), 'dashboard and admin list use the governed administration list capability');
 $check(str_contains($handlers, "resolveDetail('post', \$slug, 'detail')") && !str_contains(explode('function akiraShellAuthorize', $handlers, 2)[0] ?? '', "'include_unpublished' => true"), 'public detail uses the published-only entity projection');
 $check(
     str_contains($helpers, "akira.theme.resolve@1")
@@ -138,7 +139,11 @@ $check(str_contains($login, 'https://cdn.tailwindcss.com') && str_contains($logi
 $check(str_contains($login, 'tailwind.config') && str_contains($login, 'CMS Akira') && !str_contains($login, '<style>'), 'login uses branded palette without bespoke CSS');
 $check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_contains($handlers, 'data-akira-entity-view="post-list"'), 'posts render through styled Kernel entity-view container');
 $check(str_contains($helpers, 'https://cdn.tailwindcss.com') && str_contains($helpers, 'aria-label="Akira administration"'), 'admin shell ingests design system and accessible navigation');
-$check(str_contains($handlers, "'filters' => ['include_unpublished' => true") && str_contains($handlers, 'akiraShellPagination'), 'admin list uses governed filtering and pagination');
+$check(str_contains($handlers, "'filters' => ['include_unpublished' => true") && str_contains($handlers, 'akiraShellPagination'), 'admin list preserves draft-inclusive filtering and pagination');
+$check(in_array('akira.post.admin.get@1', $manifest['capabilities']['depends'] ?? [], true)
+    && in_array('akira.post.admin.list@1', $manifest['capabilities']['depends'] ?? [], true)
+    && !in_array('akira.post.get@1', $manifest['capabilities']['depends'] ?? [], true), 'shell declares only admin-scoped raw Post read dependencies');
+$check(str_contains($helpers, "akiraShellCall('akira.post.admin.get@1'") && !str_contains($helpers, "akiraShellCall('akira.post.get@1'"), 'editor fetch uses the governed administration get capability');
 $check(str_contains($helpers, "akiraShellIsAdmin() ? ['edit', 'delete'] : ['edit']") && str_contains($helpers, "'delete' => 'POST'") && str_contains($helpers, 'Delete this post?'), 'participants can edit while administrator rows also expose confirmed delete');
 $check(in_array('akira.post.revisions.list@1', $manifest['capabilities']['depends'] ?? [], true)
     && in_array('akira.post.revision.revert@1', $manifest['capabilities']['depends'] ?? [], true), 'shell declares revision list and revert capability dependencies');

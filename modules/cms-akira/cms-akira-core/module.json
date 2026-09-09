@@ -80,6 +80,22 @@
                 "description": "Published Post list owned by CMS Akira Core"
             },
             {
+                "id": "akira.post.admin.get@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Role-governed administration Post lookup that may include unpublished content"
+            },
+            {
+                "id": "akira.post.admin.list@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Role-governed administration Post list that may include unpublished content"
+            },
+            {
                 "id": "akira.post.create@1",
                 "priority": 50,
                 "modes": [

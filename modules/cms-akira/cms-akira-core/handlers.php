@@ -56,11 +56,33 @@ function apiCmsAkiraCoreProvidersHealth(array $params = []): void
     echo json_encode([
         'ok' => true,
         'data' => [
-            'akira.post.get@1', 'akira.post.list@1', 'akira.post.create@1', 'akira.post.update@1',
+            'akira.post.get@1', 'akira.post.list@1', 'akira.post.admin.get@1', 'akira.post.admin.list@1',
+            'akira.post.create@1', 'akira.post.update@1',
             'akira.post.publish@1', 'akira.post.unpublish@1', 'akira.post.delete@1',
             'entity.list.post@1', 'entity.get.post@1',
         ],
     ]);
+}
+
+/** @param array<string, mixed> $params */
+function apiCmsAkiraPostAdminList(array $params = []): void
+{
+    $query = cacInput();
+    $query = is_array($query) ? $query : [];
+    $payload = [
+        'include_unpublished' => true,
+        'limit' => max(1, min(50, (int)($query['limit'] ?? 25))),
+        'offset' => max(0, (int)($query['offset'] ?? 0)),
+    ];
+    try {
+        $result = app()->cap()->call('akira.post.admin.list@1', $payload, [
+            'caller' => ['module' => 'cms-akira-core', 'user' => app()->user()],
+            'mode' => 'first',
+        ]);
+        app()->json($result);
+    } catch (\Ikabud\Kernel\Capabilities\CapabilityCallException $e) {
+        app()->json(['ok' => false, 'error' => 'Capability authorization denied'], 403);
+    }
 }
 
 /** @return never */

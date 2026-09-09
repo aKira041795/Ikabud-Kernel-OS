@@ -15,6 +15,8 @@ function cms_akira_core_capability_handlers(): array
     return [
         'akira.post.get@1' => 'cac_cap_akira_post_get_1',
         'akira.post.list@1' => 'cac_cap_akira_post_list_1',
+        'akira.post.admin.get@1' => 'cac_cap_akira_post_admin_get_1',
+        'akira.post.admin.list@1' => 'cac_cap_akira_post_admin_list_1',
         'akira.post.create@1' => 'cac_cap_akira_post_create_1',
         'akira.post.update@1' => 'cac_cap_akira_post_update_1',
         'akira.post.publish@1' => 'cac_cap_akira_post_publish_1',
@@ -122,6 +124,18 @@ function cacPostProject(array $post, bool $detail): array
  */
 function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.post.get@1', string $caller = 'unknown'): array
 {
+    return cacPostGet($payload, false);
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_admin_get_1(mixed $payload, string $capabilityId = 'akira.post.admin.get@1', string $caller = 'unknown'): array
+{
+    return cacPostGet($payload, true);
+}
+
+/** @return array<string, mixed> */
+function cacPostGet(mixed $payload, bool $mayIncludeUnpublished): array
+{
     if (!is_array($payload)) {
         return ['ok' => false, 'error' => 'payload must be an object'];
     }
@@ -129,7 +143,7 @@ function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.
     if ($slug === null) {
         return ['ok' => false, 'error' => 'A canonical slug is required'];
     }
-    $adminRead = ($payload['include_unpublished'] ?? false) === true && cacPostEditorialParticipant();
+    $adminRead = $mayIncludeUnpublished && ($payload['include_unpublished'] ?? false) === true;
 
     try {
         $statusClause = $adminRead ? '' : " AND status = 'published'";
@@ -159,6 +173,18 @@ function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.
  */
 function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira.post.list@1', string $caller = 'unknown'): array
 {
+    return cacPostList($payload, false);
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_admin_list_1(mixed $payload, string $capabilityId = 'akira.post.admin.list@1', string $caller = 'unknown'): array
+{
+    return cacPostList($payload, true);
+}
+
+/** @return array<string, mixed> */
+function cacPostList(mixed $payload, bool $mayIncludeUnpublished): array
+{
     if ($payload !== null && !is_array($payload)) {
         return ['ok' => false, 'error' => 'payload must be an object'];
     }
@@ -171,8 +197,8 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
     $direction = in_array($direction, ['asc', 'desc'], true) ? $direction : 'desc';
     $limit = max(1, min(50, (int)($payload['limit'] ?? 25)));
     $offset = max(0, (int)($payload['offset'] ?? 0));
-    $adminRead = ($payload['include_unpublished'] ?? $filters['include_unpublished'] ?? false) === true
-        && cacPostEditorialParticipant();
+    $adminRead = $mayIncludeUnpublished
+        && ($payload['include_unpublished'] ?? $filters['include_unpublished'] ?? false) === true;
     $requestedStatus = $payload['status'] ?? $filters['status'] ?? '';
     $status = $adminRead && in_array($requestedStatus, ['draft', 'published'], true)
         ? (string)$requestedStatus : '';
@@ -635,11 +661,11 @@ function cac_cap_akira_post_delete_1(mixed $payload, string $capabilityId = 'aki
 function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'entity.list.post@1', string $caller = 'unknown'): array
 {
     $args = is_array($payload) ? $payload : [];
-    $filters = is_array($args['filters'] ?? null) ? $args['filters'] : [];
-    if (($filters['include_unpublished'] ?? false) === true) {
-        $args['include_unpublished'] = true;
-        $args['status'] = $filters['status'] ?? '';
-        $args['search'] = $filters['search'] ?? '';
+    // This public bridge deliberately drops all unpublished/admin controls.
+    // Its downstream public capability is published-only for every caller.
+    unset($args['include_unpublished'], $args['status'], $args['search']);
+    if (is_array($args['filters'] ?? null)) {
+        unset($args['filters']['include_unpublished'], $args['filters']['status'], $args['filters']['search']);
     }
     $result = app()->cap()->call('akira.post.list@1', $args, [
         'caller' => ['module' => 'cms-akira-core'],
@@ -649,28 +675,11 @@ function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'enti
         return ['ok' => false, 'rows' => [], 'total' => 0, 'error' => (string)($result['error'] ?? 'Post list unavailable')];
     }
 
-    $adminRead = ($args['include_unpublished'] ?? false) === true && cacPostEditorialParticipant();
     $rows = [];
     foreach ($result['rows'] as $post) {
         if (is_array($post)) {
             try {
-                if ($adminRead) {
-                    $slug = cacPostValidSlug($post['slug'] ?? null);
-                    if ($slug === null) {
-                        continue;
-                    }
-                    $rows[] = [
-                        'slug' => $slug,
-                        'title' => (string)($post['title'] ?? ''),
-                        'status' => (string)($post['status'] ?? 'draft'),
-                        'updated_at' => (string)($post['updated_at'] ?? ''),
-                        'taxonomy_ids' => is_array($post['taxonomy_ids'] ?? null) ? $post['taxonomy_ids'] : [],
-                        'categories' => is_array($post['categories'] ?? null) ? $post['categories'] : [],
-                        'actions' => ['edit', 'delete'],
-                    ];
-                } else {
-                    $rows[] = cacPostProject($post, false);
-                }
+                $rows[] = cacPostProject($post, false);
             } catch (InvalidArgumentException $e) {
                 // Unsafe stored slugs are not presentation-safe records.
             }

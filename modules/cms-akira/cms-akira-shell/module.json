@@ -14,8 +14,8 @@
   "capabilities": {
     "exposes": [],
     "depends": [
-      "akira.post.get@1",
-      "akira.post.list@1",
+      "akira.post.admin.get@1",
+      "akira.post.admin.list@1",
       "akira.post.create@1",
       "akira.post.update@1",
       "akira.post.set_taxonomies@1",
