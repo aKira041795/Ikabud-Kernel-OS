@@ -300,6 +300,7 @@ function akiraShellAdminPostList(array $payload): array
     }
 }
 
+/** @param array<string,mixed> $result */
 function akiraShellAdminReadDenied(array $result): bool
 {
     if (($result['authorization_denied'] ?? false) !== true) {
