@@ -307,6 +307,7 @@ function akiraShellPostSetTaxonomies(array $params = []): void
     $input = akiraShellInput();
     try {
         akiraShellCall('akira.post.set_taxonomies@1', akiraShellPostSetTaxonomyPayload($slug, $input));
+        akiraShellInvalidatePublicCache($slug);
         akiraShellRedirect('/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit?saved=categories');
     } catch (Throwable $e) {
         http_response_code(422);
@@ -354,6 +355,7 @@ function akiraShellPostRevisionRevert(array $params = []): void
     }
     try {
         akiraShellCall('akira.post.revision.revert@1', $payload);
+        akiraShellInvalidatePublicCache($slug);
         akiraShellRedirect('/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit?saved=revision');
     } catch (Throwable $e) {
         if (str_contains(akiraShellRootErrorMessage($e), 'authorization denied')) {

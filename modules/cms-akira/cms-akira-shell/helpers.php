@@ -315,6 +315,36 @@ function akiraShellBuilderAdmin(array $bootstrap): string
         . $styles . $scripts;
 }
 
+// ── Public page-cache invalidation ───────────────────────────────────────
+// The Akira public pages ('/' home, '/posts' archive, '/posts/{slug}' single)
+// are served by this module and full-page cached for anonymous visitors. Akira
+// governed content mutations run in authenticated admin requests (never
+// page-cached themselves), so without an explicit invalidation the cached
+// public pages would keep serving stale content after publish/unpublish/
+// delete/etc. Module-scoped invalidation is safe here: the admin pages under
+// /cms-akira-shell/* require auth and are therefore never page-cached — only
+// public pages are cleared. Invalidation (not warm-up) is the required
+// behavior so mutations never slow down on cache population.
+
+/**
+ * Invalidate the Akira public page cache after a successful governed content
+ * mutation. Always clears the module scope; a per-URL entry for the affected
+ * post is also dropped when a slug is known.
+ *
+ * No-op when the page-cache helpers are unavailable (page cache disabled).
+ * Must only be called on the success/commit path — never on failure.
+ */
+function akiraShellInvalidatePublicCache(?string $slug = null): void
+{
+    if (!function_exists('pageCacheInvalidateModule')) {
+        return; // page cache not available/disabled
+    }
+    pageCacheInvalidateModule('cms-akira-shell');
+    if ($slug !== null && $slug !== '' && function_exists('pageCacheInvalidateUrl')) {
+        pageCacheInvalidateUrl('/posts/' . $slug);
+    }
+}
+
 function akiraShellSavePost(?string $existingSlug): void
 {
     if (!akiraShellAuthorize()) {
@@ -341,6 +371,7 @@ function akiraShellSavePost(?string $existingSlug): void
                 ));
             }
         }
+        akiraShellInvalidatePublicCache($savedSlug !== '' ? $savedSlug : null);
         akiraShellRedirect('/cms-akira-shell/posts?saved=1');
     } catch (Throwable $e) {
         http_response_code(422);
@@ -367,6 +398,12 @@ function akiraShellWorkflowTransition(string $slug): void
             'expected_status' => (string)($input['expected_status'] ?? ''),
             'idempotency_key' => (string)($input['idempotency_key'] ?? ''),
         ]);
+        // Only publish/unpublish transitions flip the post's published status
+        // (the public visibility boundary); the other workflow moves never touch
+        // public pages, so they skip the cache clear.
+        if (in_array((string)($input['action'] ?? ''), ['publish', 'unpublish'], true)) {
+            akiraShellInvalidatePublicCache($slug);
+        }
         akiraShellRedirect('/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit');
     } catch (Throwable $e) {
         http_response_code(422);
@@ -383,6 +420,7 @@ function akiraShellMutation(string $capability, string $slug = ''): void
     app()->csrfEnforce();
     try {
         akiraShellCall($capability, akiraShellPostPayload($slug !== '' ? $slug : null));
+        akiraShellInvalidatePublicCache($slug !== '' ? $slug : null);
         akiraShellRedirect('/cms-akira-shell/posts');
     } catch (Throwable $e) {
         http_response_code(422);
