@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 final class AkiraShellRenderTestApp
 {
+    /** @return array{id:int, role:string} */
+    public function user(): array
+    {
+        return ['id' => 900001, 'role' => 'admin'];
+    }
+
     public function csrfField(): string
     {
         return '<input type="hidden" name="_token" value="rendered-token">';
@@ -125,12 +131,27 @@ $check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_con
 $check(str_contains($helpers, 'https://cdn.tailwindcss.com') && str_contains($helpers, 'aria-label="Akira administration"'), 'admin shell ingests design system and accessible navigation');
 $check(str_contains($handlers, "'filters' => ['include_unpublished' => true") && str_contains($handlers, 'akiraShellPagination'), 'admin list uses governed filtering and pagination');
 $check(str_contains($helpers, "akiraShellIsAdmin() ? ['edit', 'delete'] : ['edit']") && str_contains($helpers, "'delete' => 'POST'") && str_contains($helpers, 'Delete this post?'), 'participants can edit while administrator rows also expose confirmed delete');
+$check(in_array('akira.post.revisions.list@1', $manifest['capabilities']['depends'] ?? [], true)
+    && in_array('akira.post.revision.revert@1', $manifest['capabilities']['depends'] ?? [], true), 'shell declares revision list and revert capability dependencies');
+$check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/revisions/{revision_no}/revert']), 'post revision revert route mounted');
+$check(str_contains($handlers, 'function akiraShellPostRevisionRevert')
+    && str_contains($handlers, 'function akiraShellAuthorize()')
+    && str_contains($helpers, 'function akiraShellIsPostRevisionManager()')
+    && str_contains($helpers, 'function akiraShellRevisionPanel') && str_contains($helpers, 'function akiraShellRevisionTable') && str_contains($helpers, 'function akiraShellRevisionRows'), 'revision revert handler and editor revision panel helpers mounted');
+$check(str_contains($handlers, "akiraShellCall('akira.post.revision.revert@1'")
+    && str_contains($helpers, "akiraShellCall('akira.post.revisions.list@1'"), 'editor lists history and reverts exclusively through governed revision capabilities');
+$check(str_contains($helpers, 'function akiraShellIsPostRevisionManager()') && str_contains($helpers, "'admin', 'editor', 'administrator', 'superadmin'"), 'revision revert presentation mirrors the seeded policy roles');
+$check(str_contains($handlers, 'Reverting post revisions is reserved for Akira editors and administrators.'), 'revision revert handler renders a clean editor-only 403 gate');
+$check(str_contains($handlers, "'/edit?saved=revision'") && str_contains($handlers, 'function akiraShellPostRevisionRevert'), 'revision revert handler redirects 303 after a governed revert');
+$check(str_contains($handlers . $helpers, 'Revert to this revision') && str_contains($handlers . $helpers, "'post-revision-revert-'"), 'revision rows carry confirmed revert forms with fresh idempotency keys');
+$check(str_contains($handlers, 'akiraShellRevisionPanel($slug, (string)($post[\'updated_at\'] ?? \'\'))'), 'editor form mounts the revisions card only for saved posts');
 $participantRoles = $manifest['nav'][0]['roles'] ?? [];
 $check($participantRoles === ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin'] && ($manifest['nav'][1]['roles'] ?? []) === $participantRoles, 'dashboard and posts navigation admits every seeded workflow participant');
 $check(!str_contains($handlers, '<select name="status" class="\' . $control') && str_contains($handlers, 'data-akira-workflow-state') && str_contains($helpers, 'data-akira-workflow-actions') && str_contains($handlers, 'x-text="body"'), 'editor exposes workflow state and allowed actions instead of a binary status input');
 require_once $root . '/handlers.php';
 $renderedForm = akiraShellPostForm(['slug' => 'render-contract', 'title' => 'Rendered contract', 'content' => 'Body', 'updated_at' => '2026-01-01 00:00:00']);
 $check(str_contains($renderedForm, 'name="_token" value="rendered-token"') && !str_contains($renderedForm, 'name="_csrf_token"'), 'rendered editor uses the canonical Kernel CSRF field');
+$check(str_contains($renderedForm, 'data-akira-post-revisions') && str_contains($renderedForm, 'No revisions recorded yet.'), 'rendered editor mounts the additive revisions card below the form');
 $check(str_contains($renderedForm, 'x-data="akiraContentEditor()"') && str_contains($renderedForm, 'function akiraContentEditor()') && !str_contains($renderedForm, 'x-data="{body:'), 'rendered editor uses a named Alpine component safe for DiSyL parsing');
 $check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'") && str_contains($helpers, "'expected_status'"), 'saves and workflow transitions preserve optimistic concurrency');
 $check(str_contains($handlers, "['Published', \$published") && str_contains($handlers, 'akiraShellRecentPosts'), 'dashboard presents governed counts and recent posts');

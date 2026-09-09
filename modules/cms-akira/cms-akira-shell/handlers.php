@@ -145,10 +145,14 @@ function akiraShellPostForm(array $post = [], string $error = ''): string
     if (function_exists('app') && is_object(app()) && method_exists(app(), 'user') && akiraShellIsTaxonomyManager()) {
         $categoryPanel = akiraShellCategoryPanel(akiraShellCategories(), akiraShellAssignedTaxonomyIds($post));
     }
+    // Revisions panel (P1 increment 4): additive section rendered BELOW the
+    // editor form so the workflow block and allowed-actions markup above stay
+    // byte-for-byte unchanged. Only saved posts have history to show.
+    $revisionPanel = $editing ? akiraShellRevisionPanel($slug, (string)($post['updated_at'] ?? '')) : '';
     return '<form x-data="akiraContentEditor()" class="grid gap-5 lg:grid-cols-[1fr_280px]" method="post" action="' . akiraShellEscape($action) . '">' . akiraShellCsrfField() . '<div class="space-y-5">' . $errorHtml
         . '<div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><label class="mb-2 block text-sm font-semibold">Title</label><input class="' . $control . ' text-xl font-bold" name="title" value="' . akiraShellEscape($post['title'] ?? '') . '" required><label class="mb-2 mt-5 block text-sm font-semibold">Slug</label><input class="' . $control . ' font-mono" name="slug" value="' . akiraShellEscape($slug) . '" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div>'
         . '<div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div class="flex items-center justify-between border-b border-slate-100 px-5 py-3"><strong>Content</strong><button type="button" @click="preview=!preview" class="text-sm font-semibold text-akira-700" x-text="preview ? \'Edit\' : \'Preview\'"></button></div><textarea x-show="!preview" x-model="body" class="min-h-[480px] w-full resize-y border-0 p-5 font-mono text-sm focus:outline-none" name="content" required></textarea><div x-show="preview" x-cloak class="min-h-[480px] whitespace-pre-wrap p-5 text-sm leading-7" x-text="body"></div></div></div>'
-        . '<aside><div class="sticky top-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">' . $categoryPanel . '<h2 class="font-bold">Workflow</h2><p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Current state</p><p data-akira-workflow-state class="mt-1 rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-800">' . akiraShellEscape(ucwords(str_replace('_', ' ', $workflowStatus))) . '</p><input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($post['updated_at'] ?? '') . '"><input type="hidden" name="expected_status" value="' . akiraShellEscape($workflowStatus) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '"><button class="mt-5 w-full rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button>' . akiraShellWorkflowActions($slug, $workflowActions) . '<a href="/cms-akira-shell/posts" class="mt-3 block text-center text-sm text-slate-500">Cancel</a></div></aside></form><script>function akiraContentEditor(){return{body:' . akiraShellJsString((string)($post['content'] ?? '')) . ',preview:false}}</script>';
+        . '<aside><div class="sticky top-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">' . $categoryPanel . '<h2 class="font-bold">Workflow</h2><p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Current state</p><p data-akira-workflow-state class="mt-1 rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-800">' . akiraShellEscape(ucwords(str_replace('_', ' ', $workflowStatus))) . '</p><input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($post['updated_at'] ?? '') . '"><input type="hidden" name="expected_status" value="' . akiraShellEscape($workflowStatus) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '"><button class="mt-5 w-full rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button>' . akiraShellWorkflowActions($slug, $workflowActions) . '<a href="/cms-akira-shell/posts" class="mt-3 block text-center text-sm text-slate-500">Cancel</a></div></aside></form>' . $revisionPanel . '<script>function akiraContentEditor(){return{body:' . akiraShellJsString((string)($post['content'] ?? '')) . ',preview:false}}</script>';
 }
 
 /** @param array<string,mixed> $params */
@@ -237,6 +241,58 @@ function akiraShellPostSetTaxonomies(array $params = []): void
         http_response_code(422);
         $post = akiraShellFetchPost($slug) ?? ['slug' => $slug];
         echo akiraShellPage('Edit post', akiraShellPostForm($post, $e->getMessage()), ['active' => 'posts']);
+    }
+}
+
+/**
+ * Post revision revert route. Every revert flows through the governed
+ * akira.post.revision.revert@1 capability (its seeded policy rows are the
+ * authority for the admin/editor/administrator/superadmin role gate); this
+ * handler only mirrors that allowlist for presentation and renders a clean
+ * 403 for authors/contributors who are not revision managers.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellPostRevisionRevert(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    if (!akiraShellIsPostRevisionManager()) {
+        http_response_code(403);
+        echo akiraShellPage('Access denied', '<p>Reverting post revisions is reserved for Akira editors and administrators.</p>');
+        return;
+    }
+    app()->csrfEnforce();
+    $slug = trim((string)($params['slug'] ?? ''));
+    $revisionNo = is_numeric($params['revision_no'] ?? null) ? (int)$params['revision_no'] : 0;
+    if ($slug === '' || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1 || $revisionNo <= 0) {
+        http_response_code(422);
+        echo akiraShellPage('Edit post', '<p>The post slug or revision is invalid.</p>', ['active' => 'posts']);
+        return;
+    }
+    $input = akiraShellInput();
+    $payload = [
+        'slug' => $slug,
+        'revision_no' => $revisionNo,
+        'expected_updated_at' => trim((string)($input['expected_updated_at'] ?? '')),
+        'idempotency_key' => trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ($input['idempotency_key'] ?? ''))),
+    ];
+    if ($payload['idempotency_key'] === '') {
+        $payload['idempotency_key'] = 'post-revision-revert-' . bin2hex(random_bytes(10));
+    }
+    try {
+        akiraShellCall('akira.post.revision.revert@1', $payload);
+        akiraShellRedirect('/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit?saved=revision');
+    } catch (Throwable $e) {
+        if (str_contains(akiraShellRootErrorMessage($e), 'authorization denied')) {
+            http_response_code(403);
+            echo akiraShellPage('Access denied', '<p>Reverting post revisions is reserved for Akira editors and administrators.</p>');
+            return;
+        }
+        http_response_code(422);
+        $post = akiraShellFetchPost($slug) ?? ['slug' => $slug];
+        echo akiraShellPage('Edit post', akiraShellPostForm($post, akiraShellRootErrorMessage($e)), ['active' => 'posts']);
     }
 }
 

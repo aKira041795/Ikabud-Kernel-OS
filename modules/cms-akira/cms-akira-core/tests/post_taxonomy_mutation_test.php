@@ -477,6 +477,7 @@ try {
     try {
         $db->prepare('DELETE FROM cms_akira_post_taxonomies WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare('DELETE FROM cms_akira_posts WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
+        $db->prepare('DELETE FROM cms_akira_post_revisions WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare('DELETE FROM cms_akira_taxonomies WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare('DELETE FROM kernel_idempotency_keys WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare("DELETE FROM audit_logs WHERE module = 'cms-akira-core' AND action = 'akira.post.set_taxonomies'")->execute();

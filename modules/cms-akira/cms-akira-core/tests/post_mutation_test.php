@@ -108,18 +108,21 @@ try {
     $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
     $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
-    // P1 increment 3 adds the akira.post.set_taxonomies@1 assignment policy to
-    // the akira.post.* family, so the governed post policy set is now six rows
-    // (five lifecycle + one assignment). The lifecycle rows' role/caller
-    // expectations below are unchanged.
-    $check(count($policyRows) === 6
+    // P1 increment 3 added the akira.post.set_taxonomies@1 assignment policy and
+    // P1 increment 4 adds the akira.post.revision.revert@1 revert policy to the
+    // akira.post.* family, so the governed post policy set is now seven rows
+    // (five lifecycle + one assignment + one revision revert). The lifecycle
+    // rows' role/caller expectations below are unchanged.
+    $check(count($policyRows) === 7
         && ($policyRoles['akira.post.create@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.post.update@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.post.delete@1'] ?? '') === 'admin'
         && ($policyRoles['akira.post.set_taxonomies@1'] ?? '') === 'admin,editor,administrator,superadmin'
+        && ($policyRoles['akira.post.revision.revert@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyCallers['akira.post.create@1'] ?? '') === 'cms-akira-core,cms-akira-shell'
         && ($policyCallers['akira.post.publish@1'] ?? '') === 'cms-akira-core'
-        && ($policyCallers['akira.post.set_taxonomies@1'] ?? '') === 'cms-akira-core,cms-akira-shell', 'registry policy binds roles and actual production callers');
+        && ($policyCallers['akira.post.set_taxonomies@1'] ?? '') === 'cms-akira-core,cms-akira-shell'
+        && ($policyCallers['akira.post.revision.revert@1'] ?? '') === 'cms-akira-core,cms-akira-shell', 'registry policy binds roles and actual production callers');
 
     $routes = require dirname(__DIR__) . '/routes.php';
     $handlersSource = (string)file_get_contents(dirname(__DIR__) . '/handlers.php');
@@ -424,6 +427,7 @@ try {
     }
     try {
         $db->prepare('DELETE FROM cms_akira_posts WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
+        $db->prepare('DELETE FROM cms_akira_post_revisions WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare('DELETE FROM kernel_idempotency_keys WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare("DELETE FROM audit_logs WHERE module = 'cms-akira-core' AND entity_type = 'post'")->execute();
         app()->templates()->fragmentStore()->flushAll((string)$tenantA);
