@@ -84,6 +84,34 @@ page-builder (P6) are descoped to thin/late until the governance seams are the d
   kernel public pipeline (ARK), SEO/redirects. Ref: modules/cms/public/*, helpers/20-seo-public.php.
 - P6 Advanced (POC garnish): page-builder surface, import/export, AI automation, report approvals.
 
+## Cycle 2 (2026-09-10) — Extensibility cycle: THEMES · EXTENSIONS · PAGE BUILDER
+Decision record: docs/architecture/cms-akira-extensibility-adr.md (multi-model debate synthesis in
+`.ai/cycle2-debate-synthesis.md`). Principle: **extensible by contract, not by convention** — themes
+declarative/sandboxed, extensions typed contribution points, builder = structured-JSON governed
+composition, all behind the capability bus. Sequencing by live value + consumer-driven gates:
+- T1 Theme lifecycle v1 (DO FIRST, live value): `akira.theme.*@1` governed install/validate/activate/
+  rollback + formalized per-tenant customization overlay; one-tenant tx + audit + cache invalidation.
+  Reuse ThemeDefinitionLoader / theme:validate / active_theme_slug / akira.theme.resolve@1 — no new
+  registry machinery. Closes the hardcoded-active-theme gap.
+- T2 Theme-provided block definitions: akira-ark ships a small typed block set (hero, richtext,
+  card-grid, quote, cta) — the shared block/schema contract takes shape (renderers via theme
+  renderer-registry.json + entity views; NO parallel block registry).
+- T3 Extension-point registry (consumer-driven): wire declared points to a typed registry (generalize
+  cms.sidebar; add cms.dashboard.widgets + cms.settings.sections); deterministic merge, quarantine on
+  invalid contribution, each contribution binds to its OWN least-privilege capability. Prove with one
+  real first-party consumer (cms-akira-seo dashboard widget + settings section). No schemas for points
+  without a consumer.
+- T4 Page builder (GATED, last): akira.composition.*@1 governed structured-JSON compositions (content
+  refs resolve via capabilities at render; deterministic DiSyL server render; React canvas edits JSON
+  only; preview = server render of draft). Gate: (a) block-schema contract via T2/T3, (b) documented
+  DiSyL block-engine gap list closed at the engine root first, (c) explicit user direction. Port the
+  sibling reference builder patterns; never invent a parallel block registry.
+- T5 Import/export + AI: layered on the composition document model post-T4 (unchanged from R7/P6).
+
+Refusals this cycle (see ADR): no marketplace / unsigned third-party uploads; no child-theme or
+per-route-override sprawl; no WP-style theme code or ambient hooks; no HTML-as-source / Elementor-style
+canvas / client-authoritative rendering; no generalized registry without a consumer.
+
 ## Ground rules for every port
 - Copy the working reference implementation first (structure, helpers, templates, styling);
   improve by routing through the kernel: Entity-View pipeline, capability bus + authorization,
