@@ -32,6 +32,19 @@ function akiraShellAuthorizeAdmin(): bool
     return true;
 }
 
+function akiraShellAuthorizeTaxonomyManager(): bool
+{
+    if (!akiraShellAuthorize()) {
+        return false;
+    }
+    if (!akiraShellIsTaxonomyManager()) {
+        http_response_code(403);
+        echo akiraShellPage('Access denied', '<p>This surface is reserved for Akira editors and administrators.</p>');
+        return false;
+    }
+    return true;
+}
+
 /**
  * Presentation only: authentication remains at the stable Kernel endpoint.
  * @param array<string,mixed> $params
@@ -161,6 +174,220 @@ function akiraShellPostWorkflowTransition(array $params = []): void
 function akiraShellPostDelete(array $params = []): void
 {
     akiraShellMutation('akira.post.delete@1', (string)($params['slug'] ?? ''));
+}
+
+/**
+ * Categories page — governed content taxonomy (categories + tags) CRUD.
+ * The list itself is a participant read surface; manage actions render only
+ * for editor/administrator roles and every POST flows through the governed
+ * akira.taxonomy.* capabilities.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellCategoryList(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    akiraShellCategoryPage();
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellCategoryCreate(array $params = []): void
+{
+    if (!akiraShellAuthorizeTaxonomyManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellTaxonomyPayload();
+    unset($input['_token']);
+    try {
+        akiraShellCall('akira.taxonomy.create@1', $input);
+        akiraShellRedirect('/cms-akira-shell/categories?saved=create');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        akiraShellCategoryPage($e->getMessage(), ['name' => (string)($input['name'] ?? ''), 'slug' => (string)($input['slug'] ?? ''), 'type' => (string)($input['type'] ?? 'category')]);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellCategoryUpdate(array $params = []): void
+{
+    if (!akiraShellAuthorizeTaxonomyManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $id = is_numeric($params['id'] ?? null) ? (int)$params['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(422);
+        akiraShellCategoryPage('A taxonomy term id is required.');
+        return;
+    }
+    $input = akiraShellTaxonomyPayload($id);
+    unset($input['_token']);
+    try {
+        akiraShellCall('akira.taxonomy.update@1', $input);
+        akiraShellRedirect('/cms-akira-shell/categories?saved=update');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        akiraShellCategoryPage($e->getMessage(), ['name' => (string)($input['name'] ?? ''), 'slug' => (string)($input['slug'] ?? '')]);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellCategoryDelete(array $params = []): void
+{
+    if (!akiraShellAuthorizeTaxonomyManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $id = is_numeric($params['id'] ?? null) ? (int)$params['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(422);
+        akiraShellCategoryPage('A taxonomy term id is required.');
+        return;
+    }
+    $input = akiraShellTaxonomyPayload($id);
+    unset($input['_token']);
+    try {
+        akiraShellCall('akira.taxonomy.delete@1', $input);
+        akiraShellRedirect('/cms-akira-shell/categories?saved=delete');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        akiraShellCategoryPage($e->getMessage());
+    }
+}
+
+/**
+ * Categories page body: filter tabs with per-type counts, an inline create
+ * form (name + slug + type) for managers, and the term table with confirmed
+ * delete for managers.
+ *
+ * @param array<string,mixed> $preserve
+ */
+function akiraShellCategoryPage(string $error = '', array $preserve = []): void
+{
+    $query = akiraShellQuery();
+    $typeFilter = in_array(($query['type'] ?? ''), ['category', 'tag'], true) ? (string)$query['type'] : '';
+    $resolved = akiraShellCall('akira.taxonomy.list@1', ['limit' => 500, 'offset' => 0]);
+    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
+    $categoryCount = 0;
+    $tagCount = 0;
+    $visible = [];
+    foreach ($rows as $term) {
+        if (!is_array($term)) {
+            continue;
+        }
+        $type = (string)($term['type'] ?? '');
+        $categoryCount += $type === 'category' ? 1 : 0;
+        $tagCount += $type === 'tag' ? 1 : 0;
+        if ($typeFilter === '' || $type === $typeFilter) {
+            $visible[] = $term;
+        }
+    }
+    $total = count($visible);
+    $manager = akiraShellIsTaxonomyManager();
+    $byId = [];
+    foreach ($rows as $term) {
+        if (is_array($term)) {
+            $byId[(int)($term['id'] ?? 0)] = $term;
+        }
+    }
+    $body = '<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span class="inline-flex rounded-full bg-akira-100 px-3 py-1 text-xs font-semibold text-akira-700">' . $total . ' term' . ($total === 1 ? '' : 's') . '</span><p class="mt-2 text-sm text-slate-500">Content taxonomy is governed, tenant-scoped, and idempotently audited on every write.</p></div></div>'
+        . akiraShellTaxonomyNotice()
+        . akiraShellCategoryTabs($typeFilter, $total, $categoryCount, $tagCount)
+        . ($manager ? akiraShellCategoryCreateForm($preserve, $error) : '')
+        . ($error !== '' ? '<div role="alert" class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Could not save:</strong> ' . akiraShellEscape($error) . '</div>' : '')
+        . akiraShellCategoryTable($visible, $byId, $manager);
+    echo akiraShellPage('Categories', $body, ['active' => 'categories']);
+}
+
+function akiraShellCategoryTabs(string $active, int $total, int $categoryCount, int $tagCount): string
+{
+    $tab = static function (string $label, string $url, int $count, bool $isActive): string {
+        $classes = $isActive ? 'bg-akira-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50';
+        return '<a href="' . $url . '" class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold ' . $classes . '">' . akiraShellEscape($label) . '<span class="rounded-full px-2 py-0.5 text-xs ' . ($isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500') . '">' . $count . '</span></a>';
+    };
+    return '<div class="mb-5 flex flex-wrap gap-2">'
+        . $tab('All', '/cms-akira-shell/categories', $total, $active === '')
+        . $tab('Categories', '/cms-akira-shell/categories?type=category', $categoryCount, $active === 'category')
+        . $tab('Tags', '/cms-akira-shell/categories?type=tag', $tagCount, $active === 'tag')
+        . '</div>';
+}
+
+/**
+ * @param array<string,mixed> $preserve
+ */
+function akiraShellCategoryCreateForm(array $preserve = [], string $error = ''): string
+{
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20';
+    $name = akiraShellEscape((string)($preserve['name'] ?? ''));
+    $slug = akiraShellEscape((string)($preserve['slug'] ?? ''));
+    $type = in_array(($preserve['type'] ?? ''), ['category', 'tag'], true) ? (string)$preserve['type'] : 'category';
+    return '<form method="post" action="/cms-akira-shell/categories" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Create a taxonomy term</h2><p class="mt-1 text-sm text-slate-500">Categories can nest; tags are flat. Slugs stay canonical lowercase with hyphens.</p>'
+        . '<div class="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_170px_auto]"><input class="' . $control . '" name="name" value="' . $name . '" placeholder="Term name (e.g. Product News)" required><input class="' . $control . ' font-mono" name="slug" value="' . $slug . '" placeholder="Slug (e.g. product-news)" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required>'
+        . '<select class="' . $control . '" name="type"><option value="category"' . ($type === 'category' ? ' selected' : '') . '>Category</option><option value="tag"' . ($type === 'tag' ? ' selected' : '') . '>Tag</option></select>'
+        . '<button class="rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white hover:bg-akira-700" type="submit">Add term</button></div></form>';
+}
+
+/**
+ * @param list<array<string,mixed>> $rows
+ * @param array<int,array<string,mixed>> $byId
+ */
+function akiraShellCategoryTable(array $rows, array $byId, bool $manager): string
+{
+    if ($rows === []) {
+        return '<div class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No taxonomy terms yet. Create your first category or tag.</div>';
+    }
+    $body = '';
+    foreach ($rows as $term) {
+        $body .= akiraShellCategoryRow($term, $byId, $manager);
+    }
+    return '<div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="grid grid-cols-[140px_1fr_1fr_200px_auto] items-center gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Type</span><span>Term</span><span>Parent</span><span>Updated</span><span class="text-right">Actions</span></div>' . $body . '</div>';
+}
+
+/**
+ * @param array<string,mixed> $term
+ * @param array<int,array<string,mixed>> $byId
+ */
+function akiraShellCategoryRow(array $term, array $byId, bool $manager): string
+{
+    $id = (int)($term['id'] ?? 0);
+    $type = (string)($term['type'] ?? 'category');
+    $name = akiraShellEscape((string)($term['name'] ?? ''));
+    $slug = akiraShellEscape((string)($term['slug'] ?? ''));
+    $updated = akiraShellEscape((string)($term['updated_at'] ?? ''));
+    $badge = $type === 'tag'
+        ? 'bg-sky-100 text-sky-700'
+        : 'bg-akira-100 text-akira-700';
+    $parentId = (int)($term['parent_id'] ?? 0);
+    $parentName = $parentId > 0 && isset($byId[$parentId]) ? akiraShellEscape((string)($byId[$parentId]['name'] ?? '')) : '';
+    $parent = $parentName !== '' ? $parentName : '<span class="text-slate-300">—</span>';
+
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-akira-500 focus:outline-none';
+    $actions = '';
+    if ($manager) {
+        $actions = '<div class="flex justify-end gap-2">'
+            . '<details class="relative"><summary class="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Rename</summary>'
+            . '<form method="post" action="/cms-akira-shell/categories/' . $id . '" class="absolute right-0 z-10 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">' . akiraShellCsrfField()
+            . '<div class="grid gap-2"><input class="' . $control . '" name="name" value="' . $name . '" required><input class="' . $control . ' font-mono" name="slug" value="' . $slug . '" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div>'
+            . '<input type="hidden" name="expected_updated_at" value="' . akiraShellEscape((string)($term['updated_at'] ?? '')) . '">'
+            . '<input type="hidden" name="idempotency_key" value="taxonomy-' . bin2hex(random_bytes(10)) . '">'
+            . '<button class="mt-3 w-full rounded-xl bg-akira-600 px-3 py-2 text-sm font-semibold text-white hover:bg-akira-700" type="submit">Save rename</button></form></details>'
+            . '<form method="post" action="/cms-akira-shell/categories/' . $id . '/delete" onsubmit="return confirm(\'Delete this ' . akiraShellEscape($type) . '? Children move to the root; this cannot be undone.\')">' . akiraShellCsrfField()
+            . '<input type="hidden" name="expected_updated_at" value="' . akiraShellEscape((string)($term['updated_at'] ?? '')) . '">'
+            . '<input type="hidden" name="idempotency_key" value="taxonomy-' . bin2hex(random_bytes(10)) . '">'
+            . '<button class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100" type="submit">Delete</button></form></div>';
+    } else {
+        $actions = '<div class="flex justify-end text-xs text-slate-300">Read only</div>';
+    }
+    return '<div class="grid grid-cols-[140px_1fr_1fr_200px_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0 hover:bg-slate-50/50">'
+        . '<span><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . $badge . '">' . akiraShellEscape($type) . '</span></span>'
+        . '<span><strong class="block text-sm text-slate-900">' . $name . '</strong><code class="text-xs text-slate-400">' . $slug . '</code></span>'
+        . '<span class="text-sm text-slate-600">' . $parent . '</span>'
+        . '<span class="text-xs text-slate-400">' . $updated . '</span>'
+        . $actions . '</div>';
 }
 
 /**

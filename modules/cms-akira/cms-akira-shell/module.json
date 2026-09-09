@@ -21,6 +21,11 @@
       "akira.workflow.evaluate@1",
       "akira.workflow.transition@1",
       "akira.post.delete@1",
+      "akira.taxonomy.get@1",
+      "akira.taxonomy.list@1",
+      "akira.taxonomy.create@1",
+      "akira.taxonomy.update@1",
+      "akira.taxonomy.delete@1",
       "entity.list.post@1",
       "entity.get.post@1"
     ]
@@ -30,6 +35,7 @@
   "nav": [
     {"label": "Akira Dashboard", "url": "/cms-akira-shell", "icon": "layout-dashboard", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
     {"label": "Posts", "url": "/cms-akira-shell/posts", "icon": "file-text", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
+    {"label": "Categories", "url": "/cms-akira-shell/categories", "icon": "folder-tree", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
     {"label": "Compositions", "url": "/cms-akira-shell/compositions", "icon": "layers", "roles": ["admin"]},
     {"label": "Module Health", "url": "/cms-akira-shell/health", "icon": "activity", "roles": ["admin"]}
   ],

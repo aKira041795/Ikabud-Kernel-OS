@@ -20,6 +20,11 @@ function cms_akira_core_capability_handlers(): array
         'akira.post.publish@1' => 'cac_cap_akira_post_publish_1',
         'akira.post.unpublish@1' => 'cac_cap_akira_post_unpublish_1',
         'akira.post.delete@1' => 'cac_cap_akira_post_delete_1',
+        'akira.taxonomy.get@1' => 'cac_cap_akira_taxonomy_get_1',
+        'akira.taxonomy.list@1' => 'cac_cap_akira_taxonomy_list_1',
+        'akira.taxonomy.create@1' => 'cac_cap_akira_taxonomy_create_1',
+        'akira.taxonomy.update@1' => 'cac_cap_akira_taxonomy_update_1',
+        'akira.taxonomy.delete@1' => 'cac_cap_akira_taxonomy_delete_1',
         'entity.list.post@1' => 'cac_cap_entity_list_post_1',
         'entity.get.post@1' => 'cac_cap_entity_get_post_1',
     ];
@@ -387,7 +392,7 @@ function cacPostMutate(string $operation, array $payload): array
             if (!is_array($old)) {
                 throw new CacPostMutationException('Post not found.', 404);
             }
-            $expected = cacPostMutationPublishedAt($mutationInput['expected_updated_at'] ?? null);
+            $expected = cacTaxonomyMutationExpectedAt($mutationInput['expected_updated_at'] ?? null);
             if ($expected === null || $expected !== (string)$old['updated_at']) {
                 throw new CacPostMutationException('Post was modified; refresh and retry.', 409);
             }
@@ -627,4 +632,505 @@ function cac_cap_entity_get_post_1(mixed $payload, string $capabilityId = 'entit
     } catch (InvalidArgumentException $e) {
         return ['ok' => false, 'error' => 'Post not found'];
     }
+}
+
+// ── Governed Taxonomy (P1 content model increment 1) ────────────────────
+// Content taxonomy terms (categories/tags) are governed CRUD on the same
+// single-tenant PDO transaction as posts: kernel idempotency claim/commit/
+// release + kernel.audit.record in one tx, tenant from kernel context, and
+// optimistic concurrency on update/delete. No workflow machine and no direct
+// status columns: taxonomy is simple governed content model for this bounded
+// increment. Reads (list/get) remain ungoverned until R5 governs reads.
+
+final class CacTaxonomyMutationException extends RuntimeException
+{
+    public function __construct(string $message, public readonly int $httpStatus = 422, public readonly ?int $retryAfter = null)
+    {
+        parent::__construct($message);
+    }
+}
+
+/** @return list<string> */
+function cacTaxonomyTypes(): array
+{
+    return ['category', 'tag'];
+}
+
+function cacTaxonomyValidType(mixed $value): ?string
+{
+    $type = is_string($value) ? trim($value) : '';
+    return in_array($type, cacTaxonomyTypes(), true) ? $type : null;
+}
+
+function cacTaxonomyTenantId(): int
+{
+    $tenantId = (int)app()->tenant()->current();
+    if ($tenantId <= 0) {
+        throw new RuntimeException('A trusted tenant context is required.');
+    }
+    return $tenantId;
+}
+
+function cacTaxonomyValidSlug(mixed $value): ?string
+{
+    $slug = is_string($value) ? trim($value) : '';
+    if ($slug === '' || strlen($slug) > 191) {
+        return null;
+    }
+
+    // Same canonical form as Post slugs: lowercase ASCII words, one hyphen.
+    return preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) === 1 ? $slug : null;
+}
+
+/** @return array{id: int, role: string, source?: string} */
+function cacTaxonomyMutationActor(): array
+{
+    $actor = app()->user();
+    if (!is_array($actor) || (int)($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
+        throw new CacTaxonomyMutationException('Authentication required.', 401);
+    }
+    return $actor;
+}
+
+function cacTaxonomyMutationString(mixed $value, string $field, int $max, bool $required = false): string
+{
+    if (!is_string($value)) {
+        if (!$required && $value === null) {
+            return '';
+        }
+        throw new CacTaxonomyMutationException("{$field} must be a string.");
+    }
+    $value = trim($value);
+    if (($required && $value === '') || strlen($value) > $max) {
+        throw new CacTaxonomyMutationException("{$field} is invalid.");
+    }
+    return $value;
+}
+
+function cacTaxonomyMutationParentId(mixed $value): ?int
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (is_int($value) && $value > 0) {
+        return $value;
+    }
+    if (is_string($value) && ctype_digit($value) && (int)$value > 0) {
+        return (int)$value;
+    }
+    throw new CacTaxonomyMutationException('parent_id must be a positive taxonomy id or empty.');
+}
+
+function cacTaxonomyMutationExpectedAt(mixed $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_string($value)) {
+        throw new CacTaxonomyMutationException('expected_updated_at must be a datetime string.');
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        || $date->format('Y-m-d H:i:s') !== $value) {
+        throw new CacTaxonomyMutationException('expected_updated_at must use Y-m-d H:i:s.');
+    }
+    return $value;
+}
+
+function cacTaxonomyMutationCorrelationId(): string
+{
+    $fromContext = function_exists('kernel_request_context_get')
+        ? trim((string)kernel_request_context_get('correlation_id', ''))
+        : '';
+    return $fromContext !== '' ? $fromContext : bin2hex(random_bytes(16));
+}
+
+/**
+ * Resolve the term fields for a governed write. Type is immutable once a term
+ * exists, so updates inherit the stored type and only name/slug/parent_id move.
+ *
+ * @param array<string, mixed> $payload
+ * @param array<string, mixed>|null $existing
+ * @return array{type: string, name: string, slug: string, parent_id: int|null}
+ */
+function cacTaxonomyMutationFields(array $payload, ?array $existing = null): array
+{
+    $creating = $existing === null;
+    $type = $creating
+        ? cacTaxonomyValidType($payload['type'] ?? null)
+        : cacTaxonomyValidType($existing['type'] ?? null);
+    if ($type === null) {
+        throw new CacTaxonomyMutationException('type must be category or tag.');
+    }
+    $name = $creating
+        ? cacTaxonomyMutationString($payload['name'] ?? null, 'name', 191, true)
+        : (array_key_exists('name', $payload)
+            ? cacTaxonomyMutationString($payload['name'], 'name', 191, true)
+            : (string)($existing['name'] ?? ''));
+    $slug = $creating
+        ? cacTaxonomyValidSlug($payload['slug'] ?? null)
+        : cacTaxonomyValidSlug(array_key_exists('slug', $payload) ? $payload['slug'] : ($existing['slug'] ?? null));
+    if ($slug === null) {
+        throw new CacTaxonomyMutationException('A canonical lowercase taxonomy slug is required.', 422);
+    }
+    $parentId = null;
+    if (array_key_exists('parent_id', $payload)) {
+        $parentId = cacTaxonomyMutationParentId($payload['parent_id']);
+    } elseif ($existing !== null && ($existing['parent_id'] ?? null) !== null) {
+        $parentId = (int)$existing['parent_id'];
+    }
+    return ['type' => $type, 'name' => $name, 'slug' => $slug, 'parent_id' => $parentId];
+}
+
+/**
+ * A parent term must exist with the same tenant and type. The walked ancestry
+ * guard keeps the term tree acyclic on update (bounded walk, fails closed).
+ */
+function cacTaxonomyAssertValidParent(PDO $db, int $tenantId, string $type, ?int $parentId, ?int $selfId = null): void
+{
+    if ($parentId === null) {
+        return;
+    }
+    if ($selfId !== null && $parentId === $selfId) {
+        throw new CacTaxonomyMutationException('A taxonomy term cannot be its own parent.', 422);
+    }
+    $stmt = $db->prepare(
+        'SELECT id, parent_id FROM cms_akira_taxonomies WHERE tenant_id = :tenant AND type = :type AND id = :id LIMIT 1 FOR UPDATE'
+    );
+    $stmt->execute([':tenant' => $tenantId, ':type' => $type, ':id' => $parentId]);
+    $parent = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!is_array($parent)) {
+        throw new CacTaxonomyMutationException('parent_id must reference a term with the same type and tenant.', 422);
+    }
+
+    $cursor = (int)$parent['id'];
+    $hops = 0;
+    while ($cursor !== null && $hops < 100) {
+        if ($selfId !== null && $cursor === $selfId) {
+            throw new CacTaxonomyMutationException('parent_id would create a cycle in the term tree.', 422);
+        }
+        $walk = $db->prepare('SELECT parent_id FROM cms_akira_taxonomies WHERE tenant_id = :tenant AND id = :id LIMIT 1');
+        $walk->execute([':tenant' => $tenantId, ':id' => $cursor]);
+        $next = $walk->fetchColumn();
+        $cursor = $next === false || $next === null ? null : (int)$next;
+        $hops++;
+    }
+}
+
+/**
+ * Execute one governed taxonomy mutation on the application PDO. Kernel
+ * idempotency and audit capabilities escalate narrowly onto this exact
+ * caller-managed single-tenant transaction (mirrors cacPostMutate).
+ *
+ * @param array<string, mixed> $payload
+ * @return array<string, mixed>
+ */
+function cacTaxonomyMutate(string $operation, array $payload): array
+{
+    $actor = cacTaxonomyMutationActor();
+    $tenantId = cacTaxonomyTenantId();
+    if (array_key_exists('tenant_id', $payload)) {
+        throw new CacTaxonomyMutationException('tenant_id is supplied by kernel context.', 422);
+    }
+    if (!app()->entityAuthority()->isAuthoritative('taxonomy', 'cms-akira-core')) {
+        throw new CacTaxonomyMutationException('Taxonomy authority is not active.', 503);
+    }
+
+    $key = is_string($payload['idempotency_key'] ?? null) ? trim($payload['idempotency_key']) : '';
+    if ($key === '' || strlen($key) > 255) {
+        throw new CacTaxonomyMutationException('A valid idempotency_key is required.', 422);
+    }
+
+    if ($operation === 'create') {
+        if (cacTaxonomyValidType($payload['type'] ?? null) === null) {
+            throw new CacTaxonomyMutationException('type must be category or tag.', 422);
+        }
+        if (cacTaxonomyValidSlug($payload['slug'] ?? null) === null) {
+            throw new CacTaxonomyMutationException('A canonical lowercase taxonomy slug is required.', 422);
+        }
+    } else {
+        $termId = is_numeric($payload['id'] ?? null) ? (int)$payload['id'] : 0;
+        if ($termId <= 0) {
+            throw new CacTaxonomyMutationException('A taxonomy id is required.', 422);
+        }
+    }
+
+    // Identity/JWT-shaped payload members are intentionally neither read nor hashed.
+    $mutationInput = array_intersect_key($payload, array_flip([
+        'id', 'type', 'name', 'slug', 'parent_id', 'expected_updated_at',
+    ]));
+    $envelope = ['operation' => $operation, 'taxonomy' => $mutationInput];
+    $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
+        'caller' => ['module' => 'cms-akira-core', 'user' => $actor],
+        'mode' => 'first',
+    ]);
+    if (!is_string($hash)) {
+        throw new CacTaxonomyMutationException('Idempotency hashing unavailable.', 503);
+    }
+
+    $db = app()->db();
+    $claimed = false;
+    $publicationUncertain = false;
+    try {
+        $db->beginTransaction();
+        $claim = app()->cap()->call('kernel.idempotency.claim@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'payload_hash' => $hash,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        $claimStatus = is_array($claim) ? (string)($claim['status'] ?? '') : '';
+        if ($claimStatus === 'duplicate') {
+            $db->rollBack();
+            return is_array($claim['outcome'] ?? null) ? $claim['outcome'] : ['ok' => true, 'replayed' => true];
+        }
+        if ($claimStatus === 'conflict') {
+            $db->rollBack();
+            throw new CacTaxonomyMutationException('Idempotency key payload conflict.', 409);
+        }
+        if ($claimStatus === 'in_progress') {
+            $db->rollBack();
+            throw new CacTaxonomyMutationException('Idempotent mutation is still processing.', 425, 2);
+        }
+        if ($claimStatus !== 'new') {
+            throw new RuntimeException('Unexpected idempotency claim result.');
+        }
+        $claimed = true;
+
+        $old = null;
+        if ($operation !== 'create') {
+            $termId = (int)$payload['id'];
+            $find = $db->prepare(
+                'SELECT id, tenant_id, type, name, slug, parent_id, created_at, updated_at '
+                . 'FROM cms_akira_taxonomies WHERE tenant_id = :tenant AND id = :id LIMIT 1 FOR UPDATE'
+            );
+            $find->execute([':tenant' => $tenantId, ':id' => $termId]);
+            $old = $find->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($old)) {
+                throw new CacTaxonomyMutationException('Taxonomy term not found.', 404);
+            }
+            $expected = cacTaxonomyMutationExpectedAt($mutationInput['expected_updated_at'] ?? null);
+            if ($expected === null || $expected !== (string)$old['updated_at']) {
+                throw new CacTaxonomyMutationException('Taxonomy term was modified; refresh and retry.', 409);
+            }
+        }
+
+        try {
+            if ($operation === 'create') {
+                $fields = cacTaxonomyMutationFields($payload, null);
+                cacTaxonomyAssertValidParent($db, $tenantId, $fields['type'], $fields['parent_id']);
+                $write = $db->prepare(
+                    'INSERT INTO cms_akira_taxonomies (tenant_id, type, name, slug, parent_id) '
+                    . 'VALUES (:tenant, :type, :name, :slug, :parent)'
+                );
+                $write->execute([
+                    ':tenant' => $tenantId,
+                    ':type' => $fields['type'],
+                    ':name' => $fields['name'],
+                    ':slug' => $fields['slug'],
+                    ':parent' => $fields['parent_id'],
+                ]);
+                $termId = (int)$db->lastInsertId();
+            } elseif ($operation === 'update') {
+                $fields = cacTaxonomyMutationFields($payload, $old);
+                cacTaxonomyAssertValidParent($db, $tenantId, $fields['type'], $fields['parent_id'], (int)$old['id']);
+                $write = $db->prepare(
+                    'UPDATE cms_akira_taxonomies SET name = :name, slug = :slug, parent_id = :parent '
+                    . 'WHERE tenant_id = :tenant AND id = :id AND updated_at = :expected'
+                );
+                $write->execute([
+                    ':tenant' => $tenantId,
+                    ':id' => (int)$old['id'],
+                    ':expected' => $old['updated_at'],
+                    ':name' => $fields['name'],
+                    ':slug' => $fields['slug'],
+                    ':parent' => $fields['parent_id'],
+                ]);
+            } else {
+                // Governed delete: children are orphaned to the root (mirrors the
+                // reference taxonomy's SET NULL intent), atomically with the row,
+                // idempotency claim, and audit inside this same transaction.
+                $child = $db->prepare(
+                    'UPDATE cms_akira_taxonomies SET parent_id = NULL '
+                    . 'WHERE tenant_id = :tenant AND parent_id = :id'
+                );
+                $child->execute([':tenant' => $tenantId, ':id' => (int)$old['id']]);
+                $write = $db->prepare(
+                    'DELETE FROM cms_akira_taxonomies WHERE tenant_id = :tenant AND id = :id AND updated_at = :expected'
+                );
+                $write->execute([
+                    ':tenant' => $tenantId,
+                    ':id' => (int)$old['id'],
+                    ':expected' => $old['updated_at'],
+                ]);
+            }
+        } catch (PDOException $e) {
+            $errorInfo = is_array($e->errorInfo) ? $e->errorInfo : [];
+            $mysqlCode = isset($errorInfo[1]) ? (int)$errorInfo[1] : 0;
+            if ($mysqlCode === 1062 || $e->getCode() === '23000') {
+                throw new CacTaxonomyMutationException('A taxonomy term with this type and slug already exists.', 422);
+            }
+            throw $e;
+        }
+
+        $correlationId = cacTaxonomyMutationCorrelationId();
+        $type = (string)($old['type'] ?? $fields['type'] ?? '');
+        $slug = (string)($fields['slug'] ?? $old['slug'] ?? '');
+        $audit = app()->cap()->call('kernel.audit.record@1', [
+            'module' => 'cms-akira-core',
+            'action' => 'akira.taxonomy.' . $operation,
+            'entity_type' => 'taxonomy',
+            'entity_id' => (string)$termId,
+            'old_data' => $old,
+            'new_data' => ['correlation_id' => $correlationId, 'tenant_id' => $tenantId, 'type' => $type, 'slug' => $slug]
+                + ($old === null ? ['name' => $fields['name'] ?? '', 'parent_id' => $fields['parent_id'] ?? null] : ['id' => (int)$old['id']]),
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
+            throw new RuntimeException('Durable Taxonomy audit failed.');
+        }
+
+        $outcome = [
+            'ok' => true,
+            'operation' => $operation,
+            'taxonomy' => ['id' => $termId, 'type' => $type, 'slug' => $slug],
+            'correlation_id' => $correlationId,
+        ];
+        $committed = app()->cap()->call('kernel.idempotency.commit@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'outcome' => $outcome,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if ($committed !== true) {
+            throw new RuntimeException('Idempotency outcome commit failed.');
+        }
+
+        // From this point a commit error is uncertain: never release/re-execute.
+        $publicationUncertain = true;
+        $db->commit();
+        $publicationUncertain = false;
+        return $outcome;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        if ($claimed && !$publicationUncertain) {
+            try {
+                app()->cap()->call('kernel.idempotency.release@1', [
+                    'key' => $key, 'tenant_id' => $tenantId, 'db' => $db,
+                ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+            } catch (Throwable) {
+                // A failed release remains processing and therefore fails closed.
+            }
+        }
+        throw $e;
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_taxonomy_list_1(mixed $payload, string $capabilityId = 'akira.taxonomy.list@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $payload = is_array($payload) ? $payload : [];
+    $type = cacTaxonomyValidType($payload['type'] ?? null);
+    $sort = is_array($payload['sort'] ?? null) ? $payload['sort'] : [];
+    $field = (string)($sort['field'] ?? $payload['sort_field'] ?? 'name');
+    $direction = strtolower((string)($sort['direction'] ?? $payload['sort_direction'] ?? 'asc'));
+    $field = in_array($field, ['type', 'name', 'slug', 'created_at', 'updated_at'], true) ? $field : 'name';
+    $direction = in_array($direction, ['asc', 'desc'], true) ? $direction : 'asc';
+    $limit = max(1, min(500, (int)($payload['limit'] ?? 500)));
+    $offset = max(0, (int)($payload['offset'] ?? 0));
+
+    try {
+        $tenantId = cacTaxonomyTenantId();
+        $where = 'tenant_id = :tenant_id';
+        $bindings = [':tenant_id' => $tenantId];
+        if ($type !== null) {
+            $where .= ' AND type = :type';
+            $bindings[':type'] = $type;
+        }
+        $count = cacDb()->prepare("SELECT COUNT(*) FROM cms_akira_taxonomies WHERE {$where}");
+        $count->execute($bindings);
+        $sql = "SELECT id, tenant_id, type, name, slug, parent_id, created_at, updated_at "
+            . "FROM cms_akira_taxonomies WHERE {$where} "
+            . "ORDER BY {$field} {$direction}, id {$direction} "
+            . "LIMIT {$limit} OFFSET {$offset}";
+        $stmt = cacDb()->prepare($sql);
+        $stmt->execute($bindings);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return ['ok' => true, 'rows' => $rows, 'total' => (int)$count->fetchColumn()];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Taxonomy storage unavailable'];
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_taxonomy_get_1(mixed $payload, string $capabilityId = 'akira.taxonomy.get@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $type = cacTaxonomyValidType($payload['type'] ?? null);
+    if ($type === null) {
+        return ['ok' => false, 'error' => 'type must be category or tag'];
+    }
+    $slug = cacTaxonomyValidSlug($payload['slug'] ?? null);
+    if ($slug === null) {
+        return ['ok' => false, 'error' => 'A canonical slug is required'];
+    }
+    try {
+        $stmt = cacDb()->prepare(
+            "SELECT id, tenant_id, type, name, slug, parent_id, created_at, updated_at
+             FROM cms_akira_taxonomies
+             WHERE tenant_id = :tenant_id AND type = :type AND slug = :slug
+             LIMIT 1"
+        );
+        $stmt->execute([':tenant_id' => cacTaxonomyTenantId(), ':type' => $type, ':slug' => $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row)
+            ? ['ok' => true, 'data' => $row]
+            : ['ok' => false, 'error' => 'Taxonomy term not found'];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Taxonomy storage unavailable'];
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_taxonomy_create_1(mixed $payload, string $capabilityId = 'akira.taxonomy.create@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacTaxonomyMutationException('payload must be an object.');
+    }
+    return cacTaxonomyMutate('create', $payload);
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_taxonomy_update_1(mixed $payload, string $capabilityId = 'akira.taxonomy.update@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacTaxonomyMutationException('payload must be an object.');
+    }
+    return cacTaxonomyMutate('update', $payload);
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_taxonomy_delete_1(mixed $payload, string $capabilityId = 'akira.taxonomy.delete@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacTaxonomyMutationException('payload must be an object.');
+    }
+    return cacTaxonomyMutate('delete', $payload);
 }

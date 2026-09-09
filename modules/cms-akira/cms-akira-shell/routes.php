@@ -9,6 +9,7 @@ return [
         '/cms-akira-shell/posts' => 'cms-akira-shell:akiraShellPostList',
         '/cms-akira-shell/posts/new' => 'cms-akira-shell:akiraShellPostCreateForm',
         '/cms-akira-shell/posts/{slug}/edit' => 'cms-akira-shell:akiraShellPostEditForm',
+        '/cms-akira-shell/categories' => 'cms-akira-shell:akiraShellCategoryList',
         '/cms-akira-shell/compositions' => 'cms-akira-shell:akiraShellCompositions',
         '/cms-akira-shell/compositions/{key}/edit' => 'cms-akira-shell:akiraShellCompositionEdit',
         '/cms-akira-shell/health' => 'cms-akira-shell:akiraShellModuleHealth',
@@ -19,5 +20,8 @@ return [
         '/cms-akira-shell/posts/{slug}' => 'cms-akira-shell:akiraShellPostUpdate',
         '/cms-akira-shell/posts/{slug}/workflow' => 'cms-akira-shell:akiraShellPostWorkflowTransition',
         '/cms-akira-shell/posts/{slug}/delete' => 'cms-akira-shell:akiraShellPostDelete',
+        '/cms-akira-shell/categories' => 'cms-akira-shell:akiraShellCategoryCreate',
+        '/cms-akira-shell/categories/{id}' => 'cms-akira-shell:akiraShellCategoryUpdate',
+        '/cms-akira-shell/categories/{id}/delete' => 'cms-akira-shell:akiraShellCategoryDelete',
     ],
 ];
