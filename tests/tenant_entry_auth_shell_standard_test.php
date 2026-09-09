@@ -42,6 +42,8 @@ $check('tenant home does not resolve back to root', $tenantHome !== '/');
 $check('shell accepts the Kernel-authenticated admin on its tenant host', moduleIsCurrentTenantEntrySurface('cms-akira-shell'));
 $tenantRoutes = loadModuleRoutes(kernelCoreRoutes());
 $check('tenant public home route is dispatchable for every visitor', ($tenantRoutes['GET']['/'] ?? null) === 'cms-akira-shell:akiraPublicHome');
+$check('entry surface declares its public root', tenantEntryModuleDeclaresPublicRoot('cms-akira-shell'));
+$check('non-public entry surface does not declare a public root', !tenantEntryModuleDeclaresPublicRoot('gui-settings'));
 $check('tenant shell dashboard route remains dispatchable', ($tenantRoutes['GET']['/cms-akira-shell'] ?? null) === 'cms-akira-shell:akiraShellDashboard');
 $shellPage = akiraShellPage('CMS Akira Dashboard', '');
 $check('tenant shell renders its administration nav', str_contains($shellPage, '/cms-akira-shell/posts') && str_contains($shellPage, '/cms-akira-shell/compositions') && str_contains($shellPage, '/cms-akira-shell/health'));
