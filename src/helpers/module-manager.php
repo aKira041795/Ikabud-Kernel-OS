@@ -1700,6 +1700,37 @@ function tenantEntryModuleDelegateId(string $entryModuleId): string
 }
 
 /**
+ * Whether the resolved tenant entry surface declares a GET route for the public root.
+ */
+function tenantEntryModuleDeclaresPublicRoot(string $entryModuleId): bool
+{
+    $delegateId = tenantEntryModuleDelegateId($entryModuleId);
+    $modules = discoverModules();
+    $module = $modules[$delegateId] ?? null;
+    if (!is_array($module) || empty($module['_enabled'])) {
+        return false;
+    }
+
+    $routesDeclaration = $module['routes'] ?? true;
+    if ($routesDeclaration === false || (is_array($routesDeclaration) && $routesDeclaration === [])) {
+        return false;
+    }
+
+    $routesRelativePath = is_string($routesDeclaration)
+        ? ltrim($routesDeclaration, '/')
+        : 'routes.php';
+    $routesFile = rtrim((string)($module['_path'] ?? ''), '/') . '/' . $routesRelativePath;
+    if (!is_file($routesFile)) {
+        return false;
+    }
+
+    $routes = require $routesFile;
+    return is_array($routes)
+        && is_array($routes['GET'] ?? null)
+        && array_key_exists('/', $routes['GET']);
+}
+
+/**
  * Whether a module is the routed application surface for the current tenant host.
  */
 function moduleIsCurrentTenantEntrySurface(string $moduleId): bool

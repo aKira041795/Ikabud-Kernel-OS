@@ -1066,6 +1066,21 @@ function write_log(string $message, string $level = 'error', array $context = []
                 return $context;
             }
 
+            $requestedPath = parse_url((string)($_SERVER['REQUEST_URI'] ?? $path), PHP_URL_PATH);
+            $isTenantRootRequest = $requestedPath === '/';
+            $entryModuleId = $isTenantRootRequest ? kernelCurrentTenantEntryModuleId() : null;
+            $entryHasPublicRoot = $entryModuleId !== null
+                && function_exists('tenantEntryModuleDeclaresPublicRoot')
+                && tenantEntryModuleDeclaresPublicRoot($entryModuleId);
+
+            // The tenant router normally rewrites '/' to the entry shell before
+            // this hook. Restore '/' when that entry surface explicitly owns a
+            // public root, for anonymous and authenticated visitors alike.
+            if ($isTenantRootRequest && $entryHasPublicRoot) {
+                $context['uri'] = '/';
+                return $context;
+            }
+
             if ($path === '/' && !is_array($user)) {
                 return kernelRequestDispatchRedirect($context, '/login');
             }
