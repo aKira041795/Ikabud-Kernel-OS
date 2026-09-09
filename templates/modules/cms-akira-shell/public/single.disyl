@@ -1,0 +1,11 @@
+{extends "modules/cms-akira-shell/public/layout.disyl"}
+{block head}<meta property="og:type" content="article">{/block}
+{block content}
+<article class="mx-auto max-w-4xl px-5 py-16">
+    <a class="text-sm font-bold text-violet-700" href="/posts">← All posts</a>
+    <header class="mt-10 text-center"><p class="text-xs font-bold uppercase tracking-[.2em] text-violet-600">{post.metadata}</p><h1 class="mt-4 text-4xl font-black leading-tight text-slate-950 sm:text-6xl">{post.title}</h1>{if post.subtitle}<p class="mx-auto mt-6 max-w-2xl text-xl leading-8 text-slate-500">{post.subtitle}</p>{/if}</header>
+    {if post.image}<img class="mt-12 max-h-[560px] w-full rounded-[2rem] object-cover shadow-xl" src="{post.image}" alt="{post.title}">{/if}
+    <div class="mt-12 whitespace-pre-wrap text-lg leading-9 text-slate-700">{post.body}</div>
+    {if post.categories}<div class="mt-12 flex flex-wrap gap-2 border-t border-stone-200 pt-8">{foreach post.categories as category}<span class="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">{category.name}</span>{/foreach}</div>{/if}
+</article>
+{/block}

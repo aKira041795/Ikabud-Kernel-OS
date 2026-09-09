@@ -92,13 +92,13 @@ try {
     $list = app()->entityViews()->resolve('post', 'list', ['limit' => 50, 'filters' => ['status' => 'draft']]);
     $check($list['error'] === null && count($list['rows']) === 1, 'EntityViewResolver list is tenant-scoped and published-only', json_encode($list));
     $listDto = $list['rows'][0] ?? [];
-    $check(array_keys($listDto) === ['title', 'subtitle', 'image', 'metadata', 'actions', 'url'], 'list bridge returns the exact fresh DTO');
+    $check(array_keys($listDto) === ['title', 'subtitle', 'image', 'metadata', 'categories', 'actions', 'url'], 'list bridge returns the exact fresh DTO');
     $check($listDto['url'] === '/posts/safe-post' && $listDto['image'] === '', 'slug URL is canonical and unsafe image scheme is rejected');
     $check(!array_intersect(['id', 'tenant_id', 'slug', 'status', 'content', 'updated_at'], array_keys($listDto)), 'list DTO drops transport/internal fields');
 
     $detail = app()->entityViews()->resolveDetail('post', 'safe-post', 'detail');
     $detailDto = $detail['entity'] ?? [];
-    $check($detail['error'] === null && array_keys($detailDto) === ['title', 'subtitle', 'image', 'body', 'metadata', 'actions', 'url'], 'detail bridge returns the exact fresh DTO');
+    $check($detail['error'] === null && array_keys($detailDto) === ['title', 'subtitle', 'image', 'body', 'metadata', 'categories', 'actions', 'url'], 'detail bridge returns the exact fresh DTO');
     $check(!array_intersect(['id', 'tenant_id', 'slug', 'status', 'created_at'], array_keys($detailDto)), 'detail DTO drops transport/internal fields');
     $draft = app()->entityViews()->resolveDetail('post', 'draft-post', 'detail');
     $check($draft['entity'] === null, 'unpublished detail is not returned');

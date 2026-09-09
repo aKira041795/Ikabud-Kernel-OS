@@ -557,6 +557,18 @@ function loadModuleRoutes(array $routes): array
                     continue;
                 }
 
+                if (isset($routeOwners[$routeKey]) && $method === 'GET'
+                    && function_exists('moduleIsCurrentTenantEntrySurface')
+                    && moduleIsCurrentTenantEntrySurface((string) $moduleId)) {
+                    // A tenant entry module owns that tenant host's declared GET
+                    // surface. This is the sole intentional route override;
+                    // control-plane and non-entry modules retain existing owners.
+                    $routes[$method][$pattern] = $handler;
+                    $routeOwners[$routeKey] = $moduleId;
+                    $methodPatterns[$method][$pattern] = $moduleId;
+                    continue;
+                }
+
                 if (isset($routeOwners[$routeKey])) {
                     // Conflict detected — reject and log
                     $owner = $routeOwners[$routeKey];

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{page_title}</title>
+    {if seo_description}<meta name="description" content="{seo_description}">{/if}
+    {if canonical_url}<link rel="canonical" href="{canonical_url}">{/if}
+    <meta property="og:title" content="{seo_title}">
+    {if seo_description}<meta property="og:description" content="{seo_description}">{/if}
+    {if canonical_url}<meta property="og:url" content="{canonical_url}">{/if}
+    <meta property="og:type" content="website">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    {block head}{/block}
+</head>
+<body class="min-h-screen bg-stone-50 text-slate-800">
+    <a href="#main-content" class="sr-only focus:not-sr-only">Skip to content</a>
+    {if show_admin_bar}
+    <div class="bg-slate-950 px-5 py-2 text-right text-xs text-slate-300"><a class="font-semibold text-violet-300 hover:text-white" href="/cms-akira-shell">Open Akira administration →</a></div>
+    {/if}
+    <header class="border-b border-stone-200 bg-white/90">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+            <a href="/" class="flex items-center gap-3 font-black tracking-tight text-slate-950"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 text-white">A</span>CMS Akira</a>
+            <nav aria-label="Public navigation" class="flex gap-6 text-sm font-semibold text-slate-600"><a href="/">Home</a><a href="/posts">Posts</a></nav>
+        </div>
+    </header>
+    <main id="main-content">{block content}{/block}</main>
+    <footer class="mt-20 border-t border-stone-200 bg-white"><div class="mx-auto max-w-6xl px-5 py-8 text-sm text-slate-400">© {current_year} CMS Akira · Governed publishing on Ikabud</div></footer>
+</body>
+</html>

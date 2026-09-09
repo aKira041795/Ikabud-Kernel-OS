@@ -1,0 +1,10 @@
+{extends "modules/cms-akira-shell/public/layout.disyl"}
+{block content}
+<section class="mx-auto max-w-6xl px-5 py-16"><p class="text-sm font-bold uppercase tracking-widest text-violet-600">Archive</p><h1 class="mt-2 text-5xl font-black text-slate-950">All posts</h1><p class="mt-4 text-slate-500">{total} published stories.</p>
+{if posts | count == 0}<div class="mt-10 rounded-3xl border border-dashed border-stone-300 bg-white p-16 text-center text-slate-400">No published posts yet.</div>{/if}
+<div class="mt-10 grid gap-6 md:grid-cols-2">
+{foreach posts as post}<article class="flex gap-5 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">{if post.image}<img class="h-32 w-32 rounded-2xl object-cover" src="{post.image}" alt="{post.title}" loading="lazy">{/if}<div class="min-w-0"><p class="text-xs font-bold uppercase tracking-wider text-violet-600">{post.metadata}</p><h2 class="mt-2 text-xl font-black text-slate-950"><a href="{post.url}">{post.title}</a></h2>{if post.subtitle}<p class="mt-2 text-sm leading-6 text-slate-500">{post.subtitle}</p>{/if}<a class="mt-3 inline-block text-sm font-bold text-violet-700" href="{post.url}">Read →</a></div></article>{/foreach}
+</div>
+{if total_pages > 1}<nav aria-label="Post pagination" class="mt-10 flex items-center justify-center gap-4">{if page > 1}<a class="rounded-xl border bg-white px-4 py-2 text-sm font-semibold" href="/posts?page={previous_page}">Previous</a>{/if}<span class="text-sm text-slate-500">Page {page} of {total_pages}</span>{if page < total_pages}<a class="rounded-xl border bg-white px-4 py-2 text-sm font-semibold" href="/posts?page={next_page}">Next</a>{/if}</nav>{/if}
+</section>
+{/block}

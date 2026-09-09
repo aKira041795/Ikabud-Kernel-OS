@@ -1,0 +1,18 @@
+{extends "modules/cms-akira-shell/public/layout.disyl"}
+{block content}
+<section class="overflow-hidden bg-gradient-to-br from-slate-950 via-violet-950 to-slate-900 text-white">
+    <div class="mx-auto max-w-6xl px-5 py-20 sm:py-28"><span class="rounded-full border border-violet-300/30 bg-violet-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-violet-200">Published with Akira</span><h1 class="mt-6 max-w-3xl text-5xl font-black tracking-tight sm:text-7xl">Ideas worth making public.</h1><p class="mt-6 max-w-xl text-lg leading-8 text-slate-300">The latest stories, released through a governed editorial workflow.</p></div>
+</section>
+<section class="mx-auto max-w-6xl px-5 py-14">
+    <div class="mb-8 flex items-end justify-between"><div><p class="text-sm font-bold uppercase tracking-widest text-violet-600">Journal</p><h2 class="mt-2 text-3xl font-black text-slate-950">Latest stories</h2></div><a class="text-sm font-bold text-violet-700" href="/posts">View all →</a></div>
+    {if posts | count == 0}<div class="rounded-3xl border border-dashed border-stone-300 bg-white p-16 text-center text-slate-400">No published posts yet. Check back soon.</div>{/if}
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+    {foreach posts as post}
+        <article class="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+            {if post.image}<img class="h-52 w-full object-cover" src="{post.image}" alt="{post.title}" loading="lazy">{/if}
+            <div class="p-6"><p class="text-xs font-bold uppercase tracking-wider text-violet-600">{post.metadata}</p><h3 class="mt-3 text-xl font-black leading-snug text-slate-950"><a href="{post.url}">{post.title}</a></h3>{if post.subtitle}<p class="mt-3 text-sm leading-6 text-slate-500">{post.subtitle}</p>{/if}<a class="mt-5 inline-block text-sm font-bold text-violet-700" href="{post.url}">Read story →</a></div>
+        </article>
+    {/foreach}
+    </div>
+</section>
+{/block}

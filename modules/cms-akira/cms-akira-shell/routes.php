@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 return [
     'GET' => [
+        '/' => 'cms-akira-shell:akiraPublicHome',
+        '/posts' => 'cms-akira-shell:akiraPublicPostList',
+        '/posts/{slug}' => 'cms-akira-shell:akiraPublicPostSingle',
         '/cms-akira-shell' => 'cms-akira-shell:akiraShellDashboard',
         '/cms-akira-shell/login' => 'cms-akira-shell:akiraShellLogin',
         '/cms-akira-shell/posts' => 'cms-akira-shell:akiraShellPostList',
