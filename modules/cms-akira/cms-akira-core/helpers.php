@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/helpers/capabilities.php';
 require_once __DIR__ . '/helpers/entity-views.php';
+require_once __DIR__ . '/helpers/governance.php';
 
 /**
  * Activation-time, idempotent seed for the protocol-v2 mutation policy.
@@ -225,6 +226,26 @@ function cacSeedPostRevisionMutationPolicies(): void
 }
 
 cacSeedPostRevisionMutationPolicies();
+
+/** Seed the P3-1 governance writes; policy rows remain their sole role authority. */
+function cacSeedGovernancePolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    $rows = [];
+    foreach (['akira.policy.set_roles@1', 'akira.user.update_role@1', 'akira.user.set_active@1'] as $capabilityId) {
+        $rows[] = [
+            'policy_version' => 1, 'capability_id' => $capabilityId, 'capability_version' => '1',
+            'provider' => 'cms-akira-core', 'caller_module' => 'cms-akira-shell,cms-akira-core',
+            'allowed_roles' => 'admin,administrator,superadmin', 'provider_activation_required' => true,
+            'requires_protocol' => 'v2', 'is_active' => true,
+        ];
+    }
+    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy($rows);
+}
+
+cacSeedGovernancePolicies();
 
 // ── Scoped Context Helpers ───────────────────────────────────────
 

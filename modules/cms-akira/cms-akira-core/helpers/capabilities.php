@@ -13,6 +13,11 @@ declare(strict_types=1);
 function cms_akira_core_capability_handlers(): array
 {
     return [
+        'akira.policy.list@1' => 'cac_cap_akira_policy_list_1',
+        'akira.policy.set_roles@1' => 'cac_cap_akira_policy_set_roles_1',
+        'akira.user.list@1' => 'cac_cap_akira_user_list_1',
+        'akira.user.update_role@1' => 'cac_cap_akira_user_update_role_1',
+        'akira.user.set_active@1' => 'cac_cap_akira_user_set_active_1',
         'akira.post.get@1' => 'cac_cap_akira_post_get_1',
         'akira.post.list@1' => 'cac_cap_akira_post_list_1',
         'akira.post.admin.get@1' => 'cac_cap_akira_post_admin_get_1',
