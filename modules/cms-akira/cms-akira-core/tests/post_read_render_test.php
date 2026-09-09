@@ -47,8 +47,8 @@ try {
     echo "=== CMS Akira P1 canonical Post path ===\n";
     $manifest = kernelReadJsonFile(dirname(__DIR__) . '/module.json');
     $ids = array_column($manifest['capabilities']['exposes'], 'id');
-    $readIds = ['akira.post.get@1', 'akira.post.list@1', 'entity.list.post@1', 'entity.get.post@1'];
-    $check(array_values(array_intersect($ids, $readIds)) === $readIds, 'P1 four versioned read/bridge capabilities remain exposed');
+    $readIds = ['akira.post.get@1', 'akira.post.list@1', 'akira.post.admin.get@1', 'akira.post.admin.list@1', 'entity.list.post@1', 'entity.get.post@1'];
+    $check(array_values(array_intersect($ids, $readIds)) === $readIds, 'public and governed administration read surfaces are exposed separately');
     $dependencies = $manifest['capabilities']['depends'] ?? [];
     $check(!isset($manifest['depends']) && array_filter($dependencies, static fn (string $id): bool => !str_starts_with($id, 'kernel.')) === [], 'legacy module/capability dependencies are absent');
     $check($manifest['owns_tables'] === ['cms_akira_posts'] && $manifest['reads_tables'] === ['cms_akira_posts'], 'Post table ownership and read contract are explicit');
@@ -87,7 +87,31 @@ try {
         'limit' => 500,
         'offset' => -20,
     ], ['caller' => ['module' => 'cms-akira-core'], 'mode' => 'first']);
-    $check(count($spoofed['rows'] ?? []) === 1 && ($spoofed['rows'][0]['slug'] ?? '') === 'safe-post', 'domain list ignores tenant/status/filter spoofing and bounds invalid query controls');
+    $check(count($spoofed['rows'] ?? []) === 1 && ($spoofed['rows'][0]['slug'] ?? '') === 'safe-post', 'public domain list ignores tenant/status/filter spoofing and bounds invalid query controls');
+    $publicEscalation = app()->cap()->call('akira.post.list@1', ['include_unpublished' => true], [
+        'caller' => ['module' => 'cms-akira-shell', 'user' => ['id' => 1, 'role' => 'admin']], 'mode' => 'first',
+    ]);
+    $check(count($publicEscalation['rows'] ?? []) === 1, 'even an administrator cannot make the public read return drafts');
+    $anonymousDenied = false;
+    try {
+        app()->cap()->call('akira.post.admin.list@1', ['include_unpublished' => true], [
+            'caller' => ['module' => 'cms-akira-shell', 'user' => null], 'mode' => 'first',
+        ]);
+    } catch (\Ikabud\Kernel\Capabilities\CapabilityCallException $e) {
+        $anonymousDenied = str_contains($e->getMessage(), 'authorization denied');
+    }
+    $check($anonymousDenied, 'anonymous administration read is denied by CapabilityBus');
+    $adminList = app()->cap()->call('akira.post.admin.list@1', ['include_unpublished' => true], [
+        'caller' => ['module' => 'cms-akira-shell', 'user' => ['id' => 2, 'role' => 'author']], 'mode' => 'first',
+    ]);
+    $check(count($adminList['rows'] ?? []) === 2, 'allowed editorial role receives drafts through governed administration read');
+    $policy = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
+    $routes = require dirname(__DIR__) . '/routes.php';
+    $check(($routes['GET']['/api/v1/cms-akira/editorial/posts'] ?? '') === 'cms-akira-core:apiCmsAkiraPostAdminList', 'HTTP administration list delegates to the governed read capability');
+    $check($policy->hasPolicyFor('akira.post.admin.get@1', '1', 'cms-akira-core')
+        && $policy->requiresProtocol('akira.post.admin.list@1', '1', 'cms-akira-core') === 'v1'
+        && !$policy->hasPolicyFor('akira.post.get@1', '1', 'cms-akira-core')
+        && !$policy->hasPolicyFor('entity.list.post@1', '1', 'cms-akira-core'), 'only administration reads have role policy rows and reads remain protocol v1');
 
     $list = app()->entityViews()->resolve('post', 'list', ['limit' => 50, 'filters' => ['status' => 'draft']]);
     $check($list['error'] === null && count($list['rows']) === 1, 'EntityViewResolver list is tenant-scoped and published-only', json_encode($list));

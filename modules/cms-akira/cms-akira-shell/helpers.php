@@ -287,10 +287,34 @@ function akiraShellPagination(int $page, int $limit, int $total, string $search,
         . ($page < $pages ? '<a class="rounded-xl border bg-white px-4 py-2" href="?' . akiraShellEscape($query($page + 1)) . '">Next</a>' : '') . '</div></nav>';
 }
 
+/** @param array<string,mixed> $payload
+ * @return array<string,mixed>
+ */
+function akiraShellAdminPostList(array $payload): array
+{
+    try {
+        $result = akiraShellCall('akira.post.admin.list@1', $payload);
+        return is_array($result) ? $result : ['ok' => false, 'rows' => [], 'total' => 0];
+    } catch (\Ikabud\Kernel\Capabilities\CapabilityCallException) {
+        return ['ok' => false, 'rows' => [], 'total' => 0, 'authorization_denied' => true];
+    }
+}
+
+/** @param array<string,mixed> $result */
+function akiraShellAdminReadDenied(array $result): bool
+{
+    if (($result['authorization_denied'] ?? false) !== true) {
+        return false;
+    }
+    http_response_code(403);
+    echo akiraShellPage('Access denied', '<p>The active tenant policy denies this administration read.</p>');
+    return true;
+}
+
 /** @return array<string,mixed>|null */
 function akiraShellFetchPost(string $slug): ?array
 {
-    $result = akiraShellCall('akira.post.get@1', ['slug' => $slug, 'include_unpublished' => true]);
+    $result = akiraShellCall('akira.post.admin.get@1', ['slug' => $slug, 'include_unpublished' => true]);
     return is_array($result) && ($result['ok'] ?? false) === true && is_array($result['data'] ?? null)
         ? $result['data'] : null;
 }

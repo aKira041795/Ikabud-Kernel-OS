@@ -108,12 +108,9 @@ try {
     $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
     $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
-    // P1 increment 3 added the akira.post.set_taxonomies@1 assignment policy and
-    // P1 increment 4 adds the akira.post.revision.revert@1 revert policy to the
-    // akira.post.* family, so the governed post policy set is now seven rows
-    // (five lifecycle + one assignment + one revision revert). The lifecycle
-    // rows' role/caller expectations below are unchanged.
-    $check(count($policyRows) === 7
+    // The post family has seven governed writes plus R5's two protocol-v1,
+    // role-governed administration reads. Public reads have no policy rows.
+    $check(count($policyRows) === 9
         && ($policyRoles['akira.post.create@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.post.update@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.post.delete@1'] ?? '') === 'admin'

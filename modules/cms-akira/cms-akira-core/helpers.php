@@ -53,6 +53,35 @@ function cacSeedPostMutationPolicies(): void
 cacSeedPostMutationPolicies();
 
 /**
+ * Govern only the draft-capable administration read surface. Public Post and
+ * entity-view reads intentionally have no policy rows and remain anonymous,
+ * tenant-scoped, published-only projections.
+ */
+function cacSeedPostAdminReadPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    $rows = [];
+    foreach (['akira.post.admin.get@1', 'akira.post.admin.list@1'] as $capabilityId) {
+        $rows[] = [
+            'policy_version' => 1,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-core',
+            'caller_module' => 'cms-akira-core,cms-akira-shell',
+            'allowed_roles' => 'contributor,author,editor,admin,administrator,superadmin',
+            'provider_activation_required' => true,
+            'requires_protocol' => 'v1',
+            'is_active' => true,
+        ];
+    }
+    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy($rows);
+}
+
+cacSeedPostAdminReadPolicies();
+
+/**
  * Activation-time, idempotent seed for the P1 governed taxonomy mutation
  * policy. Mirrors cacSeedPostMutationPolicies(): the CapabilityAuthorizationRegistry
  * is the legal kernel-owned channel and the rows are created per tenant DB.

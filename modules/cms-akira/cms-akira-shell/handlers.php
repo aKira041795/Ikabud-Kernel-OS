@@ -137,14 +137,17 @@ function akiraShellDashboard(array $params = []): void
     if (!akiraShellAuthorize()) {
         return;
     }
-    $resolved = app()->entityViews()->resolve('post', 'list', [
+    $resolved = akiraShellAdminPostList([
         'filters' => ['include_unpublished' => true], 'limit' => 5, 'offset' => 0,
         'sort_field' => 'created_at', 'sort_direction' => 'desc',
     ]);
-    $publishedResult = app()->entityViews()->resolve('post', 'list', [
+    if (akiraShellAdminReadDenied($resolved)) {
+        return;
+    }
+    $publishedResult = akiraShellAdminPostList([
         'filters' => ['include_unpublished' => true, 'status' => 'published'], 'limit' => 1,
     ]);
-    $draftResult = app()->entityViews()->resolve('post', 'list', [
+    $draftResult = akiraShellAdminPostList([
         'filters' => ['include_unpublished' => true, 'status' => 'draft'], 'limit' => 1,
     ]);
     $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
@@ -175,11 +178,14 @@ function akiraShellPostList(array $params = []): void
     $search = trim((string)($query['q'] ?? ''));
     $status = in_array(($query['status'] ?? ''), ['draft', 'published'], true) ? (string)$query['status'] : '';
     $category = max(0, (int)($query['category'] ?? 0));
-    $resolved = app()->entityViews()->resolve('post', 'list', [
+    $resolved = akiraShellAdminPostList([
         'filters' => ['include_unpublished' => true, 'search' => $search, 'status' => $status, 'taxonomy_id' => $category > 0 ? $category : null],
         'limit' => $limit, 'offset' => ($page - 1) * $limit,
         'sort_field' => 'created_at', 'sort_direction' => 'desc',
     ]);
+    if (akiraShellAdminReadDenied($resolved)) {
+        return;
+    }
     $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
     $total = (int)($resolved['total'] ?? count($rows));
     $categoryOptions = '';
@@ -637,7 +643,7 @@ function akiraShellModuleHealth(array $params = []): void
     if (!akiraShellAuthorizeAdmin()) {
         return;
     }
-    $required = ['akira.post.get@1', 'akira.post.list@1', 'akira.post.create@1', 'akira.post.update@1', 'akira.post.delete@1', 'akira.workflow.evaluate@1', 'akira.workflow.transition@1', 'entity.list.post@1', 'entity.get.post@1'];
+    $required = ['akira.post.admin.get@1', 'akira.post.admin.list@1', 'akira.post.create@1', 'akira.post.update@1', 'akira.post.delete@1', 'akira.workflow.evaluate@1', 'akira.workflow.transition@1', 'entity.list.post@1', 'entity.get.post@1'];
     $items = '';
     $ok = true;
     foreach ($required as $capability) {
