@@ -23,6 +23,23 @@ supplied tenant id.
   `entity.list.post`/`entity.detail.post` through `ArkRendererResolver`,
   including its traversal protection). Unvalidated slugs fail closed.
 
+## Theme Studio customizer (P4)
+
+The active theme's declarative provider is resolved as
+`DeclarativeThemeCustomizerProvider($slug, $themePath)` and validated by the
+Kernel `ThemeCustomizerOrchestrator`. `akira.theme.customizer.schema@1` projects
+that definition for the admin form and `akira.theme.customizer.values@1` reads
+the current tenant values.
+
+`akira.theme.customize@1` is protocol-v2 and policy-gated for
+admin/editor/administrator/superadmin callers from `cms-akira-theme` and
+`cms-akira-shell`. Its idempotency claim, `customizer_values` module-setting
+upsert, audit record, and idempotency commit share one tenant-PDO transaction.
+After commit it invalidates `theme.active` fragments and the
+`cms-akira-shell` public page cache. Public region rendering merges the saved
+section values over the provider defaults before crossing the existing Kernel
+region-render seam.
+
 ## Capabilities
 
 - `akira.theme.resolve@1` — resolve the tenant's active Akira theme slug:

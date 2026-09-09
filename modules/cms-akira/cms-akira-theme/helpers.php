@@ -5,6 +5,7 @@ declare(strict_types=1);
 const CAT_THEME_MODULE_ID = 'cms-akira-theme';
 const CAT_THEME_FALLBACK = 'cms-akira-posts';
 const CAT_THEME_SETTING_ACTIVE = 'active_theme_slug';
+const CAT_THEME_SETTING_CUSTOMIZER = 'customizer_values';
 const CAT_THEME_INVALIDATION = 'theme.active';
 
 /** @return array<string, string> */
@@ -14,11 +15,14 @@ function cms_akira_theme_capability_handlers(): array
         'akira.theme.resolve@1' => 'cat_cap_akira_theme_resolve_1',
         'akira.theme.registry@1' => 'cat_cap_akira_theme_registry_1',
         'akira.theme.validate@1' => 'cat_cap_akira_theme_validate_1',
+        'akira.theme.customizer.schema@1' => 'cat_cap_akira_theme_customizer_schema_1',
+        'akira.theme.customizer.values@1' => 'cat_cap_akira_theme_customizer_values_1',
         'akira.theme.activate@1' => 'cat_cap_akira_theme_activate_1',
+        'akira.theme.customize@1' => 'cat_cap_akira_theme_customize_1',
     ];
 }
 
-/** Seed only the activation mutation policy; reads remain policy-free. */
+/** Seed mutation policies; customizer reads remain policy-free. */
 function catSeedThemeMutationPolicies(): void
 {
     if (!function_exists('app')) {
@@ -26,15 +30,16 @@ function catSeedThemeMutationPolicies(): void
     }
     $rows = [];
     foreach ([
-        'akira.theme.activate@1',
-    ] as $capabilityId) {
+        'akira.theme.activate@1' => ['cms-akira-theme', 'admin'],
+        'akira.theme.customize@1' => ['cms-akira-theme,cms-akira-shell', 'admin,editor,administrator,superadmin'],
+    ] as $capabilityId => [$callers, $roles]) {
         $rows[] = [
             'policy_version' => 1,
             'capability_id' => $capabilityId,
             'capability_version' => '1',
             'provider' => 'cms-akira-theme',
-            'caller_module' => null,
-            'allowed_roles' => 'admin',
+            'caller_module' => $callers,
+            'allowed_roles' => $roles,
             'provider_activation_required' => true,
             'requires_protocol' => 'v2',
             'is_active' => true,
@@ -359,6 +364,107 @@ function catThemeWriteActiveSetting(int $tenantId, string $slug): bool
     return tenantWriteModuleSetting(app()->db(), $tenantId, CAT_THEME_MODULE_ID, CAT_THEME_SETTING_ACTIVE, $slug);
 }
 
+/** @return array{theme_slug:string,values:array<string,array<string,mixed>>} */
+function catThemeCustomizerStored(): array
+{
+    $tenantId = catThemeTenantId();
+    if (!function_exists('_readTenantModuleSettingsSingle')) {
+        return ['theme_slug' => '', 'values' => []];
+    }
+    try {
+        $settings = _readTenantModuleSettingsSingle(CAT_THEME_MODULE_ID, $tenantId, app()->db());
+        $stored = $settings[CAT_THEME_SETTING_CUSTOMIZER] ?? [];
+        if (!is_array($stored)) {
+            return ['theme_slug' => '', 'values' => []];
+        }
+        return [
+            'theme_slug' => is_string($stored['theme_slug'] ?? null) ? $stored['theme_slug'] : '',
+            'values' => is_array($stored['values'] ?? null) ? $stored['values'] : [],
+        ];
+    } catch (Throwable) {
+        return ['theme_slug' => '', 'values' => []];
+    }
+}
+
+function catThemeCustomizerProvider(string $slug): \Ikabud\Kernel\Services\DeclarativeThemeCustomizerProvider
+{
+    $path = catThemeDir($slug);
+    if ($path === null) {
+        throw new CatThemeException('Theme customizer is unavailable.', 422);
+    }
+    $provider = new \Ikabud\Kernel\Services\DeclarativeThemeCustomizerProvider($slug, $path);
+    if (!\Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::validateProvider($provider, $slug, $path)) {
+        throw new CatThemeException('Theme customizer definition is invalid.', 422);
+    }
+    return $provider;
+}
+
+/** @return array<string,mixed> */
+function catThemeCustomizerSchema(string $slug): array
+{
+    $definition = catThemeCustomizerProvider($slug)->definition();
+    $sections = [];
+    foreach ($definition->sectionNames() as $sectionId) {
+        $section = $definition->section($sectionId);
+        if ($section === null) {
+            continue;
+        }
+        $controls = [];
+        foreach ($section->controls as $control) {
+            $controls[$control->id] = [
+                'label' => $control->label,
+                'type' => $control->type,
+                'default' => $control->default,
+                'options' => $control->options,
+                'constraints' => $control->constraints,
+                'description' => $control->description,
+            ];
+        }
+        $sections[$sectionId] = ['label' => $section->label, 'controls' => $controls];
+    }
+    return ['theme_slug' => $slug, 'sections' => $sections];
+}
+
+/**
+ * @param array<string,mixed> $values
+ * @return array<string,array<string,mixed>>
+ */
+function catThemeValidateCustomizerValues(string $slug, array $values): array
+{
+    $provider = catThemeCustomizerProvider($slug);
+    $definition = $provider->definition();
+    if (array_diff(array_keys($values), $definition->sectionNames()) !== []) {
+        throw new CatThemeException('Customizer values contain an unknown section.', 422);
+    }
+    $validated = [];
+    foreach ($definition->sectionNames() as $sectionId) {
+        $submitted = $values[$sectionId] ?? [];
+        if (!is_array($submitted)) {
+            throw new CatThemeException("Customizer section {$sectionId} must be an object.", 422);
+        }
+        $section = $definition->section($sectionId);
+        if ($section === null || array_diff(array_keys($submitted), array_keys($section->controls)) !== []) {
+            throw new CatThemeException("Customizer section {$sectionId} contains an unknown field.", 422);
+        }
+        foreach ($submitted as $field => $value) {
+            if (!is_scalar($value) && $value !== null) {
+                throw new CatThemeException("Customizer field {$sectionId}.{$field} must be a scalar value.", 422);
+            }
+        }
+        $result = $provider->validate(new \Ikabud\Kernel\Contracts\ThemeCustomizationSubmission(
+            $sectionId,
+            $submitted,
+            \Ikabud\Kernel\Contracts\ThemeCustomizationScope::fromString('native_' . $slug),
+        ));
+        if (!$result->valid || $result->messages !== []) {
+            $message = (string)($result->messages[0]['message'] ?? 'Invalid customizer value.');
+            throw new CatThemeException("Customizer section {$sectionId}: {$message}", 422);
+        }
+        $validated[$sectionId] = $result->correctedValues;
+    }
+    return $validated;
+}
+
 /**
  * Deterministic active-theme resolution: module setting → request context →
  * canonical fallback. Every candidate must be a valid, ARK-visible theme;
@@ -481,9 +587,6 @@ function catThemeActor(): array
     $actor = app()->user();
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CatThemeException('Authentication required.', 401);
-    }
-    if ((string) ($actor['role'] ?? '') !== 'admin') {
-        throw new CatThemeException('Administrator role required.', 403);
     }
     return $actor;
 }
@@ -638,6 +741,112 @@ function catThemeMutateActivate(array $payload): array
     }
 }
 
+/**
+ * @param array<string,mixed> $payload
+ * @return array<string,mixed>
+ */
+function catThemeMutateCustomize(array $payload): array
+{
+    $actor = catThemeActor();
+    $tenantId = catThemeTenantId();
+    if (array_key_exists('tenant_id', $payload)) {
+        throw new CatThemeException('tenant_id is supplied by kernel context.', 422);
+    }
+    $key = is_string($payload['idempotency_key'] ?? null) ? trim($payload['idempotency_key']) : '';
+    if ($key === '' || strlen($key) > 255) {
+        throw new CatThemeException('A valid idempotency_key is required.', 422);
+    }
+    $slug = catThemeSlug($payload['theme_slug'] ?? null);
+    $active = catThemeResolveActive();
+    $allowed = $slug === $active['theme_slug'] || catThemeValidate($slug)['valid'];
+    if (!$allowed) {
+        throw new CatThemeException('Theme is not active or eligible for activation.', 422);
+    }
+    if (!is_array($payload['values'] ?? null)) {
+        throw new CatThemeException('values must be an object of sections and fields.', 422);
+    }
+    $submittedValues = $payload['values'];
+    $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => ['operation' => 'theme.customize', 'theme' => ['theme_slug' => $slug, 'values' => $submittedValues]]], [
+        'caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor], 'mode' => 'first',
+    ]);
+    if (!is_string($hash)) {
+        throw new CatThemeException('Idempotency hashing unavailable.', 503);
+    }
+    $pdo = app()->db();
+    $claimed = false;
+    $publicationUncertain = false;
+    try {
+        $pdo->beginTransaction();
+        $claim = app()->cap()->call('kernel.idempotency.claim@1', ['key' => $key, 'tenant_id' => $tenantId, 'payload_hash' => $hash, 'db' => $pdo], [
+            'caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor], 'mode' => 'first',
+        ]);
+        $status = is_array($claim) ? (string)($claim['status'] ?? '') : '';
+        if ($status === 'duplicate') {
+            $pdo->rollBack();
+            return is_array($claim['outcome'] ?? null) ? $claim['outcome'] : ['ok' => true, 'replayed' => true];
+        }
+        if ($status === 'conflict') {
+            $pdo->rollBack();
+            throw new CatThemeException('Idempotency key payload conflict.', 409);
+        }
+        if ($status === 'in_progress') {
+            $pdo->rollBack();
+            throw new CatThemeException('Idempotent mutation is still processing.', 425, 2);
+        }
+        if ($status !== 'new') {
+            throw new RuntimeException('Unexpected idempotency claim result.');
+        }
+        $claimed = true;
+        // Validation is part of the same tenant-PDO transaction as the
+        // idempotency claim, setting upsert, audit, and outcome commit.
+        $values = catThemeValidateCustomizerValues($slug, $submittedValues);
+        $old = catThemeCustomizerStored();
+        $stored = ['theme_slug' => $slug, 'values' => $values];
+        if (!tenantWriteModuleSetting($pdo, $tenantId, CAT_THEME_MODULE_ID, CAT_THEME_SETTING_CUSTOMIZER, $stored)) {
+            throw new CatThemeException('Customizer setting write failed.', 503);
+        }
+        $correlationId = catThemeCorrelationId();
+        $audit = app()->cap()->call('kernel.audit.record@1', [
+            'module' => CAT_THEME_MODULE_ID, 'action' => 'akira.theme.customize', 'entity_type' => 'theme', 'entity_id' => $slug,
+            'old_data' => $old, 'new_data' => $stored + ['correlation_id' => $correlationId, 'tenant_id' => $tenantId],
+        ], ['caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor], 'mode' => 'first']);
+        if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
+            throw new RuntimeException('Durable theme customizer audit failed.');
+        }
+        $outcome = ['ok' => true, 'operation' => 'theme.customize', 'theme_slug' => $slug, 'values' => $values, 'correlation_id' => $correlationId];
+        $committed = app()->cap()->call('kernel.idempotency.commit@1', ['key' => $key, 'tenant_id' => $tenantId, 'outcome' => $outcome, 'db' => $pdo], [
+            'caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor], 'mode' => 'first',
+        ]);
+        if ($committed !== true) {
+            throw new RuntimeException('Idempotency outcome commit failed.');
+        }
+        $publicationUncertain = true;
+        $pdo->commit();
+        $publicationUncertain = false;
+        try {
+            app()->templates()->fragmentStore()->invalidate([CAT_THEME_INVALIDATION], (string)$tenantId);
+            if (function_exists('pageCacheInvalidateModule')) {
+                pageCacheInvalidateModule('cms-akira-shell');
+            }
+        } catch (Throwable) {
+        }
+        return $outcome;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($claimed && !$publicationUncertain) {
+            try {
+                app()->cap()->call('kernel.idempotency.release@1', ['key' => $key, 'tenant_id' => $tenantId, 'db' => $pdo], [
+                    'caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor], 'mode' => 'first',
+                ]);
+            } catch (Throwable) {
+            }
+        }
+        throw $error;
+    }
+}
+
 /** @return array<string, mixed> */
 function cat_cap_akira_theme_resolve_1(mixed $payload, string $capabilityId = 'akira.theme.resolve@1', string $caller = 'unknown'): array
 {
@@ -690,6 +899,40 @@ function cat_cap_akira_theme_activate_1(mixed $payload, string $capabilityId = '
     return catThemeMutateActivate($payload);
 }
 
+/** @return array<string,mixed> */
+function cat_cap_akira_theme_customizer_schema_1(mixed $payload, string $capabilityId = 'akira.theme.customizer.schema@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload) || is_array($payload) && array_key_exists('tenant_id', $payload)) {
+        return ['ok' => false, 'error' => 'tenant_id is supplied by kernel context'];
+    }
+    $resolved = catThemeResolveActive();
+    if ($resolved['ok'] !== true) {
+        return ['ok' => false, 'error' => 'Active theme unavailable'];
+    }
+    return ['ok' => true, 'data' => catThemeCustomizerSchema((string)$resolved['theme_slug'])];
+}
+
+/** @return array<string,mixed> */
+function cat_cap_akira_theme_customizer_values_1(mixed $payload, string $capabilityId = 'akira.theme.customizer.values@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload) || is_array($payload) && array_key_exists('tenant_id', $payload)) {
+        return ['ok' => false, 'error' => 'tenant_id is supplied by kernel context'];
+    }
+    $resolved = catThemeResolveActive();
+    $slug = (string)($resolved['theme_slug'] ?? '');
+    $stored = catThemeCustomizerStored();
+    return ['ok' => true, 'theme_slug' => $slug, 'values' => $stored['theme_slug'] === $slug ? $stored['values'] : []];
+}
+
+/** @return array<string,mixed> */
+function cat_cap_akira_theme_customize_1(mixed $payload, string $capabilityId = 'akira.theme.customize@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CatThemeException('payload must be an object.');
+    }
+    return catThemeMutateCustomize($payload);
+}
+
 // ── Minimal shell-guarded admin/JSON surface helpers ─────────────────────
 
 function catThemeEscape(mixed $value): string
@@ -704,18 +947,19 @@ function catThemeAdmin(): ?array
     if (!is_array($user)) {
         return null;
     }
-    if (($user['role'] ?? '') !== 'admin') {
+    if (!in_array((string)($user['role'] ?? ''), ['admin', 'editor', 'administrator', 'superadmin'], true)) {
         return [];
     }
-    return app()->requireAnyRole('admin');
+    return $user;
 }
 
 /** @param array<string, mixed> $data */
 function catThemePage(string $title, string $body, array $data = []): string
 {
     return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        . '<title>' . catThemeEscape($title) . '</title></head><body>'
-        . '<nav aria-label="Akira theme administration"><a href="/cms-akira-shell">Akira Shell</a> '
+        . '<title>' . catThemeEscape($title) . '</title><script src="https://cdn.tailwindcss.com"></script><script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>'
+        . '<script>tailwind.config={theme:{extend:{colors:{akira:{500:"#8b5cf6",600:"#7c3aed",700:"#6d28d9"}}}}}</script></head><body class="bg-slate-50 p-6 text-slate-800">'
+        . '<nav class="mb-6 flex gap-4" aria-label="Akira theme administration"><a href="/cms-akira-shell">Akira Shell</a> '
         . '<a href="/cms-akira-theme">Themes</a> <a href="/auth/logout">Sign out</a></nav>'
         . '<main><h1>' . catThemeEscape($title) . '</h1>' . $body . '</main></body></html>';
 }
