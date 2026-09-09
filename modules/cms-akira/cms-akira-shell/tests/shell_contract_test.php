@@ -62,6 +62,13 @@ $check(str_contains($handlers, "akiraShellRedirect('/login')"), 'anonymous login
 $check(str_contains($handlers, "akiraShellRedirect('/cms-akira-shell')"), 'authenticated login redirects to dashboard');
 $check(str_contains($handlers, "entityViews()->resolve('post', 'list'"), 'public, list and dashboard consume Entity Views');
 $check(str_contains($handlers, "resolveDetail('post', \$slug, 'detail')") && !str_contains(explode('function akiraShellAuthorize', $handlers, 2)[0] ?? '', "'include_unpublished' => true"), 'public detail uses the published-only entity projection');
+$check(
+    str_contains($helpers, "akira.theme.resolve@1")
+    && str_contains($helpers, 'ThemeCustomizerOrchestrator::renderProviderRegion')
+    && str_contains($helpers, 'arkRenderers()->render')
+    && str_contains($handlers, '$themed ?? app()->render'),
+    'public pages use active-theme ARK entity and Kernel region seams with P5-1 fallback'
+);
 foreach (['create', 'update', 'delete'] as $operation) {
     $check(str_contains($handlers . $helpers, "akira.post.{$operation}@1"), "{$operation} uses canonical capability");
 }

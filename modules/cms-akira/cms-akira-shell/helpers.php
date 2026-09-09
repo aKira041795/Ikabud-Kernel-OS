@@ -30,6 +30,90 @@ function akiraPublicContext(string $title, string $path, string $description = '
     ];
 }
 
+/**
+ * Render a public page through the tenant's validated active ARK package.
+ * Returns null when resolution, validation, entity rendering, a declared
+ * region, or the public layout is unavailable so the caller can use P5-1.
+ *
+ * @param array<string,mixed> $context
+ */
+function akiraPublicThemeRender(string $viewId, array $context): ?string
+{
+    try {
+        $resolved = akiraShellCall('akira.theme.resolve@1');
+        $slug = is_array($resolved) && ($resolved['ok'] ?? false) === true
+            ? trim((string)($resolved['theme_slug'] ?? '')) : '';
+        if ($slug === '' || preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/D', $slug) !== 1) {
+            return null;
+        }
+        $themesRoot = realpath(defined('CMS_THEMES_PATH') ? (string)CMS_THEMES_PATH : dirname(__DIR__, 3) . '/storage/cms-themes');
+        $themePath = is_string($themesRoot) ? realpath($themesRoot . '/' . $slug) : false;
+        if ($themePath === false || !str_starts_with($themePath . DIRECTORY_SEPARATOR, $themesRoot . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+        $manifestRaw = @file_get_contents($themePath . '/theme.manifest.json');
+        $manifest = is_string($manifestRaw) ? json_decode($manifestRaw, true) : null;
+        $layout = is_array($manifest) ? trim((string)($manifest['shell'] ?? '')) : '';
+        if ($layout === '' || str_contains($layout, '..')) {
+            return null;
+        }
+        $layoutPath = realpath($themePath . '/' . ltrim($layout, '/'));
+        if ($layoutPath === false || !str_starts_with($layoutPath, $themePath . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        $rendererContext = $viewId === 'entity.list.post'
+            ? ['posts' => $context['posts'] ?? []]
+            : ['post' => $context['post'] ?? []];
+        $pageHtml = app()->arkRenderers()->render($viewId, $rendererContext, $slug);
+        if (!is_string($pageHtml)) {
+            return null;
+        }
+
+        $provider = new \Ikabud\Kernel\Services\DeclarativeThemeCustomizerProvider($slug, $themePath);
+        if (!\Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::validateProvider($provider, $slug, $themePath)) {
+            return null;
+        }
+        $definition = $provider->definition();
+        $settings = [];
+        foreach ($definition->sectionNames() as $section) {
+            $settings[$section] = $definition->section($section)?->defaults ?? [];
+        }
+        $scope = \Ikabud\Kernel\Contracts\ThemeCustomizationScope::fromString('native_' . $slug);
+        $themeContext = new \Ikabud\Kernel\Contracts\ThemeRenderContext(
+            theme: $slug,
+            scope: $scope,
+            settings: $settings,
+            tokens: $definition->tokens,
+            site: ['title' => 'CMS Akira', 'tagline' => 'Governed publishing on Ikabud', 'url' => '/'],
+            navigation: ['primary' => [
+                ['href' => '/', 'label' => 'Home'],
+                ['href' => '/posts', 'label' => 'Posts'],
+            ]],
+            entityContext: [
+                'kind' => $viewId,
+                'origin' => 'cms-akira-shell',
+                'authenticated' => (bool)($context['show_admin_bar'] ?? false),
+            ],
+            slotContributions: [],
+        );
+        $header = \Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::renderProviderRegion($provider, 'header', $themeContext, $themePath);
+        $footer = \Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::renderProviderRegion($provider, 'footer', $themeContext, $themePath);
+        if ($header['html'] === '' || $footer['html'] === '') {
+            return null;
+        }
+
+        return app()->render($layoutPath, $context + [
+            'theme_slug' => $slug,
+            'header_region' => $header['html'],
+            'page_region' => $pageHtml,
+            'footer_region' => $footer['html'],
+        ]);
+    } catch (Throwable) {
+        return null;
+    }
+}
+
 /** @param array<string,mixed> $overrides
  * @return array<string,mixed>
  */

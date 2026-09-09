@@ -1,0 +1,6 @@
+<header data-akira-region="header" style="background:#fff;border-bottom:4px solid #f59e0b">
+  <div class="akira-ark-wrap" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1.1rem;padding-bottom:1.1rem">
+    <a href="/" style="font-size:1.35rem;font-weight:800;text-decoration:none">{section_settings.brand}</a>
+    <nav aria-label="Public navigation" style="display:flex;gap:1.2rem;font-family:system-ui,sans-serif;font-weight:700"><a href="/">Home</a><a href="/posts">Posts</a>{if entity_context.authenticated}<a href="/cms-akira-shell">Admin</a>{/if}</nav>
+  </div>
+</header>

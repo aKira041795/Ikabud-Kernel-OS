@@ -611,6 +611,9 @@ function catThemeMutateActivate(array $payload): array
         // kernel only auto-applies entity.* cache effects, so apply it here.
         try {
             app()->templates()->fragmentStore()->invalidate([CAT_THEME_INVALIDATION], (string) $tenantId);
+            if (function_exists('pageCacheInvalidateModule')) {
+                pageCacheInvalidateModule('cms-akira-shell');
+            }
         } catch (Throwable) {
             // Fail-open: cache infrastructure must not break a committed write.
         }

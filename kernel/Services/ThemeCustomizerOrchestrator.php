@@ -333,6 +333,28 @@ class ThemeCustomizerOrchestrator
     }
 
     /**
+     * Render a region for an explicitly resolved declarative provider.
+     *
+     * This is the deterministic seam for callers that own theme activation
+     * outside the legacy CMS active-theme setting (for example CMS Akira).
+     * The caller supplies an already validated provider, immutable context,
+     * and confined theme path; the Kernel remains the sole region renderer.
+     *
+     * @return array{html: string, meta: array<string, string>}
+     */
+    public static function renderProviderRegion(
+        ThemeCustomizerProvider $provider,
+        string $region,
+        ThemeRenderContext $context,
+        string $themePath,
+    ): array {
+        $rendered = ThemeRegionRenderer::render($provider, $region, $context, $themePath);
+        return $rendered !== null
+            ? ['html' => $rendered, 'meta' => ['source' => 'theme_region_template']]
+            : ['html' => '', 'meta' => ['fallback' => 'no_template']];
+    }
+
+    /**
      * Render a region using the active theme's provider.
      *
      * This is the primary render dispatch method.
