@@ -1,0 +1,8 @@
+{# Context: post #}
+<article class="akira-ark-article" data-ark-renderer="post-detail">
+  <a href="/posts">← All posts</a>
+  <header><p class="akira-ark-kicker">{post.metadata | esc_html}</p><h1>{post.title | esc_html}</h1>{if post.subtitle}<p>{post.subtitle | esc_html}</p>{/if}</header>
+  {if post.image}<img src="{post.image | esc_url | esc_attr}" alt="{post.title | esc_attr}">{/if}
+  <div class="akira-ark-body">{post.body | esc_html}</div>
+  {if post.categories}<p>{foreach post.categories as category}<span>{category.name | esc_html}</span> {/foreach}</p>{/if}
+</article>

@@ -44,10 +44,6 @@ class ThemeRegionRenderer
             return null;
         }
 
-        // Build a relative path for the CMS template engine
-        // Templates are rendered from the theme's perspective
-        $relativePath = '_cms_active_theme/' . ltrim($templatePath, '/');
-
         // Template variables available in DiSyL region templates
         $templateVars = [
             'region' => $region,
@@ -63,10 +59,12 @@ class ThemeRegionRenderer
             'scope_type' => $context->scope->scopeType,
         ];
 
-        // Try to render via the CMS template engine
-        if (function_exists('cmsRender')) {
+        // Render the already-confined absolute template path. This avoids
+        // re-resolving through a global CMS active-theme alias and therefore
+        // preserves the caller's tenant-scoped theme decision.
+        if (function_exists('app')) {
             try {
-                return cmsRender($relativePath, $templateVars);
+                return app()->render($fullPath, $templateVars);
             } catch (\Throwable $e) {
                 return null;
             }

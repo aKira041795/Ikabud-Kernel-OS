@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "policy": {
+    "raw_output": {
+      "allowed_keys": ["header_region", "page_region", "footer_region"],
+      "requires_capability": ["cms.content.render_raw@1"]
+    },
+    "allowed_context_sources": ["kernel", "entity_view", "theme"],
+    "blocked_patterns": ["direct database queries", "php function invocation from templates", "session access", "cookie writes", "filesystem access"],
+    "allowed_js_bridges": []
+  }
+}

@@ -179,20 +179,28 @@ try {
     $slugs = array_column($listing['themes'] ?? [], 'slug');
     $check(
         ($listing['ok'] ?? false) === true
-        && $slugs === ['ark-renderer-fixture', 'cms-akira-posts']
-        && ($listing['total'] ?? -1) === 2,
-        'registry lists ARK-visible themes in deterministic slug order'
+        && $slugs === ['akira-ark', 'ark-renderer-fixture', 'cms-akira-posts']
+        && ($listing['total'] ?? -1) === 3,
+        'registry lists the shipped Akira ARK theme and fixtures in deterministic slug order'
     );
     $check(
         array_keys(($listing['themes'][0] ?? [])) === ['slug', 'name', 'label', 'version', 'description', 'supported_surfaces', 'renderers', 'validated', 'active'],
         'registry projection is an explicit field allowlist'
     );
     $check(
-        array_column($listing['themes'] ?? [], 'validated') === [true, true],
+        array_column($listing['themes'] ?? [], 'validated') === [true, true, true],
         'registry validates every listed theme'
     );
 
     // ── Validate: manifest/registry/lint/traversal/projected/fallback ──
+    $akiraArk = $call('akira.theme.validate@1', ['theme_slug' => 'akira-ark']);
+    $check(
+        ($akiraArk['ok'] ?? false) === true
+        && ($akiraArk['data']['valid'] ?? false) === true
+        && ($akiraArk['data']['errors'] ?? null) === [],
+        'validate accepts the shipped Akira ARK declarative package'
+    );
+
     $valid = $call('akira.theme.validate@1', ['theme_slug' => 'cms-akira-posts']);
     $check(
         ($valid['ok'] ?? false) === true && ($valid['data']['valid'] ?? false) === true && ($valid['data']['errors'] ?? null) === [],

@@ -41,7 +41,8 @@ function akiraPublicRenderPostList(bool $home): void
         'next_page' => $page + 1,
         'archive_url' => '/posts',
     ];
-    echo app()->render(
+    $themed = akiraPublicThemeRender('entity.list.post', $context);
+    echo $themed ?? app()->render(
         $home ? 'modules/cms-akira-shell/public/home.disyl' : 'modules/cms-akira-shell/public/posts.disyl',
         $context
     );
@@ -66,7 +67,8 @@ function akiraPublicPostSingle(array $params = []): void
     $title = trim((string) ($post['title'] ?? 'Post'));
     $context = akiraPublicContext($title, '/posts/' . rawurlencode($slug), (string) ($post['subtitle'] ?? ''));
     $context['post'] = $post;
-    echo app()->render('modules/cms-akira-shell/public/single.disyl', $context);
+    $themed = akiraPublicThemeRender('entity.detail.post', $context);
+    echo $themed ?? app()->render('modules/cms-akira-shell/public/single.disyl', $context);
 }
 
 function akiraPublicNotFound(): void

@@ -75,6 +75,19 @@ helpers:
    plus the DiSyL v4 parser);
 6. confirms the canonical `cms-akira-posts` fallback remains available.
 
+## Shipped Akira ARK package
+
+`storage/cms-themes/akira-ark/` is committed (the repository already tracks
+`storage/cms-themes`) and is therefore available to CI and deployments without
+a runtime copy step. It contains the manifest, tokens, customizer/slot metadata,
+safety and renderer contracts, public shell, region templates, and post entity
+views. The Akira public shell resolves its slug through `akira.theme.resolve@1`,
+renders post DTOs through the exact ARK renderer, and dispatches header/footer
+through `ThemeCustomizerOrchestrator::renderProviderRegion()` →
+`ThemeRegionRenderer::render()`. Missing or invalid package pieces return to the
+P5-1 public layout. Activation also clears the shell page-cache scope so a
+previously cached layout cannot survive a theme switch.
+
 ## Notes
 
 - `_enabled:false` is retained; explicit per-tenant activation is performed by

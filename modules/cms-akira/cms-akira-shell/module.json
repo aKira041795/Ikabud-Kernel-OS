@@ -35,7 +35,8 @@
       "akira.content_type.update@1",
       "akira.content_type.delete@1",
       "entity.list.post@1",
-      "entity.get.post@1"
+      "entity.get.post@1",
+      "akira.theme.resolve@1"
     ]
   },
   "routes": true,
