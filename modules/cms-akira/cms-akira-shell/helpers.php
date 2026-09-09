@@ -660,3 +660,125 @@ function akiraShellPostRow(array $row): string
         . '<span class="text-xs text-slate-400">' . $updated . '</span>'
         . $actions . '</div>';
 }
+
+// ── Post revisions (P1 content model increment 4) ───────────────────────
+// The editor's Revisions section reads history through the ungoverned
+// akira.post.revisions.list@1 capability (restricted to editorial
+// participants) and every revert POST flows through the governed
+// akira.post.revision.revert@1 capability. Role authority for the revert
+// action lives in the seeded policy rows (admin/editor/administrator/
+// superadmin); this helper only mirrors that allowlist for presentation.
+
+/** @return Throwable */
+function akiraShellRootException(Throwable $error): Throwable
+{
+    $cursor = $error;
+    while ($cursor->getPrevious() instanceof Throwable) {
+        $cursor = $cursor->getPrevious();
+    }
+    return $cursor;
+}
+
+function akiraShellRootErrorMessage(Throwable $error): string
+{
+    $root = akiraShellRootException($error);
+    $message = trim($root->getMessage());
+    return $message !== '' ? $message : $error->getMessage();
+}
+
+function akiraShellIsPostRevisionManager(): bool
+{
+    $user = app()->user();
+    if (!is_array($user)) {
+        return false;
+    }
+    return in_array((string)($user['role'] ?? ''), ['admin', 'editor', 'administrator', 'superadmin'], true);
+}
+
+/**
+ * @return list<array<string, mixed>>
+ */
+function akiraShellRevisionRows(string $slug): array
+{
+    try {
+        $resolved = akiraShellCall('akira.post.revisions.list@1', ['slug' => $slug, 'limit' => 200, 'offset' => 0]);
+    } catch (Throwable) {
+        return [];
+    }
+    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
+    return array_values(array_filter($rows, 'is_array'));
+}
+
+/**
+ * Revisions card shown below the editor form. It is purely additive: the card
+ * never renders for a brand-new post and every revert is a separate confirmed
+ * POST carrying the canonical Kernel CSRF field plus the current post version.
+ *
+ * @param list<array<string, mixed>> $rows
+ */
+function akiraShellRevisionTable(string $slug, string $updatedAt, array $rows, bool $canRevert): string
+{
+    if ($rows === []) {
+        return '<div class="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center text-sm text-slate-400">No revisions recorded yet. Every governed save on this post will snapshot its content here.</div>';
+    }
+    $body = '';
+    foreach ($rows as $row) {
+        $revisionNo = (int)($row['revision_no'] ?? 0);
+        $action = (string)($row['action'] ?? '');
+        $actor = (int)($row['actor_user_id'] ?? 0);
+        $createdAt = akiraShellEscape((string)($row['created_at'] ?? ''));
+        if ($revisionNo <= 0) {
+            continue;
+        }
+        $badge = $action === 'revert'
+            ? 'bg-violet-100 text-violet-700'
+            : (in_array($action, ['publish', 'unpublish', 'delete'], true)
+                ? 'bg-sky-100 text-sky-700'
+                : 'bg-slate-100 text-slate-600');
+        $actorLabel = $actor > 0 ? 'User #' . $actor : 'System';
+        $revert = '';
+        if ($canRevert && $action !== 'delete') {
+            $revert = '<form method="post" action="/cms-akira-shell/posts/' . rawurlencode($slug) . '/revisions/' . $revisionNo . '/revert" onsubmit="return confirm(\'Revert this post\\\'s content to revision ' . $revisionNo . '? Status and workflow state are untouched.\')">' . akiraShellCsrfField()
+                . '<input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($updatedAt) . '">'
+                . '<input type="hidden" name="idempotency_key" value="post-revision-revert-' . bin2hex(random_bytes(8)) . '">'
+                . '<button class="rounded-xl border border-akira-200 bg-akira-50 px-3 py-2 text-xs font-semibold text-akira-700 hover:bg-akira-100" type="submit">Revert to this revision</button></form>';
+        } elseif (!$canRevert) {
+            $revert = '<span class="text-xs text-slate-300">Read only</span>';
+        }
+        $body .= '<div class="grid grid-cols-[64px_1fr_1fr_170px_auto] items-center gap-4 border-b border-slate-100 px-5 py-3 last:border-0 hover:bg-slate-50/50">'
+            . '<span class="font-mono text-sm font-semibold text-slate-700">#' . $revisionNo . '</span>'
+            . '<span><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . $badge . '">' . akiraShellEscape($action) . '</span></span>'
+            . '<span class="text-sm text-slate-600">' . akiraShellEscape($actorLabel) . '</span>'
+            . '<span class="text-xs text-slate-400">' . $createdAt . '</span>'
+            . '<span class="flex justify-end">' . $revert . '</span></div>';
+    }
+    return '<div class="overflow-hidden rounded-2xl border border-slate-200">'
+        . '<div class="grid grid-cols-[64px_1fr_1fr_170px_auto] items-center gap-4 border-b border-slate-100 bg-slate-50/60 px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Version</span><span>Action</span><span>Actor</span><span>Created</span><span class="text-right">Revert</span></div>'
+        . $body . '</div>';
+}
+
+/** @return string */
+function akiraShellRevisionFlash(string $slug): string
+{
+    if ((akiraShellQuery()['saved'] ?? '') !== 'revision') {
+        return '';
+    }
+    return '<div x-data="{show:true}" x-show="show" x-init="setTimeout(()=>show=false,4000)" class="mb-5 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Post content reverted to the selected revision.<button @click="show=false" aria-label="Dismiss">×</button></div>';
+}
+
+function akiraShellRevisionPanel(string $slug, string $updatedAt): string
+{
+    // Presentation safety mirror of the seeded policy allowlist; the real
+    // authority is akira.post.revision.revert@1's policy row.
+    if ($slug === '' || $updatedAt === '') {
+        return '';
+    }
+    if (!function_exists('app') || !is_object(app()) || !method_exists(app(), 'user')) {
+        return '';
+    }
+    $canRevert = akiraShellIsPostRevisionManager();
+    $rows = akiraShellRevisionRows($slug);
+    return '<section class="mt-8 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm" data-akira-post-revisions>'
+        . '<div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-xl font-bold text-slate-950">Revisions</h2><p class="mt-1 text-sm text-slate-500">Every governed write snapshots this post\\\'s content in one tenant transaction. Reverting restores content only — status and workflow state stay untouched.</p></div></div>'
+        . '<div class="mt-5">' . akiraShellRevisionFlash($slug) . akiraShellRevisionTable($slug, $updatedAt, $rows, $canRevert) . '</div></section>';
+}

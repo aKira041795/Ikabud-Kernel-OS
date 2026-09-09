@@ -160,6 +160,43 @@ function cacSeedPostTaxonomyMutationPolicies(): void
 
 cacSeedPostTaxonomyMutationPolicies();
 
+/**
+ * Activation-time, idempotent seed for the P1 post revision revert mutation
+ * policy. Mirrors cacSeedPostTaxonomyMutationPolicies(): the
+ * CapabilityAuthorizationRegistry is the legal kernel-owned channel and the
+ * rows are created per tenant DB. Reverting a post content snapshot is an
+ * editorial content-model write over the same editorial allowlist taxonomy,
+ * content-type and assignment management use. The revision read surface
+ * (akira.post.revisions.list@1 / akira.post.revision.get@1) stays ungoverned
+ * like the other P1 reads until R5 governs reads at the policy layer.
+ */
+function cacSeedPostRevisionMutationPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
+    $rows = [];
+    foreach ([
+        'akira.post.revision.revert@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+    ] as $capabilityId => [$allowedRoles, $allowedCallers]) {
+        $rows[] = [
+            'policy_version' => 1,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-core',
+            'caller_module' => $allowedCallers,
+            'allowed_roles' => $allowedRoles,
+            'provider_activation_required' => true,
+            'requires_protocol' => 'v2',
+            'is_active' => true,
+        ];
+    }
+    $registry->seedPolicy($rows);
+}
+
+cacSeedPostRevisionMutationPolicies();
+
 // ── Scoped Context Helpers ───────────────────────────────────────
 
 function cacCtx(): \Ikabud\Kernel\Contracts\ModuleContext

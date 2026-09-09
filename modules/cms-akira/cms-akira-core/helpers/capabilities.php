@@ -21,6 +21,9 @@ function cms_akira_core_capability_handlers(): array
         'akira.post.unpublish@1' => 'cac_cap_akira_post_unpublish_1',
         'akira.post.delete@1' => 'cac_cap_akira_post_delete_1',
         'akira.post.set_taxonomies@1' => 'cac_cap_akira_post_set_taxonomies_1',
+        'akira.post.revisions.list@1' => 'cac_cap_akira_post_revisions_list_1',
+        'akira.post.revision.get@1' => 'cac_cap_akira_post_revision_get_1',
+        'akira.post.revision.revert@1' => 'cac_cap_akira_post_revision_revert_1',
         'akira.taxonomy.get@1' => 'cac_cap_akira_taxonomy_get_1',
         'akira.taxonomy.list@1' => 'cac_cap_akira_taxonomy_list_1',
         'akira.taxonomy.create@1' => 'cac_cap_akira_taxonomy_create_1',
@@ -495,6 +498,34 @@ function cacPostMutate(string $operation, array $payload): array
         ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
         if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
             throw new RuntimeException('Durable Post audit failed.');
+        }
+
+        // Post revision snapshot (P1 increment 4) — purely additive. Right where
+        // the durable audit row is written, record the post content state this
+        // governed write leaves behind, inside the SAME tenant transaction:
+        //   * create / update  → the resulting content just written;
+        //   * publish / unpublish → the (unchanged) content at its new lifecycle
+        //     point, i.e. the resulting content for the action taken;
+        //   * delete → the pre-delete content (delete is a soft delete that never
+        //     alters content fields, so this equals the row's last stored content).
+        // revision_no is max(existing for tenant+slug)+1 computed inside the tx;
+        // concurrent writers to the same post are serialized by the FOR UPDATE
+        // row lock above (and for create by the tenant+slug unique key). A
+        // revision write failure fails closed exactly like the audit row: it
+        // aborts the whole transaction, so no governed write can commit without
+        // its revision, and no existing commit/return semantics change.
+        try {
+            cacPostRevisionWrite(
+                $db,
+                $tenantId,
+                $slug,
+                cacPostRevisionSnapshotFromFields($fields),
+                $operation,
+                (int)$actor['id'],
+                $correlationId
+            );
+        } catch (Throwable $revisionError) {
+            throw new RuntimeException('Durable Post revision failed.', 0, $revisionError);
         }
 
         $outcome = [
@@ -2112,4 +2143,431 @@ function cac_cap_akira_post_set_taxonomies_1(mixed $payload, string $capabilityI
         throw new CacPostTaxonomyMutationException('payload must be an object.');
     }
     return cacPostSetTaxonomies($payload);
+}
+
+// ── Post revisions (P1 increment 4) ───────────────────────────────────
+// Every governed post write (cacPostMutate create/update/publish/unpublish/
+// delete) and every governed akira.post.revision.revert@1 appends one content
+// snapshot row to cms_akira_post_revisions inside the SAME single-tenant
+// transaction as the post row, its durable audit row and its idempotency
+// claim (fail-closed: a revision write failure aborts the whole transaction).
+// revision_no is a per-(tenant, slug) ordinal assigned as max(existing)+1
+// within the transaction; concurrent writers to one post serialize on the post
+// row's FOR UPDATE lock (and for create on the tenant+slug unique key).
+//
+// Snapshot convention: content_snapshot records the resulting post content
+// (title/subtitle/content/image) for the action taken — create/update snapshot
+// the freshly written content, publish/unpublish snapshot the unchanged
+// content at its new lifecycle point, and delete records the pre-delete
+// content (a soft delete never alters content fields, so that equals the row's
+// last stored content). A revert restores title/subtitle/content/image from one
+// recorded snapshot WITHOUT touching status or workflow state, then records
+// its own action=revert snapshot of the restored content.
+//
+// Reads (akira.post.revisions.list@1 / akira.post.revision.get@1) stay
+// ungoverned until R5 governs reads and are restricted to editorial
+// participants because draft content history is content.
+
+final class CacPostRevisionMutationException extends RuntimeException
+{
+    public function __construct(string $message, public readonly int $httpStatus = 422, public readonly ?int $retryAfter = null)
+    {
+        parent::__construct($message);
+    }
+}
+
+/**
+ * Canonical snapshot of a post content state. image is null when empty.
+ *
+ * @param array<string, mixed> $fields
+ * @return array{title: string, subtitle: string, content: string, image: ?string}
+ */
+function cacPostRevisionSnapshotFromFields(array $fields): array
+{
+    $image = isset($fields['image']) ? cacPostSafeImage($fields['image']) : '';
+    return [
+        'title' => (string)($fields['title'] ?? ''),
+        'subtitle' => (string)($fields['subtitle'] ?? ''),
+        'content' => (string)($fields['content'] ?? ''),
+        'image' => $image !== '' ? $image : null,
+    ];
+}
+
+/**
+ * Decode + validate one stored content_snapshot. Returns null when the stored
+ * JSON is absent or not a canonical snapshot object (never projected/written).
+ *
+ * @return array{title: string, subtitle: string, content: string, image: ?string}|null
+ */
+function cacPostRevisionSnapshotDecode(mixed $raw): ?array
+{
+    $decoded = json_decode(is_string($raw) ? $raw : '', true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+    foreach (['title', 'subtitle', 'content'] as $key) {
+        if (!array_key_exists($key, $decoded) || !is_string($decoded[$key])) {
+            return null;
+        }
+    }
+    $image = $decoded['image'] ?? null;
+    if ($image !== null && !is_string($image)) {
+        return null;
+    }
+    $image = is_string($image) ? cacPostSafeImage($image) : '';
+    return [
+        'title' => (string)$decoded['title'],
+        'subtitle' => (string)$decoded['subtitle'],
+        'content' => (string)$decoded['content'],
+        'image' => $image !== '' ? $image : null,
+    ];
+}
+
+function cacPostRevisionNo(mixed $value): int
+{
+    if (is_int($value) && $value > 0) {
+        return $value;
+    }
+    if (is_string($value) && $value !== '' && ctype_digit($value) && (int)$value > 0) {
+        return (int)$value;
+    }
+    throw new CacPostRevisionMutationException('A positive revision_no is required.', 422);
+}
+
+function cacPostRevisionExpectedAt(mixed $value): string
+{
+    if (!is_string($value)) {
+        throw new CacPostRevisionMutationException('expected_updated_at is required for optimistic concurrency.', 422);
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        || $date->format('Y-m-d H:i:s') !== $value) {
+        throw new CacPostRevisionMutationException('expected_updated_at must use Y-m-d H:i:s.', 422);
+    }
+    return $value;
+}
+
+/**
+ * Append one revision row on the caller-managed tenant transaction.
+ * revision_no = max(existing for tenant+slug) + 1 inside this tx.
+ *
+ * @param array{title: string, subtitle: string, content: string, image: ?string} $snapshot
+ */
+function cacPostRevisionWrite(PDO $db, int $tenantId, string $slug, array $snapshot, string $action, int $actorUserId, string $correlationId): int
+{
+    $snapshotJson = json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if (!is_string($snapshotJson)) {
+        throw new RuntimeException('Revision snapshot could not be encoded.');
+    }
+    $maxStmt = $db->prepare(
+        'SELECT COALESCE(MAX(revision_no), 0) FROM cms_akira_post_revisions '
+        . 'WHERE tenant_id = :tenant AND post_slug = :slug'
+    );
+    $maxStmt->execute([':tenant' => $tenantId, ':slug' => $slug]);
+    $revisionNo = (int)$maxStmt->fetchColumn() + 1;
+
+    $insert = $db->prepare(
+        'INSERT INTO cms_akira_post_revisions '
+        . '(tenant_id, post_slug, revision_no, content_snapshot, action, actor_user_id, correlation_id) '
+        . 'VALUES (:tenant, :slug, :revision_no, :snapshot, :action, :actor, :correlation)'
+    );
+    $insert->execute([
+        ':tenant' => $tenantId,
+        ':slug' => $slug,
+        ':revision_no' => $revisionNo,
+        ':snapshot' => $snapshotJson,
+        ':action' => $action,
+        ':actor' => $actorUserId > 0 ? $actorUserId : null,
+        ':correlation' => $correlationId !== '' ? $correlationId : null,
+    ]);
+    return $revisionNo;
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_revisions_list_1(mixed $payload, string $capabilityId = 'akira.post.revisions.list@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $slug = cacPostValidSlug($payload['slug'] ?? null);
+    if ($slug === null) {
+        return ['ok' => false, 'error' => 'A canonical slug is required'];
+    }
+    if (!cacPostEditorialParticipant()) {
+        return ['ok' => false, 'error' => 'Revision history is restricted to editorial participants.'];
+    }
+    $limit = max(1, min(500, (int)($payload['limit'] ?? 100)));
+    $offset = max(0, (int)($payload['offset'] ?? 0));
+
+    try {
+        $tenantId = cacPostTenantId();
+        $count = cacDb()->prepare(
+            'SELECT COUNT(*) FROM cms_akira_post_revisions WHERE tenant_id = :tenant AND post_slug = :slug'
+        );
+        $count->execute([':tenant' => $tenantId, ':slug' => $slug]);
+        $stmt = cacDb()->prepare(
+            'SELECT revision_no, content_snapshot, action, actor_user_id, correlation_id, created_at '
+            . 'FROM cms_akira_post_revisions WHERE tenant_id = :tenant AND post_slug = :slug '
+            . "ORDER BY revision_no DESC LIMIT {$limit} OFFSET {$offset}"
+        );
+        $stmt->execute([':tenant' => $tenantId, ':slug' => $slug]);
+        $rows = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $snapshot = cacPostRevisionSnapshotDecode($row['content_snapshot'] ?? null);
+            if ($snapshot === null) {
+                continue; // corrupt history is never surfaced
+            }
+            $row['content_snapshot'] = $snapshot;
+            $rows[] = $row;
+        }
+        return ['ok' => true, 'rows' => $rows, 'total' => (int)$count->fetchColumn()];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Post revision storage unavailable'];
+    }
+}
+
+/** @return array<string, mixed> */
+function cac_cap_akira_post_revision_get_1(mixed $payload, string $capabilityId = 'akira.post.revision.get@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $slug = cacPostValidSlug($payload['slug'] ?? null);
+    if ($slug === null) {
+        return ['ok' => false, 'error' => 'A canonical slug is required'];
+    }
+    if (!cacPostEditorialParticipant()) {
+        return ['ok' => false, 'error' => 'Revision history is restricted to editorial participants.'];
+    }
+    try {
+        $revisionNo = cacPostRevisionNo($payload['revision_no'] ?? null);
+    } catch (CacPostRevisionMutationException $e) {
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+    try {
+        $stmt = cacDb()->prepare(
+            'SELECT revision_no, content_snapshot, action, actor_user_id, correlation_id, created_at '
+            . 'FROM cms_akira_post_revisions '
+            . 'WHERE tenant_id = :tenant AND post_slug = :slug AND revision_no = :revision_no LIMIT 1'
+        );
+        $stmt->execute([':tenant' => cacPostTenantId(), ':slug' => $slug, ':revision_no' => $revisionNo]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return ['ok' => false, 'error' => 'Post revision not found'];
+        }
+        $snapshot = cacPostRevisionSnapshotDecode($row['content_snapshot'] ?? null);
+        if ($snapshot === null) {
+            return ['ok' => false, 'error' => 'Post revision snapshot is invalid'];
+        }
+        $row['content_snapshot'] = $snapshot;
+        return ['ok' => true, 'data' => $row];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Post revision storage unavailable'];
+    }
+}
+
+/**
+ * Revert one post's content to a recorded revision snapshot. One tenant-DB
+ * transaction: idempotency claim, revision existence check, read-only
+ * optimistic-concurrency check on cms_akira_posts.updated_at, the content-only
+ * UPDATE (the sole revision-code path that writes the post row besides normal
+ * cacPostMutate), a new action=revert revision row, durable audit, and the
+ * idempotency commit. Status and workflow state are never touched.
+ *
+ * @param array<string, mixed> $payload
+ * @return array<string, mixed>
+ */
+function cacPostRevisionRevert(array $payload): array
+{
+    $actor = cacPostMutationActor();
+    $tenantId = cacPostTenantId();
+    if (array_key_exists('tenant_id', $payload)) {
+        throw new CacPostRevisionMutationException('tenant_id is supplied by kernel context.', 422);
+    }
+    if (!app()->entityAuthority()->isAuthoritative('post', 'cms-akira-core')) {
+        throw new CacPostRevisionMutationException('Post authority is not active.', 503);
+    }
+
+    $key = is_string($payload['idempotency_key'] ?? null) ? trim($payload['idempotency_key']) : '';
+    if ($key === '' || strlen($key) > 255) {
+        throw new CacPostRevisionMutationException('A valid idempotency_key is required.', 422);
+    }
+    $slug = cacPostValidSlug($payload['slug'] ?? null);
+    if ($slug === null) {
+        throw new CacPostRevisionMutationException('A canonical lowercase Post slug is required.', 422);
+    }
+    $revisionNo = cacPostRevisionNo($payload['revision_no'] ?? null);
+    $expected = cacPostRevisionExpectedAt($payload['expected_updated_at'] ?? null);
+
+    // Identity/JWT-shaped payload members are intentionally neither read nor hashed.
+    $mutationInput = ['slug' => $slug, 'revision_no' => $revisionNo, 'expected_updated_at' => $expected];
+    $envelope = ['operation' => 'revision.revert', 'post' => $mutationInput];
+    $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
+        'caller' => ['module' => 'cms-akira-core', 'user' => $actor],
+        'mode' => 'first',
+    ]);
+    if (!is_string($hash)) {
+        throw new CacPostRevisionMutationException('Idempotency hashing unavailable.', 503);
+    }
+
+    $db = app()->db();
+    $claimed = false;
+    $publicationUncertain = false;
+    try {
+        $db->beginTransaction();
+        $claim = app()->cap()->call('kernel.idempotency.claim@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'payload_hash' => $hash,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        $claimStatus = is_array($claim) ? (string)($claim['status'] ?? '') : '';
+        if ($claimStatus === 'duplicate') {
+            $db->rollBack();
+            return is_array($claim['outcome'] ?? null) ? $claim['outcome'] : ['ok' => true, 'replayed' => true];
+        }
+        if ($claimStatus === 'conflict') {
+            $db->rollBack();
+            throw new CacPostRevisionMutationException('Idempotency key payload conflict.', 409);
+        }
+        if ($claimStatus === 'in_progress') {
+            $db->rollBack();
+            throw new CacPostRevisionMutationException('Idempotent mutation is still processing.', 425, 2);
+        }
+        if ($claimStatus !== 'new') {
+            throw new RuntimeException('Unexpected idempotency claim result.');
+        }
+        $claimed = true;
+
+        // The revision must exist for this tenant+post (locked so a concurrent
+        // revert cannot interleave with its snapshot read).
+        $revStmt = $db->prepare(
+            'SELECT revision_no, content_snapshot, action FROM cms_akira_post_revisions '
+            . 'WHERE tenant_id = :tenant AND post_slug = :slug AND revision_no = :revision_no LIMIT 1 FOR UPDATE'
+        );
+        $revStmt->execute([':tenant' => $tenantId, ':slug' => $slug, ':revision_no' => $revisionNo]);
+        $revisionRow = $revStmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($revisionRow)) {
+            throw new CacPostRevisionMutationException('Post revision not found.', 404);
+        }
+        $snapshot = cacPostRevisionSnapshotDecode($revisionRow['content_snapshot'] ?? null);
+        if ($snapshot === null) {
+            throw new CacPostRevisionMutationException('Post revision snapshot is invalid.', 422);
+        }
+
+        // Read-only OCC against the post row (locked to serialize with
+        // cacPostMutate; never written by this read).
+        $postStmt = $db->prepare(
+            'SELECT id, slug, title, subtitle, content, image, status, published_at, updated_at '
+            . 'FROM cms_akira_posts WHERE tenant_id = :tenant AND slug = :slug AND deleted_at IS NULL LIMIT 1 FOR UPDATE'
+        );
+        $postStmt->execute([':tenant' => $tenantId, ':slug' => $slug]);
+        $post = $postStmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($post)) {
+            throw new CacPostRevisionMutationException('Post not found.', 404);
+        }
+        if ($expected !== (string)$post['updated_at']) {
+            throw new CacPostRevisionMutationException('Post was modified; refresh and retry.', 409);
+        }
+
+        // Content-only restore. This is the ONLY revision-code write of the post
+        // row; status, published_at and workflow state stay untouched.
+        $write = $db->prepare(
+            'UPDATE cms_akira_posts SET title = :title, subtitle = :subtitle, content = :content, image = :image '
+            . 'WHERE tenant_id = :tenant AND slug = :slug AND updated_at = :expected AND deleted_at IS NULL'
+        );
+        $write->execute([
+            ':tenant' => $tenantId, ':slug' => $slug, ':expected' => $post['updated_at'],
+            ':title' => $snapshot['title'], ':subtitle' => $snapshot['subtitle'],
+            ':content' => $snapshot['content'], ':image' => $snapshot['image'],
+        ]);
+        if ($write->rowCount() !== 1) {
+            throw new CacPostRevisionMutationException('Post was modified; refresh and retry.', 409);
+        }
+
+        // Record the revert itself as a new revision of the restored content.
+        $correlationId = cacPostMutationCorrelationId();
+        $newRevisionNo = cacPostRevisionWrite(
+            $db,
+            $tenantId,
+            $slug,
+            $snapshot,
+            'revert',
+            (int)$actor['id'],
+            $correlationId
+        );
+
+        $audit = app()->cap()->call('kernel.audit.record@1', [
+            'module' => 'cms-akira-core',
+            'action' => 'akira.post.revision.revert',
+            'entity_type' => 'post',
+            'entity_id' => (string)$post['id'],
+            'old_data' => [
+                'slug' => $slug, 'title' => $post['title'], 'subtitle' => $post['subtitle'],
+                'content' => $post['content'], 'image' => $post['image'],
+                'status' => $post['status'], 'updated_at' => $post['updated_at'],
+            ],
+            'new_data' => [
+                'correlation_id' => $correlationId, 'tenant_id' => $tenantId, 'slug' => $slug,
+                'revision_no' => $revisionNo, 'restored' => $snapshot, 'created_revision_no' => $newRevisionNo,
+            ],
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
+            throw new RuntimeException('Durable Post revision audit failed.');
+        }
+
+        $outcome = [
+            'ok' => true,
+            'operation' => 'revert',
+            'post' => [
+                'id' => (int)$post['id'], 'slug' => $slug,
+                'revision_no' => $revisionNo, 'created_revision_no' => $newRevisionNo,
+            ],
+            'correlation_id' => $correlationId,
+        ];
+        $committed = app()->cap()->call('kernel.idempotency.commit@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'outcome' => $outcome,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if ($committed !== true) {
+            throw new RuntimeException('Idempotency outcome commit failed.');
+        }
+
+        // From this point a commit error is uncertain: never release/re-execute.
+        $publicationUncertain = true;
+        $db->commit();
+        $publicationUncertain = false;
+        return $outcome;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        if ($claimed && !$publicationUncertain) {
+            try {
+                app()->cap()->call('kernel.idempotency.release@1', [
+                    'key' => $key, 'tenant_id' => $tenantId, 'db' => $db,
+                ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+            } catch (Throwable) {
+                // A failed release remains processing and therefore fails closed.
+            }
+        }
+        throw $e;
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_post_revision_revert_1(mixed $payload, string $capabilityId = 'akira.post.revision.revert@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacPostRevisionMutationException('payload must be an object.');
+    }
+    return cacPostRevisionRevert($payload);
 }
