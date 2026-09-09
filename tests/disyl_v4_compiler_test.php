@@ -222,6 +222,34 @@ check('pipe in if condition true', 'yes',
 check('pipe in if condition false', 'no',
     $engine->renderString('{if (a + b)|number_format:2 > 0}yes{else}no{/if}', ['a' => 0, 'b' => 0]));
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo "── 15. HTML raw-text element braces ──────────────────\n";
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$rawTextTemplate = <<<'DISYL'
+<style>
+*{box-sizing:border-box}
+:root{--x:#123;--gap:1rem}
+.card-item{color:{gui.color_primary};font-family:{gui.font_family | raw};gap:var(--gap)}
+@media (min-width: 10px){.card-item:hover{color:var(--x);}}
+</style><script>const x={a:1,nested:{b:2}};const t=`${x.a}`;</script><textarea>{plain:value;}</textarea>
+DISYL;
+$rawTextExpected = <<<'HTML'
+<style>
+*{box-sizing:border-box}
+:root{--x:#123;--gap:1rem}
+.card-item{color:#abc;font-family:Inter, sans-serif;gap:var(--gap)}
+@media (min-width: 10px){.card-item:hover{color:var(--x);}}
+</style><script>const x={a:1,nested:{b:2}};const t=`${x.a}`;</script><textarea>{plain:value;}</textarea>
+HTML;
+$rawTextActual = $engine->renderString($rawTextTemplate, [
+    'gui' => ['color_primary' => '#abc', 'font_family' => 'Inter, sans-serif'],
+]);
+check('style CSS rules stay byte-identical while scalar values interpolate', $rawTextExpected, $rawTextActual);
+check('script object and template-literal braces stay raw',
+    '<script>const x={a:1};const t=`${x.a}`;</script>',
+    $engine->renderString('<script>const x={a:1};const t=`${x.a}`;</script>', ['x' => ['a' => 9]]));
+
 echo "\n╔══════════════════════════════════════════════════════╗\n";
 printf("║  RESULTS:  %2d PASSED  |  %2d FAILED                     ║\n", $pass, $fail);
 echo "╚══════════════════════════════════════════════════════╝\n";
