@@ -53,6 +53,9 @@ final class Parser
     /** Current recursion depth (block + expression nesting combined). */
     private int $depth = 0;
 
+    /** HTML raw-text element whose body is currently being scanned. */
+    private ?string $rawTextElement = null;
+
     /** Filters that suppress auto-escaping */
     private const ESCAPE_FILTERS = [
         'raw', 'esc_html', 'esc_attr', 'esc_url', 'esc_js',
@@ -79,6 +82,7 @@ final class Parser
         $this->pos = 0;
         $this->len = strlen($source);
         $this->depth = 0;
+        $this->rawTextElement = null;
 
         $children = $this->parseChildren([]);
         return new DocumentNode([], $children);
@@ -149,12 +153,22 @@ final class Parser
         $start = $this->pos;
 
         while ($this->pos < $this->len) {
+            if ($this->source[$this->pos] === '<') {
+                $this->updateRawTextElement();
+            }
             if ($this->source[$this->pos] === '{') {
                 if ($this->isAtStop($stopPatterns)) {
                     break;
                 }
                 if ($this->looksLikeDisyl()) {
                     break;
+                }
+                if ($this->rawTextElement !== null) {
+                    $end = $this->findRawTextBraceEnd();
+                    if ($end !== false) {
+                        $this->pos = $end + 1;
+                        continue;
+                    }
                 }
             }
             $this->pos++;
@@ -190,6 +204,18 @@ final class Parser
         if ($this->pos > 0 && $this->source[$this->pos - 1] === '$') {
             return false;
         }
+        if ($this->rawTextElement !== null) {
+            $end = $this->findRawTextBraceEnd();
+            if ($end === false) {
+                return false;
+            }
+            $content = substr($this->source, $this->pos + 1, $end - $this->pos - 1);
+            $trimmed = trim($content);
+            return !str_contains($content, '{')
+                && $this->findUnquotedChar($content, ':') === false
+                && $this->findUnquotedChar($content, ';') === false
+                && $this->isProcessableTemplateExpression($trimmed);
+        }
         $next = $this->source[$this->pos + 1];
         // Comments  {!-- or {* or {#
         if ($next === '!' || $next === '*' || $next === '#') {
@@ -206,6 +232,51 @@ final class Parser
         // Parenthesized expressions {(a + b) * c}, array literals {[1, 2]}, and numeric literals {503}
         if ($next === '(' || $next === '[' || ctype_digit($next)) {
             return true;
+        }
+        return false;
+    }
+
+    /** Track entry to and exit from HTML raw-text element bodies. */
+    private function updateRawTextElement(): void
+    {
+        $tail = substr($this->source, $this->pos);
+        if ($this->rawTextElement === null) {
+            if (preg_match('/\A<(style|script|textarea)\b[^>]*>/i', $tail, $match)) {
+                $this->rawTextElement = strtolower($match[1]);
+            }
+            return;
+        }
+
+        if (preg_match('/\A<\/\s*' . preg_quote($this->rawTextElement, '/') . '\s*>/i', $tail)) {
+            $this->rawTextElement = null;
+        }
+    }
+
+    /** Find the balanced closing brace for a raw-text body candidate. */
+    private function findRawTextBraceEnd(): int|false
+    {
+        $depth = 0;
+        $quote = null;
+        for ($i = $this->pos + 1; $i < $this->len; $i++) {
+            $char = $this->source[$i];
+            if ($quote !== null) {
+                if ($char === '\\') {
+                    $i++;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+                continue;
+            }
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                if ($depth === 0) {
+                    return $i;
+                }
+                $depth--;
+            }
         }
         return false;
     }
