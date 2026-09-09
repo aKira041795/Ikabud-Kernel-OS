@@ -160,13 +160,15 @@ function akiraShellRecentPosts(array $rows): string
     return $html;
 }
 
-function akiraShellPagination(int $page, int $limit, int $total, string $search, string $status): string
+function akiraShellPagination(int $page, int $limit, int $total, string $search, string $status, int $category = 0): string
 {
     $pages = max(1, (int)ceil($total / $limit));
     if ($pages <= 1) {
         return '';
     }
-    $query = static fn (int $target): string => http_build_query(['q' => $search, 'status' => $status, 'page' => $target]);
+    $query = static fn (int $target): string => http_build_query(array_filter([
+        'q' => $search, 'status' => $status, 'category' => $category > 0 ? $category : '', 'page' => $target,
+    ], static fn (string $value): bool => $value !== ''));
     return '<nav aria-label="Post pagination" class="mt-5 flex items-center justify-between text-sm"><span class="text-slate-500">Page ' . $page . ' of ' . $pages . '</span><div class="flex gap-2">'
         . ($page > 1 ? '<a class="rounded-xl border bg-white px-4 py-2" href="?' . akiraShellEscape($query($page - 1)) . '">Previous</a>' : '')
         . ($page < $pages ? '<a class="rounded-xl border bg-white px-4 py-2" href="?' . akiraShellEscape($query($page + 1)) . '">Next</a>' : '') . '</div></nav>';
@@ -299,8 +301,23 @@ function akiraShellSavePost(?string $existingSlug): void
     $input = akiraShellPostPayload($existingSlug);
     unset($input['action'], $input['expected_status']);
     $capability = $existingSlug === null ? 'akira.post.create@1' : 'akira.post.update@1';
+    $savedSlug = $existingSlug !== null ? $existingSlug : trim((string)($input['slug'] ?? ''));
     try {
         akiraShellCall($capability, $input);
+        // Categories persist AFTER the post exists/updates (P1 increment 3):
+        // the content write keeps its exact lifecycle semantics and the
+        // assignment runs as a separate governed idempotent write against the
+        // freshly-persisted post version (its updated_at is re-read, never the
+        // form's stale value). Only editorial roles reach this second write.
+        if (akiraShellIsTaxonomyManager() && $savedSlug !== '') {
+            $fresh = akiraShellFetchPost($savedSlug);
+            if (is_array($fresh)) {
+                akiraShellCall('akira.post.set_taxonomies@1', akiraShellPostSetTaxonomyPayload(
+                    $savedSlug,
+                    ['taxonomy_ids' => $input['taxonomy_ids'] ?? null, 'expected_updated_at' => (string)($fresh['updated_at'] ?? '')]
+                ));
+            }
+        }
         akiraShellRedirect('/cms-akira-shell/posts?saved=1');
     } catch (Throwable $e) {
         http_response_code(422);
@@ -475,4 +492,171 @@ function akiraShellContentTypePrettySchema(string $schema): string
     }
     $pretty = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     return is_string($pretty) ? $pretty : $schema;
+}
+
+// ── Post category assignment (P1 content model increment 3) ───────────────
+// The editor picks categories from the governed akira.taxonomy.list@1 read and
+// every assignment write flows through akira.post.set_taxonomies@1 (after the
+// post content save, in the same request, against the freshly persisted post
+// version). Read helpers below only project what the governed pipeline already
+// returns; role authority mirrors the seeded policy allowlist for presentation.
+
+/** @return list<array<string, mixed>> */
+function akiraShellCategories(): array
+{
+    try {
+        $resolved = akiraShellCall('akira.taxonomy.list@1', ['type' => 'category', 'limit' => 500, 'offset' => 0]);
+    } catch (Throwable) {
+        return [];
+    }
+    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
+    return array_values(array_filter($rows, 'is_array'));
+}
+
+/**
+ * @param array<string, mixed> $input
+ * @return list<int>
+ */
+function akiraShellPostedTaxonomyIds(array $input): array
+{
+    $raw = $input['taxonomy_ids'] ?? null;
+    if (!is_array($raw)) {
+        return [];
+    }
+    $ids = [];
+    foreach ($raw as $entry) {
+        if ((is_int($entry) || (is_string($entry) && ctype_digit($entry))) && (int)$entry > 0) {
+            $ids[] = (int)$entry;
+        }
+    }
+    return array_values(array_unique($ids));
+}
+
+/**
+ * @param array<string, mixed> $post
+ * @return list<int>
+ */
+function akiraShellAssignedTaxonomyIds(array $post): array
+{
+    $raw = $post['taxonomy_ids'] ?? null;
+    if (!is_array($raw)) {
+        return [];
+    }
+    $ids = [];
+    foreach ($raw as $entry) {
+        if ((is_int($entry) || (is_string($entry) && ctype_digit($entry))) && (int)$entry > 0) {
+            $ids[] = (int)$entry;
+        }
+    }
+    return array_values(array_unique($ids));
+}
+
+/**
+ * @param list<array<string, mixed>> $categories
+ * @param list<int> $assignedIds
+ */
+function akiraShellCategoryPanel(array $categories, array $assignedIds = [], string $label = 'Categories'): string
+{
+    $checked = array_fill_keys($assignedIds, true);
+    $control = 'accent-akira-600 h-4 w-4 rounded border-slate-300 text-akira-600 focus:ring-akira-500';
+    if ($categories === []) {
+        return '<div class="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 class="font-bold">' . akiraShellEscape($label) . '</h2>'
+            . '<p class="mt-2 text-xs leading-5 text-slate-500">No categories exist yet. <a class="font-semibold text-akira-700 hover:underline" href="/cms-akira-shell/categories">Create a category</a> before filing this post.</p></div>';
+    }
+    $items = '';
+    foreach ($categories as $category) {
+        $id = (int)($category['id'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+        $name = akiraShellEscape((string)($category['name'] ?? ''));
+        $slug = akiraShellEscape((string)($category['slug'] ?? ''));
+        $isChecked = isset($checked[$id]) ? ' checked' : '';
+        $items .= '<label class="flex cursor-pointer items-start gap-2 rounded-xl px-2 py-1.5 hover:bg-slate-50"><input type="checkbox" name="taxonomy_ids[]" value="' . $id . '"' . $isChecked . ' class="' . $control . ' mt-0.5"><span><span class="block text-sm font-medium text-slate-800">' . $name . '</span><code class="text-[11px] text-slate-400">' . $slug . '</code></span></label>';
+    }
+    return '<div class="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div class="flex items-center justify-between"><h2 class="font-bold">' . akiraShellEscape($label) . '</h2><a class="text-xs font-semibold text-akira-700 hover:underline" href="/cms-akira-shell/categories">Manage</a></div>'
+        . '<div class="mt-3 grid max-h-64 gap-1 overflow-y-auto pr-1">' . $items . '</div>'
+        . '<p class="mt-2 text-[11px] text-slate-400">Saved with the post through the governed assignment capability.</p></div>';
+}
+
+/**
+ * @param list<array<string, mixed>> $categories
+ */
+function akiraShellCategoryChips(array $categories): string
+{
+    if ($categories === []) {
+        return '<span class="text-xs text-slate-300">—</span>';
+    }
+    $chips = '';
+    foreach ($categories as $category) {
+        $id = (int)($category['id'] ?? 0);
+        $name = akiraShellEscape((string)($category['name'] ?? ''));
+        if ($name === '' || $id <= 0) {
+            continue;
+        }
+        $chips .= '<a href="/cms-akira-shell/posts?category=' . $id . '" title="Filter posts in ' . $name . '" class="inline-flex items-center rounded-full bg-akira-100 px-2.5 py-0.5 text-xs font-semibold text-akira-700 hover:bg-akira-600 hover:text-white">' . $name . '</a>';
+    }
+    return $chips === '' ? '<span class="text-xs text-slate-300">—</span>' : '<span class="flex flex-wrap gap-1">' . $chips . '</span>';
+}
+
+/**
+ * @param array<string, mixed> $input
+ * @return array<string, mixed>
+ */
+function akiraShellPostSetTaxonomyPayload(string $slug, array $input): array
+{
+    $input['slug'] = $slug;
+    $input['taxonomy_ids'] = akiraShellPostedTaxonomyIds($input);
+    $input['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ($input['idempotency_key'] ?? '')));
+    if ($input['idempotency_key'] === '') {
+        $input['idempotency_key'] = 'post-taxonomy-' . bin2hex(random_bytes(10));
+    }
+    return array_intersect_key($input, array_flip(['slug', 'taxonomy_ids', 'expected_updated_at', 'idempotency_key']));
+}
+
+/**
+ * Bespoke posts table: same admin surface as the Categories/Content types
+ * tables but fed by the governed entity-view pipeline (each row carries its
+ * taxonomy_ids + category labels from entity.list.post@1).
+ *
+ * @param list<array<string, mixed>> $rows
+ */
+function akiraShellPostTable(array $rows): string
+{
+    if ($rows === []) {
+        return '<div class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No posts found. Create your first post or adjust the filters.</div>';
+    }
+    $body = '';
+    foreach ($rows as $row) {
+        $body .= akiraShellPostRow($row);
+    }
+    return '<div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">'
+        . '<div class="grid grid-cols-[minmax(0,1.6fr)_110px_minmax(0,1fr)_170px_auto] items-center gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Post</span><span>Status</span><span>Categories</span><span>Updated</span><span class="text-right">Actions</span></div>'
+        . $body . '</div>';
+}
+
+/** @param array<string, mixed> $row */
+function akiraShellPostRow(array $row): string
+{
+    $slug = (string)($row['slug'] ?? '');
+    $title = akiraShellEscape((string)($row['title'] ?? ''));
+    $status = (string)($row['status'] ?? 'draft');
+    $updated = akiraShellEscape((string)($row['updated_at'] ?? ''));
+    $categories = is_array($row['categories'] ?? null) ? $row['categories'] : [];
+    $statusBadge = $status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+    $editUrl = '/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit';
+    $actions = '<div class="flex justify-end gap-2"><a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" href="' . $editUrl . '">Edit</a>';
+    if (akiraShellIsAdmin()) {
+        $actions .= '<form method="post" action="/cms-akira-shell/posts/' . rawurlencode($slug) . '/delete" onsubmit="return confirm(\'Delete this post? This cannot be undone.\')">' . akiraShellCsrfField()
+            . '<input type="hidden" name="expected_updated_at" value="' . akiraShellEscape((string)($row['updated_at'] ?? '')) . '">'
+            . '<input type="hidden" name="idempotency_key" value="post-delete-' . bin2hex(random_bytes(8)) . '">'
+            . '<button class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100" type="submit">Delete</button></form>';
+    }
+    $actions .= '</div>';
+    return '<div class="grid grid-cols-[minmax(0,1.6fr)_110px_minmax(0,1fr)_170px_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0 hover:bg-slate-50/50">'
+        . '<span><a class="block text-sm font-semibold text-slate-900 hover:text-akira-700" href="' . $editUrl . '">' . $title . '</a><code class="text-xs text-slate-400">' . akiraShellEscape($slug) . '</code></span>'
+        . '<span><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . $statusBadge . '">' . akiraShellEscape(ucfirst($status)) . '</span></span>'
+        . akiraShellCategoryChips($categories)
+        . '<span class="text-xs text-slate-400">' . $updated . '</span>'
+        . $actions . '</div>';
 }

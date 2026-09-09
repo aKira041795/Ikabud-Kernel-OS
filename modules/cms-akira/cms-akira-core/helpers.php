@@ -125,6 +125,41 @@ function cacSeedContentTypeMutationPolicies(): void
 
 cacSeedContentTypeMutationPolicies();
 
+/**
+ * Activation-time, idempotent seed for the P1 post <-> taxonomy assignment
+ * mutation policy. Mirrors cacSeedContentTypeMutationPolicies(): the
+ * CapabilityAuthorizationRegistry is the legal kernel-owned channel and the
+ * rows are created per tenant DB. Assigning taxonomy terms to a post is an
+ * editorial content-model write — the same admin/editor/administrator/superadmin
+ * allowlist taxonomy and content-type management use; reads stay ungoverned.
+ */
+function cacSeedPostTaxonomyMutationPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
+    $rows = [];
+    foreach ([
+        'akira.post.set_taxonomies@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+    ] as $capabilityId => [$allowedRoles, $allowedCallers]) {
+        $rows[] = [
+            'policy_version' => 1,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-core',
+            'caller_module' => $allowedCallers,
+            'allowed_roles' => $allowedRoles,
+            'provider_activation_required' => true,
+            'requires_protocol' => 'v2',
+            'is_active' => true,
+        ];
+    }
+    $registry->seedPolicy($rows);
+}
+
+cacSeedPostTaxonomyMutationPolicies();
+
 // ── Scoped Context Helpers ───────────────────────────────────────
 
 function cacCtx(): \Ikabud\Kernel\Contracts\ModuleContext
