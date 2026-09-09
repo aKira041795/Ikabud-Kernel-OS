@@ -462,3 +462,195 @@ function akiraShellForbidden(array $params = []): void
     http_response_code(403);
     echo akiraShellPage('Access denied', '<p>Your Kernel role cannot administer CMS Akira.</p>');
 }
+
+function akiraShellAuthorizeContentTypeManager(): bool
+{
+    if (!akiraShellAuthorize()) {
+        return false;
+    }
+    if (!akiraShellIsContentTypeManager()) {
+        http_response_code(403);
+        echo akiraShellPage('Access denied', '<p>This surface is reserved for Akira editors and administrators.</p>');
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Content types page — governed declared content-model registry.
+ * The list itself is a participant read surface; manage actions render only for
+ * editor/administrator roles and every POST flows through the governed
+ * akira.content_type.* capabilities.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellContentTypeList(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    akiraShellContentTypePage();
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellContentTypeCreate(array $params = []): void
+{
+    if (!akiraShellAuthorizeContentTypeManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellContentTypePayload();
+    unset($input['_token']);
+    try {
+        akiraShellCall('akira.content_type.create@1', $input);
+        akiraShellRedirect('/cms-akira-shell/content-types?saved=create');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        akiraShellContentTypePage(akiraShellContentTypePayloadError($e), [
+            'label' => (string)($input['label'] ?? ''),
+            'slug' => (string)($input['slug'] ?? ''),
+            'field_schema' => (string)($input['field_schema'] ?? ''),
+        ]);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellContentTypeUpdate(array $params = []): void
+{
+    if (!akiraShellAuthorizeContentTypeManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $id = is_numeric($params['id'] ?? null) ? (int)$params['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(422);
+        akiraShellContentTypePage('A content type id is required.');
+        return;
+    }
+    $input = akiraShellContentTypePayload($id);
+    unset($input['_token']);
+    try {
+        akiraShellCall('akira.content_type.update@1', $input);
+        akiraShellRedirect('/cms-akira-shell/content-types?saved=update');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        akiraShellContentTypePage(akiraShellContentTypePayloadError($e), [
+            'label' => (string)($input['label'] ?? ''),
+            'slug' => (string)($input['slug'] ?? ''),
+            'field_schema' => (string)($input['field_schema'] ?? ''),
+        ]);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellContentTypeDelete(array $params = []): void
+{
+    if (!akiraShellAuthorizeContentTypeManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $id = is_numeric($params['id'] ?? null) ? (int)$params['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(422);
+        akiraShellContentTypePage('A content type id is required.');
+        return;
+    }
+    $input = akiraShellContentTypePayload($id);
+    unset($input['_token']);
+    try {
+        akiraShellCall('akira.content_type.delete@1', $input);
+        akiraShellRedirect('/cms-akira-shell/content-types?saved=delete');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        akiraShellContentTypePage(akiraShellContentTypePayloadError($e));
+    }
+}
+
+/**
+ * Content types page body: count, an inline create form (label + slug +
+ * field_schema JSON textarea) for managers, and the declared-model table with
+ * inline edit and confirmed delete for managers.
+ *
+ * @param array<string,mixed> $preserve
+ */
+function akiraShellContentTypePage(string $error = '', array $preserve = []): void
+{
+    $resolved = akiraShellCall('akira.content_type.list@1', ['limit' => 500, 'offset' => 0]);
+    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
+    $total = count($rows);
+    $manager = akiraShellIsContentTypeManager();
+    $body = '<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span class="inline-flex rounded-full bg-akira-100 px-3 py-1 text-xs font-semibold text-akira-700">' . $total . ' content type' . ($total === 1 ? '' : 's') . '</span><p class="mt-2 text-sm text-slate-500">Declared content models are governed, tenant-scoped, and validated on write. Every field_schema is stored as a canonical JSON object.</p></div></div>'
+        . akiraShellContentTypeNotice()
+        . ($manager ? akiraShellContentTypeCreateForm($preserve, $error) : '')
+        . ($error !== '' ? '<div role="alert" class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Could not save:</strong> ' . akiraShellEscape($error) . '</div>' : '')
+        . akiraShellContentTypeTable($rows, $manager);
+    echo akiraShellPage('Content types', $body, ['active' => 'content-types']);
+}
+
+/** @param array<string,mixed> $preserve */
+function akiraShellContentTypeCreateForm(array $preserve = [], string $error = ''): string
+{
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20';
+    $label = akiraShellEscape((string)($preserve['label'] ?? ''));
+    $slug = akiraShellEscape((string)($preserve['slug'] ?? ''));
+    $schema = akiraShellEscape(akiraShellContentTypePrettySchema((string)($preserve['field_schema'] ?? '{"fields":{"title":{"type":"text","required":true}}}')));
+    return '<form method="post" action="/cms-akira-shell/content-types" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Declare a content type</h2><p class="mt-1 text-sm text-slate-500">Give the model a label and canonical slug, then declare its fields as JSON: type must be text, textarea, number, boolean, date, select, or image.</p>'
+        . '<div class="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr]"><div><label class="mb-1 block text-xs font-semibold text-slate-500">Label</label><input class="' . $control . '" name="label" value="' . $label . '" placeholder="e.g. News article" required></div><div><label class="mb-1 block text-xs font-semibold text-slate-500">Slug</label><input class="' . $control . ' font-mono" name="slug" value="' . $slug . '" placeholder="e.g. news" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div></div>'
+        . '<label class="mb-1 mt-3 block text-xs font-semibold text-slate-500">Field schema (JSON)</label>'
+        . '<textarea class="' . $control . ' min-h-[220px] resize-y font-mono text-xs" name="field_schema" required spellcheck="false">' . $schema . '</textarea>'
+        . '<div class="mt-4 flex justify-end"><button class="rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white hover:bg-akira-700" type="submit">Create content type</button></div></form>';
+}
+
+/**
+ * @param list<array<string,mixed>> $rows
+ */
+function akiraShellContentTypeTable(array $rows, bool $manager): string
+{
+    if ($rows === []) {
+        return '<div class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No declared content types yet. Declare your first model above.</div>';
+    }
+    $body = '';
+    foreach ($rows as $row) {
+        $body .= akiraShellContentTypeRow($row, $manager);
+    }
+    return '<div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="grid grid-cols-[1.2fr_1fr_100px_200px_auto] items-center gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Type</span><span>Slug</span><span>Fields</span><span>Updated</span><span class="text-right">Actions</span></div>' . $body . '</div>';
+}
+
+/** @param array<string,mixed> $row */
+function akiraShellContentTypeRow(array $row, bool $manager): string
+{
+    $id = (int)($row['id'] ?? 0);
+    $label = akiraShellEscape((string)($row['label'] ?? ''));
+    $slug = akiraShellEscape((string)($row['slug'] ?? ''));
+    $schema = (string)($row['field_schema'] ?? '');
+    $fieldCount = akiraShellContentTypeFieldCount($schema);
+    $updated = akiraShellEscape((string)($row['updated_at'] ?? ''));
+
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-akira-500 focus:outline-none';
+    $actions = '';
+    if ($manager) {
+        $schemaField = akiraShellEscape(akiraShellContentTypePrettySchema($schema));
+        $actions = '<div class="flex justify-end gap-2">'
+            . '<details class="relative"><summary class="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Edit model</summary>'
+            . '<form method="post" action="/cms-akira-shell/content-types/' . $id . '" class="absolute right-0 z-10 mt-2 w-[480px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">' . akiraShellCsrfField()
+            . '<div class="grid gap-2 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold text-slate-500">Label</label><input class="' . $control . '" name="label" value="' . $label . '" required></div><div><label class="mb-1 block text-xs font-semibold text-slate-500">Slug</label><input class="' . $control . ' font-mono" name="slug" value="' . $slug . '" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div></div>'
+            . '<label class="mb-1 mt-2 block text-xs font-semibold text-slate-500">Field schema (JSON)</label>'
+            . '<textarea class="' . $control . ' min-h-[180px] resize-y font-mono text-xs" name="field_schema" required spellcheck="false">' . $schemaField . '</textarea>'
+            . '<input type="hidden" name="expected_updated_at" value="' . akiraShellEscape((string)($row['updated_at'] ?? '')) . '">'
+            . '<input type="hidden" name="idempotency_key" value="content-type-' . bin2hex(random_bytes(10)) . '">'
+            . '<button class="mt-3 w-full rounded-xl bg-akira-600 px-3 py-2 text-sm font-semibold text-white hover:bg-akira-700" type="submit">Save model</button></form></details>'
+            . '<form method="post" action="/cms-akira-shell/content-types/' . $id . '/delete" onsubmit="return confirm(\'Delete this content type? Nothing references it yet, but this cannot be undone.\')">' . akiraShellCsrfField()
+            . '<input type="hidden" name="expected_updated_at" value="' . akiraShellEscape((string)($row['updated_at'] ?? '')) . '">'
+            . '<input type="hidden" name="idempotency_key" value="content-type-' . bin2hex(random_bytes(10)) . '">'
+            . '<button class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100" type="submit">Delete</button></form></div>';
+    } else {
+        $actions = '<div class="flex justify-end text-xs text-slate-300">Read only</div>';
+    }
+    return '<div class="grid grid-cols-[1.2fr_1fr_100px_200px_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0 hover:bg-slate-50/50">'
+        . '<span><strong class="block text-sm text-slate-900">' . $label . '</strong><span class="text-xs text-slate-400">Declared content model</span></span>'
+        . '<code class="text-xs text-slate-400">' . $slug . '</code>'
+        . '<span class="text-sm text-slate-600">' . $fieldCount . '</span>'
+        . '<span class="text-xs text-slate-400">' . $updated . '</span>'
+        . $actions . '</div>';
+}

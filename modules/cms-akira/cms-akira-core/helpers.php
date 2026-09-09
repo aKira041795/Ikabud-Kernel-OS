@@ -88,6 +88,43 @@ function cacSeedTaxonomyMutationPolicies(): void
 
 cacSeedTaxonomyMutationPolicies();
 
+/**
+ * Activation-time, idempotent seed for the P1 governed content-type registry
+ * mutation policy. Mirrors cacSeedTaxonomyMutationPolicies(): the
+ * CapabilityAuthorizationRegistry is the legal kernel-owned channel and the
+ * rows are created per tenant DB. Content types are declared content models —
+ * managed by editor and administrator roles; reads stay ungoverned until R5
+ * governs reads.
+ */
+function cacSeedContentTypeMutationPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
+    $rows = [];
+    foreach ([
+        'akira.content_type.create@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+        'akira.content_type.update@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+        'akira.content_type.delete@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
+    ] as $capabilityId => [$allowedRoles, $allowedCallers]) {
+        $rows[] = [
+            'policy_version' => 1,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-core',
+            'caller_module' => $allowedCallers,
+            'allowed_roles' => $allowedRoles,
+            'provider_activation_required' => true,
+            'requires_protocol' => 'v2',
+            'is_active' => true,
+        ];
+    }
+    $registry->seedPolicy($rows);
+}
+
+cacSeedContentTypeMutationPolicies();
+
 // ── Scoped Context Helpers ───────────────────────────────────────
 
 function cacCtx(): \Ikabud\Kernel\Contracts\ModuleContext
