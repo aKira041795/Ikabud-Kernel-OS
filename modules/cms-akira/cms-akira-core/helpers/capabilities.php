@@ -20,6 +20,7 @@ function cms_akira_core_capability_handlers(): array
         'akira.post.publish@1' => 'cac_cap_akira_post_publish_1',
         'akira.post.unpublish@1' => 'cac_cap_akira_post_unpublish_1',
         'akira.post.delete@1' => 'cac_cap_akira_post_delete_1',
+        'akira.post.set_taxonomies@1' => 'cac_cap_akira_post_set_taxonomies_1',
         'akira.taxonomy.get@1' => 'cac_cap_akira_taxonomy_get_1',
         'akira.taxonomy.list@1' => 'cac_cap_akira_taxonomy_list_1',
         'akira.taxonomy.create@1' => 'cac_cap_akira_taxonomy_create_1',
@@ -135,9 +136,14 @@ function cac_cap_akira_post_get_1(mixed $payload, string $capabilityId = 'akira.
         );
         $stmt->execute([':tenant_id' => cacPostTenantId(), ':slug' => $slug]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return is_array($row)
-            ? ['ok' => true, 'data' => $row]
-            : ['ok' => false, 'error' => 'Post not found'];
+        if (!is_array($row)) {
+            return ['ok' => false, 'error' => 'Post not found'];
+        }
+        // Additive read surface (P1 increment 3): taxonomy assignments ride
+        // along on the existing row DTO. Existing members keep their exact
+        // shape; taxonomy_ids + categories are new keys only.
+        $row += cacPostTaxonomyAssignmentsForSlug($slug);
+        return ['ok' => true, 'data' => $row];
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => 'Post storage unavailable'];
     }
@@ -166,6 +172,7 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
     $status = $adminRead && in_array($requestedStatus, ['draft', 'published'], true)
         ? (string)$requestedStatus : '';
     $search = $adminRead ? trim((string)($payload['search'] ?? $filters['search'] ?? '')) : '';
+    $taxonomyId = max(0, (int)($payload['taxonomy_id'] ?? $filters['taxonomy_id'] ?? 0));
 
     try {
         $tenantId = cacPostTenantId();
@@ -178,8 +185,20 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
             $bindings[':status'] = $status;
         }
         if ($search !== '') {
-            $where .= ' AND (title LIKE :search OR subtitle LIKE :search OR content LIKE :search OR slug LIKE :search)';
-            $bindings[':search'] = '%' . $search . '%';
+            // Unique named placeholders: the module DB runs native prepares where
+            // one name may not repeat across the clause (title/subtitle/content/slug).
+            $where .= ' AND (title LIKE :search_title OR subtitle LIKE :search_subtitle OR content LIKE :search_content OR slug LIKE :search_slug)';
+            $like = '%' . $search . '%';
+            $bindings[':search_title'] = $like;
+            $bindings[':search_subtitle'] = $like;
+            $bindings[':search_content'] = $like;
+            $bindings[':search_slug'] = $like;
+        }
+        if ($taxonomyId > 0) {
+            $where .= ' AND EXISTS (SELECT 1 FROM cms_akira_post_taxonomies pt '
+                . 'WHERE pt.tenant_id = cms_akira_posts.tenant_id AND pt.post_slug = cms_akira_posts.slug '
+                . 'AND pt.taxonomy_id = :taxonomy_id)';
+            $bindings[':taxonomy_id'] = $taxonomyId;
         }
         $count = cacDb()->prepare("SELECT COUNT(*) FROM cms_akira_posts WHERE {$where}");
         $count->execute($bindings);
@@ -190,6 +209,21 @@ function cac_cap_akira_post_list_1(mixed $payload, string $capabilityId = 'akira
         $stmt = cacDb()->prepare($sql);
         $stmt->execute($bindings);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Additive read surface (P1 increment 3): decorate each page row with
+        // its taxonomy assignments so lists can render category labels/chips.
+        if ($rows !== []) {
+            $slugs = array_values(array_unique(array_filter(array_map(
+                static fn (array $row): string => (string)($row['slug'] ?? ''),
+                $rows
+            ), static fn (string $slug): bool => $slug !== '')));
+            $projected = $slugs !== [] ? cacPostTaxonomyProjection($slugs, $tenantId) : [];
+            foreach ($rows as &$row) {
+                if (is_array($row)) {
+                    $row += $projected[(string)($row['slug'] ?? '')] ?? cacEmptyPostTaxonomyAssignments();
+                }
+            }
+            unset($row);
+        }
         return ['ok' => true, 'rows' => $rows, 'total' => (int)$count->fetchColumn()];
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => 'Post storage unavailable'];
@@ -597,6 +631,8 @@ function cac_cap_entity_list_post_1(mixed $payload, string $capabilityId = 'enti
                         'title' => (string)($post['title'] ?? ''),
                         'status' => (string)($post['status'] ?? 'draft'),
                         'updated_at' => (string)($post['updated_at'] ?? ''),
+                        'taxonomy_ids' => is_array($post['taxonomy_ids'] ?? null) ? $post['taxonomy_ids'] : [],
+                        'categories' => is_array($post['categories'] ?? null) ? $post['categories'] : [],
                         'actions' => ['edit', 'delete'],
                     ];
                 } else {
@@ -1753,4 +1789,327 @@ function cac_cap_akira_content_type_delete_1(mixed $payload, string $capabilityI
         throw new CacContentTypeMutationException('payload must be an object.');
     }
     return cacContentTypeMutate('delete', $payload);
+}
+
+// ── Post ↔ Taxonomy assignment (P1 content model increment 3) ────────────
+// A post's taxonomy links (categories) are an additive, tenant-scoped link set
+// owned by cms-akira-core. akira.post.set_taxonomies@1 replaces one post's
+// whole assignment set atomically inside the same single-tenant transaction as
+// every other governed write (kernel idempotency claim/commit/release +
+// kernel.audit.record) but NEVER writes the post row: it only runs an
+// optimistic-concurrency read of cms_akira_posts.updated_at so a concurrent
+// content edit surfaces as a clean 409. Read surfaces stay additive — the
+// post row DTO gains taxonomy_ids + categories keys and the list accepts an
+// optional filters.taxonomy_id — while existing read members keep their shape
+// and public/unpublished semantics are untouched.
+
+final class CacPostTaxonomyMutationException extends RuntimeException
+{
+    public function __construct(string $message, public readonly int $httpStatus = 422, public readonly ?int $retryAfter = null)
+    {
+        parent::__construct($message);
+    }
+}
+
+/** @return array{taxonomy_ids: list<int>, categories: list<array{id: int, name: string, slug: string, type: string}>} */
+function cacEmptyPostTaxonomyAssignments(): array
+{
+    return ['taxonomy_ids' => [], 'categories' => []];
+}
+
+/**
+ * @param list<string> $slugs
+ * @return array<string, array{taxonomy_ids: list<int>, categories: list<array{id: int, name: string, slug: string, type: string}>}>
+ */
+function cacPostTaxonomyProjection(array $slugs, int $tenantId): array
+{
+    $projection = [];
+    foreach ($slugs as $slug) {
+        $projection[$slug] = cacEmptyPostTaxonomyAssignments();
+    }
+    if ($slugs === []) {
+        return $projection;
+    }
+
+    try {
+        $placeholders = implode(',', array_fill(0, count($slugs), '?'));
+        $stmt = cacDb()->prepare(
+            'SELECT pt.post_slug, t.id, t.type, t.name, t.slug '
+            . 'FROM cms_akira_post_taxonomies pt '
+            . 'JOIN cms_akira_taxonomies t ON t.id = pt.taxonomy_id AND t.tenant_id = pt.tenant_id '
+            . "WHERE pt.tenant_id = ? AND pt.post_slug IN ({$placeholders}) "
+            . 'ORDER BY pt.post_slug, t.name, t.id'
+        );
+        $stmt->execute(array_merge([$tenantId], $slugs));
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $postSlug = (string)($row['post_slug'] ?? '');
+            if (!isset($projection[$postSlug])) {
+                continue;
+            }
+            $id = (int)($row['id'] ?? 0);
+            $projection[$postSlug]['taxonomy_ids'][] = $id;
+            $projection[$postSlug]['categories'][] = [
+                'id' => $id,
+                'name' => (string)($row['name'] ?? ''),
+                'slug' => (string)($row['slug'] ?? ''),
+                'type' => (string)($row['type'] ?? ''),
+            ];
+        }
+    } catch (Throwable $e) {
+        // The additive read surface must never take base post reads down: when
+        // the link storage is unavailable every post simply projects no links.
+        return [];
+    }
+    return $projection;
+}
+
+/** @return array{taxonomy_ids: list<int>, categories: list<array{id: int, name: string, slug: string, type: string}>} */
+function cacPostTaxonomyAssignmentsForSlug(string $slug): array
+{
+    $projection = cacPostTaxonomyProjection([$slug], cacPostTenantId());
+    return $projection[$slug] ?? cacEmptyPostTaxonomyAssignments();
+}
+
+/**
+ * taxonomy_ids is a flat list of positive taxonomy ids. Duplicate ids collapse
+ * to one assignment (the link table is UNIQUE on the triple), empty entries are
+ * tolerated (unchecked checkbox fields), and anything else is a clean 422.
+ *
+ * @return list<int>
+ */
+function cacPostTaxonomyIds(mixed $value): array
+{
+    if ($value === null || $value === '') {
+        return [];
+    }
+    if (!is_array($value)) {
+        throw new CacPostTaxonomyMutationException('taxonomy_ids must be an array of taxonomy ids.', 422);
+    }
+    $ids = [];
+    foreach ($value as $entry) {
+        if ($entry === null || $entry === '') {
+            continue;
+        }
+        if (is_int($entry) && $entry > 0) {
+            $ids[] = $entry;
+            continue;
+        }
+        if (is_string($entry) && ctype_digit($entry) && (int)$entry > 0) {
+            $ids[] = (int)$entry;
+            continue;
+        }
+        throw new CacPostTaxonomyMutationException('taxonomy_ids must contain positive taxonomy ids.', 422);
+    }
+    $unique = array_values(array_unique($ids));
+    if (count($unique) > 100) {
+        throw new CacPostTaxonomyMutationException('taxonomy_ids supports at most 100 terms per post.', 422);
+    }
+    return $unique;
+}
+
+function cacPostTaxonomyMutationExpectedAt(mixed $value): string
+{
+    if (!is_string($value)) {
+        throw new CacPostTaxonomyMutationException('expected_updated_at is required for optimistic concurrency.', 422);
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        || $date->format('Y-m-d H:i:s') !== $value) {
+        throw new CacPostTaxonomyMutationException('expected_updated_at must use Y-m-d H:i:s.', 422);
+    }
+    return $value;
+}
+
+/**
+ * Replace one post's taxonomy assignment set. The whole payload (slug, ids,
+ * expected_updated_at) hashes into the idempotency envelope; the post row is
+ * only ever read (FOR UPDATE + version compare) so the R1/R2 lifecycle and
+ * cacPostMutate semantics are untouched.
+ *
+ * @param array<string, mixed> $payload
+ * @return array<string, mixed>
+ */
+function cacPostSetTaxonomies(array $payload): array
+{
+    $actor = cacPostMutationActor();
+    $tenantId = cacPostTenantId();
+    if (array_key_exists('tenant_id', $payload)) {
+        throw new CacPostTaxonomyMutationException('tenant_id is supplied by kernel context.', 422);
+    }
+    if (!app()->entityAuthority()->isAuthoritative('post', 'cms-akira-core')) {
+        throw new CacPostTaxonomyMutationException('Post authority is not active.', 503);
+    }
+
+    $key = is_string($payload['idempotency_key'] ?? null) ? trim($payload['idempotency_key']) : '';
+    if ($key === '' || strlen($key) > 255) {
+        throw new CacPostTaxonomyMutationException('A valid idempotency_key is required.', 422);
+    }
+    $slug = cacPostValidSlug($payload['slug'] ?? null);
+    if ($slug === null) {
+        throw new CacPostTaxonomyMutationException('A canonical lowercase Post slug is required.', 422);
+    }
+    $taxonomyIds = cacPostTaxonomyIds($payload['taxonomy_ids'] ?? null);
+
+    // Identity/JWT-shaped payload members are intentionally neither read nor hashed.
+    $mutationInput = array_intersect_key($payload, array_flip([
+        'slug', 'taxonomy_ids', 'expected_updated_at',
+    ]));
+    $envelope = ['operation' => 'set_taxonomies', 'post' => $mutationInput];
+    $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
+        'caller' => ['module' => 'cms-akira-core', 'user' => $actor],
+        'mode' => 'first',
+    ]);
+    if (!is_string($hash)) {
+        throw new CacPostTaxonomyMutationException('Idempotency hashing unavailable.', 503);
+    }
+
+    $db = app()->db();
+    $claimed = false;
+    $publicationUncertain = false;
+    try {
+        $db->beginTransaction();
+        $claim = app()->cap()->call('kernel.idempotency.claim@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'payload_hash' => $hash,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        $claimStatus = is_array($claim) ? (string)($claim['status'] ?? '') : '';
+        if ($claimStatus === 'duplicate') {
+            $db->rollBack();
+            return is_array($claim['outcome'] ?? null) ? $claim['outcome'] : ['ok' => true, 'replayed' => true];
+        }
+        if ($claimStatus === 'conflict') {
+            $db->rollBack();
+            throw new CacPostTaxonomyMutationException('Idempotency key payload conflict.', 409);
+        }
+        if ($claimStatus === 'in_progress') {
+            $db->rollBack();
+            throw new CacPostTaxonomyMutationException('Idempotent mutation is still processing.', 425, 2);
+        }
+        if ($claimStatus !== 'new') {
+            throw new RuntimeException('Unexpected idempotency claim result.');
+        }
+        $claimed = true;
+
+        // Optimistic concurrency is a read-only check against the post row:
+        // the row is locked to serialize with cacPostMutate but never written.
+        $find = $db->prepare(
+            'SELECT id, updated_at FROM cms_akira_posts '
+            . 'WHERE tenant_id = :tenant AND slug = :slug AND deleted_at IS NULL LIMIT 1 FOR UPDATE'
+        );
+        $find->execute([':tenant' => $tenantId, ':slug' => $slug]);
+        $post = $find->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($post)) {
+            throw new CacPostTaxonomyMutationException('Post not found.', 404);
+        }
+        $expected = cacPostTaxonomyMutationExpectedAt($mutationInput['expected_updated_at'] ?? null);
+        if ($expected !== (string)$post['updated_at']) {
+            throw new CacPostTaxonomyMutationException('Post was modified; refresh and retry.', 409);
+        }
+        $postId = (int)$post['id'];
+
+        // Every requested taxonomy term must exist in the same tenant.
+        if ($taxonomyIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($taxonomyIds), '?'));
+            $verify = $db->prepare(
+                "SELECT id FROM cms_akira_taxonomies WHERE tenant_id = ? AND id IN ({$placeholders})"
+            );
+            $verify->execute(array_merge([$tenantId], $taxonomyIds));
+            $found = array_map('intval', array_map('strval', $verify->fetchAll(PDO::FETCH_COLUMN)));
+            if (count($found) !== count($taxonomyIds)) {
+                throw new CacPostTaxonomyMutationException(
+                    'Every taxonomy_id must reference an existing term in the same tenant.',
+                    422
+                );
+            }
+        }
+
+        $previous = $db->prepare(
+            'SELECT taxonomy_id FROM cms_akira_post_taxonomies '
+            . 'WHERE tenant_id = :tenant AND post_slug = :slug ORDER BY taxonomy_id'
+        );
+        $previous->execute([':tenant' => $tenantId, ':slug' => $slug]);
+        $previousIds = array_map('intval', array_map('strval', $previous->fetchAll(PDO::FETCH_COLUMN)));
+
+        // Atomic replacement of the whole assignment set inside this tx.
+        $delete = $db->prepare(
+            'DELETE FROM cms_akira_post_taxonomies WHERE tenant_id = :tenant AND post_slug = :slug'
+        );
+        $delete->execute([':tenant' => $tenantId, ':slug' => $slug]);
+        if ($taxonomyIds !== []) {
+            $insert = $db->prepare(
+                'INSERT INTO cms_akira_post_taxonomies (tenant_id, post_slug, taxonomy_id) VALUES (?, ?, ?)'
+            );
+            foreach ($taxonomyIds as $taxonomyId) {
+                $insert->execute([$tenantId, $slug, $taxonomyId]);
+            }
+        }
+
+        $correlationId = cacPostMutationCorrelationId();
+        $audit = app()->cap()->call('kernel.audit.record@1', [
+            'module' => 'cms-akira-core',
+            'action' => 'akira.post.set_taxonomies',
+            'entity_type' => 'post',
+            'entity_id' => (string)$postId,
+            'old_data' => ['slug' => $slug, 'taxonomy_ids' => $previousIds],
+            'new_data' => [
+                'correlation_id' => $correlationId,
+                'tenant_id' => $tenantId,
+                'slug' => $slug,
+                'taxonomy_ids' => $taxonomyIds,
+            ],
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
+            throw new RuntimeException('Durable Post taxonomy audit failed.');
+        }
+
+        $outcome = [
+            'ok' => true,
+            'operation' => 'set_taxonomies',
+            'post' => ['id' => $postId, 'slug' => $slug, 'taxonomy_ids' => $taxonomyIds],
+            'correlation_id' => $correlationId,
+        ];
+        $committed = app()->cap()->call('kernel.idempotency.commit@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'outcome' => $outcome,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if ($committed !== true) {
+            throw new RuntimeException('Idempotency outcome commit failed.');
+        }
+
+        // From this point a commit error is uncertain: never release/re-execute.
+        $publicationUncertain = true;
+        $db->commit();
+        $publicationUncertain = false;
+        return $outcome;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        if ($claimed && !$publicationUncertain) {
+            try {
+                app()->cap()->call('kernel.idempotency.release@1', [
+                    'key' => $key, 'tenant_id' => $tenantId, 'db' => $db,
+                ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+            } catch (Throwable) {
+                // A failed release remains processing and therefore fails closed.
+            }
+        }
+        throw $e;
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_post_set_taxonomies_1(mixed $payload, string $capabilityId = 'akira.post.set_taxonomies@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacPostTaxonomyMutationException('payload must be an object.');
+    }
+    return cacPostSetTaxonomies($payload);
 }

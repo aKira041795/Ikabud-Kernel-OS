@@ -107,6 +107,18 @@ $check(
     'content types page reads and mutates exclusively through governed content type capabilities'
 );
 $check(str_contains($handlers, 'name="field_schema"') && str_contains($handlers, 'pattern="[a-z0-9]+(?:-[a-z0-9]+)*"'), 'content type forms declare a canonical slug pattern and field_schema JSON');
+$check(in_array('akira.post.set_taxonomies@1', $manifest['capabilities']['depends'] ?? [], true), 'shell declares akira.post.set_taxonomies@1 dependency');
+$check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/taxonomies']), 'post taxonomy assignment route mounted');
+$check(str_contains($handlers, 'function akiraShellPostSetTaxonomies') && str_contains($handlers, 'function akiraShellAuthorizePostTaxonomyManager'), 'category assignment handlers mounted with an editorial gate');
+$check(str_contains($handlers, "akiraShellCall('akira.post.set_taxonomies@1'")
+    && str_contains($helpers, "akiraShellCall('akira.post.set_taxonomies@1'"), 'editor saves categories through the governed assignment capability after the post write');
+$check(str_contains($helpers, 'name="taxonomy_ids[]"') && str_contains($helpers, 'function akiraShellCategoryPanel') && str_contains($helpers, "akiraShellCall('akira.taxonomy.list@1'")
+    && str_contains($helpers, "'type' => 'category'"), 'editor category panel reads governed categories and posts taxonomy_ids checkboxes');
+$check(str_contains($handlers, 'akiraShellPostTable(') && str_contains($helpers, 'function akiraShellPostTable') && str_contains($helpers, 'function akiraShellCategoryChips') && str_contains($helpers, 'function akiraShellPostRow'), 'posts list renders category chips per row');
+$check(str_contains($handlers, '<select name="category"') && str_contains($handlers, "'taxonomy_id' => ") && str_contains($helpers, 'function akiraShellCategories'), 'posts list gains a governed category filter');
+$check(!str_contains($handlers . $helpers, 'name="_csrf_token"'), 'category surfaces keep the canonical Kernel CSRF field only');
+$check(str_contains($helpers, 'function akiraShellIsTaxonomyManager()') && str_contains($helpers, "'admin', 'editor', 'administrator', 'superadmin'"), 'category assignment presentation mirrors the seeded policy roles');
+$check(str_contains($handlers, 'akiraShellPostSetTaxonomyPayload(') || str_contains($helpers, 'function akiraShellPostSetTaxonomyPayload'), 'assignment payload builder normalizes posted taxonomy ids');
 $check(str_contains($login, 'https://cdn.tailwindcss.com') && str_contains($login, 'alpinejs@3.14.3'), 'login ingests reference Tailwind and Alpine assets');
 $check(str_contains($login, 'tailwind.config') && str_contains($login, 'CMS Akira') && !str_contains($login, '<style>'), 'login uses branded palette without bespoke CSS');
 $check(str_contains($helpers, 'app()->entityRenderers()->renderList') && str_contains($handlers, 'data-akira-entity-view="post-list"'), 'posts render through styled Kernel entity-view container');

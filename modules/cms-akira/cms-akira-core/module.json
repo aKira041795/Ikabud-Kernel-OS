@@ -24,19 +24,22 @@
     "owns_tables": [
         "cms_akira_posts",
         "cms_akira_taxonomies",
-        "cms_akira_content_types"
+        "cms_akira_content_types",
+        "cms_akira_post_taxonomies"
     ],
     "reads_tables": [
         "cms_akira_posts",
         "cms_akira_taxonomies",
-        "cms_akira_content_types"
+        "cms_akira_content_types",
+        "cms_akira_post_taxonomies"
     ],
     "migrations": [
         "database/migrations/001_initial.sql",
         "database/migrations/002_create_posts.sql",
         "database/migrations/003_add_posts_deleted_at.sql",
         "database/migrations/004_create_taxonomies.sql",
-        "database/migrations/005_create_content_types.sql"
+        "database/migrations/005_create_content_types.sql",
+        "database/migrations/006_create_post_taxonomies.sql"
     ],
     "entities": {
         "post": {
@@ -142,6 +145,21 @@
                     ]
                 },
                 "description": "Admin-only idempotent Post delete lifecycle operation owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.post.set_taxonomies@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.post",
+                        "entity.detail.post"
+                    ]
+                },
+                "description": "Editor-governed idempotent Post taxonomy assignment (atomically replaces a post's category links) owned by CMS Akira Core"
             },
             {
                 "id": "akira.taxonomy.get@1",

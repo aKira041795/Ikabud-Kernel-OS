@@ -101,17 +101,29 @@ function akiraShellPostList(array $params = []): void
     $limit = 10;
     $search = trim((string)($query['q'] ?? ''));
     $status = in_array(($query['status'] ?? ''), ['draft', 'published'], true) ? (string)$query['status'] : '';
+    $category = max(0, (int)($query['category'] ?? 0));
     $resolved = app()->entityViews()->resolve('post', 'list', [
-        'filters' => ['include_unpublished' => true, 'search' => $search, 'status' => $status],
+        'filters' => ['include_unpublished' => true, 'search' => $search, 'status' => $status, 'taxonomy_id' => $category > 0 ? $category : null],
         'limit' => $limit, 'offset' => ($page - 1) * $limit,
         'sort_field' => 'created_at', 'sort_direction' => 'desc',
     ]);
-    $total = (int)($resolved['total'] ?? count($resolved['rows'] ?? []));
+    $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
+    $total = (int)($resolved['total'] ?? count($rows));
+    $categoryOptions = '';
+    foreach (akiraShellCategories() as $term) {
+        $termId = (int)($term['id'] ?? 0);
+        if ($termId <= 0) {
+            continue;
+        }
+        $categoryOptions .= '<option value="' . $termId . '"' . ($termId === $category ? ' selected' : '') . '>' . akiraShellEscape((string)($term['name'] ?? '')) . '</option>';
+    }
+    $categoryFilterSummary = $category > 0 ? '<p class="mt-2 text-xs text-slate-500">Showing posts filed under one category — clear the filter to see the whole library.</p>' : '';
     $body = '<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><span class="inline-flex rounded-full bg-akira-100 px-3 py-1 text-xs font-semibold text-akira-700">' . $total . ' post' . ($total === 1 ? '' : 's') . '</span><p class="mt-2 text-sm text-slate-500">Manage the editorial library through the governed Kernel entity-view pipeline.</p></div><a href="/cms-akira-shell/posts/new" class="rounded-2xl bg-akira-600 px-4 py-2.5 text-center text-sm font-semibold text-white">+ Create post</a></div>'
         . akiraShellNotice()
-        . '<form method="get" class="mb-5 grid gap-3 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[1fr_180px_auto]"><input type="search" name="q" value="' . akiraShellEscape($search) . '" placeholder="Search title, slug, or body…" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-akira-500 focus:outline-none"><select name="status" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All statuses</option><option value="published"' . ($status === 'published' ? ' selected' : '') . '>Published</option><option value="draft"' . ($status === 'draft' ? ' selected' : '') . '>Draft</option></select><button class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Apply</button></form>'
-        . '<section data-akira-entity-view="post-list" class="akira-entity-list overflow-hidden rounded-[26px] border border-slate-200 bg-white p-2 shadow-sm">' . akiraShellEntityList($resolved) . '</section>'
-        . akiraShellPagination($page, $limit, $total, $search, $status);
+        . '<form method="get" class="mb-5 grid gap-3 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[1fr_150px_180px_auto]"><input type="search" name="q" value="' . akiraShellEscape($search) . '" placeholder="Search title, slug, or body…" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-akira-500 focus:outline-none"><select name="category" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All categories</option>' . $categoryOptions . '</select><select name="status" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All statuses</option><option value="published"' . ($status === 'published' ? ' selected' : '') . '>Published</option><option value="draft"' . ($status === 'draft' ? ' selected' : '') . '>Draft</option></select><button class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Apply</button></form>'
+        . $categoryFilterSummary
+        . '<section data-akira-entity-view="post-list" class="akira-entity-list overflow-hidden rounded-[26px] border border-slate-200 bg-white p-2 shadow-sm">' . akiraShellPostTable($rows) . '</section>'
+        . akiraShellPagination($page, $limit, $total, $search, $status, $category);
     echo akiraShellPage('Posts', $body, ['active' => 'posts']);
 }
 
@@ -126,10 +138,17 @@ function akiraShellPostForm(array $post = [], string $error = ''): string
     $workflowActions = is_array($workflow['allowed_actions'] ?? null) ? $workflow['allowed_actions'] : [];
     $errorHtml = $error === '' ? '' : '<div role="alert" class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Could not save:</strong> ' . akiraShellEscape($error) . '</div>';
     $control = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20';
+    // Categories panel (P1 increment 3): only editorial roles manage a post's
+    // categories; the panel lists governed categories and its checkboxes POST
+    // taxonomy_ids[] with the save. The workflow block below stays untouched.
+    $categoryPanel = '';
+    if (function_exists('app') && is_object(app()) && method_exists(app(), 'user') && akiraShellIsTaxonomyManager()) {
+        $categoryPanel = akiraShellCategoryPanel(akiraShellCategories(), akiraShellAssignedTaxonomyIds($post));
+    }
     return '<form x-data="akiraContentEditor()" class="grid gap-5 lg:grid-cols-[1fr_280px]" method="post" action="' . akiraShellEscape($action) . '">' . akiraShellCsrfField() . '<div class="space-y-5">' . $errorHtml
         . '<div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><label class="mb-2 block text-sm font-semibold">Title</label><input class="' . $control . ' text-xl font-bold" name="title" value="' . akiraShellEscape($post['title'] ?? '') . '" required><label class="mb-2 mt-5 block text-sm font-semibold">Slug</label><input class="' . $control . ' font-mono" name="slug" value="' . akiraShellEscape($slug) . '" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div>'
         . '<div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div class="flex items-center justify-between border-b border-slate-100 px-5 py-3"><strong>Content</strong><button type="button" @click="preview=!preview" class="text-sm font-semibold text-akira-700" x-text="preview ? \'Edit\' : \'Preview\'"></button></div><textarea x-show="!preview" x-model="body" class="min-h-[480px] w-full resize-y border-0 p-5 font-mono text-sm focus:outline-none" name="content" required></textarea><div x-show="preview" x-cloak class="min-h-[480px] whitespace-pre-wrap p-5 text-sm leading-7" x-text="body"></div></div></div>'
-        . '<aside><div class="sticky top-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 class="font-bold">Workflow</h2><p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Current state</p><p data-akira-workflow-state class="mt-1 rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-800">' . akiraShellEscape(ucwords(str_replace('_', ' ', $workflowStatus))) . '</p><input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($post['updated_at'] ?? '') . '"><input type="hidden" name="expected_status" value="' . akiraShellEscape($workflowStatus) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '"><button class="mt-5 w-full rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button>' . akiraShellWorkflowActions($slug, $workflowActions) . '<a href="/cms-akira-shell/posts" class="mt-3 block text-center text-sm text-slate-500">Cancel</a></div></aside></form><script>function akiraContentEditor(){return{body:' . akiraShellJsString((string)($post['content'] ?? '')) . ',preview:false}}</script>';
+        . '<aside><div class="sticky top-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">' . $categoryPanel . '<h2 class="font-bold">Workflow</h2><p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Current state</p><p data-akira-workflow-state class="mt-1 rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-800">' . akiraShellEscape(ucwords(str_replace('_', ' ', $workflowStatus))) . '</p><input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($post['updated_at'] ?? '') . '"><input type="hidden" name="expected_status" value="' . akiraShellEscape($workflowStatus) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '"><button class="mt-5 w-full rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button>' . akiraShellWorkflowActions($slug, $workflowActions) . '<a href="/cms-akira-shell/posts" class="mt-3 block text-center text-sm text-slate-500">Cancel</a></div></aside></form><script>function akiraContentEditor(){return{body:' . akiraShellJsString((string)($post['content'] ?? '')) . ',preview:false}}</script>';
 }
 
 /** @param array<string,mixed> $params */
@@ -174,6 +193,51 @@ function akiraShellPostWorkflowTransition(array $params = []): void
 function akiraShellPostDelete(array $params = []): void
 {
     akiraShellMutation('akira.post.delete@1', (string)($params['slug'] ?? ''));
+}
+
+function akiraShellAuthorizePostTaxonomyManager(): bool
+{
+    if (!akiraShellAuthorize()) {
+        return false;
+    }
+    if (!akiraShellIsTaxonomyManager()) {
+        http_response_code(403);
+        echo akiraShellPage('Access denied', '<p>This surface is reserved for Akira editors and administrators.</p>');
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Direct post category assignment route. Every write flows through the
+ * governed akira.post.set_taxonomies@1 capability (the seeded policy rows are
+ * the authority for the admin/editor/administrator/superadmin role gate); this
+ * handler only mirrors that allowlist for presentation. The post content row
+ * is never touched here — assignment is a separate governed write.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellPostSetTaxonomies(array $params = []): void
+{
+    if (!akiraShellAuthorizePostTaxonomyManager()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $slug = trim((string)($params['slug'] ?? ''));
+    if ($slug === '' || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1) {
+        http_response_code(422);
+        echo akiraShellPage('Edit post', '<p>The post slug is invalid.</p>', ['active' => 'posts']);
+        return;
+    }
+    $input = akiraShellInput();
+    try {
+        akiraShellCall('akira.post.set_taxonomies@1', akiraShellPostSetTaxonomyPayload($slug, $input));
+        akiraShellRedirect('/cms-akira-shell/posts/' . rawurlencode($slug) . '/edit?saved=categories');
+    } catch (Throwable $e) {
+        http_response_code(422);
+        $post = akiraShellFetchPost($slug) ?? ['slug' => $slug];
+        echo akiraShellPage('Edit post', akiraShellPostForm($post, $e->getMessage()), ['active' => 'posts']);
+    }
 }
 
 /**

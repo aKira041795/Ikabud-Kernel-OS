@@ -18,6 +18,7 @@
       "akira.post.list@1",
       "akira.post.create@1",
       "akira.post.update@1",
+      "akira.post.set_taxonomies@1",
       "akira.workflow.evaluate@1",
       "akira.workflow.transition@1",
       "akira.post.delete@1",

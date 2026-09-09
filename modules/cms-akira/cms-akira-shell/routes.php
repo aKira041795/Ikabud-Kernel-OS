@@ -19,6 +19,7 @@ return [
     'POST' => [
         '/cms-akira-shell/posts' => 'cms-akira-shell:akiraShellPostCreate',
         '/cms-akira-shell/posts/{slug}' => 'cms-akira-shell:akiraShellPostUpdate',
+        '/cms-akira-shell/posts/{slug}/taxonomies' => 'cms-akira-shell:akiraShellPostSetTaxonomies',
         '/cms-akira-shell/posts/{slug}/workflow' => 'cms-akira-shell:akiraShellPostWorkflowTransition',
         '/cms-akira-shell/posts/{slug}/delete' => 'cms-akira-shell:akiraShellPostDelete',
         '/cms-akira-shell/categories' => 'cms-akira-shell:akiraShellCategoryCreate',
