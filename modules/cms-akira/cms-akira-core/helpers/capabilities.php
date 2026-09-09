@@ -25,6 +25,11 @@ function cms_akira_core_capability_handlers(): array
         'akira.taxonomy.create@1' => 'cac_cap_akira_taxonomy_create_1',
         'akira.taxonomy.update@1' => 'cac_cap_akira_taxonomy_update_1',
         'akira.taxonomy.delete@1' => 'cac_cap_akira_taxonomy_delete_1',
+        'akira.content_type.get@1' => 'cac_cap_akira_content_type_get_1',
+        'akira.content_type.list@1' => 'cac_cap_akira_content_type_list_1',
+        'akira.content_type.create@1' => 'cac_cap_akira_content_type_create_1',
+        'akira.content_type.update@1' => 'cac_cap_akira_content_type_update_1',
+        'akira.content_type.delete@1' => 'cac_cap_akira_content_type_delete_1',
         'entity.list.post@1' => 'cac_cap_entity_list_post_1',
         'entity.get.post@1' => 'cac_cap_entity_get_post_1',
     ];
@@ -1133,4 +1138,619 @@ function cac_cap_akira_taxonomy_delete_1(mixed $payload, string $capabilityId = 
         throw new CacTaxonomyMutationException('payload must be an object.');
     }
     return cacTaxonomyMutate('delete', $payload);
+}
+
+// ── Governed Content Types (P1 content model increment 2) ──────────────
+// A tenant-scoped registry of DECLARED content models. An editor/administrator
+// declares a slug, a human label, and a field_schema (a JSON object of the
+// canonical shape { fields: { <name>: { type, required, label } } }); the
+// schema is validated on every write and stored in canonical form, so no
+// schema-less meta payload can reach the tenant DB. Writes run on the same
+// single-tenant PDO transaction as posts/taxonomy: kernel idempotency
+// claim/commit/release + kernel.audit.record in one tx, tenant from kernel
+// context (payload tenant_id rejected), canonical slug, and optimistic
+// concurrency via expected_updated_at. The table is deliberately FK-less:
+// nothing references content types yet, so delete is always allowed and a
+// later increment can add the reference seam without a migration redesign.
+// Reads (list/get) remain ungoverned until R5 governs reads.
+
+final class CacContentTypeMutationException extends RuntimeException
+{
+    public function __construct(string $message, public readonly int $httpStatus = 422, public readonly ?int $retryAfter = null)
+    {
+        parent::__construct($message);
+    }
+}
+
+/** @return list<string> */
+function cacContentTypeFieldTypes(): array
+{
+    return ['text', 'textarea', 'number', 'boolean', 'date', 'select', 'image'];
+}
+
+function cacContentTypeTenantId(): int
+{
+    $tenantId = (int)app()->tenant()->current();
+    if ($tenantId <= 0) {
+        throw new RuntimeException('A trusted tenant context is required.');
+    }
+    return $tenantId;
+}
+
+function cacContentTypeValidSlug(mixed $value): ?string
+{
+    $slug = is_string($value) ? trim($value) : '';
+    if ($slug === '' || strlen($slug) > 191) {
+        return null;
+    }
+
+    // Same canonical form as Post and Taxonomy slugs: lowercase ASCII words,
+    // one hyphen between words. This slug is the future coupling key for posts.
+    return preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) === 1 ? $slug : null;
+}
+
+/** @return array{id: int, role: string, source?: string} */
+function cacContentTypeMutationActor(): array
+{
+    $actor = app()->user();
+    if (!is_array($actor) || (int)($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
+        throw new CacContentTypeMutationException('Authentication required.', 401);
+    }
+    return $actor;
+}
+
+function cacContentTypeMutationString(mixed $value, string $field, int $max, bool $required = false): string
+{
+    if (!is_string($value)) {
+        if (!$required && $value === null) {
+            return '';
+        }
+        throw new CacContentTypeMutationException("{$field} must be a string.");
+    }
+    $value = trim($value);
+    if (($required && $value === '') || strlen($value) > $max) {
+        throw new CacContentTypeMutationException("{$field} is invalid.");
+    }
+    return $value;
+}
+
+function cacContentTypeMutationExpectedAt(mixed $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_string($value)) {
+        throw new CacContentTypeMutationException('expected_updated_at must be a datetime string.');
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        || $date->format('Y-m-d H:i:s') !== $value) {
+        throw new CacContentTypeMutationException('expected_updated_at must use Y-m-d H:i:s.');
+    }
+    return $value;
+}
+
+function cacContentTypeMutationCorrelationId(): string
+{
+    $fromContext = function_exists('kernel_request_context_get')
+        ? trim((string)kernel_request_context_get('correlation_id', ''))
+        : '';
+    return $fromContext !== '' ? $fromContext : bin2hex(random_bytes(16));
+}
+
+/**
+ * Lex a validated JSON document into a flat token stream. Punctuation becomes
+ * scalar strings; every other token becomes ['t' => 'str'|'scalar', 'v' => value].
+ * Only ever invoked after json_decode already accepted the document, so this
+ * scan cannot trip on malformed input.
+ *
+ * @return list<string|array{t: string, v: mixed}>
+ */
+function cacContentTypeJsonTokens(string $json): array
+{
+    $tokens = [];
+    $len = strlen($json);
+    $i = 0;
+    while ($i < $len) {
+        $ch = $json[$i];
+        if ($ch === ' ' || $ch === "\t" || $ch === "\n" || $ch === "\r") {
+            $i++;
+            continue;
+        }
+        if (str_contains('{}[],:', $ch)) {
+            $tokens[] = $ch;
+            $i++;
+            continue;
+        }
+        if ($ch === '"') {
+            $j = $i + 1;
+            while ($j < $len) {
+                if ($json[$j] === '\\') {
+                    $j += 2;
+                    continue;
+                }
+                if ($json[$j] === '"') {
+                    break;
+                }
+                $j++;
+            }
+            $tokens[] = ['t' => 'str', 'v' => (string)json_decode(substr($json, $i, $j - $i + 1))];
+            $i = $j + 1;
+            continue;
+        }
+        // Number or literal (true/false/null) — tokens that are never keys.
+        $j = $i;
+        while ($j < $len && (ctype_alnum($json[$j]) || str_contains('-+.eE', $json[$j]))) {
+            $j++;
+        }
+        $tokens[] = ['t' => 'scalar', 'v' => substr($json, $i, $j - $i)];
+        $i = $j;
+    }
+    return $tokens;
+}
+
+/**
+ * Field names are JSON object keys inside the "fields" member, so duplicates
+ * collapse during decode and must be detected on the raw document. Walk the
+ * token stream: object-member keys are string tokens directly followed by ':'
+ * at nesting depth 2 (root object -> fields object).
+ *
+ * @return list<string>
+ */
+function cacContentTypeRawFieldNames(string $json): array
+{
+    $tokens = cacContentTypeJsonTokens($json);
+    $depth = 0;
+    $names = [];
+    $count = count($tokens);
+    for ($i = 0; $i < $count; $i++) {
+        $token = $tokens[$i];
+        if ($token === '{' || $token === '[') {
+            $depth++;
+            continue;
+        }
+        if ($token === '}' || $token === ']') {
+            $depth--;
+            continue;
+        }
+        if ($token === ':' || $token === ',') {
+            continue;
+        }
+        if (is_array($token) && $token['t'] === 'str' && $depth === 2
+            && ($tokens[$i + 1] ?? null) === ':') {
+            $names[] = (string)$token['v'];
+        }
+    }
+    return $names;
+}
+
+/**
+ * Validate and canonically normalize one declared field_schema. Enforced shape
+ * (the only shape a declared content model may take):
+ *
+ *   { "fields": { "<name>": { "type": text|textarea|number|boolean|date|select|image,
+ *                             "required": bool (optional), "label": string (optional) } } }
+ *
+ * Unknown members, unsupported field types, and duplicate field names are
+ * rejected with a clear 422 through the mutation exception. Returns the compact
+ * canonical JSON that is stored.
+ */
+function cacContentTypeCanonicalSchema(mixed $value): string
+{
+    if (!is_string($value)) {
+        throw new CacContentTypeMutationException('field_schema must be a JSON string.', 422);
+    }
+    if (strlen($value) > 65535) {
+        throw new CacContentTypeMutationException('field_schema is too large (max 65535 characters).', 422);
+    }
+    $decoded = json_decode($value, true);
+    if ($decoded === null && trim($value) !== 'null') {
+        $reason = (string)json_last_error_msg();
+        throw new CacContentTypeMutationException("field_schema is not valid JSON ({$reason}).", 422);
+    }
+    if (!is_array($decoded) || array_is_list($decoded)) {
+        throw new CacContentTypeMutationException('field_schema must be a JSON object.', 422);
+    }
+    foreach (array_keys($decoded) as $key) {
+        if ($key !== 'fields') {
+            throw new CacContentTypeMutationException('field_schema supports only the "fields" member.', 422);
+        }
+    }
+    $fields = $decoded['fields'] ?? null;
+    if (!is_array($fields) || array_is_list($fields)) {
+        // An empty JSON object also decodes to [], so this single check rejects
+        // both `"fields": []` and an empty `"fields": {}` — a declared content
+        // model must declare at least one field.
+        throw new CacContentTypeMutationException('field_schema must declare a non-empty "fields" object.', 422);
+    }
+    $duplicates = [];
+    foreach (cacContentTypeRawFieldNames($value) as $name) {
+        $duplicates[$name] = ($duplicates[$name] ?? 0) + 1;
+    }
+    foreach ($duplicates as $name => $count) {
+        if ($count > 1) {
+            throw new CacContentTypeMutationException("field_schema declares duplicate field name \"{$name}\".", 422);
+        }
+    }
+
+    $types = cacContentTypeFieldTypes();
+    $normalized = [];
+    foreach ($fields as $name => $definition) {
+        if (!is_string($name) || $name === '') {
+            throw new CacContentTypeMutationException('field_schema field names must be non-empty strings.', 422);
+        }
+        if (!is_array($definition) || array_is_list($definition)) {
+            throw new CacContentTypeMutationException("field_schema field \"{$name}\" must be an object.", 422);
+        }
+        foreach (array_keys($definition) as $member) {
+            if (!in_array($member, ['type', 'required', 'label'], true)) {
+                throw new CacContentTypeMutationException(
+                    "field_schema field \"{$name}\" has unsupported member \"{$member}\".",
+                    422
+                );
+            }
+        }
+        $type = $definition['type'] ?? null;
+        if (!is_string($type) || !in_array($type, $types, true)) {
+            throw new CacContentTypeMutationException(
+                "field_schema field \"{$name}\": type must be one of " . implode(', ', $types) . '.',
+                422
+            );
+        }
+        $field = ['type' => $type];
+        if (array_key_exists('required', $definition)) {
+            if (!is_bool($definition['required'])) {
+                throw new CacContentTypeMutationException("field_schema field \"{$name}\": required must be a boolean.", 422);
+            }
+            if ($definition['required'] === true) {
+                $field['required'] = true;
+            }
+        }
+        if (array_key_exists('label', $definition)) {
+            if (!is_string($definition['label'])) {
+                throw new CacContentTypeMutationException("field_schema field \"{$name}\": label must be a string.", 422);
+            }
+            $label = trim($definition['label']);
+            if ($label !== '') {
+                $field['label'] = $label;
+            }
+        }
+        $normalized[$name] = $field;
+    }
+
+    $canonical = json_encode(['fields' => $normalized], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if (!is_string($canonical)) {
+        throw new CacContentTypeMutationException('field_schema could not be normalized.', 422);
+    }
+    return $canonical;
+}
+
+/**
+ * Resolve the declared-model fields for a governed write. Slug, label, and the
+ * canonical field_schema all move on update (nothing references a type yet).
+ *
+ * @param array<string, mixed> $payload
+ * @param array<string, mixed>|null $existing
+ * @return array{slug: string, label: string, field_schema: string}
+ */
+function cacContentTypeMutationFields(array $payload, ?array $existing = null): array
+{
+    $creating = $existing === null;
+    $slug = $creating
+        ? cacContentTypeValidSlug($payload['slug'] ?? null)
+        : cacContentTypeValidSlug(array_key_exists('slug', $payload) ? $payload['slug'] : ($existing['slug'] ?? null));
+    if ($slug === null) {
+        throw new CacContentTypeMutationException('A canonical lowercase content type slug is required.', 422);
+    }
+    $label = $creating
+        ? cacContentTypeMutationString($payload['label'] ?? null, 'label', 191, true)
+        : (array_key_exists('label', $payload)
+            ? cacContentTypeMutationString($payload['label'], 'label', 191, true)
+            : (string)($existing['label'] ?? ''));
+    $schema = $creating
+        ? cacContentTypeCanonicalSchema($payload['field_schema'] ?? null)
+        : (array_key_exists('field_schema', $payload)
+            ? cacContentTypeCanonicalSchema($payload['field_schema'])
+            : (string)($existing['field_schema'] ?? '{"fields":{}}'));
+    return ['slug' => $slug, 'label' => $label, 'field_schema' => $schema];
+}
+
+/**
+ * Execute one governed content type mutation on the application PDO. Kernel
+ * idempotency and audit capabilities escalate narrowly onto this exact
+ * caller-managed single-tenant transaction (mirrors cacTaxonomyMutate).
+ *
+ * @param array<string, mixed> $payload
+ * @return array<string, mixed>
+ */
+function cacContentTypeMutate(string $operation, array $payload): array
+{
+    $actor = cacContentTypeMutationActor();
+    $tenantId = cacContentTypeTenantId();
+    if (array_key_exists('tenant_id', $payload)) {
+        throw new CacContentTypeMutationException('tenant_id is supplied by kernel context.', 422);
+    }
+    if (!app()->entityAuthority()->isAuthoritative('content_type', 'cms-akira-core')) {
+        throw new CacContentTypeMutationException('Content type authority is not active.', 503);
+    }
+
+    $key = is_string($payload['idempotency_key'] ?? null) ? trim($payload['idempotency_key']) : '';
+    if ($key === '' || strlen($key) > 255) {
+        throw new CacContentTypeMutationException('A valid idempotency_key is required.', 422);
+    }
+
+    if ($operation === 'create') {
+        if (cacContentTypeValidSlug($payload['slug'] ?? null) === null) {
+            throw new CacContentTypeMutationException('A canonical lowercase content type slug is required.', 422);
+        }
+    } else {
+        $typeId = is_numeric($payload['id'] ?? null) ? (int)$payload['id'] : 0;
+        if ($typeId <= 0) {
+            throw new CacContentTypeMutationException('A content type id is required.', 422);
+        }
+    }
+
+    // Identity/JWT-shaped payload members are intentionally neither read nor hashed.
+    $mutationInput = array_intersect_key($payload, array_flip([
+        'id', 'slug', 'label', 'field_schema', 'expected_updated_at',
+    ]));
+    $envelope = ['operation' => $operation, 'content_type' => $mutationInput];
+    $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
+        'caller' => ['module' => 'cms-akira-core', 'user' => $actor],
+        'mode' => 'first',
+    ]);
+    if (!is_string($hash)) {
+        throw new CacContentTypeMutationException('Idempotency hashing unavailable.', 503);
+    }
+
+    $db = app()->db();
+    $claimed = false;
+    $publicationUncertain = false;
+    try {
+        $db->beginTransaction();
+        $claim = app()->cap()->call('kernel.idempotency.claim@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'payload_hash' => $hash,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        $claimStatus = is_array($claim) ? (string)($claim['status'] ?? '') : '';
+        if ($claimStatus === 'duplicate') {
+            $db->rollBack();
+            return is_array($claim['outcome'] ?? null) ? $claim['outcome'] : ['ok' => true, 'replayed' => true];
+        }
+        if ($claimStatus === 'conflict') {
+            $db->rollBack();
+            throw new CacContentTypeMutationException('Idempotency key payload conflict.', 409);
+        }
+        if ($claimStatus === 'in_progress') {
+            $db->rollBack();
+            throw new CacContentTypeMutationException('Idempotent mutation is still processing.', 425, 2);
+        }
+        if ($claimStatus !== 'new') {
+            throw new RuntimeException('Unexpected idempotency claim result.');
+        }
+        $claimed = true;
+
+        $old = null;
+        if ($operation !== 'create') {
+            $typeId = (int)$payload['id'];
+            $find = $db->prepare(
+                'SELECT id, tenant_id, slug, label, field_schema, created_at, updated_at '
+                . 'FROM cms_akira_content_types WHERE tenant_id = :tenant AND id = :id LIMIT 1 FOR UPDATE'
+            );
+            $find->execute([':tenant' => $tenantId, ':id' => $typeId]);
+            $old = $find->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($old)) {
+                throw new CacContentTypeMutationException('Content type not found.', 404);
+            }
+            $expected = cacContentTypeMutationExpectedAt($mutationInput['expected_updated_at'] ?? null);
+            if ($expected === null || $expected !== (string)$old['updated_at']) {
+                throw new CacContentTypeMutationException('Content type was modified; refresh and retry.', 409);
+            }
+        }
+
+        try {
+            if ($operation === 'create') {
+                $fields = cacContentTypeMutationFields($payload, null);
+                $write = $db->prepare(
+                    'INSERT INTO cms_akira_content_types (tenant_id, slug, label, field_schema) '
+                    . 'VALUES (:tenant, :slug, :label, :field_schema)'
+                );
+                $write->execute([
+                    ':tenant' => $tenantId,
+                    ':slug' => $fields['slug'],
+                    ':label' => $fields['label'],
+                    ':field_schema' => $fields['field_schema'],
+                ]);
+                $typeId = (int)$db->lastInsertId();
+            } elseif ($operation === 'update') {
+                $fields = cacContentTypeMutationFields($payload, $old);
+                $write = $db->prepare(
+                    'UPDATE cms_akira_content_types SET slug = :slug, label = :label, field_schema = :field_schema '
+                    . 'WHERE tenant_id = :tenant AND id = :id AND updated_at = :expected'
+                );
+                $write->execute([
+                    ':tenant' => $tenantId,
+                    ':id' => (int)$old['id'],
+                    ':expected' => $old['updated_at'],
+                    ':slug' => $fields['slug'],
+                    ':label' => $fields['label'],
+                    ':field_schema' => $fields['field_schema'],
+                ]);
+            } else {
+                // Governed delete: no posts reference content types yet (this
+                // bounded increment adds no linkage), so delete is always
+                // allowed. The schema keeps an FK-less design so a later
+                // increment can add references without a migration redesign.
+                $write = $db->prepare(
+                    'DELETE FROM cms_akira_content_types WHERE tenant_id = :tenant AND id = :id AND updated_at = :expected'
+                );
+                $write->execute([
+                    ':tenant' => $tenantId,
+                    ':id' => (int)$old['id'],
+                    ':expected' => $old['updated_at'],
+                ]);
+            }
+        } catch (PDOException $e) {
+            $errorInfo = is_array($e->errorInfo) ? $e->errorInfo : [];
+            $mysqlCode = isset($errorInfo[1]) ? (int)$errorInfo[1] : 0;
+            if ($mysqlCode === 1062 || $e->getCode() === '23000') {
+                throw new CacContentTypeMutationException('A content type with this slug already exists.', 422);
+            }
+            throw $e;
+        }
+
+        $correlationId = cacContentTypeMutationCorrelationId();
+        $slug = (string)($fields['slug'] ?? $old['slug'] ?? '');
+        $audit = app()->cap()->call('kernel.audit.record@1', [
+            'module' => 'cms-akira-core',
+            'action' => 'akira.content_type.' . $operation,
+            'entity_type' => 'content_type',
+            'entity_id' => (string)$typeId,
+            'old_data' => $old,
+            'new_data' => ['correlation_id' => $correlationId, 'tenant_id' => $tenantId, 'slug' => $slug]
+                + ($old === null
+                    ? ['label' => $fields['label'] ?? '', 'field_schema' => $fields['field_schema'] ?? '']
+                    : ['id' => (int)$old['id']]),
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
+            throw new RuntimeException('Durable Content type audit failed.');
+        }
+
+        $outcome = [
+            'ok' => true,
+            'operation' => $operation,
+            'content_type' => ['id' => $typeId, 'slug' => $slug],
+            'correlation_id' => $correlationId,
+        ];
+        $committed = app()->cap()->call('kernel.idempotency.commit@1', [
+            'key' => $key,
+            'tenant_id' => $tenantId,
+            'outcome' => $outcome,
+            'db' => $db,
+        ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+        if ($committed !== true) {
+            throw new RuntimeException('Idempotency outcome commit failed.');
+        }
+
+        // From this point a commit error is uncertain: never release/re-execute.
+        $publicationUncertain = true;
+        $db->commit();
+        $publicationUncertain = false;
+        return $outcome;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        if ($claimed && !$publicationUncertain) {
+            try {
+                app()->cap()->call('kernel.idempotency.release@1', [
+                    'key' => $key, 'tenant_id' => $tenantId, 'db' => $db,
+                ], ['caller' => ['module' => 'cms-akira-core', 'user' => $actor], 'mode' => 'first']);
+            } catch (Throwable) {
+                // A failed release remains processing and therefore fails closed.
+            }
+        }
+        throw $e;
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_content_type_list_1(mixed $payload, string $capabilityId = 'akira.content_type.list@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $payload = is_array($payload) ? $payload : [];
+    $sort = is_array($payload['sort'] ?? null) ? $payload['sort'] : [];
+    $field = (string)($sort['field'] ?? $payload['sort_field'] ?? 'label');
+    $direction = strtolower((string)($sort['direction'] ?? $payload['sort_direction'] ?? 'asc'));
+    $field = in_array($field, ['label', 'slug', 'created_at', 'updated_at'], true) ? $field : 'label';
+    $direction = in_array($direction, ['asc', 'desc'], true) ? $direction : 'asc';
+    $limit = max(1, min(500, (int)($payload['limit'] ?? 500)));
+    $offset = max(0, (int)($payload['offset'] ?? 0));
+
+    try {
+        $tenantId = cacContentTypeTenantId();
+        $where = 'tenant_id = :tenant_id';
+        $bindings = [':tenant_id' => $tenantId];
+        $count = cacDb()->prepare("SELECT COUNT(*) FROM cms_akira_content_types WHERE {$where}");
+        $count->execute($bindings);
+        $sql = "SELECT id, tenant_id, slug, label, field_schema, created_at, updated_at "
+            . "FROM cms_akira_content_types WHERE {$where} "
+            . "ORDER BY {$field} {$direction}, id {$direction} "
+            . "LIMIT {$limit} OFFSET {$offset}";
+        $stmt = cacDb()->prepare($sql);
+        $stmt->execute($bindings);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return ['ok' => true, 'rows' => $rows, 'total' => (int)$count->fetchColumn()];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Content type storage unavailable'];
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_content_type_get_1(mixed $payload, string $capabilityId = 'akira.content_type.get@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $slug = cacContentTypeValidSlug($payload['slug'] ?? null);
+    if ($slug === null) {
+        return ['ok' => false, 'error' => 'A canonical slug is required'];
+    }
+    try {
+        $stmt = cacDb()->prepare(
+            "SELECT id, tenant_id, slug, label, field_schema, created_at, updated_at
+             FROM cms_akira_content_types
+             WHERE tenant_id = :tenant_id AND slug = :slug
+             LIMIT 1"
+        );
+        $stmt->execute([':tenant_id' => cacContentTypeTenantId(), ':slug' => $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row)
+            ? ['ok' => true, 'data' => $row]
+            : ['ok' => false, 'error' => 'Content type not found'];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Content type storage unavailable'];
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_content_type_create_1(mixed $payload, string $capabilityId = 'akira.content_type.create@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacContentTypeMutationException('payload must be an object.');
+    }
+    return cacContentTypeMutate('create', $payload);
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_content_type_update_1(mixed $payload, string $capabilityId = 'akira.content_type.update@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacContentTypeMutationException('payload must be an object.');
+    }
+    return cacContentTypeMutate('update', $payload);
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_content_type_delete_1(mixed $payload, string $capabilityId = 'akira.content_type.delete@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CacContentTypeMutationException('payload must be an object.');
+    }
+    return cacContentTypeMutate('delete', $payload);
 }

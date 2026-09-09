@@ -23,17 +23,20 @@
     ],
     "owns_tables": [
         "cms_akira_posts",
-        "cms_akira_taxonomies"
+        "cms_akira_taxonomies",
+        "cms_akira_content_types"
     ],
     "reads_tables": [
         "cms_akira_posts",
-        "cms_akira_taxonomies"
+        "cms_akira_taxonomies",
+        "cms_akira_content_types"
     ],
     "migrations": [
         "database/migrations/001_initial.sql",
         "database/migrations/002_create_posts.sql",
         "database/migrations/003_add_posts_deleted_at.sql",
-        "database/migrations/004_create_taxonomies.sql"
+        "database/migrations/004_create_taxonomies.sql",
+        "database/migrations/005_create_content_types.sql"
     ],
     "entities": {
         "post": {
@@ -45,6 +48,11 @@
             "authority": true,
             "create_capability": "akira.taxonomy.create@1",
             "update_capability": "akira.taxonomy.update@1"
+        },
+        "content_type": {
+            "authority": true,
+            "create_capability": "akira.content_type.create@1",
+            "update_capability": "akira.content_type.update@1"
         }
     },
     "capabilities": {
@@ -192,6 +200,64 @@
                     ]
                 },
                 "description": "Editor-governed idempotent Taxonomy term delete owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.content_type.get@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Content type registry lookup owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.content_type.list@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Content type registry list owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.content_type.create@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.content_type"
+                    ]
+                },
+                "description": "Editor-governed idempotent Content type creation owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.content_type.update@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.content_type"
+                    ]
+                },
+                "description": "Editor-governed idempotent Content type update owned by CMS Akira Core"
+            },
+            {
+                "id": "akira.content_type.delete@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.content_type"
+                    ]
+                },
+                "description": "Editor-governed idempotent Content type delete owned by CMS Akira Core"
             },
             {
                 "id": "entity.list.post@1",

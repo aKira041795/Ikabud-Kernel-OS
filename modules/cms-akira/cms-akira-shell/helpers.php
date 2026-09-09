@@ -58,6 +58,7 @@ function akiraShellPage(string $title, string $body, array $data = []): string
         'dashboard' => ['/cms-akira-shell', 'Dashboard'],
         'posts' => ['/cms-akira-shell/posts', 'Posts'],
         'categories' => ['/cms-akira-shell/categories', 'Categories'],
+        'content-types' => ['/cms-akira-shell/content-types', 'Content types'],
     ];
     if (akiraShellIsAdmin()) {
         $links['compositions'] = ['/cms-akira-shell/compositions', 'Compositions'];
@@ -389,4 +390,89 @@ function akiraShellTaxonomyPayload(?int $id = null): array
         $input['idempotency_key'] = 'taxonomy-' . bin2hex(random_bytes(12));
     }
     return $input;
+}
+
+
+/**
+ * Editor-facing error text for a governed content type capability failure.
+ */
+function akiraShellContentTypePayloadError(Throwable $error): string
+{
+    // Kernel wraps provider exceptions in CapabilityCallException('Capability
+    // call failed', ..., $previous); the editor-facing message is the root
+    // cause raised by the governed capability handler (clear 422 text such as
+    // "type must be one of ..."). Descend the chain for display only.
+    $cursor = $error;
+    while ($cursor->getPrevious() instanceof Throwable) {
+        $cursor = $cursor->getPrevious();
+    }
+    $message = trim($cursor->getMessage());
+    return $message !== '' ? $message : $error->getMessage();
+}
+
+// ── Content types administration (P1 content model) ─────────────────────
+// Managed via governed akira.content_type.* capabilities only. Role authority
+// for the manage actions lives in the seeded policy rows (admin/editor/
+// administrator/superadmin — same editorial allowlist as taxonomy); this helper
+// only mirrors that allowlist for presentation.
+
+function akiraShellIsContentTypeManager(): bool
+{
+    $user = app()->user();
+    if (!is_array($user)) {
+        return false;
+    }
+    return in_array((string)($user['role'] ?? ''), ['admin', 'editor', 'administrator', 'superadmin'], true);
+}
+
+function akiraShellContentTypeNotice(): string
+{
+    $saved = (string)(akiraShellQuery()['saved'] ?? '');
+    if (!in_array($saved, ['create', 'update', 'delete'], true)) {
+        return '';
+    }
+    $message = match ($saved) {
+        'create' => 'Content type created.',
+        'update' => 'Content type updated.',
+        default => 'Content type deleted.',
+    };
+    return '<div x-data="{show:true}" x-show="show" x-init="setTimeout(()=>show=false,4000)" class="mb-5 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">' . akiraShellEscape($message) . '<button @click="show=false" aria-label="Dismiss">×</button></div>';
+}
+
+/** @return array<string, mixed> */
+function akiraShellContentTypePayload(?int $id = null): array
+{
+    $input = akiraShellInput();
+    if ($id !== null) {
+        $input['id'] = $id;
+    }
+    $input['idempotency_key'] = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ($input['idempotency_key'] ?? '')));
+    if ($input['idempotency_key'] === '') {
+        $input['idempotency_key'] = 'content-type-' . bin2hex(random_bytes(12));
+    }
+    return $input;
+}
+
+/** @return array<string, mixed>|null */
+function akiraShellContentTypeSchemaArray(string $schema): ?array
+{
+    $decoded = json_decode($schema, true);
+    return is_array($decoded) ? $decoded : null;
+}
+
+function akiraShellContentTypeFieldCount(string $schema): int
+{
+    $decoded = akiraShellContentTypeSchemaArray($schema);
+    $fields = is_array($decoded) ? ($decoded['fields'] ?? null) : null;
+    return is_array($fields) ? count($fields) : 0;
+}
+
+function akiraShellContentTypePrettySchema(string $schema): string
+{
+    $decoded = akiraShellContentTypeSchemaArray($schema);
+    if ($decoded === null) {
+        return $schema;
+    }
+    $pretty = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    return is_string($pretty) ? $pretty : $schema;
 }
