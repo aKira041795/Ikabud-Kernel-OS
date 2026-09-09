@@ -14,6 +14,11 @@
   "capabilities": {
     "exposes": [],
     "depends": [
+      "akira.policy.list@1",
+      "akira.policy.set_roles@1",
+      "akira.user.list@1",
+      "akira.user.update_role@1",
+      "akira.user.set_active@1",
       "akira.post.admin.get@1",
       "akira.post.admin.list@1",
       "akira.post.create@1",
@@ -47,8 +52,10 @@
     {"label": "Posts", "url": "/cms-akira-shell/posts", "icon": "file-text", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
     {"label": "Categories", "url": "/cms-akira-shell/categories", "icon": "folder-tree", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
     {"label": "Content types", "url": "/cms-akira-shell/content-types", "icon": "table-properties", "roles": ["contributor", "author", "editor", "admin", "administrator", "superadmin"]},
-    {"label": "Compositions", "url": "/cms-akira-shell/compositions", "icon": "layers", "roles": ["admin"]},
-    {"label": "Module Health", "url": "/cms-akira-shell/health", "icon": "activity", "roles": ["admin"]}
+    {"label": "Compositions", "url": "/cms-akira-shell/compositions", "icon": "layers", "roles": ["admin", "administrator", "superadmin"]},
+    {"label": "Permissions", "url": "/cms-akira-shell/permissions", "icon": "shield-check", "roles": ["admin", "administrator", "superadmin"]},
+    {"label": "Users", "url": "/cms-akira-shell/users", "icon": "users", "roles": ["admin", "administrator", "superadmin"]},
+    {"label": "Module Health", "url": "/cms-akira-shell/health", "icon": "activity", "roles": ["admin", "administrator", "superadmin"]}
   ],
   "_enabled": false
 }

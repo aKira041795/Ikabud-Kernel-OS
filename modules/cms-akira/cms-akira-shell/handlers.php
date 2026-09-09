@@ -855,3 +855,109 @@ function akiraShellContentTypeRow(array $row, bool $manager): string
         . '<span class="text-xs text-slate-400">' . $updated . '</span>'
         . $actions . '</div>';
 }
+
+
+/** @param array<string,mixed> $params */
+function akiraShellPermissions(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    $result = akiraShellCall('akira.policy.list@1');
+    $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
+    $roles = ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin', 'manager', 'viewer'];
+    $body = akiraShellGovernanceNotice('permissions');
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $allowed = array_filter(array_map('trim', explode(',', (string)($row['allowed_roles'] ?? ''))));
+        $checks = '';
+        foreach ($roles as $role) {
+            $checks .= '<label class="flex items-center gap-2 text-xs"><input class="accent-akira-600" type="checkbox" name="allowed_roles[]" value="' . $role . '"' . (in_array($role, $allowed, true) ? ' checked' : '') . '>' . akiraShellEscape($role) . '</label>';
+        }
+        $body .= '<form method="post" action="/cms-akira-shell/permissions" class="mb-3 grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-[minmax(260px,1fr)_1fr_auto]">' . akiraShellCsrfField()
+            . '<div><code class="text-sm font-semibold text-akira-700">' . akiraShellEscape($row['capability_id'] ?? '') . '</code><p class="mt-1 text-xs text-slate-400">' . akiraShellEscape($row['provider'] ?? '') . ' · caller ' . akiraShellEscape($row['caller_module'] ?? '') . '</p></div>'
+            . '<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">' . $checks . '</div>'
+            . '<input type="hidden" name="capability_id" value="' . akiraShellEscape($row['capability_id'] ?? '') . '"><input type="hidden" name="capability_version" value="' . akiraShellEscape($row['capability_version'] ?? '') . '"><input type="hidden" name="provider" value="' . akiraShellEscape($row['provider'] ?? '') . '"><input type="hidden" name="caller_module" value="' . akiraShellEscape($row['caller_module'] ?? '') . '"><input type="hidden" name="idempotency_key" value="policy-' . bin2hex(random_bytes(10)) . '"><button class="self-center rounded-xl bg-akira-600 px-4 py-2 text-sm font-semibold text-white">Save</button></form>';
+    }
+    echo akiraShellPage('Permissions', '<p class="mb-5 text-sm text-slate-500">Each save clones the complete active policy into a new version and changes only the selected Akira capability.</p>' . $body, ['active' => 'permissions']);
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellPermissionUpdate(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    try {
+        akiraShellCall('akira.policy.set_roles@1', $input);
+        akiraShellRedirect('/cms-akira-shell/permissions?saved=1');
+    } catch (Throwable $error) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($error), 'authorization denied') ? 403 : 422);
+        echo akiraShellPage('Permissions', '<div role="alert" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</div>', ['active' => 'permissions']);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellUsers(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    $result = akiraShellCall('akira.user.list@1');
+    $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
+    $roles = ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin', 'manager', 'viewer'];
+    $body = akiraShellGovernanceNotice('users');
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $id = (int)($row['id'] ?? 0);
+        $options = '';
+        foreach ($roles as $role) {
+            $options .= '<option value="' . $role . '"' . (($row['role'] ?? '') === $role ? ' selected' : '') . '>' . $role . '</option>';
+        }
+        $active = (int)($row['is_active'] ?? 0) === 1;
+        $body .= '<div class="grid gap-4 border-b border-slate-100 px-5 py-4 last:border-0 lg:grid-cols-[1.2fr_1.2fr_1fr_auto_auto] lg:items-center"><div><strong>' . akiraShellEscape($row['full_name'] ?? '') . '</strong><code class="block text-xs text-slate-400">#' . $id . ' ' . akiraShellEscape($row['username'] ?? '') . '</code></div><span class="text-sm text-slate-500">' . akiraShellEscape($row['email'] ?? '') . '</span><span class="text-xs text-slate-400">' . akiraShellEscape($row['created_at'] ?? '') . '</span>'
+            . '<form method="post" action="/cms-akira-shell/users/' . $id . '/role" class="flex gap-2">' . akiraShellCsrfField() . '<input type="hidden" name="idempotency_key" value="user-role-' . bin2hex(random_bytes(8)) . '"><select name="role" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">' . $options . '</select><button class="rounded-xl bg-akira-600 px-3 py-2 text-xs font-semibold text-white">Save role</button></form>'
+            . '<form method="post" action="/cms-akira-shell/users/' . $id . '/active">' . akiraShellCsrfField() . '<input type="hidden" name="idempotency_key" value="user-active-' . bin2hex(random_bytes(8)) . '"><input type="hidden" name="is_active" value="' . ($active ? '0' : '1') . '"><button class="rounded-xl border px-3 py-2 text-xs font-semibold ' . ($active ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700') . '">' . ($active ? 'Deactivate' : 'Activate') . '</button></form></div>';
+    }
+    echo akiraShellPage('Users', '<p class="mb-5 text-sm text-slate-500">Manage existing tenant identities. Role and activity changes revoke current sessions by incrementing token_version.</p><div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">' . $body . '</div>', ['active' => 'users']);
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellUserUpdateRole(array $params = []): void
+{
+    akiraShellUserMutation('akira.user.update_role@1', $params);
+}
+/** @param array<string,mixed> $params */
+function akiraShellUserSetActive(array $params = []): void
+{
+    akiraShellUserMutation('akira.user.set_active@1', $params);
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellUserMutation(string $capability, array $params): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $input['user_id'] = (int)($params['id'] ?? 0);
+    try {
+        akiraShellCall($capability, $input);
+        akiraShellRedirect('/cms-akira-shell/users?saved=1');
+    } catch (Throwable $error) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($error), 'authorization denied') ? 403 : 422);
+        echo akiraShellPage('Users', '<div role="alert" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</div>', ['active' => 'users']);
+    }
+}
+
+function akiraShellGovernanceNotice(string $surface): string
+{
+    return (akiraShellQuery()['saved'] ?? '') === '1' ? '<div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">' . ucfirst($surface) . ' updated.</div>' : '';
+}

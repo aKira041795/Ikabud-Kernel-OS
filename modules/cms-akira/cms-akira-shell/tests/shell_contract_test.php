@@ -85,7 +85,16 @@ $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|r
 $check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
 $check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
 $check(str_contains($helpers, 'cms-akira-builder-root') && str_contains($helpers, '/admin/assets/cms-akira-builder'), 'shell serves the CSP-safe builder bundle container');
-$check(count($manifest['nav'] ?? []) === 6, 'dashboard, posts, categories, content types, compositions and health navigation');
+$check(count($manifest['nav'] ?? []) === 8, 'dashboard, editorial, permissions, users and health navigation');
+$check(isset($routes['GET']['/cms-akira-shell/permissions'], $routes['POST']['/cms-akira-shell/permissions'])
+    && isset($routes['GET']['/cms-akira-shell/users'], $routes['POST']['/cms-akira-shell/users/{id}/role'], $routes['POST']['/cms-akira-shell/users/{id}/active']), 'permissions and users governance routes mounted');
+foreach (['akira.policy.list@1', 'akira.policy.set_roles@1', 'akira.user.list@1', 'akira.user.update_role@1', 'akira.user.set_active@1'] as $capability) {
+    $check(in_array($capability, $manifest['capabilities']['depends'] ?? [], true), "shell declares {$capability} dependency");
+}
+$check(str_contains($handlers, "akiraShellCall('akira.policy.set_roles@1'")
+    && str_contains($handlers, "akiraShellCall('akira.user.list@1'")
+    && str_contains($handlers, 'akiraShellUserMutation('), 'governance forms use core capabilities only');
+$check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($handlers, 'app()->csrfEnforce()'), 'governance surfaces retain administrator and Kernel CSRF gates');
 $check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/categories' && ($manifest['nav'][2]['label'] ?? '') === 'Categories', 'categories nav entry present in shell module.json');
 $check(($manifest['nav'][3]['url'] ?? '') === '/cms-akira-shell/content-types' && ($manifest['nav'][3]['label'] ?? '') === 'Content types', 'content types nav entry present in shell module.json');
 $check(($manifest['nav'][4]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');

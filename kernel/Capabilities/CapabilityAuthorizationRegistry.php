@@ -183,6 +183,50 @@ final class CapabilityAuthorizationRegistry
         }
     }
 
+    /** @return list<array<string, mixed>> */
+    public function activePolicyRows(): array
+    {
+        $version = $this->resolvePolicyVersion();
+        return $version === null ? [] : $this->rowsForVersion($version);
+    }
+
+    /**
+     * Clone the complete active policy set into N+1 and change exactly one row.
+     * The caller owns the surrounding transaction.
+     * @param list<string> $allowedRoles
+     */
+    public function replaceActiveRowRoles(string $capabilityId, string $capabilityVersion, string $provider, string $callerModule, array $allowedRoles): int
+    {
+        $rows = $this->activePolicyRows();
+        if ($rows === []) {
+            throw new CapabilityAuthorizationRegistryUnavailableException('active capability policy is unavailable');
+        }
+        $oldVersion = (int)$rows[0]['policy_version'];
+        $nextVersion = $oldVersion + 1;
+        $matched = false;
+        foreach ($rows as &$row) {
+            $row['policy_version'] = $nextVersion;
+            if ((string)$row['capability_id'] === $capabilityId
+                && (string)$row['capability_version'] === $capabilityVersion
+                && (string)$row['provider'] === $provider
+                && (string)($row['caller_module'] ?? '') === $callerModule) {
+                $row['allowed_roles'] = implode(',', $allowedRoles);
+                $matched = true;
+            }
+        }
+        unset($row);
+        if (!$matched) {
+            throw new \InvalidArgumentException('The selected active policy row no longer exists.');
+        }
+        $this->seedPolicy($rows);
+        $this->withKernelTableAccess(function () use ($oldVersion): void {
+            $stmt = $this->db()->prepare('UPDATE capability_authorization_policies SET is_active = 0, updated_at = NOW() WHERE policy_version = :version');
+            $stmt->execute([':version' => $oldVersion]);
+        });
+        self::invalidate();
+        return $nextVersion;
+    }
+
     public function hasPolicyFor(string $capabilityId, ?string $capabilityVersion = null, ?string $provider = null, ?int $policyVersion = null): bool
     {
         $version = $this->resolvePolicyVersion($policyVersion);

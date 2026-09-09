@@ -118,6 +118,46 @@ function kernelUserCreate(
     }
 }
 
+/** @return array<string,mixed>|null */
+function kernelUserForGovernanceUpdate(int $tenantId, int $userId): ?array
+{
+    KernelPDO::kernelEscalationEnter();
+    try {
+        $stmt = kernelUsersTenantDb($tenantId)->prepare(
+            'SELECT id, username, role, is_active, token_version FROM users WHERE id = :id LIMIT 1 FOR UPDATE'
+        );
+        $stmt->execute([':id' => $userId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    } finally {
+        KernelPDO::kernelEscalationLeave();
+    }
+}
+
+function kernelActivePrivilegedUserCountForUpdate(int $tenantId): int
+{
+    KernelPDO::kernelEscalationEnter();
+    try {
+        return (int)kernelUsersTenantDb($tenantId)
+            ->query("SELECT COUNT(*) FROM users WHERE is_active = 1 AND role IN ('administrator','superadmin') FOR UPDATE")
+            ->fetchColumn();
+    } finally {
+        KernelPDO::kernelEscalationLeave();
+    }
+}
+
+function kernelUserSetRole(int $tenantId, int $userId, string $role): void
+{
+    KernelPDO::kernelEscalationEnter();
+    try {
+        kernelUsersTenantDb($tenantId)
+            ->prepare('UPDATE users SET role = :role, token_version = token_version + 1 WHERE id = :id')
+            ->execute([':role' => $role, ':id' => $userId]);
+    } finally {
+        KernelPDO::kernelEscalationLeave();
+    }
+}
+
 /**
  * Reset a kernel user's password (bumps token_version to revoke live sessions).
  */

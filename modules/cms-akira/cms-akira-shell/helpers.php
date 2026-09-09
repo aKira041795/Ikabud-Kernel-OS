@@ -175,6 +175,8 @@ function akiraShellPage(string $title, string $body, array $data = []): string
     ];
     if (akiraShellIsAdmin()) {
         $links['compositions'] = ['/cms-akira-shell/compositions', 'Compositions'];
+        $links['permissions'] = ['/cms-akira-shell/permissions', 'Permissions'];
+        $links['users'] = ['/cms-akira-shell/users', 'Users'];
         $links['health'] = ['/cms-akira-shell/health', 'Module health'];
     }
     $nav = '';
