@@ -1,0 +1,2 @@
+{extends "modules/cms-akira-shell/public/layout.disyl"}
+{block content}<section class="mx-auto max-w-3xl px-5 py-28 text-center"><p class="text-sm font-bold uppercase tracking-widest text-violet-600">404</p><h1 class="mt-4 text-5xl font-black text-slate-950">Post not found</h1><p class="mt-5 text-slate-500">This story is unavailable or has not been published.</p><a class="mt-8 inline-block rounded-2xl bg-violet-600 px-6 py-3 font-bold text-white" href="/posts">Browse published posts</a></section>{/block}

@@ -7,6 +7,29 @@ function akiraShellEscape(mixed $value): string
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+/** @return array<string,mixed> */
+function akiraPublicContext(string $title, string $path, string $description = ''): array
+{
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    $scheme = function_exists('request_scheme') ? request_scheme() : 'http';
+    $origin = $host !== '' ? $scheme . '://' . $host : '';
+    $description = trim(preg_replace('/\s+/', ' ', strip_tags($description)) ?? '');
+    if (strlen($description) > 160) {
+        $description = substr($description, 0, 157) . '...';
+    }
+    $canonical = $path !== '' ? $origin . $path : '';
+    $user = app()->user();
+
+    return [
+        'page_title' => $title . ' — CMS Akira',
+        'seo_title' => $title,
+        'seo_description' => $description,
+        'canonical_url' => $canonical,
+        'current_year' => date('Y'),
+        'show_admin_bar' => is_array($user) && $user !== [],
+    ];
+}
+
 /** @param array<string,mixed> $overrides
  * @return array<string,mixed>
  */

@@ -4,6 +4,77 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/helpers.php';
 
+/** @param array<string,mixed> $params */
+function akiraPublicHome(array $params = []): void
+{
+    akiraPublicRenderPostList(true);
+}
+
+/** @param array<string,mixed> $params */
+function akiraPublicPostList(array $params = []): void
+{
+    akiraPublicRenderPostList(false);
+}
+
+function akiraPublicRenderPostList(bool $home): void
+{
+    $query = akiraShellQuery();
+    $page = max(1, (int) ($query['page'] ?? 1));
+    $limit = $home ? 9 : 12;
+    // Deliberately omit include_unpublished: the entity capability then applies
+    // its tenant-scoped status='published' boundary for every caller.
+    $resolved = app()->entityViews()->resolve('post', 'list', [
+        'limit' => $limit,
+        'offset' => ($page - 1) * $limit,
+        'sort_field' => 'published_at',
+        'sort_direction' => 'desc',
+    ]);
+    $posts = is_array($resolved['rows'] ?? null) ? array_values(array_filter($resolved['rows'], 'is_array')) : [];
+    $total = (int) ($resolved['total'] ?? count($posts));
+    $context = akiraPublicContext($home ? 'Latest stories' : 'All posts', $home ? '/' : '/posts');
+    $context += [
+        'posts' => $posts,
+        'total' => $total,
+        'page' => $page,
+        'total_pages' => max(1, (int) ceil($total / $limit)),
+        'previous_page' => max(1, $page - 1),
+        'next_page' => $page + 1,
+        'archive_url' => '/posts',
+    ];
+    echo app()->render(
+        $home ? 'modules/cms-akira-shell/public/home.disyl' : 'modules/cms-akira-shell/public/posts.disyl',
+        $context
+    );
+}
+
+/** @param array<string,mixed> $params */
+function akiraPublicPostSingle(array $params = []): void
+{
+    $slug = trim((string) ($params['slug'] ?? ''));
+    if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1) {
+        akiraPublicNotFound();
+        return;
+    }
+    // resolveDetail calls entity.get.post@1 without include_unpublished. Drafts
+    // and deleted records therefore collapse to the same public 404.
+    $resolved = app()->entityViews()->resolveDetail('post', $slug, 'detail');
+    $post = is_array($resolved['entity'] ?? null) ? $resolved['entity'] : null;
+    if ($post === null) {
+        akiraPublicNotFound();
+        return;
+    }
+    $title = trim((string) ($post['title'] ?? 'Post'));
+    $context = akiraPublicContext($title, '/posts/' . rawurlencode($slug), (string) ($post['subtitle'] ?? ''));
+    $context['post'] = $post;
+    echo app()->render('modules/cms-akira-shell/public/single.disyl', $context);
+}
+
+function akiraPublicNotFound(): void
+{
+    http_response_code(404);
+    echo app()->render('modules/cms-akira-shell/public/404.disyl', akiraPublicContext('Post not found', ''));
+}
+
 function akiraShellAuthorize(): bool
 {
     $user = akiraShellParticipant();

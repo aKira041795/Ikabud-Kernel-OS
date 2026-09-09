@@ -28,6 +28,7 @@ function cacRegisterPostEntityViews(?\Ikabud\Kernel\EntityContext\EntityViewReso
             'metadata' => 'string',
             'actions' => 'json',
             'url' => 'string',
+            'categories' => 'json',
         ],
     ];
     $commonContracts = [
@@ -38,10 +39,11 @@ function cacRegisterPostEntityViews(?\Ikabud\Kernel\EntityContext\EntityViewReso
         'metadata' => ['role' => 'metadata'],
         'actions' => ['role' => 'actions'],
         'url' => ['role' => 'url'],
+        'categories' => [],
     ];
 
     $views->registerView('post', 'list', [
-        'fields' => ['title', 'subtitle', 'image', 'metadata', 'actions', 'url'],
+        'fields' => ['title', 'subtitle', 'image', 'metadata', 'categories', 'actions', 'url'],
         'actions' => ['view'],
         'key_field' => 'slug',
         'action_urls' => ['view' => '/posts/{slug}'],
@@ -54,19 +56,19 @@ function cacRegisterPostEntityViews(?\Ikabud\Kernel\EntityContext\EntityViewReso
         ],
         'empty_state' => 'No published posts.',
         'field_contracts' => array_intersect_key($commonContracts, array_flip([
-            'title', 'subtitle', 'image', 'metadata', 'actions', 'url',
+            'title', 'subtitle', 'image', 'metadata', 'categories', 'actions', 'url',
         ])),
         'source_schema' => [
             'entity' => $commonSchema['entity'],
             'owner' => $commonSchema['owner'],
             'fields' => array_intersect_key($commonSchema['fields'], array_flip([
-                'title', 'subtitle', 'image', 'metadata', 'actions', 'url',
+                'title', 'subtitle', 'image', 'metadata', 'categories', 'actions', 'url',
             ])),
         ],
     ], 'cms-akira-core');
 
     $views->registerView('post', 'detail', [
-        'fields' => ['title', 'subtitle', 'image', 'body', 'metadata', 'actions', 'url'],
+        'fields' => ['title', 'subtitle', 'image', 'body', 'metadata', 'categories', 'actions', 'url'],
         'actions' => ['view'],
         'key_field' => 'slug',
         'action_urls' => ['view' => '/posts/{slug}'],

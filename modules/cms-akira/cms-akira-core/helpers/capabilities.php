@@ -100,6 +100,7 @@ function cacPostProject(array $post, bool $detail): array
         'metadata' => (string)($post['published_at'] ?? ''),
         'actions' => ['view'],
         'url' => cacPostCanonicalUrl($slug),
+        'categories' => is_array($post['categories'] ?? null) ? array_values(array_filter($post['categories'], 'is_array')) : [],
     ];
     if ($detail) {
         $dto = [
@@ -108,6 +109,7 @@ function cacPostProject(array $post, bool $detail): array
             'image' => $dto['image'],
             'body' => (string)($post['content'] ?? ''),
             'metadata' => $dto['metadata'],
+            'categories' => $dto['categories'],
             'actions' => $dto['actions'],
             'url' => $dto['url'],
         ];

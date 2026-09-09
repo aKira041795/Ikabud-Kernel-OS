@@ -53,13 +53,15 @@ $check(($manifest['id'] ?? '') === 'cms-akira-shell', 'unique shell id');
 $check(($manifest['entry_module'] ?? false) === true, 'entry module declared');
 $check(!isset($manifest['auth_owned']) && !isset($manifest['authentication_provider']), 'Kernel owns authentication');
 $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === [], 'shell is table-free');
+$check(($routes['GET']['/'] ?? '') === 'cms-akira-shell:akiraPublicHome' && ($routes['GET']['/posts'] ?? '') === 'cms-akira-shell:akiraPublicPostList' && ($routes['GET']['/posts/{slug}'] ?? '') === 'cms-akira-shell:akiraPublicPostSingle', 'public home, archive and single routes');
 $check(($routes['GET']['/cms-akira-shell'] ?? '') === 'cms-akira-shell:akiraShellDashboard', 'dashboard route');
 $check(isset($routes['GET']['/cms-akira-shell/login']), 'presentation login route');
 $check(isset($routes['GET']['/cms-akira-shell/health']), 'health route');
 $check(isset($routes['GET']['/cms-akira-shell/forbidden']), 'authorization failure route');
 $check(str_contains($handlers, "akiraShellRedirect('/login')"), 'anonymous login redirects to Kernel');
 $check(str_contains($handlers, "akiraShellRedirect('/cms-akira-shell')"), 'authenticated login redirects to dashboard');
-$check(str_contains($handlers, "entityViews()->resolve('post', 'list'"), 'list and dashboard consume Entity Views');
+$check(str_contains($handlers, "entityViews()->resolve('post', 'list'"), 'public, list and dashboard consume Entity Views');
+$check(str_contains($handlers, "resolveDetail('post', \$slug, 'detail')") && !str_contains(explode('function akiraShellAuthorize', $handlers, 2)[0] ?? '', "'include_unpublished' => true"), 'public detail uses the published-only entity projection');
 foreach (['create', 'update', 'delete'] as $operation) {
     $check(str_contains($handlers . $helpers, "akira.post.{$operation}@1"), "{$operation} uses canonical capability");
 }
