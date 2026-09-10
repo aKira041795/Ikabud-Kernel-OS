@@ -125,6 +125,16 @@ final class ArkRendererResolver
 
         try {
             if ($selection['type'] === 'template' && $selection['path'] !== null) {
+                // Theme views include their own partials by theme-relative name
+                // (e.g. block renderer templates). Root the include resolution at
+                // the theme directory this view was resolved from, so the
+                // decrypted tenant-scoped theme decision is preserved instead of
+                // re-resolving through a global active-theme alias.
+                $themePath = $this->themePath($selection['theme_slug']);
+                if ($themePath !== null) {
+                    return $this->templateEngine->renderWithin($selection['path'], $context, $themePath);
+                }
+
                 return $this->templateEngine->render($selection['path'], $context);
             }
 
