@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # pi-arch-review.sh — Architecture peer review via the Pi execution harness.
 #
-# Runs DeepSeek Pro + Codex Sol (ChatGPT Pro subscription) as independent
+# Runs DeepSeek Flash + Codex Sol (ChatGPT Pro subscription) as independent
 # peer reviewers/architects on a task contract, then saves each review.
+# NOTE: DeepSeek v4 Pro is discontinued (2026-09-14); Flash is the DeepSeek main model.
 #
 # Usage:
 #   bash tools/pi-arch-review.sh [task-file] [outdir]
@@ -11,9 +12,9 @@
 #   outdir      Where to write results  (default: test_results)
 #
 # Outputs:
-#   <outdir>/arch-dspro.txt      DeepSeek Pro review
+#   <outdir>/arch-dsflash.txt     DeepSeek Flash review
 #   <outdir>/arch-codexsol.txt   Codex Sol review
-#   <outdir>/arch-dspro.jsonl    raw Pi JSONL (trace)
+#   <outdir>/arch-dsflash.jsonl   raw Pi JSONL (trace)
 #   <outdir>/arch-codexsol.jsonl raw Pi JSONL (trace)
 set -u
 # Repo-agnostic: resolve the repository root from this script's own location.
@@ -57,6 +58,6 @@ print(f"{name}: final_text_len={len(text)}")
 PYEOF
 }
 
-run_one "deepseek-v4-pro" "dspro"
+run_one "deepseek-v4-flash" "dsflash"
 run_one "openai-codex/gpt-5.6-sol" "codexsol"
-echo "=== DONE: reviews in $OUTDIR/arch-{dspro,codexsol}.txt ==="
+echo "=== DONE: reviews in $OUTDIR/arch-{dsflash,codexsol}.txt ==="
