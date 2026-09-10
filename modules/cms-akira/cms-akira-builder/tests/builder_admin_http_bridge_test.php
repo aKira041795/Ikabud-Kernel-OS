@@ -72,12 +72,12 @@ $bridge = static function (string $handler, array $params = [], string $rawBody 
 };
 
 $validTree = ['version' => 1, 'blocks' => [
-    ['type' => 'section', 'props' => ['layout' => 'stack'], 'children' => [
-        ['type' => 'heading', 'props' => ['text' => 'Bridge preview', 'level' => 2], 'children' => []],
-        ['type' => 'rich_text', 'props' => ['content' => '<p>Safe <strong>content</strong></p>'], 'children' => []],
+    ['block' => 'hero', 'props' => ['title' => 'Section'], 'children' => [
+        ['block' => 'richtext', 'props' => ['title' => 'Bridge preview'], 'children' => []],
+        ['block' => 'richtext', 'props' => ['body' => 'Safe content'], 'children' => []],
     ]],
 ]];
-$hostileTree = ['version' => 1, 'blocks' => [['type' => 'paragraph', 'props' => ['text' => '<script>alert(1)</script>'], 'children' => []]]];
+$hostileTree = ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['text' => '<script>alert(1)</script>'], 'children' => []]]];
 
 @file_put_contents($root . '/storage/logs/app.log', '');
 @file_put_contents($root . '/storage/logs/error.log', '');
@@ -153,7 +153,7 @@ try {
     // ── Optimistic concurrency: stale base rejected, current applied ──
     $stale = $bridge('akiraBuilderApiUpdate', ['key' => $slug], json_encode(['title' => 'x', 'tree' => $validTree, 'base_revision_id' => $revisionA + 100, 'change_note' => 'stale', 'idempotency_key' => $prefix . '-stale']));
     $check($stale['status'] === 409 && ($stale['body']['ok'] ?? true) === false, 'stale base_revision_id is a typed 409 over HTTP');
-    $treeB = ['version' => 1, 'blocks' => [['type' => 'heading', 'props' => ['text' => 'Draft two', 'level' => 3], 'children' => []]]];
+    $treeB = ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['title' => 'Draft two'], 'children' => []]]];
     $updateBody = json_encode(['title' => 'Updated bridge composition', 'tree' => $treeB, 'base_revision_id' => $revisionA, 'change_note' => 'draft edit', 'idempotency_key' => $prefix . '-update']);
     $updated = $bridge('akiraBuilderApiUpdate', ['key' => $slug], $updateBody);
     $revisionB = (int) ($updated['body']['data']['current_revision_id'] ?? 0);
@@ -183,7 +183,7 @@ try {
     $previewAfter = $bridge('akiraBuilderApiRender', ['key' => $slug]);
     unset($_GET['source']);
     $check(str_contains((string) ($publishedRender['body']['data']['html'] ?? ''), 'Draft two') && ($publishedRender['body']['data']['source'] ?? '') === 'published', 'published render shows published revision');
-    $treeC = ['version' => 1, 'blocks' => [['type' => 'heading', 'props' => ['text' => 'New draft three', 'level' => 4], 'children' => []]]];
+    $treeC = ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['title' => 'New draft three'], 'children' => []]]];
     $edit = $bridge('akiraBuilderApiUpdate', ['key' => $slug], json_encode(['tree' => $treeC, 'base_revision_id' => $revisionB, 'change_note' => 'new draft', 'idempotency_key' => $prefix . '-preview']));
     $_GET['source'] = 'published';
     $publishedAfterEdit = $bridge('akiraBuilderApiRender', ['key' => $slug]);

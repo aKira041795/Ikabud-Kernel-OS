@@ -31,6 +31,8 @@
             "akira.post.get@1",
             "akira.editor.sanitize@1",
             "akira.theme.resolve@1",
+            "akira.theme.blocks@1",
+            "akira.theme.customizer.values@1",
             "kernel.idempotency.hash@1",
             "kernel.idempotency.claim@1",
             "kernel.idempotency.commit@1",

@@ -10,6 +10,7 @@ declare(strict_types=1);
 return [
     'GET' => [
         '/api/v1/cms-akira-builder/health' => 'cms-akira-builder:akiraBuilderHealth',
+        '/p/{key}' => 'cms-akira-builder:akiraBuilderPublicComposition',
         '/api/v1/cms-akira/builder/compositions' => 'cms-akira-builder:akiraBuilderApiCompositions',
         '/api/v1/cms-akira/builder/compositions/{key}' => 'cms-akira-builder:akiraBuilderApiGet',
         '/api/v1/cms-akira/builder/compositions/{key}/revisions' => 'cms-akira-builder:akiraBuilderApiRevisions',

@@ -181,78 +181,118 @@ function cabBuilderUrl(mixed $value, string $field): string
     return $url;
 }
 
-function cabBuilderSanitizeHtml(mixed $value): string
+/** @return array<string, array<string, mixed>> */
+function cabBuilderBlockCatalogue(): array
 {
-    $html = cabBuilderText($value, 'content', 65535);
-    $result = app()->cap()->call('akira.editor.sanitize@1', ['content' => $html], [
+    $result = app()->cap()->call('akira.theme.blocks@1', [], [
         'caller' => ['module' => CAB_BUILDER_MODULE_ID, 'user' => app()->user()], 'mode' => 'first',
     ]);
-    $safe = is_array($result) && ($result['ok'] ?? false) === true ? ($result['data']['content'] ?? null) : null;
-    if (!is_string($safe)) {
-        throw new CabBuilderException('Editor sanitization is unavailable.', 503);
+    if (!is_array($result) || ($result['ok'] ?? false) !== true || !is_array($result['blocks'] ?? null)) {
+        throw new CabBuilderException('Active theme block catalogue unavailable.', 503);
     }
-    if ($safe !== $html) {
-        throw new CabBuilderException('Rich content is not canonical under editor sanitization.');
+    $catalogue = [];
+    foreach ($result['blocks'] as $definition) {
+        if (is_array($definition) && is_string($definition['id'] ?? null)) {
+            $catalogue[$definition['id']] = $definition;
+        }
     }
-    return $safe;
+    return $catalogue;
 }
 
-/**
- * @param array<string, mixed> $props
- * @return array<string, mixed>
- */
-function cabBuilderValidateProps(string $type, array $props): array
+/** @param array<string, mixed> $schema */
+function cabBuilderValidatePropValue(mixed $value, array $schema, string $field): mixed
 {
-    $schemas = [
-        'section' => ['layout'], 'heading' => ['text', 'level'], 'paragraph' => ['text'],
-        'rich_text' => ['content'], 'image' => ['src', 'alt'], 'button' => ['label', 'url'],
-    ];
-    if (!isset($schemas[$type])) {
-        throw new CabBuilderException("Unknown block type: {$type}.");
-    }
-    cabBuilderExactKeys($props, $schemas[$type], "{$type}.props");
-    return match ($type) {
-        'section' => ['layout' => in_array($props['layout'] ?? 'stack', ['stack', 'grid-2', 'grid-3'], true)
-            ? ($props['layout'] ?? 'stack') : throw new CabBuilderException('section.layout is invalid.')],
-        'heading' => [
-            'text' => cabBuilderText($props['text'] ?? null, 'heading.text', 500),
-            'level' => in_array($props['level'] ?? 2, [1, 2, 3, 4, 5, 6], true)
-                ? ($props['level'] ?? 2) : throw new CabBuilderException('heading.level is invalid.'),
-        ],
-        'paragraph' => ['text' => cabBuilderText($props['text'] ?? null, 'paragraph.text', 10000)],
-        'rich_text' => ['content' => cabBuilderSanitizeHtml($props['content'] ?? null)],
-        'image' => ['src' => cabBuilderUrl($props['src'] ?? null, 'image.src'), 'alt' => cabBuilderText($props['alt'] ?? '', 'image.alt', 500, false)],
-        'button' => ['label' => cabBuilderText($props['label'] ?? null, 'button.label', 255), 'url' => cabBuilderUrl($props['url'] ?? null, 'button.url')],
+    return match ($schema['type'] ?? '') {
+        'string' => cabBuilderText($value, $field, 65535, false),
+        'url' => cabBuilderUrl($value, $field),
+        'boolean' => is_bool($value) ? $value : throw new CabBuilderException("{$field} must be a boolean."),
+        'integer' => is_int($value) ? $value : throw new CabBuilderException("{$field} must be an integer."),
+        'array' => cabBuilderValidateArrayProp($value, $schema, $field),
+        'object' => cabBuilderValidateObjectProp($value, $schema, $field),
+        default => throw new CabBuilderException("{$field} has an unsupported schema type."),
     };
 }
 
 /**
- * @param array<string, mixed> $block
+ * @param array<string, mixed> $schema
+ * @return list<mixed>
+ */
+function cabBuilderValidateArrayProp(mixed $value, array $schema, string $field): array
+{
+    if (!is_array($value) || !array_is_list($value) || !is_array($schema['items'] ?? null)) {
+        throw new CabBuilderException("{$field} must be an array.");
+    }
+    return array_map(static fn (mixed $item): mixed => cabBuilderValidatePropValue($item, $schema['items'], "{$field}[]"), $value);
+}
+
+/**
+ * @param array<string, mixed> $schema
  * @return array<string, mixed>
  */
-function cabBuilderValidateBlock(array $block, int $depth, int &$count): array
+function cabBuilderValidateObjectProp(mixed $value, array $schema, string $field): array
+{
+    if (!is_array($value) || array_is_list($value) || !is_array($schema['props'] ?? null)) {
+        throw new CabBuilderException("{$field} must be an object.");
+    }
+    cabBuilderExactKeys($value, array_keys($schema['props']), $field);
+    $normalized = [];
+    foreach ($value as $name => $item) {
+        $propSchema = $schema['props'][$name] ?? null;
+        if (is_array($propSchema)) {
+            $normalized[$name] = cabBuilderValidatePropValue($item, $propSchema, "{$field}.{$name}");
+        }
+    }
+    return $normalized;
+}
+
+/**
+ * Unknown properties are rejected, consistently, rather than silently changing authored content.
+ * @param array<string, mixed> $props
+ * @param array<string, mixed> $definition
+ * @return array<string, mixed>
+ */
+function cabBuilderValidateProps(string $blockId, array $props, array $definition): array
+{
+    $schemas = $definition['schema']['props'] ?? null;
+    if (!is_array($schemas)) {
+        throw new CabBuilderException("Block {$blockId} has no valid property schema.");
+    }
+    cabBuilderExactKeys($props, array_keys($schemas), "{$blockId}.props");
+    $normalized = [];
+    foreach ($props as $name => $value) {
+        $normalized[$name] = cabBuilderValidatePropValue($value, $schemas[$name], "{$blockId}.{$name}");
+    }
+    return $normalized;
+}
+
+/**
+ * @param array<string, mixed> $block
+ * @param array<string, array<string, mixed>> $catalogue
+ * @return array<string, mixed>
+ */
+function cabBuilderValidateBlock(array $block, int $depth, int &$count, array $catalogue): array
 {
     if ($depth > CAB_BUILDER_MAX_DEPTH || ++$count > CAB_BUILDER_MAX_BLOCKS) {
         throw new CabBuilderException('Composition depth or block-count guard exceeded.');
     }
-    cabBuilderExactKeys($block, ['type', 'props', 'children'], 'block');
-    $type = is_string($block['type'] ?? null) ? $block['type'] : '';
+    cabBuilderExactKeys($block, ['block', 'props', 'children'], 'block');
+    $blockId = is_string($block['block'] ?? null) ? $block['block'] : '';
     $props = $block['props'] ?? null;
     $children = $block['children'] ?? [];
+    if (!isset($catalogue[$blockId])) {
+        throw new CabBuilderException("Unknown theme block: {$blockId}.");
+    }
     if (!is_array($props) || !is_array($children) || !array_is_list($children)) {
         throw new CabBuilderException('Block props must be an object and children must be a list.');
-    }
-    if ($type !== 'section' && $children !== []) {
-        throw new CabBuilderException("{$type} blocks cannot contain children.");
     }
     $normalizedChildren = [];
     foreach ($children as $child) {
         if (!is_array($child)) {
             throw new CabBuilderException('Every child must be a block object.');
         }
-        $normalizedChildren[] = cabBuilderValidateBlock($child, $depth + 1, $count);
+        $normalizedChildren[] = cabBuilderValidateBlock($child, $depth + 1, $count, $catalogue);
     }
-    return ['type' => $type, 'props' => cabBuilderValidateProps($type, $props), 'children' => $normalizedChildren];
+    return ['block' => $blockId, 'props' => cabBuilderValidateProps($blockId, $props, $catalogue[$blockId]), 'children' => $normalizedChildren];
 }
 
 /** @return array{version:int,blocks:list<array<string,mixed>>} */
@@ -271,11 +311,12 @@ function cabBuilderValidateTree(mixed $tree): array
     }
     $count = 0;
     $blocks = [];
+    $catalogue = cabBuilderBlockCatalogue();
     foreach ($tree['blocks'] as $block) {
         if (!is_array($block)) {
             throw new CabBuilderException('Every tree entry must be a block object.');
         }
-        $blocks[] = cabBuilderValidateBlock($block, 1, $count);
+        $blocks[] = cabBuilderValidateBlock($block, 1, $count, $catalogue);
     }
     return ['version' => 1, 'blocks' => $blocks];
 }
@@ -402,23 +443,36 @@ function cab_builder_cap_revisions_1(mixed $payload, string $capabilityId = 'aki
     }
 }
 
-/** @param list<array<string,mixed>> $blocks */
-function cabBuilderBlocksHtml(array $blocks): string
+/**
+ * Resolve structured sections to active-theme templates. Invalid persisted entries are skipped atomically.
+ * @param list<mixed> $blocks
+ * @param array<string, array<string, mixed>> $catalogue
+ * @param list<string> $warnings
+ * @return list<array{template:string,props:array<string,mixed>}>
+ */
+function cabBuilderResolveSections(array $blocks, array $catalogue, array &$warnings): array
 {
-    $html = '';
-    foreach ($blocks as $block) {
-        $props = $block['props'];
-        $html .= match ($block['type']) {
-            'section' => '<section class="akira-layout-' . htmlspecialchars((string) $props['layout'], ENT_QUOTES, 'UTF-8') . '">' . cabBuilderBlocksHtml($block['children']) . '</section>',
-            'heading' => '<h' . (int) $props['level'] . '>' . htmlspecialchars((string) $props['text'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</h' . (int) $props['level'] . '>',
-            'paragraph' => '<p>' . nl2br(htmlspecialchars((string) $props['text'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false) . '</p>',
-            'rich_text' => '<div class="akira-rich-text">' . $props['content'] . '</div>',
-            'image' => '<img src="' . htmlspecialchars((string) $props['src'], ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars((string) $props['alt'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '">',
-            'button' => '<a class="akira-button" href="' . htmlspecialchars((string) $props['url'], ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars((string) $props['label'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</a>',
-            default => throw new CabBuilderException('Unknown persisted block type.', 500),
-        };
+    $sections = [];
+    foreach ($blocks as $index => $block) {
+        $id = is_array($block) && is_string($block['block'] ?? null) ? $block['block'] : '';
+        $definition = $catalogue[$id] ?? null;
+        $template = is_array($definition) ? ($definition['renderer']['template'] ?? null) : null;
+        if (!is_string($template) || !is_array($block['props'] ?? null)) {
+            $warnings[] = "Skipped unknown or invalid block at index {$index}.";
+            continue;
+        }
+        try {
+            $props = cabBuilderValidateProps($id, $block['props'], $definition);
+        } catch (Throwable) {
+            $warnings[] = "Skipped invalid block '{$id}' at index {$index}.";
+            continue;
+        }
+        $sections[] = ['template' => $template, 'props' => $props];
+        if (is_array($block['children'] ?? null)) {
+            $sections = array_merge($sections, cabBuilderResolveSections($block['children'], $catalogue, $warnings));
+        }
     }
-    return $html;
+    return $sections;
 }
 
 /** @return array<string, mixed> */
@@ -451,22 +505,51 @@ function cab_builder_cap_render_1(mixed $payload, string $capabilityId = 'akira.
             $treeJson = (string) $revision->fetchColumn();
             $revisionId = (int) $row['published_revision_id'];
         }
-        $tree = cabBuilderDecodeTree($treeJson);
+        try {
+            $tree = json_decode($treeJson, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            throw new CabBuilderException('Persisted composition tree is invalid.', 500);
+        }
+        if (!is_array($tree) || !is_array($tree['blocks'] ?? null) || !array_is_list($tree['blocks'])) {
+            throw new CabBuilderException('Persisted composition tree is invalid.', 500);
+        }
         $theme = app()->cap()->call('akira.theme.resolve@1', [], ['caller' => ['module' => CAB_BUILDER_MODULE_ID, 'user' => app()->user()], 'mode' => 'first']);
         $slug = is_array($theme) && ($theme['ok'] ?? false) === true && ($theme['validated'] ?? false) === true ? ($theme['theme_slug'] ?? null) : null;
         if (!is_string($slug) || $slug === '') {
             throw new CabBuilderException('Validated Akira theme resolution is unavailable.', 503);
         }
+        $warnings = [];
+        $sections = cabBuilderResolveSections($tree['blocks'], cabBuilderBlockCatalogue(), $warnings);
         $html = app()->arkRenderers()->render($view, ['composition' => [
             'entity_type' => $type, 'entity_key' => $key, 'title' => (string) $row['title'],
-            'revision_id' => $revisionId, 'source' => $source, 'html' => cabBuilderBlocksHtml($tree['blocks']),
+            'revision_id' => $revisionId, 'source' => $source, 'sections' => $sections,
         ]], $slug);
         if (!is_string($html)) {
             throw new CabBuilderException('The Akira theme does not register an executable composition view.', 422);
         }
-        return ['ok' => true, 'data' => ['html' => $html, 'source' => $source, 'revision_id' => $revisionId, 'theme_slug' => $slug, 'view_id' => $view]];
+        return ['ok' => true, 'data' => ['html' => $html, 'source' => $source, 'revision_id' => $revisionId, 'theme_slug' => $slug, 'view_id' => $view, 'warnings' => $warnings]];
     } catch (Throwable $error) {
         return ['ok' => false, 'error' => $error instanceof CabBuilderException ? $error->getMessage() : 'Composition render failed'];
+    }
+}
+
+function cabBuilderInvalidatePublicCache(?string $key = null): void
+{
+    try {
+        app()->templates()->fragmentStore()->invalidate([CAB_BUILDER_INVALIDATION], (string) cabBuilderTenantId());
+        // This module owns the public /p/{key} route and caches it under its own
+        // module tag, so its tag must always be cleared — not only as a fallback.
+        if (function_exists('pageCacheInvalidateModule')) {
+            pageCacheInvalidateModule(CAB_BUILDER_MODULE_ID);
+        }
+        if (function_exists('akiraShellInvalidatePublicCache')) {
+            akiraShellInvalidatePublicCache($key !== null && $key !== '' ? $key : null);
+        }
+        if ($key !== null && $key !== '' && function_exists('pageCacheInvalidateUrl')) {
+            pageCacheInvalidateUrl('/p/' . $key);
+        }
+    } catch (Throwable) {
+        // A committed publication must not be rolled back by cache infrastructure.
     }
 }
 
@@ -555,6 +638,9 @@ function cabBuilderMutate(string $operation, array $payload): array
         $publicationUncertain = true;
         $pdo->commit();
         $publicationUncertain = false;
+        if (in_array($operation, ['publish', 'unpublish'], true)) {
+            cabBuilderInvalidatePublicCache(is_string($input['entity_key'] ?? null) ? trim((string) $input['entity_key']) : null);
+        }
         return $outcome;
     } catch (Throwable $error) {
         if ($pdo->inTransaction()) {

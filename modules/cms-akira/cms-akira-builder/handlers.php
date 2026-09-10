@@ -147,6 +147,90 @@ function akiraBuilderHealth(array $params = []): void
     echo json_encode(['ok' => true, 'module' => CAB_BUILDER_MODULE_ID, 'version' => '1.0.0', 'authority' => 'native'], JSON_UNESCAPED_SLASHES);
 }
 
+/**
+ * Wrap rendered composition content in the active theme's declared public shell.
+ */
+function cabBuilderPublicThemePage(string $pageHtml, string $title, string $key, string $slug): ?string
+{
+    try {
+        $themesRoot = realpath(defined('CMS_THEMES_PATH') ? (string) CMS_THEMES_PATH : dirname(__DIR__, 3) . '/storage/cms-themes');
+        $themePath = is_string($themesRoot) ? realpath($themesRoot . '/' . $slug) : false;
+        if ($themePath === false || !str_starts_with($themePath . DIRECTORY_SEPARATOR, (string) $themesRoot . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+        $manifestRaw = @file_get_contents($themePath . '/theme.manifest.json');
+        $manifest = is_string($manifestRaw) ? json_decode($manifestRaw, true) : null;
+        $layout = is_array($manifest) ? trim((string) ($manifest['shell'] ?? '')) : '';
+        $layoutPath = $layout !== '' && !str_contains($layout, '..') ? realpath($themePath . '/' . ltrim($layout, '/')) : false;
+        if ($layoutPath === false || !str_starts_with($layoutPath, $themePath . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        $provider = new \Ikabud\Kernel\Services\DeclarativeThemeCustomizerProvider($slug, $themePath);
+        if (!\Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::validateProvider($provider, $slug, $themePath)) {
+            return null;
+        }
+        $definition = $provider->definition();
+        $customizer = app()->cap()->call('akira.theme.customizer.values@1', [], [
+            'caller' => ['module' => CAB_BUILDER_MODULE_ID, 'user' => app()->user()], 'mode' => 'first',
+        ]);
+        $persisted = is_array($customizer) && ($customizer['ok'] ?? false) === true && ($customizer['theme_slug'] ?? '') === $slug && is_array($customizer['values'] ?? null)
+            ? $customizer['values'] : [];
+        $settings = [];
+        foreach ($definition->sectionNames() as $section) {
+            $settings[$section] = array_merge($definition->section($section)?->defaults ?? [], is_array($persisted[$section] ?? null) ? $persisted[$section] : []);
+        }
+        $context = new \Ikabud\Kernel\Contracts\ThemeRenderContext(
+            theme: $slug,
+            scope: \Ikabud\Kernel\Contracts\ThemeCustomizationScope::fromString('native_' . $slug),
+            settings: $settings,
+            tokens: $definition->tokens,
+            site: ['title' => 'CMS Akira', 'tagline' => 'Governed publishing on Ikabud', 'url' => '/'],
+            navigation: ['primary' => [['href' => '/', 'label' => 'Home'], ['href' => '/posts', 'label' => 'Posts']]],
+            entityContext: ['kind' => CAB_BUILDER_VIEW, 'origin' => CAB_BUILDER_MODULE_ID, 'authenticated' => false],
+            slotContributions: [],
+        );
+        $header = \Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::renderProviderRegion($provider, 'header', $context, $themePath);
+        $footer = \Ikabud\Kernel\Services\ThemeCustomizerOrchestrator::renderProviderRegion($provider, 'footer', $context, $themePath);
+        if ($header['html'] === '' || $footer['html'] === '') {
+            return null;
+        }
+        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        $scheme = function_exists('request_scheme') ? request_scheme() : 'http';
+        return app()->render($layoutPath, [
+            'page_title' => $title . ' — CMS Akira', 'seo_description' => '',
+            'canonical_url' => $host === '' ? '' : $scheme . '://' . $host . '/p/' . rawurlencode($key),
+            'current_year' => date('Y'), 'theme_slug' => $slug,
+            'header_region' => $header['html'], 'page_region' => $pageHtml, 'footer_region' => $footer['html'],
+        ]);
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+/**
+ * Anonymous, tenant-scoped published composition page. Draft/preview access is deliberately impossible here.
+ * @param array<string,string> $params
+ */
+function akiraBuilderPublicComposition(array $params = []): void
+{
+    $key = (string) ($params['key'] ?? '');
+    $result = cab_builder_cap_render_1(['entity_type' => 'post', 'entity_key' => $key, 'source' => 'published']);
+    $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+    $html = $data['html'] ?? null;
+    $row = cabBuilderFind('post', $key);
+    $page = is_string($html) && is_string($data['theme_slug'] ?? null) && is_array($row)
+        ? cabBuilderPublicThemePage($html, (string) $row['title'], $key, $data['theme_slug']) : null;
+    if (($result['ok'] ?? false) !== true || !is_string($page)) {
+        http_response_code(404);
+        header('Content-Type: text/html; charset=UTF-8');
+        echo 'Not Found';
+        return;
+    }
+    header('Content-Type: text/html; charset=UTF-8');
+    echo $page;
+}
+
 /** @param array<string,string> $params */
 function akiraBuilderApiCompositions(array $params = []): void
 {

@@ -10,6 +10,11 @@
       "template": "entity-views/post-detail.disyl",
       "controls": ["show_metadata"],
       "context_keys": ["post"]
+    },
+    "entity.detail.composition": {
+      "template": "entity-views/composition.disyl",
+      "controls": ["source"],
+      "context_keys": ["composition"]
     }
   }
 }
