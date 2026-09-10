@@ -251,6 +251,20 @@ try {
         $adminResult['allowed'] === true,
         $adminResult['reason']
     );
+
+    // The tenant-scoped seed above re-uses this natural key but narrows the
+    // allowlist to the primary caller. On a host without tenant 54 that seed lands
+    // in the base row (tenant 54 absorbs it on developer machines), so without
+    // re-asserting the precondition the assertion below would test the order of
+    // previous seeds rather than the documented behaviour: a bounded
+    // comma-separated allowlist contains every member it names.
+    $registry->seedPolicy([array_merge($policy, [
+        'caller_module' => $callerModule . ',' . $alternateCallerModule,
+        'allowed_roles' => 'admin',
+        'requires_protocol' => 'v2',
+    ])]);
+    CapabilityAuthorizationRegistry::invalidate();
+
     $alternateCallerResult = capAuthzPolicyOutcome($bus, $capabilityId, array_merge($baseOptions, [
         'caller_module' => $alternateCallerModule,
         'caller_user' => ['role' => 'admin'],
