@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/tenant_fixture.php';
 require_once $root . '/modules/cms-akira/cms-akira-core/helpers.php';
 require_once $root . '/modules/cms-akira/cms-akira-editor/helpers.php';
 require_once $root . '/modules/cms-akira/cms-akira-theme/helpers.php';
@@ -24,7 +25,11 @@ $check = static function (bool $ok, string $label, string $detail = '') use (&$p
     echo ($ok ? '  ✓ ' : '  ✗ ') . $label . (!$ok && $detail !== '' ? " — {$detail}" : '') . "\n";
 };
 
-$mutations = array_slice(array_keys(cms_akira_builder_capability_handlers()), 4);
+$mutations = [
+    'akira.builder.create@1', 'akira.builder.update@1', 'akira.builder.publish@1',
+    'akira.builder.unpublish@1', 'akira.builder.delete@1', 'akira.builder.validate@1',
+];
+$governed = ['akira.builder.provenance@1', ...$mutations];
 $register = static function (string $module, array $handlers, array $governed = []): void {
     foreach ($handlers as $id => $handler) {
         if (app()->capabilities()->has($id)) {
@@ -38,19 +43,28 @@ $register = static function (string $module, array $handlers, array $governed = 
 $register('cms-akira-core', cms_akira_core_capability_handlers());
 $register('cms-akira-editor', cms_akira_editor_capability_handlers());
 $register('cms-akira-theme', cms_akira_theme_capability_handlers());
-$register(CAB_BUILDER_MODULE_ID, cms_akira_builder_capability_handlers(), $mutations);
+$register(CAB_BUILDER_MODULE_ID, cms_akira_builder_capability_handlers(), $governed);
 
 $db = app()->db();
 $tenantA = 994701;
 $tenantB = 994702;
+foreach (['cms-akira-core', 'cms-akira-editor', 'cms-akira-theme', CAB_BUILDER_MODULE_ID] as $fixtureModule) {
+    ensureTestTenant($tenantA, $fixtureModule);
+    ensureTestTenant($tenantB, $fixtureModule);
+}
+saveTenantModuleSettingsForTenant('cms-akira-theme', $tenantA, ['active_theme_slug' => 'akira-ark']);
+saveTenantModuleSettingsForTenant('cms-akira-theme', $tenantB, ['active_theme_slug' => 'akira-ark']);
+CapabilityAuthorizationRegistry::invalidate();
 $originalTenant = app()->tenant()->current();
 $admin = ['id' => 999701, 'role' => 'admin'];
 $prefix = 'builder-' . bin2hex(random_bytes(5));
 $slug = $prefix . '-post';
 $keys = [];
-$setIdentity = static function (int $tenant, array $actor): void {
+$setIdentity = static function (int $tenant, array $actor) use ($db): void {
     app()->tenant()->setTenantId($tenant);
     kernel_request_context_set('tenant_id', $tenant);
+    tenantSetModuleActivationState($db, $tenant, [CAB_BUILDER_MODULE_ID], true, 'builder-contract-' . $tenant);
+    invalidateTenantModuleSettingsCache();
     app()->setUser($actor);
 };
 $call = static function (string $id, array $payload = []): array {
@@ -87,12 +101,15 @@ try {
 
     $manifest = kernelReadJsonFile(dirname(__DIR__) . '/module.json');
     $ids = array_column($manifest['capabilities']['exposes'] ?? [], 'id');
-    $check($ids === array_keys(cms_akira_builder_capability_handlers()), 'manifest and runtime expose exactly ten native builder capabilities');
+    $check($ids === array_keys(cms_akira_builder_capability_handlers()) && in_array('akira.builder.provenance@1', $ids, true), 'manifest and runtime expose the provenance capability');
     $check(($manifest['owns_tables'] ?? []) === ['cms_akira_compositions', 'cms_akira_composition_revisions'] && ($manifest['reads_tables'] ?? []) === $manifest['owns_tables'], 'builder owns and reads only its two tenant-scoped tables');
     $check(($manifest['depends'] ?? []) === ['cms-akira-core'] && ($manifest['_enabled'] ?? null) === false, 'native core extension remains explicitly tenant-activated');
-    foreach ($mutations as $id) {
+    foreach ($governed as $id) {
         $entry = $manifest['capabilities']['exposes'][array_search($id, $ids, true)] ?? [];
-        $check(($entry['requires_protocol'] ?? '') === 'v2' && ($entry['effects']['invalidates'] ?? []) === [CAB_BUILDER_INVALIDATION], "{$id} is governed with one canonical invalidation");
+        $effectsOk = $id === 'akira.builder.provenance@1'
+            ? !isset($entry['effects'])
+            : ($entry['effects']['invalidates'] ?? []) === [CAB_BUILDER_INVALIDATION];
+        $check(($entry['requires_protocol'] ?? '') === 'v2' && $effectsOk, "{$id} is governed with the correct read/write effects");
     }
     $policies = new CapabilityAuthorizationRegistry($db);
     $check($policies->requiresProtocol('akira.builder.update@1', '1', CAB_BUILDER_MODULE_ID) === 'v2', 'policy seed durably requires protocol v2');
@@ -177,7 +194,24 @@ try {
     $published = $call('akira.builder.publish@1', ['idempotency_key' => $keys[] = $prefix . '-publish', 'entity_type' => 'post', 'entity_key' => $slug]);
     $check(($published['data']['published_revision_id'] ?? null) === $revisionB && ($published['data']['status'] ?? '') === 'published', 'publish promotes exactly the current preview revision');
     $publishedRender = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'published']);
-    $check(($publishedRender['ok'] ?? false) === true && str_contains((string) ($publishedRender['data']['html'] ?? ''), 'Preview two') && ($publishedRender['data']['theme_slug'] ?? '') === 'cms-akira-posts', 'published render traverses explicit Akira theme → ARK → DiSyL');
+    $check(($publishedRender['ok'] ?? false) === true && str_contains((string) ($publishedRender['data']['html'] ?? ''), 'Preview two') && ($publishedRender['data']['theme_slug'] ?? '') === 'akira-ark', 'published render traverses explicit Akira theme → ARK → DiSyL');
+    $historicalRender = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'preview', 'revision_id' => $revisionA]);
+    $check(($historicalRender['data']['revision_id'] ?? null) === $revisionA && str_contains((string) ($historicalRender['data']['html'] ?? ''), 'Preview one'), 'render@1 renders an explicitly owned historical revision');
+    $missingRender = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'preview', 'revision_id' => $revisionB + 9999]);
+    $check(($missingRender['ok'] ?? true) === false && ($missingRender['error'] ?? '') === 'Revision not found.', 'unknown revision render fails closed');
+    $provenance = $call('akira.builder.provenance@1', ['entity_type' => 'post', 'entity_key' => $slug, 'from_revision_id' => $revisionA, 'to_revision_id' => $revisionB]);
+    $changes = $provenance['data']['diff']['changes'] ?? [];
+    $check(count($provenance['data']['timeline'] ?? []) >= 4 && count($changes['added'] ?? []) === 0 && count($changes['removed'] ?? []) === 3 && count($changes['props_changed'] ?? []) >= 1, 'provenance unifies revisions/audits and returns a semantic known-pair diff');
+    $denialProven = false;
+    try {
+        app()->setUser(['id' => 999702, 'role' => 'editor', 'source' => 'kernel']);
+        $call('akira.builder.provenance@1', ['entity_type' => 'post', 'entity_key' => $slug]);
+    } catch (Throwable) {
+        $denialProven = true;
+    } finally {
+        app()->setUser($admin);
+    }
+    $check($denialProven, 'unauthorized caller is denied the governed provenance read');
     $unregistered = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'published', 'view_id' => 'entity.detail.unregistered']);
     $check(($unregistered['ok'] ?? true) === false, 'unregistered exact ARK view fails closed');
 
@@ -247,6 +281,9 @@ try {
         $db->prepare('DELETE FROM cms_akira_posts WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare('DELETE FROM kernel_idempotency_keys WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
         $db->prepare("DELETE FROM audit_logs WHERE module = 'cms-akira-builder'")->execute();
+        $db->prepare("DELETE FROM tenant_module_settings WHERE tenant_id IN (?, ?) AND module_id = ?")->execute([$tenantA, $tenantB, CAB_BUILDER_MODULE_ID]);
+        cleanupTestTenant($tenantA);
+        cleanupTestTenant($tenantB);
         app()->templates()->fragmentStore()->flushAll((string) $tenantA);
         app()->templates()->fragmentStore()->flushAll((string) $tenantB);
     } catch (Throwable $error) {

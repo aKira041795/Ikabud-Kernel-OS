@@ -14,6 +14,7 @@ return [
         '/api/v1/cms-akira/builder/compositions' => 'cms-akira-builder:akiraBuilderApiCompositions',
         '/api/v1/cms-akira/builder/compositions/{key}' => 'cms-akira-builder:akiraBuilderApiGet',
         '/api/v1/cms-akira/builder/compositions/{key}/revisions' => 'cms-akira-builder:akiraBuilderApiRevisions',
+        '/api/v1/cms-akira/builder/compositions/{key}/provenance' => 'cms-akira-builder:akiraBuilderApiProvenance',
         '/api/v1/cms-akira/builder/compositions/{key}/render' => 'cms-akira-builder:akiraBuilderApiRender',
     ],
     'POST' => [

@@ -16,6 +16,7 @@ function cms_akira_builder_capability_handlers(): array
         'akira.builder.compositions@1' => 'cab_builder_cap_compositions_1',
         'akira.builder.get@1' => 'cab_builder_cap_get_1',
         'akira.builder.revisions@1' => 'cab_builder_cap_revisions_1',
+        'akira.builder.provenance@1' => 'cab_builder_cap_provenance_1',
         'akira.builder.render@1' => 'cab_builder_cap_render_1',
         'akira.builder.create@1' => 'cab_builder_cap_create_1',
         'akira.builder.update@1' => 'cab_builder_cap_update_1',
@@ -31,8 +32,13 @@ function cabBuilderSeedMutationPolicies(): void
     if (!function_exists('app')) {
         return;
     }
+    $governed = [
+        'akira.builder.provenance@1', 'akira.builder.create@1', 'akira.builder.update@1',
+        'akira.builder.publish@1', 'akira.builder.unpublish@1', 'akira.builder.delete@1',
+        'akira.builder.validate@1',
+    ];
     $rows = [];
-    foreach (array_slice(array_keys(cms_akira_builder_capability_handlers()), 4) as $id) {
+    foreach ($governed as $id) {
         $rows[] = [
             'policy_version' => 1, 'capability_id' => $id, 'capability_version' => '1',
             'provider' => CAB_BUILDER_MODULE_ID, 'caller_module' => null, 'allowed_roles' => 'admin',
@@ -443,6 +449,144 @@ function cab_builder_cap_revisions_1(mixed $payload, string $capabilityId = 'aki
     }
 }
 
+/** @return array<string,mixed> */
+function cabBuilderRevision(int $compositionId, int $revisionId): array
+{
+    $stmt = cabBuilderDb()->prepare('SELECT id, tree FROM cms_akira_composition_revisions WHERE tenant_id = :tenant AND composition_id = :composition AND id = :revision LIMIT 1');
+    $stmt->execute([':tenant' => cabBuilderTenantId(), ':composition' => $compositionId, ':revision' => $revisionId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!is_array($row)) {
+        throw new CabBuilderException('Revision not found.', 404);
+    }
+    return ['revision_id' => (int) $row['id'], 'tree' => cabBuilderDecodeTree((string) $row['tree'])];
+}
+
+/**
+ * Flatten blocks to deterministic occurrence identities. Canonical trees do not
+ * carry mutable client IDs, so the nth occurrence of a block type is its stable
+ * semantic identity for reorder/property reporting.
+ * @param list<array<string,mixed>> $blocks
+ * @param array<string,int> $counts
+ * @param array<string,array<string,mixed>> $out
+ */
+function cabBuilderFlattenBlocks(array $blocks, array &$counts, array &$out, string $parent = 'root'): void
+{
+    foreach ($blocks as $index => $block) {
+        $type = (string) ($block['block'] ?? 'unknown');
+        $counts[$type] = ($counts[$type] ?? 0) + 1;
+        $identity = $type . '#' . $counts[$type];
+        $path = $parent . '.' . $index;
+        $out[$identity] = ['identity' => $identity, 'block' => $type, 'path' => $path, 'position' => $index, 'parent' => $parent, 'props' => $block['props'] ?? []];
+        if (is_array($block['children'] ?? null)) {
+            cabBuilderFlattenBlocks($block['children'], $counts, $out, $identity);
+        }
+    }
+}
+
+/**
+ * @param array<string,mixed> $from
+ * @param array<string,mixed> $to
+ * @return array<string,mixed>
+ */
+function cabBuilderSemanticDiff(array $from, array $to): array
+{
+    $a = $b = $countsA = $countsB = [];
+    cabBuilderFlattenBlocks($from['blocks'] ?? [], $countsA, $a);
+    cabBuilderFlattenBlocks($to['blocks'] ?? [], $countsB, $b);
+    $added = $removed = $reordered = $propsChanged = [];
+    foreach (array_diff_key($b, $a) as $block) {
+        $added[] = $block;
+    }
+    foreach (array_diff_key($a, $b) as $block) {
+        $removed[] = $block;
+    }
+    foreach (array_intersect_key($a, $b) as $identity => $old) {
+        $new = $b[$identity];
+        if ($old['path'] !== $new['path']) {
+            $reordered[] = ['identity' => $identity, 'block' => $old['block'], 'old_path' => $old['path'], 'new_path' => $new['path']];
+        }
+        $oldProps = is_array($old['props']) ? $old['props'] : [];
+        $newProps = is_array($new['props']) ? $new['props'] : [];
+        foreach (array_unique(array_merge(array_keys($oldProps), array_keys($newProps))) as $prop) {
+            $oldValue = $oldProps[$prop] ?? null;
+            $newValue = $newProps[$prop] ?? null;
+            if (!array_key_exists($prop, $oldProps) || !array_key_exists($prop, $newProps) || $oldValue !== $newValue) {
+                $propsChanged[] = ['identity' => $identity, 'block' => $old['block'], 'prop' => $prop, 'old' => $oldValue, 'new' => $newValue];
+            }
+        }
+    }
+    return ['added' => $added, 'removed' => $removed, 'reordered' => $reordered, 'props_changed' => $propsChanged];
+}
+
+/** @return array<string,mixed> */
+function cab_builder_cap_provenance_1(mixed $payload, string $capabilityId = 'akira.builder.provenance@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload) || array_key_exists('tenant_id', $payload)) {
+        return ['ok' => false, 'error' => 'A tenant-context provenance request is required'];
+    }
+    try {
+        cabBuilderExactKeys($payload, ['entity_type', 'entity_key', 'from_revision_id', 'to_revision_id'], 'payload');
+        $type = cabBuilderEntityType($payload['entity_type'] ?? null);
+        $key = cabBuilderEntityKey($payload['entity_key'] ?? null);
+        $composition = cabBuilderFind($type, $key);
+        if ($composition === null) {
+            throw new CabBuilderException('Composition not found.', 404);
+        }
+        $stmt = cabBuilderDb()->prepare('SELECT id, base, author_id, change_note, created_at FROM cms_akira_composition_revisions WHERE tenant_id = :tenant AND composition_id = :composition ORDER BY created_at DESC, id DESC');
+        $stmt->execute([':tenant' => cabBuilderTenantId(), ':composition' => $composition['id']]);
+        $timeline = [];
+        $publishedIds = [];
+        $audit = app()->cap()->call('kernel.audit.list@1', ['entity_type' => 'composition', 'entity_id' => $type . ':' . $key, 'limit' => 100], [
+            'caller' => ['module' => CAB_BUILDER_MODULE_ID, 'user' => app()->user()], 'mode' => 'first',
+        ]);
+        foreach (is_array($audit) && is_array($audit['rows'] ?? null) ? $audit['rows'] : [] as $entry) {
+            if (($entry['module'] ?? '') !== CAB_BUILDER_MODULE_ID) {
+                continue;
+            }
+            $new = is_array($entry['new_data'] ?? null) ? $entry['new_data'] : [];
+            $action = (string) ($entry['action'] ?? '');
+            $published = $new['published_revision_id'] ?? null;
+            if ($action === 'akira.builder.publish' && is_numeric($published)) {
+                $publishedIds[(int) $published] = true;
+            }
+            $timeline[] = [
+                'kind' => in_array($action, ['akira.builder.publish', 'akira.builder.unpublish'], true) ? 'publication' : 'audit',
+                'action' => $action, 'capability' => $action . '@1', 'actor' => (string) ($entry['actor'] ?? 'System'),
+                'actor_id' => $entry['actor_user_id'] ?? $entry['actor_module_user_id'] ?? null,
+                'created_at' => (string) ($entry['created_at'] ?? ''), 'note' => null,
+                'correlation_id' => $new['correlation_id'] ?? null, 'request_id' => $new['request_id'] ?? null,
+                'revision_id' => is_numeric($published) ? (int) $published : ($new['current_revision_id'] ?? null),
+            ];
+        }
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $revision) {
+            $id = (int) $revision['id'];
+            $timeline[] = [
+                'kind' => 'revision', 'action' => 'revision.created', 'capability' => $revision['base'] === null ? 'akira.builder.create@1' : 'akira.builder.update@1',
+                'actor' => 'User #' . (int) $revision['author_id'], 'actor_id' => (int) $revision['author_id'],
+                'created_at' => (string) $revision['created_at'], 'note' => (string) $revision['change_note'],
+                'correlation_id' => null, 'request_id' => null, 'revision_id' => $id,
+                'base_revision_id' => $revision['base'] === null ? null : (int) $revision['base'],
+                'was_published' => isset($publishedIds[$id]) || (int) ($composition['published_revision_id'] ?? 0) === $id,
+            ];
+        }
+        usort($timeline, static fn (array $left, array $right): int => [$right['created_at'], $right['kind']] <=> [$left['created_at'], $left['kind']]);
+        $result = ['ok' => true, 'data' => ['entity_type' => $type, 'entity_key' => $key, 'timeline' => $timeline, 'limitations' => [
+            'Revision rows do not persist correlation/request IDs; these are shown only on recoverable audit entries.',
+            'Publication history is recoverable only while its kernel audit records are retained.',
+        ]]];
+        if (array_key_exists('from_revision_id', $payload)) {
+            $from = cabBuilderRevision((int) $composition['id'], cabBuilderPositiveId($payload['from_revision_id'], 'from_revision_id'));
+            $to = array_key_exists('to_revision_id', $payload)
+                ? cabBuilderRevision((int) $composition['id'], cabBuilderPositiveId($payload['to_revision_id'], 'to_revision_id'))
+                : ['revision_id' => cabBuilderCurrentRevisionId((int) $composition['id']), 'tree' => cabBuilderDecodeTree((string) $composition['tree'])];
+            $result['data']['diff'] = ['from_revision_id' => $from['revision_id'], 'to_revision_id' => $to['revision_id'], 'changes' => cabBuilderSemanticDiff($from['tree'], $to['tree'])];
+        }
+        return $result;
+    } catch (Throwable $error) {
+        return ['ok' => false, 'error' => $error instanceof CabBuilderException ? $error->getMessage() : 'Provenance unavailable'];
+    }
+}
+
 /**
  * Resolve structured sections to active-theme templates. Invalid persisted entries are skipped atomically.
  * @param list<mixed> $blocks
@@ -482,7 +626,7 @@ function cab_builder_cap_render_1(mixed $payload, string $capabilityId = 'akira.
         return ['ok' => false, 'error' => 'A tenant-context render request is required'];
     }
     try {
-        cabBuilderExactKeys($payload, ['entity_type', 'entity_key', 'source', 'view_id'], 'payload');
+        cabBuilderExactKeys($payload, ['entity_type', 'entity_key', 'source', 'view_id', 'revision_id'], 'payload');
         $type = cabBuilderEntityType($payload['entity_type'] ?? null);
         $key = cabBuilderEntityKey($payload['entity_key'] ?? null);
         $source = $payload['source'] ?? 'published';
@@ -496,7 +640,12 @@ function cab_builder_cap_render_1(mixed $payload, string $capabilityId = 'akira.
         }
         $treeJson = (string) $row['tree'];
         $revisionId = cabBuilderCurrentRevisionId((int) $row['id']);
-        if ($source === 'published') {
+        if (array_key_exists('revision_id', $payload)) {
+            $historical = cabBuilderRevision((int) $row['id'], cabBuilderPositiveId($payload['revision_id'], 'revision_id'));
+            $treeJson = cabBuilderEncodeTree($historical['tree']);
+            $revisionId = $historical['revision_id'];
+            $source = 'revision';
+        } elseif ($source === 'published') {
             if ($row['published_revision_id'] === null || $row['status'] !== 'published') {
                 throw new CabBuilderException('Composition is not published.', 404);
             }

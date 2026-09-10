@@ -40,3 +40,14 @@
 .ab-btn-danger { background: #ffffff; color: #b91c1c; border-color: #fecaca; }
 .ab-btn-danger:hover { background: #fef2f2; }
 .ab-preview iframe { width: 100%; min-height: 320px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; }
+.ab-drawer-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(17,24,39,.42); display: flex; justify-content: flex-end; }
+.ab-drawer { width: min(34rem, 94vw); height: 100%; overflow: auto; box-sizing: border-box; padding: 1rem; background: #fff; box-shadow: -4px 0 18px rgba(0,0,0,.18); }
+.ab-drawer-head { justify-content: space-between; position: sticky; top: 0; background: #fff; z-index: 1; padding-bottom: .5rem; border-bottom: 1px solid #e5e7eb; }
+.ab-timeline { padding-left: 1.25rem; }
+.ab-timeline li { padding: .65rem 0; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
+.ab-timeline small, .ab-timeline .ab-btn { display: block; margin-top: .35rem; }
+.ab-diff { margin-top: 1rem; padding: .75rem; background: #f9fafb; border-radius: 6px; overflow-wrap: anywhere; }
+.ab-diff ul { padding-left: 1.1rem; }
+.ab-diff del { color: #991b1b; }
+.ab-diff ins { color: #065f46; }
+@media (max-width: 520px) { .ab-drawer { width: 100vw; } .ab-row { flex-wrap: wrap; } }
