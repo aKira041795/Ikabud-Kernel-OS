@@ -9,6 +9,9 @@ $_SERVER['REQUEST_URI'] = '/';
 
 require __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../src/helpers/module-manager.php';
+require_once __DIR__ . '/_support/env_guard.php';
+
+requireTenantFixture(953331);
 
 $pass = 0;
 $fail = 0;
@@ -20,7 +23,7 @@ $assert = static function (string $label, bool $ok, string $detail = '') use (&$
 $app = app();
 $db = $app->db();
 $originalTenantId = $app->tenant()->current();
-$tenantId = 900000 + random_int(1, 99999);
+$tenantId = 953331;
 $app->tenant()->setTenantId($tenantId);
 $prefix = 'kernel-capability-test-' . bin2hex(random_bytes(8));
 $keys = [

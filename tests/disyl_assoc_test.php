@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../bootstrap.php';
 
-$engine = new \Ikabud\Kernel\DiSyL\TemplateEngine();
+$tmp = sys_get_temp_dir() . '/disyl_assoc_' . getmypid();
+mkdir($tmp, 0755, true);
+$engine = new \Ikabud\Kernel\DiSyL\TemplateEngine($tmp, $tmp . '/cache', false);
+$engine->enableCompiledMode(false);
 
 // Test associative arrays in {set} expressions
 $tests = [
@@ -35,7 +38,7 @@ $failed = 0;
 
 foreach ($tests as $name => [$template, $expected]) {
     try {
-        $result = trim($engine->renderString($template, []));
+        $result = html_entity_decode(trim($engine->renderString($template, [])), ENT_QUOTES, 'UTF-8');
         if ($result === $expected) {
             echo "  PASS: {$name}\n";
             $passed++;

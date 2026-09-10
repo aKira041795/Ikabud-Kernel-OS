@@ -26,8 +26,11 @@ foreach ($argv as $arg) {
 
 /**
  * Recursively find all *_test.php files under a directory.
+ *
+ * @return list<string>
  */
-function findTestFiles(string $dir): array {
+function findTestFiles(string $dir): array
+{
     $files = [];
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS)
@@ -45,7 +48,7 @@ $searchPath = $subDir !== null
     : $testDir;
 
 $files = findTestFiles($searchPath);
-if ($files === false || count($files) === 0) {
+if (count($files) === 0) {
     echo "No test files found in {$searchPath}\n";
     exit(1);
 }
@@ -57,7 +60,7 @@ if ($files === false || count($files) === 0) {
 // It remains runnable directly:  php tests/load_test.php [profile] [concurrency]
 // Or opt back into the suite explicitly: RUN_LOAD_TEST=1 php scripts/run-tests.php
 if ($subDir === null && getenv('RUN_LOAD_TEST') === false) {
-    $files = array_values(array_filter($files, fn(string $f): bool => basename($f) !== 'load_test.php'));
+    $files = array_values(array_filter($files, fn (string $f): bool => basename($f) !== 'load_test.php'));
 }
 
 // Exclude the full-app E2E suite from the default kernel baseline.
@@ -68,12 +71,12 @@ if ($subDir === null && getenv('RUN_LOAD_TEST') === false) {
 //   RUN_E2E_SHARED=1 php scripts/run-tests.php
 // (In CI it also self-skips when the target host does not resolve.)
 if ($subDir === null && getenv('RUN_E2E_SHARED') === false) {
-    $files = array_values(array_filter($files, fn(string $f): bool => basename($f) !== 'e2e_shared_hosting_test.php'));
+    $files = array_values(array_filter($files, fn (string $f): bool => basename($f) !== 'e2e_shared_hosting_test.php'));
 }
 sort($files);
 
 // Resolve display names relative to tests/
-$displayName = fn(string $f): string => str_replace($testDir . '/', '', $f);
+$displayName = fn (string $f): string => str_replace($testDir . '/', '', $f);
 
 $pass    = 0;
 $fail    = 0;
@@ -83,7 +86,7 @@ $results = [];
 $assertions = 0;
 
 $width = max(array_map(
-    fn(string $f) => strlen($displayName(basename($f, '.php'))),
+    fn (string $f) => strlen($displayName(basename($f, '.php'))),
     $files
 ));
 
@@ -289,7 +292,12 @@ foreach ($files as $file) {
         $assertions += $testAssertions;
     }
 
-    if ($exitCode === 0) {
+    $skipReason = null;
+    if ($exitCode === 0 && preg_match('/^SKIP:\s*(.*)$/m', $output, $skipMatch)) {
+        $status = 'SKIP';
+        $skipReason = trim($skipMatch[1]);
+        $skipped++;
+    } elseif ($exitCode === 0) {
         $status = 'PASS';
         $pass++;
     } else {
@@ -304,8 +312,9 @@ foreach ($files as $file) {
         'ms'         => $ms,
         'assertions' => $testAssertions,
         'output'     => $output,
+        'skip_reason' => $skipReason,
     ];
-    echo "[{$status}] {$relName} ({$ms}ms)\n";
+    echo "[{$status}] {$relName} ({$ms}ms)" . ($skipReason !== null ? " — {$skipReason}" : '') . "\n";
     if (function_exists('flush')) {
         flush();
     }
@@ -323,12 +332,14 @@ foreach ($results as $r) {
         'PASS'    => "\033[32mPASS\033[0m",
         'FAIL'    => "\033[31mFAIL\033[0m",
         'TIMEOUT' => "\033[31mTIMEOUT\033[0m",
+        'SKIP'    => "\033[33mSKIP\033[0m",
         default   => "\033[33mERROR\033[0m",
     };
-    echo str_pad($r['name'], $width + 2) . str_pad($r['status'], 8) . "  {$r['ms']}ms\n";
+    $reason = $r['status'] === 'SKIP' ? ' — ' . $r['skip_reason'] : '';
+    echo str_pad($r['name'], $width + 2) . str_pad($r['status'], 8) . "  {$r['ms']}ms{$reason}\n";
 
     // Print failing output indented under the test name
-    if ($r['status'] !== 'PASS' && $r['output'] !== '') {
+    if (!in_array($r['status'], ['PASS', 'SKIP'], true) && $r['output'] !== '') {
         foreach (explode("\n", $r['output']) as $line) {
             echo "    {$line}\n";
         }
@@ -343,10 +354,13 @@ if ($fail > 0) {
 if ($error > 0) {
     echo ", \033[33m{$error} errors\033[0m";
 }
+if ($skipped > 0) {
+    echo ", \033[33m{$skipped} skipped\033[0m";
+}
 echo "  ({$totalMs}ms)\n";
 
 // Slow-test report
-$slowTests = array_filter($results, fn($r) => $r['ms'] >= $slowThresholdMs);
+$slowTests = array_filter($results, fn ($r) => $r['ms'] >= $slowThresholdMs);
 if (count($slowTests) > 0) {
     echo "\n\033[33mSlow tests (>={$slowThresholdMs}ms):\033[0m\n";
     foreach ($slowTests as $r) {

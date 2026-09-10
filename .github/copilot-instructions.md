@@ -1,5 +1,38 @@
 # Copilot Instructions for Ikabud
 
+## Repository scope and product identity (read first)
+
+**CMS Akira is both the proof that the governed Kernel works and the product.** It is the
+reference CMS for this kernel and a serious CMS contender — treat it as product code, not a
+throwaway demo. Judge every change twice: does it hold up as a product (UX, error pages,
+determinism, observability), and does it demonstrate the governed architecture (capability
+bus → policy row → idempotency + audit in one tenant transaction → cache invalidation)?
+
+**Modules present in this repository:** `modules/cms-akira/*` (core, shell, theme, builder,
+editor, media, navigation, search, seo, workflow, ai, profile-*) and `modules/gui-settings`.
+`modules/daily-ledger` exists locally but is untracked.
+
+**Not in this repository** (they have zero commits in all history): `modules/cms`,
+`modules/users`, `modules/ecommerce`, `modules/ai`, `modules/wms`, `modules/ticketing`,
+`modules/anti-spam`, `modules/contact-form`, `modules/guidance`, `modules/sms`,
+`modules/moodle-integration`. Many docs and older instruction files still reference them
+because they describe the legacy/upstream product. **Never assume those paths exist** —
+verify with the filesystem or `git ls-files` first, and prefer the `cms-akira-*` equivalents.
+Tests that require them are quarantined in `tests/_retired/` (see its README).
+
+**Verification integrity — do not undermine the gate:**
+- CI and `scripts/run-tests.php` judge tests by exit code. A test that dies during bootstrap
+  must exit non-zero; never reintroduce an exit-0 path into `bootstrap.php`'s exception
+  handler (that bug once made 22 failing tests look green).
+- Environment-dependent tests must print `SKIP: <reason>` (see `tests/_support/env_guard.php`)
+  rather than silently passing.
+- `storage/cache/compiled` is shared with the web SAPI. If the CLI user cannot write it, the
+  engine now degrades to the interpreted pipeline with a warning instead of failing — do not
+  "fix" that by re-throwing cache errors as fatal.
+- Module tests are **not** discovered by `scripts/run-tests.php` (it scans `tests/**`); the
+  shell contract test runs in CI explicitly. Do not assume a module test passes because CI
+  is green.
+
 ## Big-picture architecture (read first)
 - Runtime entrypoint is [public/index.php](../public/index.php): core routes + dynamic module routes are resolved there, then dispatched (including `module-id:functionName` handlers).
 - Bootstrapping and global infra live in [bootstrap.php](../bootstrap.php): env loading, path constants, exception handler, `write_log()`, request IDs, and log paths.

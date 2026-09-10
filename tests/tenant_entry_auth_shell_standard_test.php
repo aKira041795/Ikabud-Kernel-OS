@@ -13,6 +13,13 @@ require __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../src/helpers/module-manager.php';
 require_once __DIR__ . '/../src/http/core-routes.php';
 require_once __DIR__ . '/../src/http/page-handlers.php';
+require_once __DIR__ . '/../modules/cms-akira/cms-akira-shell/helpers.php';
+
+foreach (array_keys(discoverModules()) as $moduleId) {
+    if (str_starts_with($moduleId, 'cms-akira-')) {
+        enableModule($moduleId);
+    }
+}
 
 $failures = [];
 $check = static function (string $label, bool $ok) use (&$failures): void {

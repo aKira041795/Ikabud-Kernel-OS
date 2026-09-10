@@ -6,6 +6,9 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 
 require __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/_support/env_guard.php';
+
+requireTenantFixture(62001);
 
 use Ikabud\Kernel\Database\MigrationRunner;
 use Ikabud\Kernel\Http\Idempotency;
