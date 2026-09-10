@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, newIdempotencyKey, readBootstrap } from './api';
+import { Canvas } from './Canvas';
 import type { BlockDefinition, BlocksResponse, Boot, Composition, PostOption, PropSchema, Revision, Tree } from './types';
 
 const DEFAULT_TREE: Tree = { version: 1, blocks: [] };
@@ -127,6 +128,8 @@ function EditPanel({ boot }: { boot: Boot }) {
   const [revision, setRevision] = useState<number | null>(null);
   const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
   const [treeText, setTreeText] = useState(encodeTree(DEFAULT_TREE));
+  const [canvasTree, setCanvasTree] = useState<Tree>(DEFAULT_TREE);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [parseError, setParseError] = useState('');
   const [note, setNote] = useState('');
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -152,6 +155,14 @@ function EditPanel({ boot }: { boot: Boot }) {
 
   const selectedDefinition = catalogue.find((definition) => definition.id === selectedBlock);
 
+  useEffect(() => {
+    if (selectedIndex !== null && canvasTree.blocks[selectedIndex]) {
+      const block = canvasTree.blocks[selectedIndex];
+      setSelectedBlock(block.block);
+      setBlockProps(block.props);
+    }
+  }, [canvasTree, selectedIndex]);
+
   const reload = useCallback(async () => {
     setResult(null);
     const body = await api<{ ok: boolean; data?: Composition }>(apiBase, `/compositions/${encodeURIComponent(key)}`).catch((e: unknown) => {
@@ -165,6 +176,13 @@ function EditPanel({ boot }: { boot: Boot }) {
       setPublishedRevision(body.data.published_revision_id);
       if (body.data.tree) {
         setTreeText(encodeTree(body.data.tree));
+        setCanvasTree(body.data.tree);
+        const firstIndex = body.data.tree.blocks.length > 0 ? 0 : null;
+        setSelectedIndex(firstIndex);
+        if (firstIndex !== null) {
+          setSelectedBlock(body.data.tree.blocks[firstIndex].block);
+          setBlockProps(body.data.tree.blocks[firstIndex].props);
+        }
       }
     }
     const hist = await api<{ ok: boolean; rows?: Revision[] }>(apiBase, `/compositions/${encodeURIComponent(key)}/revisions`).catch(() => ({ ok: false, rows: [] }));
@@ -227,6 +245,7 @@ function EditPanel({ boot }: { boot: Boot }) {
         setRevision(out.data?.current_revision_id ?? null);
       }
       await reload();
+      await handleRender('preview');
     } catch (e) {
       setResultMessage(e instanceof ApiError && e.status === 409 ? 'Revision conflict — refresh and retry.' : e instanceof Error ? e.message : 'Save failed.');
     } finally {
@@ -290,7 +309,7 @@ function EditPanel({ boot }: { boot: Boot }) {
         `/compositions/${encodeURIComponent(key)}/render?source=${source}`,
       );
       if (out.data) {
-        setPreview({ html: out.data.html, label: `${source === 'preview' ? 'Preview (draft)' : 'Published'} · revision ${out.data.revision_id ?? '—'}` });
+        setPreview({ html: out.data.html, label: `${source === 'preview' ? 'Last saved draft' : 'Published'} · revision ${out.data.revision_id ?? '—'}` });
       }
     } catch (e) {
       setPreview(null);
@@ -300,7 +319,28 @@ function EditPanel({ boot }: { boot: Boot }) {
     }
   };
 
-  const setProp = (name: string, value: unknown) => setBlockProps((current) => ({ ...current, [name]: value }));
+  const commitTree = (tree: Tree) => {
+    setCanvasTree(tree);
+    setTreeText(encodeTree(tree));
+    setParseError('');
+  };
+
+  const selectCanvasBlock = (index: number) => {
+    const block = canvasTree.blocks[index];
+    if (!block) return;
+    setSelectedIndex(index);
+    setSelectedBlock(block.block);
+    setBlockProps(block.props);
+  };
+
+  const setProp = (name: string, value: unknown) => {
+    const props = { ...blockProps, [name]: value };
+    setBlockProps(props);
+    if (selectedIndex !== null && canvasTree.blocks[selectedIndex]) {
+      const blocks = canvasTree.blocks.map((block, index) => index === selectedIndex ? { ...block, props } : block);
+      commitTree({ ...canvasTree, blocks });
+    }
+  };
 
   const addArrayRow = (name: string, schema: PropSchema) => {
     const row = Object.fromEntries(Object.entries(schema.items?.props ?? {}).map(([key, item]) => [key, seedValue(item)]));
@@ -314,11 +354,44 @@ function EditPanel({ boot }: { boot: Boot }) {
   };
 
   const addBlock = () => {
-    const tree = currentTree();
-    if (!tree || !selectedDefinition) return;
-    tree.blocks = [...tree.blocks, { block: selectedDefinition.id, props: cloneDefaults({ ...selectedDefinition, defaults: blockProps }), children: [] }];
-    setTreeText(encodeTree(tree));
-    setParseError('');
+    if (!selectedDefinition) return;
+    const props = JSON.parse(JSON.stringify(blockProps)) as Record<string, unknown>;
+    const blocks = [...canvasTree.blocks, { block: selectedDefinition.id, props, children: [] }];
+    commitTree({ ...canvasTree, blocks });
+    setSelectedIndex(blocks.length - 1);
+  };
+
+  const moveBlock = (index: number, direction: -1 | 1) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= canvasTree.blocks.length) return;
+    const blocks = [...canvasTree.blocks];
+    [blocks[index], blocks[destination]] = [blocks[destination], blocks[index]];
+    commitTree({ ...canvasTree, blocks });
+    if (selectedIndex === index) setSelectedIndex(destination);
+    else if (selectedIndex === destination) setSelectedIndex(index);
+  };
+
+  const duplicateBlock = (index: number) => {
+    const duplicate = JSON.parse(JSON.stringify(canvasTree.blocks[index])) as Tree['blocks'][number];
+    const blocks = [...canvasTree.blocks.slice(0, index + 1), duplicate, ...canvasTree.blocks.slice(index + 1)];
+    commitTree({ ...canvasTree, blocks });
+    setSelectedIndex(index + 1);
+    setSelectedBlock(duplicate.block);
+    setBlockProps(duplicate.props);
+  };
+
+  const deleteBlock = (index: number) => {
+    const blocks = canvasTree.blocks.filter((_, blockIndex) => blockIndex !== index);
+    commitTree({ ...canvasTree, blocks });
+    if (blocks.length === 0) {
+      setSelectedIndex(null);
+      setBlockProps(selectedDefinition ? cloneDefaults(selectedDefinition) : {});
+      return;
+    }
+    const nextIndex = Math.min(index, blocks.length - 1);
+    setSelectedIndex(nextIndex);
+    setSelectedBlock(blocks[nextIndex].block);
+    setBlockProps(blocks[nextIndex].props);
   };
 
   return (
@@ -342,7 +415,10 @@ function EditPanel({ boot }: { boot: Boot }) {
             Title
             <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          <h4>Add a theme block</h4>
+          <h4>Structural canvas</h4>
+          <p className="ab-muted">A projection of the canonical JSON tree. Select a block to edit it below.</p>
+          <Canvas blocks={canvasTree.blocks} catalogue={catalogue} selectedIndex={selectedIndex} onSelect={selectCanvasBlock} onMove={moveBlock} onDuplicate={duplicateBlock} onDelete={deleteBlock} />
+          <h4>{selectedIndex === null ? 'Add a theme block' : `Edit block ${selectedIndex + 1}`}</h4>
           {catalogueError !== '' ? (
             <p className="ab-error">Block catalogue unavailable: {catalogueError} Adding blocks is disabled.</p>
           ) : catalogue.length === 0 ? (
@@ -353,9 +429,15 @@ function EditPanel({ boot }: { boot: Boot }) {
                 Block
                 <select value={selectedBlock} onChange={(e) => {
                   const definition = catalogue.find((item) => item.id === e.target.value);
+                  const props = definition ? cloneDefaults(definition) : {};
                   setSelectedBlock(e.target.value);
-                  setBlockProps(definition ? cloneDefaults(definition) : {});
+                  setBlockProps(props);
+                  if (definition && selectedIndex !== null && canvasTree.blocks[selectedIndex]) {
+                    const blocks = canvasTree.blocks.map((block, index) => index === selectedIndex ? { ...block, block: definition.id, props } : block);
+                    commitTree({ ...canvasTree, blocks });
+                  }
                 }}>
+                  {!selectedDefinition && selectedBlock !== '' && <option value={selectedBlock}>{selectedBlock} — unknown block</option>}
                   {catalogue.map((definition) => <option key={definition.id} value={definition.id}>{definition.label} — {definition.category}</option>)}
                 </select>
               </label>
@@ -391,8 +473,19 @@ function EditPanel({ boot }: { boot: Boot }) {
               onChange={(e) => {
                 setTreeText(e.target.value);
                 try {
-                  parseTree(e.target.value);
+                  const tree = parseTree(e.target.value);
+                  setCanvasTree(tree);
                   setParseError('');
+                  if (selectedIndex !== null && tree.blocks[selectedIndex]) {
+                    setSelectedBlock(tree.blocks[selectedIndex].block);
+                    setBlockProps(tree.blocks[selectedIndex].props);
+                  } else if (tree.blocks.length > 0) {
+                    setSelectedIndex(0);
+                    setSelectedBlock(tree.blocks[0].block);
+                    setBlockProps(tree.blocks[0].props);
+                  } else {
+                    setSelectedIndex(null);
+                  }
                 } catch (err) {
                   setParseError(err instanceof Error ? err.message : 'Invalid JSON.');
                 }
@@ -429,6 +522,7 @@ function EditPanel({ boot }: { boot: Boot }) {
           )}
 
           <h3>Preview (server-rendered)</h3>
+          <p className="ab-muted">Preview shows the last saved draft, never unsaved canvas edits.</p>
           <div className="ab-btnrow">
             <button className="ab-btn" type="button" disabled={busy} onClick={() => void handleRender('preview')}>
               Render preview (draft)
