@@ -60,6 +60,13 @@ class TemplateEngine
 
     private string $templateDir;
     private string $cacheDir;
+    /**
+     * Optional root used to resolve relative {include} names for the duration of
+     * one render. Theme-aware callers set it via renderWithin() so a theme view
+     * can include its own partials (e.g. 'blocks/hero.disyl') without going
+     * through the global active-theme alias.
+     */
+    private ?string $includeBase = null;
     private bool $cacheEnabled;
     private bool $debug = false;
     /** Compiled mode is ON by default (v4.7+). Falls back to interpreted on failure. */
@@ -371,6 +378,27 @@ class TemplateEngine
 
     /** Maximum output size in bytes (5 MB default — prevents runaway templates) */
     private const MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
+
+    /**
+     * Render a template whose relative {include}s resolve against a given root.
+     *
+     * Theme-owned views live in their own root (e.g. storage/cms-themes/<slug>)
+     * and include their partials by theme-relative name. The base is scoped to
+     * this render and restored afterwards, so one theme's root can never leak
+     * into another render on the shared engine.
+     *
+     * @param array<string, mixed> $context
+     */
+    public function renderWithin(string $template, array $context, string $includeBase): string
+    {
+        $previous = $this->includeBase;
+        $this->includeBase = rtrim($includeBase, '/');
+        try {
+            return $this->render($template, $context);
+        } finally {
+            $this->includeBase = $previous;
+        }
+    }
 
     public function render(string $template, array $context = []): string
     {
@@ -5340,6 +5368,20 @@ class TemplateEngine
             $resolvedPath = cmsResolveThemeTemplateAliasPath($template);
             if ($resolvedPath !== '') {
                 return $resolvedPath;
+            }
+        }
+
+        // Theme-rooted render: try the render's own include root before the
+        // application templates directory, so a theme view can include its
+        // partials by theme-relative name. A miss falls through unchanged.
+        if ($this->includeBase !== null && !str_starts_with($template, '/')) {
+            $normalizedBase = $this->normalizePath($this->includeBase);
+            $normalizedCandidate = $this->normalizePath($this->includeBase . '/' . $template);
+            if ($normalizedBase !== ''
+                && str_starts_with($normalizedCandidate, $normalizedBase . '/')
+                && !str_contains($normalizedCandidate, '/../')
+                && is_file($normalizedCandidate)) {
+                return $normalizedCandidate;
             }
         }
 
