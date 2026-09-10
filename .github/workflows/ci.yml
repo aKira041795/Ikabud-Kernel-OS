@@ -36,6 +36,19 @@ jobs:
   kernel-contracts:
     name: Kernel contracts (manifests, routes, lint, architecture)
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pass
+          MYSQL_DATABASE: ikabudsix_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     steps:
       - uses: actions/checkout@v4
 
@@ -47,8 +60,20 @@ jobs:
 
       - run: composer install --no-interaction --prefer-dist --no-progress
 
+      - name: Prepare environment
+        run: cp .env.ci .env
+
       - name: Create storage directories
         run: mkdir -p storage/logs storage/cache/disyl storage/cache/cms storage/uploads
+
+      - name: Run control-plane migrations
+        run: php ikabud migrate:control
+
+      - name: Apply base app schema
+        run: php ikabud migrate:base
+
+      - name: Run kernel migrations
+        run: php ikabud migrate
 
       - name: Enforce module manifest schema v1
         run: php scripts/guard-module-manifests.php --strict
@@ -64,6 +89,20 @@ jobs:
 
       - name: CMS Akira rendered editor contract
         run: php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+
+      # A failed step here used to leave no evidence at all: the app writes the
+      # cause to storage/logs and CI discarded it, so failures had to be guessed
+      # at from a generic error page.
+      - name: Upload runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-contracts-logs
+          path: |
+            storage/logs/app.log
+            storage/logs/error.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   test:
     name: test (${{ matrix.db }})
@@ -129,6 +168,21 @@ jobs:
 
       - name: Run kernel test suite
         run: composer test
+
+      # Runner verdicts are exit-code based, so a test that dies during bootstrap
+      # must leave recoverable evidence: keep the per-test JSON manifest and both
+      # runtime logs for every run, pass or fail.
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-evidence-${{ matrix.db }}
+          path: |
+            storage/logs/app.log
+            storage/logs/error.log
+            test_results/**
+          if-no-files-found: ignore
+          retention-days: 7
 
   akira-two-tenant-journey:
     name: CMS Akira R6 HTTP journey
