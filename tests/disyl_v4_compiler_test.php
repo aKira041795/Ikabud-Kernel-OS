@@ -249,6 +249,15 @@ check('style CSS rules stay byte-identical while scalar values interpolate', $ra
 check('script object and template-literal braces stay raw',
     '<script>const x={a:1};const t=`${x.a}`;</script>',
     $engine->renderString('<script>const x={a:1};const t=`${x.a}`;</script>', ['x' => ['a' => 9]]));
+check('script interpolation survives an enclosing function and quoted fetch URL',
+    "<script>async function login(){return fetch('/api/v1/auth/login')}</script>",
+    $engine->renderString(
+        "<script>async function login(){return fetch('{login_endpoint}')}</script>",
+        ['login_endpoint' => '/api/v1/auth/login']
+    ));
+check('script interpolation survives nested object braces',
+    "<script>function f(){return{a:1,b:'X'}}</script>",
+    $engine->renderString("<script>function f(){return{a:1,b:'{v}'}}</script>", ['v' => 'X']));
 
 echo "\n╔══════════════════════════════════════════════════════╗\n";
 printf("║  RESULTS:  %2d PASSED  |  %2d FAILED                     ║\n", $pass, $fail);

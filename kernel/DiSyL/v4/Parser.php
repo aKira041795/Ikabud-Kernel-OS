@@ -163,13 +163,6 @@ final class Parser
                 if ($this->looksLikeDisyl()) {
                     break;
                 }
-                if ($this->rawTextElement !== null) {
-                    $end = $this->findRawTextBraceEnd();
-                    if ($end !== false) {
-                        $this->pos = $end + 1;
-                        continue;
-                    }
-                }
             }
             $this->pos++;
         }
