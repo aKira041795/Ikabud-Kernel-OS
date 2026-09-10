@@ -10,6 +10,12 @@
         "fields": ["title", "subtitle", "body", "metadata", "image", "url", "categories"],
         "actions": ["view"]
       }
+    },
+    "composition": {
+      "detail": {
+        "fields": ["entity_type", "entity_key", "title", "revision_id", "source", "sections"],
+        "actions": ["view"]
+      }
     }
   }
 }

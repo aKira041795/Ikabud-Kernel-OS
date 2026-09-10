@@ -13,13 +13,13 @@
 
 The composition row's tree and newest revision are preview state. Publish validates the tree and resolves the referenced published-capable Akira Post through `akira.post.get@1`, then promotes the current revision by setting `published_revision_id` and bumping `version`. Later preview edits append revisions and replace only preview `tree`; published rendering continues to load the promoted revision. Unpublish clears the pointer. Delete cascades only same-member revisions.
 
-**Recorded integration decision:** Builder does not write `cms_akira_posts` or any other member's table. Public Post routing continues to use core's content until a separately gated core/public-path integration consumes `akira.builder.render@1`. That capability seam is a prerequisite for composition output to replace Post body output.
+Builder does not write `cms_akira_posts` or any other member's table. Published compositions are anonymously available, tenant-scoped, at `GET /p/{key}`; missing and draft compositions return 404. Preview remains available only through the admin-governed capability/API. Publish and unpublish invalidate the public page cache after the governed transaction commits.
 
 ## Validation and rendering
 
-The fixed tree shape is `{version: 1, blocks: [...]}`. Allowed blocks are `section`, `heading`, `paragraph`, `rich_text`, `image`, and `button`; each has an exact property allowlist. Unknown blocks/properties, executable markup/protocols, template includes, PHP/SQL payloads, unsafe URLs, over-depth trees (>8), over-count trees (>500), and encoded trees over 256 KiB fail closed. Only sections may have children. Rich text must already equal the canonical result from `akira.editor.sanitize@1`; Builder does not implement a competing HTML sanitizer.
+The fixed tree shape is `{version: 1, blocks: [{block, props, children?}]}`. Block ids, defaults, property schemas, and renderer templates come exclusively from the active validated theme's `akira.theme.blocks@1` catalogue. Unknown blocks and unknown properties are errors. Values are recursively type-checked (including arrays and objects), while unsafe strings/URLs, over-depth trees (>8), over-count trees (>500), and encoded trees over 256 KiB fail closed.
 
-`akira.builder.render@1` revalidates persisted input, resolves a validated explicit slug through `akira.theme.resolve@1`, and passes that slug to `ArkRendererResolver::render()`. The canonical theme registers exact view `entity.detail.composition`, whose DiSyL template receives only an allowlisted composition projection. Missing theme/view/render execution fails closed. `source=published` always loads `published_revision_id`; `source=preview` loads current preview.
+`akira.builder.render@1` resolves the validated active theme and projects each block to `{template, props}`. The composition DiSyL view invokes the theme-owned block templates through dynamic includes; PHP never builds block HTML. Invalid legacy/corrupt persisted blocks are skipped atomically and reported in `data.warnings`, without raw or partial fallback markup. Missing theme/view/render execution fails closed. `source=published` always loads `published_revision_id`; `source=preview` loads current preview.
 
 ## Capability contract
 

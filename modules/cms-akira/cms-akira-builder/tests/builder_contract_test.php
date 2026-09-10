@@ -65,14 +65,14 @@ $statusOf = static function (Throwable $error): ?int {
     return null;
 };
 $treeA = ['version' => 1, 'blocks' => [
-    ['type' => 'section', 'props' => ['layout' => 'stack'], 'children' => [
-        ['type' => 'heading', 'props' => ['text' => 'Preview one', 'level' => 2], 'children' => []],
-        ['type' => 'rich_text', 'props' => ['content' => '<p>Safe <strong>content</strong></p>'], 'children' => []],
-        ['type' => 'button', 'props' => ['label' => 'Read', 'url' => '/read'], 'children' => []],
+    ['block' => 'hero', 'props' => ['title' => 'Section'], 'children' => [
+        ['block' => 'richtext', 'props' => ['title' => 'Preview one', 'body' => 'Body'], 'children' => []],
+        ['block' => 'richtext', 'props' => ['body' => 'Safe content'], 'children' => []],
+        ['block' => 'cta', 'props' => ['cta_label' => 'Read', 'cta_href' => '/read'], 'children' => []],
     ]],
 ]];
 $treeB = ['version' => 1, 'blocks' => [
-    ['type' => 'heading', 'props' => ['text' => 'Preview two', 'level' => 3], 'children' => []],
+    ['block' => 'richtext', 'props' => ['title' => 'Preview two'], 'children' => []],
 ]];
 
 @file_put_contents($root . '/storage/logs/app.log', '');
@@ -100,12 +100,12 @@ try {
     $valid = $call('akira.builder.validate@1', ['idempotency_key' => $keys[] = $prefix . '-validate', 'tree' => $treeA]);
     $check(($valid['data']['valid'] ?? false) === true && ($valid['data']['tree'] ?? null) === $treeA, 'governed validator accepts and canonicalizes the fixed allowlist tree');
     $hostile = [
-        ['version' => 1, 'blocks' => [['type' => 'script', 'props' => [], 'children' => []]]],
-        ['version' => 1, 'blocks' => [['type' => 'button', 'props' => ['label' => 'x', 'url' => 'javascript:alert(1)'], 'children' => []]]],
-        ['version' => 1, 'blocks' => [['type' => 'image', 'props' => ['src' => 'data:text/html,x', 'alt' => 'x'], 'children' => []]]],
-        ['version' => 1, 'blocks' => [['type' => 'paragraph', 'props' => ['text' => '{include ../../secret}'], 'children' => []]]],
-        ['version' => 1, 'blocks' => [['type' => 'rich_text', 'props' => ['content' => '<script>alert(1)</script>'], 'children' => []]]],
-        ['version' => 1, 'blocks' => [['type' => 'paragraph', 'props' => ['text' => 'ok', 'mystery' => true], 'children' => []]]],
+        ['version' => 1, 'blocks' => [['block' => 'script', 'props' => [], 'children' => []]]],
+        ['version' => 1, 'blocks' => [['block' => 'cta', 'props' => ['label' => 'x', 'url' => 'javascript:alert(1)'], 'children' => []]]],
+        ['version' => 1, 'blocks' => [['block' => 'hero', 'props' => ['src' => 'data:text/html,x', 'alt' => 'x'], 'children' => []]]],
+        ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['text' => '{include ../../secret}'], 'children' => []]]],
+        ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['content' => '<script>alert(1)</script>'], 'children' => []]]],
+        ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['text' => 'ok', 'mystery' => true], 'children' => []]]],
     ];
     $denied = 0;
     foreach ($hostile as $tree) {
@@ -116,9 +116,9 @@ try {
         }
     }
     $check($denied === count($hostile), 'unknown block/prop, script, unsafe schemes, and include/path payloads fail closed');
-    $deep = ['type' => 'heading', 'props' => ['text' => 'deep', 'level' => 2], 'children' => []];
+    $deep = ['block' => 'richtext', 'props' => ['text' => 'deep', 'level' => 2], 'children' => []];
     for ($i = 0; $i < 9; ++$i) {
-        $deep = ['type' => 'section', 'props' => ['layout' => 'stack'], 'children' => [$deep]];
+        $deep = ['block' => 'hero', 'props' => ['title' => 'Section'], 'children' => [$deep]];
     }
     $depthDenied = false;
     try {
@@ -128,7 +128,7 @@ try {
     }
     $sizeDenied = false;
     try {
-        cabBuilderValidateTree(['version' => 1, 'blocks' => [['type' => 'paragraph', 'props' => ['text' => str_repeat('x', CAB_BUILDER_MAX_TREE_BYTES)], 'children' => []]]]);
+        cabBuilderValidateTree(['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['text' => str_repeat('x', CAB_BUILDER_MAX_TREE_BYTES)], 'children' => []]]]);
     } catch (CabBuilderException) {
         $sizeDenied = true;
     }
@@ -163,7 +163,7 @@ try {
     $unregistered = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'published', 'view_id' => 'entity.detail.unregistered']);
     $check(($unregistered['ok'] ?? true) === false, 'unregistered exact ARK view fails closed');
 
-    $treeC = ['version' => 1, 'blocks' => [['type' => 'heading', 'props' => ['text' => 'Preview three', 'level' => 4], 'children' => []]]];
+    $treeC = ['version' => 1, 'blocks' => [['block' => 'richtext', 'props' => ['title' => 'Preview three'], 'children' => []]]];
     $edited = $call('akira.builder.update@1', ['idempotency_key' => $keys[] = $prefix . '-preview', 'entity_type' => 'post', 'entity_key' => $slug, 'tree' => $treeC, 'base_revision_id' => $revisionB]);
     $publishedAgain = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'published']);
     $preview = $call('akira.builder.render@1', ['entity_type' => 'post', 'entity_key' => $slug, 'source' => 'preview']);
