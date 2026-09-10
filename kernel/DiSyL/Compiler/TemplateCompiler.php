@@ -41,7 +41,7 @@ class TemplateCompiler
      * changes.  TemplateCache includes this in cache filenames so stale
      * compiled files are automatically bypassed after an upgrade.
      */
-    public const COMPILER_VERSION = 12;
+    public const COMPILER_VERSION = 13;
 
     /**
      * Maximum iterations for unbounded loops ({while} and C-style {for}).
@@ -822,7 +822,10 @@ PHP;
 
     private function compileInclude(IncludeNode $node): string
     {
-        $template = var_export($node->getTemplate(), true);
+        $templateExpression = $node->getTemplateExpression();
+        $template = $templateExpression !== null
+            ? '(string)(' . $this->compileExpressionValue($templateExpression) . ')'
+            : var_export($node->getTemplate(), true);
         $variables = $node->getVariables();
 
         // Block include: body content is captured into page_body buffer,

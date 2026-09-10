@@ -1114,20 +1114,26 @@ final class Parser
         $inner = trim(substr($tag, 7));               // strip "include"
 
         $template = '';
+        $templateExpression = null;
         $variables = [];
+        $rest = '';
 
-        // Extract quoted template path
+        // A quoted path preserves the original static include contract. A bare
+        // identifier/property path is evaluated at render time.
         if (preg_match('/^["\']([^"\']+)["\']/', $inner, $m)) {
             $template = $m[1];
             $rest = trim(substr($inner, strlen($m[0])));
+        } elseif (preg_match('/^([a-zA-Z_][a-zA-Z0-9_.]*)/', $inner, $m)) {
+            $templateExpression = $this->parseVariablePath($m[1]);
+            $rest = trim(substr($inner, strlen($m[0])));
+        }
 
-            // Parse optional "with {key: value, ...}" (legacy syntax)
-            if (preg_match('/^with\s+\{(.+)\}$/s', $rest, $wm)) {
-                $variables = $this->parseInlineObject($wm[1]);
-            } else {
-                // Parse key=value pairs (preferred syntax)
-                $variables = $this->parseIncludeKeyValueParams($rest);
-            }
+        // Parse optional "with {key: value, ...}" (legacy syntax)
+        if (preg_match('/^with\s+\{(.+)\}$/s', $rest, $wm)) {
+            $variables = $this->parseInlineObject($wm[1]);
+        } else {
+            // Parse key=value pairs (preferred syntax)
+            $variables = $this->parseIncludeKeyValueParams($rest);
         }
 
         // Detect block include: {include "..." params} body {/include}
@@ -1167,7 +1173,7 @@ final class Parser
             // else: self-closing, no body — pos stays at savedPos
         }
 
-        return new IncludeNode([], $template, $variables, $body);
+        return new IncludeNode([], $template, $variables, $body, $templateExpression);
     }
 
     /**
