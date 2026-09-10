@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """pi-arch-debate.py — Architecture debate via the Pi execution harness.
 
-DeepSeek Pro drafts/revises the architecture from your intent; Codex Sol
+DeepSeek Flash drafts/revises the architecture from your intent; Codex Sol
 (ChatGPT Pro) critiques it. Loop converges on APPROVED, then writes the agreed
 architecture to .ai/current-task.md.
 
+NOTE: DeepSeek v4 Pro is discontinued (2026-09-14). DeepSeek Flash is the
+DeepSeek main model for every lane (reasoning included).
+
 Each model's output is STREAMED LIVE to the terminal as a visible chat:
-  🧠 DeepSeek Pro — Round N draft/revise
+  🧠 DeepSeek Flash — Round N draft/revise
   🔍 Codex Sol — Round N critique
 Tool activity shows as compact [⌛ tool: …] markers.
 
@@ -20,7 +23,7 @@ Usage:
 
 Default opener is AUTO (intent-based chair decision):
   - Codex Sol opens when intent signals precision/security/correctness/gap-hunting.
-  - DeepSeek Pro opens when intent signals broad building/exploration.
+  - DeepSeek Flash opens when intent signals broad building/exploration.
   The decision + reason is printed; override with --first.
 
 Env:
@@ -50,7 +53,7 @@ WORK = ".ai/debate"
 os.makedirs(WORK, exist_ok=True)
 MAX_ROUNDS = int(os.environ.get("DEBATE_MAX_ROUNDS", "3"))
 
-DS_PRO = "deepseek-v4-pro"
+DS_PRO = "deepseek-v4-flash"  # v4 Pro discontinued 2026-09-14; Flash is the DeepSeek main model
 CODEX = "openai-codex/gpt-5.6-sol"
 
 
@@ -255,8 +258,8 @@ def main() -> None:
         print("    (unknown --first value; defaulting to deepseek)")
         first = "deepseek"
     DRAFTER, CRITIC = (CODEX, DS_PRO) if first == "codex" else (DS_PRO, CODEX)
-    draft_label = f"{'🔍' if first == 'codex' else '🧠'} {'Codex Sol' if first == 'codex' else 'DeepSeek Pro'}"
-    critic_label = f"{'🧠' if first == 'codex' else '🔍'} {'DeepSeek Pro' if first == 'codex' else 'Codex Sol'}"
+    draft_label = f"{'🔍' if first == 'codex' else '🧠'} {'Codex Sol' if first == 'codex' else 'DeepSeek Flash'}"
+    critic_label = f"{'🧠' if first == 'codex' else '🔍'} {'DeepSeek Flash' if first == 'codex' else 'Codex Sol'}"
 
     draft = ""
     prev_draft = ""

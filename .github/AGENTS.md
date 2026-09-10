@@ -24,11 +24,12 @@ interactive TUI. Configure providers/credentials with `pi auth` and `pi config`.
 
 **Model assignment** (defaults in `~/.pi/agent/settings.json`; provider
 `deepseek`, default model `deepseek-v4-flash`):
-- `deepseek-v4-pro` and Codex `gpt-5.6-sol` — reasoning, architecture,
-  `/release-gate`. Invoke explicitly: `pi --model deepseek-v4-pro ...` or
-  `pi --model openai-codex/gpt-5.6-sol ...`.
-- `deepseek-v4-flash` — `/implement` and `/review` (also the default).
+- `deepseek-v4-flash` — **the DeepSeek main model** (DeepSeek v4 Pro is
+  discontinued as of 2026-09-14). Serves every DeepSeek lane: `/implement`,
+  `/review`, reasoning, architecture and `/release-gate`; also the default.
   `pi --model deepseek-v4-flash ...` or omit `--model`.
+- Codex `gpt-5.6-sol` — reasoning, architecture, `/release-gate` on the Codex
+  lane. Invoke explicitly: `pi --model openai-codex/gpt-5.6-sol ...`.
 - Codex is the ChatGPT Pro subscription provider (`openai-codex`, OAuth via
   `/login`); subscription models include `gpt-5.6-sol`, `gpt-5.6-terra`,
   `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`.
@@ -39,17 +40,17 @@ interactive TUI. Configure providers/credentials with `pi auth` and `pi config`.
 
 **Architecture peer review workflow** (part of the harness — see
 `tools/pi-arch-review.sh`):
-- Runs **DeepSeek Pro** + **Codex Sol** (`openai-codex/gpt-5.6-sol`) as
+- Runs **DeepSeek Flash** + **Codex Sol** (`openai-codex/gpt-5.6-sol`) as
   independent peer reviewers/architects on a task contract, so a "firm task
   generation" is cross-checked by two strong models before implementation.
 - Usage: `bash tools/pi-arch-review.sh [task-file] [outdir]`
   (default task `.ai/current-task.md`, default outdir `test_results`).
 - Wired into the harness CLI: `tools/ai-task "<task>"` now prints the
   peer-review step between `/architect` and `/implement`.
-- Outputs: `<outdir>/arch-dspro.txt` and `<outdir>/arch-codexsol.txt`
+- Outputs: `<outdir>/arch-dsflash.txt` and `<outdir>/arch-codexsol.txt`
   (plus raw `.jsonl` traces). Merge both reviews into the task contract
   before handing off to `/implement`.
-- **Debate mode** (`python3 tools/pi-arch-debate.py "<intent>"`): DeepSeek Pro
+- **Debate mode** (`python3 tools/pi-arch-debate.py "<intent>"`): DeepSeek Flash
   drafts the architecture from your intent, Codex Sol critiques it, and the
   loop converges on **APPROVED**, then writes the agreed contract to
   `.ai/current-task.md`. Cap rounds with `DEBATE_MAX_ROUNDS` (default 3);
