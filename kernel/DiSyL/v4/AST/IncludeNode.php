@@ -5,6 +5,7 @@ namespace Ikabud\Kernel\DiSyL\v4\AST;
 final class IncludeNode extends AbstractNode
 {
     private string $template;
+    private ?AbstractNode $templateExpression;
     /** @var array<string, AbstractNode> variable name → parsed expression */
     private array $variables;
     private ?DocumentNode $body = null;
@@ -15,10 +16,16 @@ final class IncludeNode extends AbstractNode
      * @param array<string, AbstractNode> $variables
      * @param DocumentNode|null $body Body content for block includes ({include}...{/include})
      */
-    public function __construct(array $span, string $template, array $variables = [], ?DocumentNode $body = null)
-    {
+    public function __construct(
+        array $span,
+        string $template,
+        array $variables = [],
+        ?DocumentNode $body = null,
+        ?AbstractNode $templateExpression = null
+    ) {
         parent::__construct($span);
         $this->template = $template;
+        $this->templateExpression = $templateExpression;
         $this->variables = $variables;
         $this->body = $body;
     }
@@ -31,6 +38,11 @@ final class IncludeNode extends AbstractNode
     public function getTemplate(): string
     {
         return $this->template;
+    }
+
+    public function getTemplateExpression(): ?AbstractNode
+    {
+        return $this->templateExpression;
     }
 
     /** @return array<string, AbstractNode> */

@@ -29,7 +29,7 @@ abstract class CompiledTemplate
     protected $templateLoader = null;
     /** @var callable|null */
     protected $errorHandler = null;
-    /** @var array<string, true> Active compiled include names for cycle detection. */
+    /** @var list<string> Active compiled include names, bounded for safe recursion. */
     private static array $includeStack = [];
     private const MAX_INCLUDE_DEPTH = 20;
 
@@ -146,16 +146,18 @@ abstract class CompiledTemplate
         }
 
         $key = trim($template);
-        if ($key === '' || isset(self::$includeStack[$key]) || count(self::$includeStack) >= self::MAX_INCLUDE_DEPTH) {
+        if ($key === ''
+            || ($variables === [] && in_array($key, self::$includeStack, true))
+            || count(self::$includeStack) >= self::MAX_INCLUDE_DEPTH) {
             if ($this->errorHandler !== null) {
                 ($this->errorHandler)($key === ''
                     ? 'Blank compiled include rejected'
-                    : "Circular or excessively deep include detected: {$template}");
+                    : "Circular or excessively deep compiled include detected: {$template}");
             }
             return '';
         }
 
-        self::$includeStack[$key] = true;
+        self::$includeStack[] = $key;
         try {
             $loaded = ($this->templateLoader)($template);
 
@@ -176,7 +178,7 @@ abstract class CompiledTemplate
 
             return '';
         } finally {
-            unset(self::$includeStack[$key]);
+            array_pop(self::$includeStack);
         }
     }
 

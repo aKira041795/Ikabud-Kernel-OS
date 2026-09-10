@@ -14,7 +14,8 @@ namespace Ikabud\Kernel\DiSyL\Component;
  * Owns its own include-stack for circular-include detection.
  *
  * Supported forms:
- *   {include "name"}                        — no params
+ *   {include "name"}                        — static path, no params
+ *   {include template.path props=block.props} — dynamic path and whole-object param
  *   {include "name" with: {k: v}}           — with: inline object
  *   {include "name" key=value key2=value2}  — key=value params
  *   {include "name" key=val} ... {/include} — block: body becomes page_body
@@ -24,7 +25,7 @@ final class IncludeResolver
     /** @var int Upper bound on include passes per content blob (guards runaway nesting) */
     private const MAX_INCLUDE_ITERATIONS = 20;
 
-    /** @var array<string, true> Include stack for circular-include detection (keyed by real path) */
+    /** @var list<string> Active include stack (real paths), bounded for safe recursion. */
     private array $includeStack = [];
 
     /**
@@ -96,31 +97,34 @@ final class IncludeResolver
                 return null;
             }
 
-            // Find the opening quote after {include "
-            // Only the quoted-name form "{include "name" ...}" is handled here.
-            // Other forms (e.g. "{include parent() with {...}}", "{include $var}")
-            // are resolved by block inheritance / dynamic include mechanisms;
-            // scanning for a distant quote would bleed into unrelated HTML such
-            // as class="..." and produce a spurious "Include not found".
-            if (($content[$brace + 9] ?? '') !== '"') {
-                $pos = $brace + 1;
-                continue;
+            $targetStart = $brace + 9;
+            $targetEnd = $targetStart;
+            $isQuoted = ($content[$targetStart] ?? '') === '"';
+            if ($isQuoted) {
+                $targetEnd = strpos($content, '"', $targetStart + 1);
+                if ($targetEnd === false) {
+                    $pos = $brace + 1;
+                    continue;
+                }
+                $targetExpression = substr($content, $targetStart + 1, $targetEnd - $targetStart - 1);
+            } else {
+                while ($targetEnd < $len && preg_match('/[a-zA-Z0-9_.]/', $content[$targetEnd])) {
+                    $targetEnd++;
+                }
+                $targetExpression = substr($content, $targetStart, $targetEnd - $targetStart);
+                if ($targetExpression === '' || !preg_match('/^[a-zA-Z_]/', $targetExpression)) {
+                    $pos = $brace + 1;
+                    continue;
+                }
             }
 
-            $q1 = strpos($content, '"', $brace + 9);
-            if ($q1 === false || $q1 >= $len) {
-                $pos = $brace + 1;
-                continue;
+            $templateName = $isQuoted
+                ? $targetExpression
+                : ($this->resolveValueWithFilters)($targetExpression, $context);
+            if (!is_string($templateName) || trim($templateName) === '') {
+                ($this->logError)("Dynamic include resolved to a blank or non-string path: {$targetExpression}");
+                $templateName = '';
             }
-
-            // Find the closing quote and extract template name
-            $q2 = strpos($content, '"', $q1 + 1);
-            if ($q2 === false) {
-                $pos = $brace + 1;
-                continue;
-            }
-
-            $templateName = substr($content, $q1 + 1, $q2 - $q1 - 1);
 
             // Now find the matching closing } with depth-aware scanning
             // (params may contain nested {k: v} map literals)
@@ -143,7 +147,8 @@ final class IncludeResolver
             }
 
             $paramsEnd = $tagClose - 1; // position of matching }
-            $paramsStr = substr($content, $q2 + 1, $paramsEnd - $q2 - 1);
+            $paramsStart = $targetEnd + ($isQuoted ? 1 : 0);
+            $paramsStr = substr($content, $paramsStart, $paramsEnd - $paramsStart);
 
             // Check if {/include} follows the closing } (with optional whitespace)
             $restStart = $tagClose;
@@ -186,18 +191,20 @@ final class IncludeResolver
             return $bodyContent ?? '';
         }
 
-        // Circular include detection
+        // Re-entering a parameterized template is valid for finite composition
+        // trees. Parameterless path cycles preserve the legacy early rejection.
         $realPath = realpath($includePath) ?: $includePath;
-        if (isset($this->includeStack[$realPath])) {
-            ($this->logError)("Circular include detected: {$templateName}");
+        $params = $this->parseIncludeParams($paramsStr, $context);
+        if (($params === [] && in_array($realPath, $this->includeStack, true))
+            || count($this->includeStack) >= self::MAX_INCLUDE_ITERATIONS) {
+            ($this->logError)("Circular or excessively deep include detected: {$templateName}");
             return $bodyContent ?? '';
         }
-        $this->includeStack[$realPath] = true;
+        $this->includeStack[] = $realPath;
 
         $includeContext = $context;
 
-        // Parse params: both with: {...} and key=value
-        $params = $this->parseIncludeParams($paramsStr, $context);
+        // Params support both with: {...} and key=value, retaining arrays/maps.
         if ($params !== []) {
             $includeContext = array_merge($context, $params);
         }
@@ -209,13 +216,13 @@ final class IncludeResolver
 
         $includeSource = ($this->readIncludeSource)($includePath);
         if ($includeSource === false) {
-            unset($this->includeStack[$realPath]);
+            array_pop($this->includeStack);
             ($this->logError)("Failed to read include: {$templateName}");
             return $bodyContent ?? '';
         }
 
         $result = ($this->compile)($includeSource, $includeContext);
-        unset($this->includeStack[$realPath]);
+        array_pop($this->includeStack);
         return $result;
     }
 
