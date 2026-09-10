@@ -65,6 +65,20 @@ function catThemeRegistryJson(array $params = []): void
 }
 
 /** @param array<string, string> $params */
+function catThemeBlocksJson(array $params = []): void
+{
+    if (catThemeAdmin() === null) {
+        app()->json(['ok' => false, 'error' => 'Authentication required.'], 401);
+        return;
+    }
+    if (catThemeAdmin() === []) {
+        app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
+        return;
+    }
+    app()->json(cat_cap_akira_theme_blocks_1([]));
+}
+
+/** @param array<string, string> $params */
 function catThemeValidateJson(array $params = []): void
 {
     if (catThemeAdmin() === null) {

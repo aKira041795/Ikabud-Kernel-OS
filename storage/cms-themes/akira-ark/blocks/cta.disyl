@@ -1,0 +1,5 @@
+<aside class="akira-ark-block akira-ark-cta">
+  <h2>{props.title | esc_html}</h2>
+  {if props.subtitle}<p>{props.subtitle | esc_html}</p>{/if}
+  <a class="akira-ark-button" href="{props.cta_href | esc_url | esc_attr}">{props.cta_label | esc_html}</a>
+</aside>

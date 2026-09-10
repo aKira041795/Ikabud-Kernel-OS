@@ -1,0 +1,4 @@
+<section class="akira-ark-block akira-ark-richtext">
+  {if props.title}<h2>{props.title | esc_html}</h2>{/if}
+  <div class="akira-ark-body">{props.body | esc_html}</div>
+</section>
