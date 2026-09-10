@@ -19,6 +19,7 @@
             {"id":"akira.builder.compositions@1","priority":50,"modes":["first"],"description":"List current-tenant composition projections"},
             {"id":"akira.builder.get@1","priority":50,"modes":["first"],"description":"Get one composition and its current preview tree"},
             {"id":"akira.builder.revisions@1","priority":50,"modes":["first"],"description":"List projected composition revisions"},
+            {"id":"akira.builder.provenance@1","priority":50,"modes":["first"],"requires_protocol":"v2","description":"Read the governed composition timeline and semantic revision diff"},
             {"id":"akira.builder.render@1","priority":50,"modes":["first"],"description":"Render a validated preview or published composition through ARK and DiSyL"},
             {"id":"akira.builder.create@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Create a draft composition and initial revision"},
             {"id":"akira.builder.update@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Append a preview revision with optimistic concurrency"},
@@ -37,7 +38,8 @@
             "kernel.idempotency.claim@1",
             "kernel.idempotency.commit@1",
             "kernel.idempotency.release@1",
-            "kernel.audit.record@1"
+            "kernel.audit.record@1",
+            "kernel.audit.list@1"
         ]
     },
     "routes": true,

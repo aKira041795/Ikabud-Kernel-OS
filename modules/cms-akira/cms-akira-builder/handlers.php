@@ -262,6 +262,22 @@ function akiraBuilderApiRevisions(array $params = []): void
 }
 
 /** @param array<string,string> $params */
+function akiraBuilderApiProvenance(array $params = []): void
+{
+    if (!cabBuilderApiGuard()) {
+        return;
+    }
+    $payload = ['entity_type' => 'post', 'entity_key' => (string) ($params['key'] ?? '')];
+    if (isset($_GET['from_revision_id'])) {
+        $payload['from_revision_id'] = (string) $_GET['from_revision_id'];
+    }
+    if (isset($_GET['to_revision_id'])) {
+        $payload['to_revision_id'] = (string) $_GET['to_revision_id'];
+    }
+    cabBuilderApiInvoke('akira.builder.provenance@1', $payload);
+}
+
+/** @param array<string,string> $params */
 function akiraBuilderApiRender(array $params = []): void
 {
     if (!cabBuilderApiGuard()) {
@@ -270,6 +286,7 @@ function akiraBuilderApiRender(array $params = []): void
     cabBuilderApiInvoke('akira.builder.render@1', [
         'entity_type' => 'post', 'entity_key' => (string) ($params['key'] ?? ''),
         'source' => in_array(($_GET['source'] ?? 'published'), ['preview', 'published'], true) ? (string) $_GET['source'] : 'published',
+        ...(isset($_GET['revision_id']) ? ['revision_id' => (string) $_GET['revision_id']] : []),
     ]);
 }
 

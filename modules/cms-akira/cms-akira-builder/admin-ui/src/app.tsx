@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, newIdempotencyKey, readBootstrap } from './api';
 import { Canvas } from './Canvas';
-import type { BlockDefinition, BlocksResponse, Boot, Composition, PostOption, PropSchema, Revision, Tree } from './types';
+import type { BlockDefinition, BlocksResponse, Boot, Composition, PostOption, PropSchema, Revision, SemanticDiff, TimelineEntry, Tree } from './types';
 
 const DEFAULT_TREE: Tree = { version: 1, blocks: [] };
 
@@ -134,6 +134,10 @@ function EditPanel({ boot }: { boot: Boot }) {
   const [note, setNote] = useState('');
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [diff, setDiff] = useState<SemanticDiff | null>(null);
+  const [historyError, setHistoryError] = useState('');
   const [preview, setPreview] = useState<{ html: string; label: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [catalogue, setCatalogue] = useState<BlockDefinition[]>([]);
@@ -301,6 +305,34 @@ function EditPanel({ boot }: { boot: Boot }) {
     }
   };
 
+  const openHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryError('');
+    try {
+      const out = await api<{ ok: boolean; data: { timeline: TimelineEntry[] } }>(apiBase, `/compositions/${encodeURIComponent(key)}/provenance`);
+      setTimeline(out.data.timeline ?? []);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'History unavailable.');
+    }
+  };
+
+  const viewRevision = async (revisionId: number) => {
+    setBusy(true);
+    setHistoryError('');
+    try {
+      const [rendered, compared] = await Promise.all([
+        api<{ ok: boolean; data: { html: string; revision_id: number } }>(apiBase, `/compositions/${encodeURIComponent(key)}/render?source=preview&revision_id=${revisionId}`),
+        api<{ ok: boolean; data: { diff: SemanticDiff } }>(apiBase, `/compositions/${encodeURIComponent(key)}/provenance?from_revision_id=${revisionId}`),
+      ]);
+      setPreview({ html: rendered.data.html, label: `View as of revision ${rendered.data.revision_id}` });
+      setDiff(compared.data.diff);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Historical revision unavailable.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleRender = async (source: 'preview' | 'published') => {
     setBusy(true);
     try {
@@ -402,6 +434,7 @@ function EditPanel({ boot }: { boot: Boot }) {
       <div className="ab-row">
         <h2>Composition editor</h2>
         <span className={status === 'published' ? 'ab-pill ab-pill-pub' : 'ab-pill'}>{(status ?? 'draft').toUpperCase()}</span>
+        <button className="ab-btn" type="button" onClick={() => void openHistory()}>History &amp; provenance</button>
       </div>
       <p className="ab-muted">
         Attached to post <code>{key}</code> · current revision {revision ?? 'none'} · published revision {publishedRevision ?? 'none'}
@@ -552,6 +585,26 @@ function EditPanel({ boot }: { boot: Boot }) {
           </div>
         </div>
       </div>
+      {historyOpen && <div className="ab-drawer-backdrop" role="presentation" onClick={() => setHistoryOpen(false)}>
+        <aside className="ab-drawer" role="dialog" aria-modal="true" aria-labelledby="ab-history-title" onClick={(event) => event.stopPropagation()}>
+          <div className="ab-row ab-drawer-head"><h3 id="ab-history-title">History &amp; provenance</h3><button className="ab-btn" type="button" onClick={() => setHistoryOpen(false)}>Close</button></div>
+          {historyError && <p className="ab-error">{historyError}</p>}
+          <ol className="ab-timeline">
+            {timeline.map((entry, index) => <li key={`${entry.kind}-${entry.created_at}-${index}`}>
+              <div className="ab-row"><strong>{entry.action}</strong>{entry.was_published && <span className="ab-pill ab-pill-pub">PUBLISHED</span>}</div>
+              <time>{entry.created_at}</time> · {entry.actor}<br />
+              <code>{entry.capability}</code>{entry.note && <> · {entry.note}</>}
+              {(entry.correlation_id || entry.request_id) && <small>Correlation: {entry.correlation_id ?? entry.request_id}</small>}
+              {entry.kind === 'revision' && entry.revision_id && <button className="ab-btn" type="button" disabled={busy} onClick={() => void viewRevision(entry.revision_id as number)}>View as of r{entry.revision_id}</button>}
+            </li>)}
+          </ol>
+          {diff && <section className="ab-diff"><h4>r{diff.from_revision_id} → current draft</h4>
+            {(['added', 'removed', 'reordered'] as const).map((kind) => <div key={kind}><strong>{kind}</strong>: {diff.changes[kind].length === 0 ? 'none' : diff.changes[kind].map((item) => item.identity).join(', ')}</div>)}
+            <strong>Properties changed</strong>
+            {diff.changes.props_changed.length === 0 ? <p>none</p> : <ul>{diff.changes.props_changed.map((change, index) => <li key={`${change.identity}-${change.prop}-${index}`}><code>{change.identity}.{change.prop}</code>: <del>{JSON.stringify(change.old)}</del> → <ins>{JSON.stringify(change.new)}</ins></li>)}</ul>}
+          </section>}
+        </aside>
+      </div>}
     </section>
   );
 }

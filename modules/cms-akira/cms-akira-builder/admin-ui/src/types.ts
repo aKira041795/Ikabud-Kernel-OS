@@ -34,6 +34,32 @@ export interface Revision {
   created_at: string;
 }
 
+export interface TimelineEntry {
+  kind: 'revision' | 'audit' | 'publication';
+  action: string;
+  capability: string;
+  actor: string;
+  actor_id: number | null;
+  created_at: string;
+  note: string | null;
+  correlation_id: string | null;
+  request_id: string | null;
+  revision_id: number | null;
+  base_revision_id?: number | null;
+  was_published?: boolean;
+}
+
+export interface SemanticDiff {
+  from_revision_id: number;
+  to_revision_id: number | null;
+  changes: {
+    added: Array<{ identity: string; block: string; path: string }>;
+    removed: Array<{ identity: string; block: string; path: string }>;
+    reordered: Array<{ identity: string; block: string; old_path: string; new_path: string }>;
+    props_changed: Array<{ identity: string; block: string; prop: string; old: unknown; new: unknown }>;
+  };
+}
+
 export interface PostOption {
   entity_type: 'post';
   entity_key: string;
