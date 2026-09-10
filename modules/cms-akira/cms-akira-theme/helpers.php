@@ -5,6 +5,7 @@ declare(strict_types=1);
 const CAT_THEME_MODULE_ID = 'cms-akira-theme';
 const CAT_THEME_FALLBACK = 'cms-akira-posts';
 const CAT_THEME_SETTING_ACTIVE = 'active_theme_slug';
+const CAT_THEME_SETTING_PREVIOUS = 'previous_theme_slug';
 const CAT_THEME_SETTING_CUSTOMIZER = 'customizer_values';
 const CAT_THEME_INVALIDATION = 'theme.active';
 
@@ -154,6 +155,49 @@ function catThemeIsArkVisible(string $slug): bool
     }
     return app()->arkRenderers()->resolve('entity.list.post', $slug) !== null
         && app()->arkRenderers()->resolve('entity.detail.post', $slug) !== null;
+}
+
+/** @return list<string> */
+function catThemeTreeContentErrors(string $themeDir): array
+{
+    // Declarative themes must never ship executable/source code. Use a deny-list of
+    // web-executable / scripting file types plus a PHP content sniff (catches disguised
+    // executables with a benign extension or no extension), so legitimate meta files
+    // (e.g. .gitkeep) and asset files (images, fonts, JSON, templates) always pass.
+    $deniedExtensions = [
+        'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'pht', 'phar',
+        'sql', 'sh', 'bash', 'cgi', 'pl', 'py', 'rb', 'shtml', 'shtm',
+    ];
+    $deniedBasenames = ['.htaccess', '.htpasswd', '.user.ini'];
+    $errors = [];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($themeDir, FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($iterator as $fileInfo) {
+        if (!$fileInfo->isFile()) {
+            continue;
+        }
+        $path = $fileInfo->getPathname();
+        $relative = str_starts_with($path, $themeDir . DIRECTORY_SEPARATOR)
+            ? substr($path, strlen($themeDir) + 1)
+            : $path;
+        $extension = strtolower((string) $fileInfo->getExtension());
+        if (in_array($extension, $deniedExtensions, true)) {
+            $errors[] = "{$relative}: file type .{$extension} is not allowed in a declarative theme.";
+            continue;
+        }
+        $basename = strtolower((string) $fileInfo->getBasename());
+        if (in_array($basename, $deniedBasenames, true)) {
+            $errors[] = "{$relative}: server-config file is not allowed in a declarative theme.";
+            continue;
+        }
+        $head = (string) @file_get_contents($path, false, null, 0, 8192);
+        if (preg_match('/<\?php|<\?=/i', $head) === 1) {
+            $errors[] = "{$relative}: file contains PHP code, which is not allowed in a declarative theme.";
+        }
+    }
+    sort($errors, SORT_STRING);
+    return $errors;
 }
 
 /**
@@ -315,6 +359,12 @@ function catThemeValidate(string $slug): array
         }
     }
 
+    $contentErrors = catThemeTreeContentErrors($dir);
+    foreach ($contentErrors as $error) {
+        $result['errors'][] = $error;
+    }
+    $result['checks']['declarative_content'] = $contentErrors === [];
+
     $lintErrors = catThemeLintDisyl($dir);
     foreach ($lintErrors as $error) {
         $result['errors'][] = $error;
@@ -362,6 +412,28 @@ function catThemeWriteActiveSetting(int $tenantId, string $slug): bool
         return false;
     }
     return tenantWriteModuleSetting(app()->db(), $tenantId, CAT_THEME_MODULE_ID, CAT_THEME_SETTING_ACTIVE, $slug);
+}
+
+function catThemePreviousSetting(): ?string
+{
+    $tenantId = (int) app()->tenant()->current();
+    if ($tenantId <= 0 || !function_exists('_readTenantModuleSettingsSingle')) {
+        return null;
+    }
+    try {
+        $settings = _readTenantModuleSettingsSingle(CAT_THEME_MODULE_ID, $tenantId, app()->db());
+        $value = $settings[CAT_THEME_SETTING_PREVIOUS] ?? null;
+        return is_string($value) && catThemeSlugAccepts(trim($value)) ? trim($value) : null;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function catThemeWritePreviousSetting(int $tenantId, string $slug): bool
+{
+    return $tenantId > 0
+        && function_exists('tenantWriteModuleSetting')
+        && tenantWriteModuleSetting(app()->db(), $tenantId, CAT_THEME_MODULE_ID, CAT_THEME_SETTING_PREVIOUS, $slug);
 }
 
 /** @return array{theme_slug:string,values:array<string,array<string,mixed>>} */
@@ -630,8 +702,9 @@ function catThemeMutateActivate(array $payload): array
         throw new CatThemeException('Theme failed validation: ' . implode('; ', array_slice($validation['errors'], 0, 3)), 422);
     }
 
-    $input = ['theme_slug' => $slug];
-    $envelope = ['operation' => 'theme.activate', 'theme' => $input];
+    $rollback = filter_var($payload['rollback'] ?? false, FILTER_VALIDATE_BOOL);
+    $input = ['theme_slug' => $slug, 'rollback' => $rollback];
+    $envelope = ['operation' => $rollback ? 'theme.rollback' : 'theme.activate', 'theme' => $input];
     $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
         'caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor],
         'mode' => 'first',
@@ -670,21 +743,29 @@ function catThemeMutateActivate(array $payload): array
         $claimed = true;
 
         $old = catThemeActiveSetting();
+        if ($rollback && ($old === $slug || catThemePreviousSetting() !== $slug)) {
+            throw new CatThemeException('Rollback target is not the previous active theme.', 409);
+        }
         if (!function_exists('moduleTenantSettingsEnsureTable')) {
             throw new CatThemeException('Tenant module settings are unavailable.', 503);
+        }
+        if ($old !== $slug && $old !== null && catThemeWritePreviousSetting($tenantId, $old) !== true) {
+            throw new CatThemeException('Previous theme setting write failed.', 503);
         }
         if (catThemeWriteActiveSetting($tenantId, $slug) !== true) {
             throw new CatThemeException('Theme activation setting write failed.', 503);
         }
 
+        $operation = $rollback ? 'theme.rollback' : 'theme.activate';
+        $auditAction = $rollback ? 'akira.theme.rollback' : 'akira.theme.activate';
         $correlationId = catThemeCorrelationId();
         $audit = app()->cap()->call('kernel.audit.record@1', [
             'module' => CAT_THEME_MODULE_ID,
-            'action' => 'akira.theme.activate',
+            'action' => $auditAction,
             'entity_type' => 'theme',
             'entity_id' => $slug,
             'old_data' => ['active_theme_slug' => $old],
-            'new_data' => ['correlation_id' => $correlationId, 'tenant_id' => $tenantId, 'active_theme_slug' => $slug],
+            'new_data' => ['correlation_id' => $correlationId, 'tenant_id' => $tenantId, 'active_theme_slug' => $slug, 'rollback' => $rollback],
         ], ['caller' => ['module' => CAT_THEME_MODULE_ID, 'user' => $actor], 'mode' => 'first']);
         if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
             throw new RuntimeException('Durable theme audit failed.');
@@ -692,7 +773,7 @@ function catThemeMutateActivate(array $payload): array
 
         $outcome = [
             'ok' => true,
-            'operation' => 'theme.activate',
+            'operation' => $operation,
             'theme' => ['slug' => $slug],
             'active_theme_slug' => $slug,
             'correlation_id' => $correlationId,

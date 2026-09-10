@@ -127,6 +127,7 @@ function catThemeAdminPage(array $params = []): void
     $themes = catThemeRegistryRows();
     $resolved = catThemeResolveActive();
     $active = $resolved['ok'] ? (string) $resolved['theme_slug'] : CAT_THEME_FALLBACK;
+    $previous = catThemePreviousSetting();
 
     $items = '';
     foreach ($themes as $theme) {
@@ -166,12 +167,19 @@ function catThemeAdminPage(array $params = []): void
     }
     $notice = (string)($_GET['saved'] ?? '') === '1'
         ? '<div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 font-semibold text-emerald-700">Theme customization saved. Public cache invalidated.</div>' : '';
+    $rollback = $previous !== null && $previous !== $active
+        ? '<form class="mt-4" method="post" action="/cms-akira-theme/activate">' . catThemeCsrfField()
+            . '<input type="hidden" name="theme_slug" value="' . catThemeEscape($previous) . '">'
+            . '<input type="hidden" name="rollback" value="1">'
+            . '<input type="hidden" name="idempotency_key" value="rollback-' . bin2hex(random_bytes(12)) . '">'
+            . '<button class="rounded-xl bg-amber-500 px-4 py-2 font-bold text-slate-950 hover:bg-amber-400" type="submit">Rollback to previous</button></form>'
+        : '';
     $body = '<section class="mb-8 rounded-2xl bg-slate-950 p-6 text-white"><p>Active theme</p><code class="text-violet-300">' . catThemeEscape($active) . '</code></section>'
         . $notice . '<section data-theme-studio><h2 class="mb-2 text-2xl font-bold">Theme Studio</h2><p class="mb-5 text-slate-500">Customize the active theme through its kernel-owned declarative schema.</p>'
         . '<form method="post" action="/cms-akira-theme/customize" class="grid gap-5">' . catThemeCsrfField()
         . '<input type="hidden" name="theme_slug" value="' . catThemeEscape($active) . '"><input type="hidden" name="idempotency_key" value="customize-' . bin2hex(random_bytes(12)) . '">'
         . $studio . '<button class="rounded-xl bg-akira-600 px-5 py-3 font-bold text-white hover:bg-akira-700" type="submit">Save customization</button></form></section>'
-        . '<section class="mt-10"><h2 class="text-xl font-bold">Installed themes</h2><ul class="mt-3 space-y-2">' . $items . '</ul></section>'
+        . '<section class="mt-10"><h2 class="text-xl font-bold">Installed themes</h2><ul class="mt-3 space-y-2">' . $items . '</ul>' . $rollback . '</section>'
         . '<p class="mt-6"><a href="/api/v1/cms-akira-theme/themes">Themes JSON</a> · <a href="/api/v1/cms-akira-theme/resolve">Resolve JSON</a></p>';
     echo catThemePage('CMS Akira Theme Studio', $body);
 }

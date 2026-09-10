@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 final class AkiraShellRenderTestApp
 {
+    public string $role = 'admin';
+
     /** @return array{id:int, role:string} */
     public function user(): array
     {
-        return ['id' => 900001, 'role' => 'admin'];
+        return ['id' => 900001, 'role' => $this->role];
     }
 
     public function csrfField(): string
@@ -37,6 +39,7 @@ function app(): mixed
 }
 
 $root = dirname(__DIR__);
+require_once $root . '/helpers.php';
 $manifest = json_decode((string)file_get_contents($root . '/module.json'), true);
 $routes = require $root . '/routes.php';
 $handlers = (string)file_get_contents($root . '/handlers.php');
@@ -77,6 +80,11 @@ $check(str_contains($helpers, "akira.workflow.evaluate@1") && str_contains($help
 $check(!str_contains($handlers . $helpers, 'akira.post.publish@1') && !str_contains($handlers . $helpers, 'akira.post.unpublish@1'), 'shell has no direct publish or unpublish capability path');
 $check(str_contains($helpers, 'function akiraShellParticipant()') && str_contains($helpers, "function_exists('cawPostLifecycleParticipantRoles')"), 'editorial entry derives participants from the workflow definition');
 $check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($helpers, "['admin', 'administrator', 'superadmin']"), 'compositions and health retain their presentation administrator gate');
+$adminNav = akiraShellPage('Test', '');
+app()->role = 'author';
+$authorNav = akiraShellPage('Test', '');
+app()->role = 'admin';
+$check(str_contains($adminNav, 'href="/cms-akira-theme"') && str_contains($adminNav, 'Theme Studio') && !str_contains($authorNav, 'href="/cms-akira-theme"'), 'Theme Studio navigation is administrator-only');
 $mutationBody = explode('function akiraShellMutation', $helpers, 2)[1] ?? '';
 $mutationBody = explode("\n}", $mutationBody, 2)[0] ?? '';
 $check(str_contains($mutationBody, 'akiraShellAuthorize()') && !str_contains($mutationBody, 'akiraShellAdmin'), 'delete delegates role authority to its governed policy row');

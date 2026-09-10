@@ -73,9 +73,9 @@ $statusOf = static function (Throwable $error): ?int {
     }
     return null;
 };
-$settingValue = static function (int $tenant) use ($db): ?string {
+$settingValue = static function (int $tenant, string $key = CAT_THEME_SETTING_ACTIVE) use ($db): ?string {
     $stmt = $db->prepare('SELECT setting_value FROM tenant_module_settings WHERE tenant_id = ? AND module_id = ? AND setting_key = ?');
-    $stmt->execute([$tenant, 'cms-akira-theme', CAT_THEME_SETTING_ACTIVE]);
+    $stmt->execute([$tenant, 'cms-akira-theme', $key]);
     $raw = $stmt->fetchColumn();
     if (!is_string($raw) || $raw === '') {
         return null;
@@ -241,6 +241,15 @@ try {
         && str_contains($hostileErrors, 'non-projected key'),
         'hostile renderer registry (unknown view id, traversal template, projected-key violation) is rejected'
     );
+    file_put_contents($hostileDir . '/public/payload.php', '<?php echo "unsafe";');
+    $executable = $call('akira.theme.validate@1', ['theme_slug' => $hostileSlug]);
+    $executableErrors = implode("\n", $executable['data']['errors'] ?? []);
+    $check(
+        ($executable['data']['valid'] ?? true) === false
+        && str_contains($executableErrors, 'public/payload.php')
+        && ($executable['data']['checks']['declarative_content'] ?? true) === false,
+        'validate rejects executable theme files and reports their relative path'
+    );
     $removeTree($hostileDir);
 
     // ── Activate: governed v2, idempotent, audited, invalidates ──
@@ -282,6 +291,34 @@ try {
         $fragmentStore->tryGet($prefix . '-fragment', [CAT_THEME_INVALIDATION], (string) $tenantA) === null,
         'successful activation invalidates the single canonical theme.active tag'
     );
+    $check($settingValue($tenantA, CAT_THEME_SETTING_PREVIOUS) === 'ark-renderer-fixture', 'changed activation persists the previous theme');
+
+    $rolledBack = $call('akira.theme.activate@1', [
+        'idempotency_key' => $prefix . '-rollback',
+        'theme_slug' => 'ark-renderer-fixture',
+        'rollback' => true,
+    ]);
+    $rolledBackReplay = $call('akira.theme.activate@1', [
+        'idempotency_key' => $prefix . '-rollback',
+        'theme_slug' => 'ark-renderer-fixture',
+        'rollback' => true,
+    ]);
+    $rollbackAudit = $db->prepare("SELECT COUNT(*) FROM audit_logs WHERE module = 'cms-akira-theme' AND action = 'akira.theme.rollback' AND entity_id = ?");
+    $rollbackAudit->execute(['ark-renderer-fixture']);
+    $check(
+        $rolledBack === $rolledBackReplay
+        && ($rolledBack['operation'] ?? '') === 'theme.rollback'
+        && $settingValue($tenantA) === 'ark-renderer-fixture'
+        && $settingValue($tenantA, CAT_THEME_SETTING_PREVIOUS) === 'cms-akira-posts'
+        && (int) $rollbackAudit->fetchColumn() === 1,
+        'rollback uses the idempotent activation pipeline, swaps previous, and records a durable rollback audit'
+    );
+
+    $call('akira.theme.activate@1', [
+        'idempotency_key' => $prefix . '-same-theme',
+        'theme_slug' => 'ark-renderer-fixture',
+    ]);
+    $check($settingValue($tenantA, CAT_THEME_SETTING_PREVIOUS) === 'cms-akira-posts', 'A-to-A activation does not clobber the previous theme');
 
     $count = $db->prepare("SELECT COUNT(*) FROM tenant_module_settings WHERE tenant_id = ? AND module_id = ? AND setting_key = ?");
     $count->execute([$tenantA, 'cms-akira-theme', CAT_THEME_SETTING_ACTIVE]);
