@@ -611,6 +611,7 @@ function akiraShellCompositions(array $params = []): void
     echo akiraShellPage('Compositions', '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">' . akiraShellBuilderAdmin([
         'mode' => 'list',
         'apiBase' => '/api/v1/cms-akira/builder',
+        'blocks_endpoint' => '/api/v1/cms-akira-theme/blocks',
         'posts' => $posts,
     ]) . '</div>', ['active' => 'compositions']);
 }
@@ -633,6 +634,7 @@ function akiraShellCompositionEdit(array $params = []): void
     echo akiraShellPage('Edit composition', '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">' . akiraShellBuilderAdmin([
         'mode' => 'edit',
         'apiBase' => '/api/v1/cms-akira/builder',
+        'blocks_endpoint' => '/api/v1/cms-akira-theme/blocks',
         'entity_key' => $key,
         'posts' => [],
     ]) . '</div>', ['active' => 'compositions']);

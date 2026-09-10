@@ -34,8 +34,11 @@ The module remains `_enabled:false`: repository tracking never installs or activ
 The React/Vite/TypeScript builder admin lives under `admin-ui/` and is mounted by the
 authenticated `cms-akira-shell` pages (`/cms-akira-shell/compositions` and
 `/cms-akira-shell/compositions/{key}/edit`). The shell pages serve the committed build plus a
-mount container and an authorized JSON bootstrap (available Akira posts for attachment). No
-second entry module exists — the shell is the single admin host.
+mount container and an authorized JSON bootstrap (available Akira posts for attachment). The
+bootstrap's `blocks_endpoint` points to `/api/v1/cms-akira-theme/blocks`; the editor fails closed
+if that active-theme catalogue cannot be loaded and derives its picker, property form, and block
+defaults exclusively from the returned schemas. No second entry module exists — the shell is the
+single admin host.
 
 ### Authenticated JSON capability bridge (`/api/v1/cms-akira/builder/*`)
 

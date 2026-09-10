@@ -1,27 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, newIdempotencyKey, readBootstrap } from './api';
-import type { Boot, Composition, PostOption, Revision, Tree } from './types';
+import type { BlockDefinition, BlocksResponse, Boot, Composition, PostOption, PropSchema, Revision, Tree } from './types';
 
 const DEFAULT_TREE: Tree = { version: 1, blocks: [] };
-const ALLOWED = ['section', 'heading', 'paragraph', 'rich_text', 'image', 'button'];
 
-function sampleBlock(type: string): unknown {
-  switch (type) {
-    case 'section':
-      return { type: 'section', props: { layout: 'stack' }, children: [] };
-    case 'heading':
-      return { type: 'heading', props: { text: 'Heading', level: 2 }, children: [] };
-    case 'paragraph':
-      return { type: 'paragraph', props: { text: 'Paragraph text' }, children: [] };
-    case 'rich_text':
-      return { type: 'rich_text', props: { content: '<p>Rich text</p>' }, children: [] };
-    case 'image':
-      return { type: 'image', props: { src: '/assets/akira.jpg', alt: 'Alt' }, children: [] };
-    case 'button':
-      return { type: 'button', props: { label: 'Read more', url: '/' }, children: [] };
-    default:
-      return null;
+function cloneDefaults(definition: BlockDefinition): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(definition.defaults ?? {})) as Record<string, unknown>;
+}
+
+function inputValue(value: unknown): string {
+  return typeof value === 'string' ? value : value === undefined || value === null ? '' : String(value);
+}
+
+/**
+ * Seed a freshly added value from its schema. A url-typed field with no declared
+ * default must NOT be seeded as '' — the governed validator rejects an empty URL
+ * ("card-grid.items[].href is unsafe or invalid"), so a new row would fail
+ * validation before the user can type anything.
+ */
+function seedValue(schema: PropSchema): unknown {
+  if (schema.default !== undefined) {
+    return schema.default;
   }
+  return schema.type === 'url' ? '/' : '';
 }
 
 function encodeTree(tree: Tree): string {
@@ -30,10 +31,19 @@ function encodeTree(tree: Tree): string {
 
 function parseTree(text: string): Tree {
   const parsed = JSON.parse(text) as Tree;
-  if (parsed === null || typeof parsed !== 'object' || parsed.version !== 1 || !Array.isArray(parsed.blocks)) {
-    throw new Error('Invalid composition tree: expected {version:1, blocks:[]}.');
+  const canonicalBlocks = (blocks: unknown): boolean => Array.isArray(blocks) && blocks.every((candidate) => {
+    if (candidate === null || typeof candidate !== 'object') return false;
+    const block = candidate as Record<string, unknown>;
+    const keys = Object.keys(block);
+    return typeof block.block === 'string' && block.block !== ''
+      && block.props !== null && typeof block.props === 'object' && !Array.isArray(block.props)
+      && keys.every((key) => key === 'block' || key === 'props' || key === 'children')
+      && (block.children === undefined || canonicalBlocks(block.children));
+  });
+  if (parsed === null || typeof parsed !== 'object' || parsed.version !== 1 || !canonicalBlocks(parsed.blocks)) {
+    throw new Error('Invalid composition tree: expected canonical {version:1, blocks:[{block, props, children?}]}.');
   }
-  return parsed as Tree;
+  return parsed;
 }
 
 export default function App() {
@@ -123,6 +133,24 @@ function EditPanel({ boot }: { boot: Boot }) {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [preview, setPreview] = useState<{ html: string; label: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [catalogue, setCatalogue] = useState<BlockDefinition[]>([]);
+  const [catalogueError, setCatalogueError] = useState('');
+  const [selectedBlock, setSelectedBlock] = useState('');
+  const [blockProps, setBlockProps] = useState<Record<string, unknown>>({});
+
+  useEffect(() => {
+    api<BlocksResponse>('', boot.blocks_endpoint)
+      .then((body) => {
+        const blocks = Array.isArray(body.blocks) ? body.blocks : [];
+        if (blocks.length === 0) throw new Error('The active theme has no block definitions.');
+        setCatalogue(blocks);
+        setSelectedBlock(blocks[0].id);
+        setBlockProps(cloneDefaults(blocks[0]));
+      })
+      .catch((e: unknown) => setCatalogueError(e instanceof Error ? e.message : 'Could not load the theme block catalogue.'));
+  }, [boot.blocks_endpoint]);
+
+  const selectedDefinition = catalogue.find((definition) => definition.id === selectedBlock);
 
   const reload = useCallback(async () => {
     setResult(null);
@@ -272,16 +300,23 @@ function EditPanel({ boot }: { boot: Boot }) {
     }
   };
 
-  const addBlock = (type: string) => {
+  const setProp = (name: string, value: unknown) => setBlockProps((current) => ({ ...current, [name]: value }));
+
+  const addArrayRow = (name: string, schema: PropSchema) => {
+    const row = Object.fromEntries(Object.entries(schema.items?.props ?? {}).map(([key, item]) => [key, seedValue(item)]));
+    const rows = Array.isArray(blockProps[name]) ? blockProps[name] as Record<string, unknown>[] : [];
+    setProp(name, [...rows, row]);
+  };
+
+  const updateArrayRow = (name: string, index: number, keyName: string, value: string) => {
+    const rows = Array.isArray(blockProps[name]) ? blockProps[name] as Record<string, unknown>[] : [];
+    setProp(name, rows.map((row, rowIndex) => rowIndex === index ? { ...row, [keyName]: value } : row));
+  };
+
+  const addBlock = () => {
     const tree = currentTree();
-    if (!tree) {
-      return;
-    }
-    const block = sampleBlock(type);
-    if (block === null) {
-      return;
-    }
-    tree.blocks = [...(tree.blocks ?? []), block as Tree['blocks'][number]];
+    if (!tree || !selectedDefinition) return;
+    tree.blocks = [...tree.blocks, { block: selectedDefinition.id, props: cloneDefaults({ ...selectedDefinition, defaults: blockProps }), children: [] }];
     setTreeText(encodeTree(tree));
     setParseError('');
   };
@@ -307,14 +342,46 @@ function EditPanel({ boot }: { boot: Boot }) {
             Title
             <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          <h4>Add a validated block (10A allowlist)</h4>
-          <div className="ab-btnrow">
-            {ALLOWED.map((type) => (
-              <button key={type} className="ab-btn" type="button" onClick={() => addBlock(type)}>
-                + {type}
-              </button>
-            ))}
-          </div>
+          <h4>Add a theme block</h4>
+          {catalogueError !== '' ? (
+            <p className="ab-error">Block catalogue unavailable: {catalogueError} Adding blocks is disabled.</p>
+          ) : catalogue.length === 0 ? (
+            <p className="ab-muted">Loading active theme blocks…</p>
+          ) : (
+            <div className="ab-block-form">
+              <label>
+                Block
+                <select value={selectedBlock} onChange={(e) => {
+                  const definition = catalogue.find((item) => item.id === e.target.value);
+                  setSelectedBlock(e.target.value);
+                  setBlockProps(definition ? cloneDefaults(definition) : {});
+                }}>
+                  {catalogue.map((definition) => <option key={definition.id} value={definition.id}>{definition.label} — {definition.category}</option>)}
+                </select>
+              </label>
+              {selectedDefinition && Object.entries(selectedDefinition.schema.props).map(([name, schema]) => schema.type === 'array' && schema.items?.type === 'object' ? (
+                <fieldset key={name}>
+                  <legend>{schema.label ?? name} <small>(array of objects)</small></legend>
+                  {(Array.isArray(blockProps[name]) ? blockProps[name] as Record<string, unknown>[] : []).map((row, index) => (
+                    <div className="ab-array-row" key={index}>
+                      {Object.entries(schema.items?.props ?? {}).map(([itemName, itemSchema]) => (
+                        <label key={itemName}>{itemSchema.label ?? itemName}
+                          <input type={itemSchema.type === 'url' ? 'url' : 'text'} value={inputValue(row[itemName])} onChange={(e) => updateArrayRow(name, index, itemName, e.target.value)} />
+                        </label>
+                      ))}
+                      <button className="ab-btn" type="button" onClick={() => setProp(name, (blockProps[name] as unknown[]).filter((_, rowIndex) => rowIndex !== index))}>Remove row</button>
+                    </div>
+                  ))}
+                  <button className="ab-btn" type="button" onClick={() => addArrayRow(name, schema)}>+ Add row</button>
+                </fieldset>
+              ) : (
+                <label key={name}>{schema.label ?? name} {schema.type !== 'string' && schema.type !== 'url' && <small>({schema.type})</small>}
+                  <input type={schema.type === 'url' ? 'url' : 'text'} value={inputValue(blockProps[name])} onChange={(e) => setProp(name, e.target.value)} />
+                </label>
+              ))}
+              <button className="ab-btn" type="button" disabled={!selectedDefinition} onClick={addBlock}>+ Add {selectedDefinition?.label ?? 'block'}</button>
+            </div>
+          )}
           <label>
             Tree (JSON)
             <textarea

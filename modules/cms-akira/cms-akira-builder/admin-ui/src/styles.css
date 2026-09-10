@@ -19,7 +19,11 @@
 .ab-error { color: #b91c1c; background: #fee2e2; padding: 0.5rem; border-radius: 6px; }
 .ab-ok { color: #065f46; background: #d1fae5; padding: 0.5rem; border-radius: 6px; }
 .ab label { display: block; margin: 0.5rem 0; font-weight: 600; }
-.ab input, .ab textarea { display: block; width: 100%; margin-top: 0.25rem; font: inherit; padding: 0.4rem; border: 1px solid #d1d5db; border-radius: 6px; }
+.ab input, .ab textarea, .ab select { display: block; width: 100%; margin-top: 0.25rem; font: inherit; padding: 0.4rem; border: 1px solid #d1d5db; border-radius: 6px; }
+.ab-block-form { padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; }
+.ab-block-form fieldset { margin: 0.75rem 0; border: 1px solid #d1d5db; border-radius: 6px; }
+.ab-block-form small { color: #6b7280; font-weight: 400; }
+.ab-array-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; align-items: end; padding: 0.5rem 0; border-bottom: 1px solid #e5e7eb; }
 .ab textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }
 .ab-btnrow { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
 .ab-btn { border: 1px solid #d1d5db; background: #ffffff; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; font: inherit; }
