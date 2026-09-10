@@ -266,13 +266,23 @@ try {
         ])
     );
 } finally {
-    $tenantResolver->setTenantId(54);
-    $tenantCleanup = app()->db()->prepare(
-        'DELETE FROM capability_authorization_policies '
-        . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider = ?'
-    );
-    $tenantCleanup->execute([$policyVersion, $capabilityId, '2', $providerId]);
-    $tenantResolver->setTenantId($previousTenantId);
+    // The tenant-scoped cleanup only applies where tenant 54 is actually
+    // configured (developer machines are; CI is not). Touching it unconditionally
+    // made this test die during teardown — *after* every assertion had already
+    // passed — and that death was invisible while uncaught CLI exceptions still
+    // exited 0. Resolver state is always restored, so the guard cannot leak.
+    try {
+        $tenantResolver->setTenantId(54);
+        $tenantCleanup = app()->db()->prepare(
+            'DELETE FROM capability_authorization_policies '
+            . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider = ?'
+        );
+        $tenantCleanup->execute([$policyVersion, $capabilityId, '2', $providerId]);
+    } catch (Throwable $tenantCleanupUnavailable) {
+        // No tenant 54 database here — the tenant-scoped rows were never written.
+    } finally {
+        $tenantResolver->setTenantId($previousTenantId);
+    }
     $cleanup = $db->prepare(
         'DELETE FROM capability_authorization_policies '
         . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider IN (?, ?)'
