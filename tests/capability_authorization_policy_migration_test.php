@@ -50,6 +50,25 @@ function capAuthzPolicyDeniedForReason(CapabilityBus $bus, string $capabilityId,
     return false;
 }
 
+/**
+ * Call the bus and report the outcome instead of letting a denial kill the
+ * process. An unwrapped call buried the reason: the test died here, printed no
+ * assertion, and (while uncaught CLI exceptions still exited 0) reported PASS.
+ *
+ * @param array<string, mixed> $options
+ * @return array{allowed: bool, reason: string}
+ */
+function capAuthzPolicyOutcome(CapabilityBus $bus, string $capabilityId, array $options): array
+{
+    try {
+        $result = $bus->call($capabilityId, [], $options);
+
+        return ['allowed' => is_array($result) && ($result['allowed'] ?? false) === true, 'reason' => ''];
+    } catch (CapabilityCallException $e) {
+        return ['allowed' => false, 'reason' => $e->getMessage()];
+    }
+}
+
 echo "=== CAPABILITY AUTHORIZATION POLICY MIGRATION ===\n";
 
 $db = app()->db();
@@ -205,10 +224,11 @@ try {
         'allowed_roles' => 'admin',
         'requires_protocol' => 'v2',
     ])]);
-    $resolverResult = $bus->call($capabilityId, [], $resolverOptions);
+    $resolverResult = capAuthzPolicyOutcome($bus, $capabilityId, $resolverOptions);
     capAuthzPolicyTest(
         'governed dispatch resolves tenant from the app tenant resolver without options or request context',
-        is_array($resolverResult) && ($resolverResult['allowed'] ?? false) === true
+        $resolverResult['allowed'] === true,
+        $resolverResult['reason']
     );
 
     $tenantResolver->setTenantId(null);
@@ -223,20 +243,22 @@ try {
         'caller_module' => $callerModule,
         'tenant_id' => 'tenant-' . $suffix,
     ];
-    $adminResult = $bus->call($capabilityId, [], array_merge($baseOptions, [
+    $adminResult = capAuthzPolicyOutcome($bus, $capabilityId, array_merge($baseOptions, [
         'caller_user' => ['role' => 'admin'],
     ]));
     capAuthzPolicyTest(
         'protocol-v2 dispatch is allowed after canonical bus re-authorization',
-        is_array($adminResult) && ($adminResult['allowed'] ?? false) === true
+        $adminResult['allowed'] === true,
+        $adminResult['reason']
     );
-    $alternateCallerResult = $bus->call($capabilityId, [], array_merge($baseOptions, [
+    $alternateCallerResult = capAuthzPolicyOutcome($bus, $capabilityId, array_merge($baseOptions, [
         'caller_module' => $alternateCallerModule,
         'caller_user' => ['role' => 'admin'],
     ]));
     capAuthzPolicyTest(
         'caller_module accepts every member of a bounded comma-separated allowlist',
-        is_array($alternateCallerResult) && ($alternateCallerResult['allowed'] ?? false) === true
+        $alternateCallerResult['allowed'] === true,
+        $alternateCallerResult['reason']
     );
     capAuthzPolicyTest(
         'protocol-v2 policy denies a legacy dispatch in the canonical bus',
