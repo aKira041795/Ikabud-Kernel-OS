@@ -1810,6 +1810,12 @@ set_exception_handler(function (Throwable $e): void {
 
     $isApi = function_exists('kernel_is_api_request') && kernel_is_api_request();
 
+    // An uncaught exception is a failure signal. Under the CLI SAPI (tests,
+    // scripts, cron wrappers) exit non-zero so a script that dies during
+    // bootstrap can never be mistaken for a passing test; the web SAPI keeps a
+    // clean exit because the response code already carries the status.
+    $exitCode = PHP_SAPI === 'cli' ? 1 : 0;
+
     // Map typed exceptions to proper HTTP status codes
     $statusCode = 500;
     if ($e instanceof \Ikabud\Kernel\Exceptions\AuthenticationException) {
@@ -1838,7 +1844,7 @@ set_exception_handler(function (Throwable $e): void {
             $payload['debug'] = ['type' => get_class($e)];
         }
         echo json_encode($payload, JSON_UNESCAPED_UNICODE);
-        exit;
+        exit($exitCode);
     }
 
     // HTML path — unchanged
@@ -1871,7 +1877,7 @@ set_exception_handler(function (Throwable $e): void {
                 'show_detail' => false,
             ]);
             echo $html500;
-            exit;
+            exit($exitCode);
         } catch (Throwable $renderEx) {
             // Tier 1 failed — fall through to bare HTML. Log the render failure
             // only as a warning so the original critical error is not obscured.
@@ -1885,7 +1891,7 @@ set_exception_handler(function (Throwable $e): void {
     echo '<!DOCTYPE html><html><head><title>Error</title></head><body>'
        . '<h1>Application Error</h1><p>An unexpected error occurred. Please try again later.</p>'
        . '</body></html>';
-    exit;
+    exit($exitCode);
 });
 
 // Shutdown handler for fatal errors (parse errors, memory exhaustion, etc.)
