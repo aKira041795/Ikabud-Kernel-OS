@@ -16,6 +16,7 @@ function cms_akira_theme_capability_handlers(): array
         'akira.theme.resolve@1' => 'cat_cap_akira_theme_resolve_1',
         'akira.theme.registry@1' => 'cat_cap_akira_theme_registry_1',
         'akira.theme.validate@1' => 'cat_cap_akira_theme_validate_1',
+        'akira.theme.blocks@1' => 'cat_cap_akira_theme_blocks_1',
         'akira.theme.customizer.schema@1' => 'cat_cap_akira_theme_customizer_schema_1',
         'akira.theme.customizer.values@1' => 'cat_cap_akira_theme_customizer_values_1',
         'akira.theme.activate@1' => 'cat_cap_akira_theme_activate_1',
@@ -262,6 +263,125 @@ function catThemeLintDisyl(string $themeDir): array
 }
 
 /**
+ * Read the canonical, versioned theme block catalogue.
+ *
+ * @return list<array<string, mixed>>
+ */
+function catThemeBlocks(string $themeDir): array
+{
+    $catalogue = catThemeReadJson($themeDir . '/block-definitions.json');
+    return is_array($catalogue) && is_array($catalogue['blocks'] ?? null) ? array_values($catalogue['blocks']) : [];
+}
+
+/**
+ * Validate the one canonical block/section contract used by themes and future compositions.
+ *
+ * @return list<string>
+ */
+function catThemeBlockErrors(string $themeDir): array
+{
+    $file = $themeDir . '/block-definitions.json';
+    if (!is_file($file)) {
+        return []; // Block catalogues are optional for legacy themes.
+    }
+    $catalogue = catThemeReadJson($file);
+    if (!is_array($catalogue)) {
+        return ['block-definitions.json: invalid JSON object.'];
+    }
+    $version = $catalogue['contract_version'] ?? null;
+    if (!is_string($version) || preg_match('/^\d+\.\d+\.\d+$/', $version) !== 1) {
+        return ['block-definitions.json: contract_version must be a semantic version.'];
+    }
+    if (!is_array($catalogue['blocks'] ?? null)) {
+        return ['block-definitions.json: blocks must be an array.'];
+    }
+    $errors = [];
+    $ids = [];
+    $allowedTypes = ['string', 'url', 'boolean', 'integer', 'array'];
+    $denyContext = ['tenant_id','id','provider','module','user','actor','kernel','db','app','*'];
+    foreach (array_values($catalogue['blocks']) as $index => $block) {
+        $at = "block-definitions.json blocks[{$index}]";
+        if (!is_array($block)) {
+            $errors[] = "{$at}: must be an object.";
+            continue;
+        }
+        $id = is_string($block['id'] ?? null) ? $block['id'] : '';
+        if (preg_match('/^[a-z][a-z0-9-]*$/', $id) !== 1) {
+            $errors[] = "{$at}: invalid id '{$id}'.";
+        }
+        if (isset($ids[$id])) {
+            $errors[] = "{$at}: duplicate id '{$id}'.";
+        }
+        $ids[$id] = true;
+        if (!is_string($block['label'] ?? null) || trim($block['label']) === '') {
+            $errors[] = "{$at} ({$id}): label is required.";
+        }
+        if (!in_array($block['category'] ?? null, ['layout','content','media'], true)) {
+            $errors[] = "{$at} ({$id}): invalid category.";
+        }
+        if (($block['contract_version'] ?? null) !== $version) {
+            $errors[] = "{$at} ({$id}): contract_version must equal catalogue version {$version}.";
+        }
+        $props = $block['schema']['props'] ?? null;
+        if (!is_array($props)) {
+            $errors[] = "{$at} ({$id}): schema.props must be an object.";
+            $props = [];
+        }
+        foreach ($props as $name => $prop) {
+            if (!is_string($name) || preg_match('/^[a-z][a-z0-9_]*$/', $name) !== 1 || !is_array($prop)) {
+                $errors[] = "{$at} ({$id}): invalid prop '{$name}'.";
+                continue;
+            }
+            if (!in_array($prop['type'] ?? null, $allowedTypes, true)) {
+                $errors[] = "{$at} ({$id}) prop '{$name}': type is not allowed.";
+            }
+            if (($prop['type'] ?? null) === 'array' && !is_array($prop['items'] ?? null)) {
+                $errors[] = "{$at} ({$id}) prop '{$name}': array items schema is required.";
+            }
+        }
+        $defaults = $block['defaults'] ?? null;
+        if (!is_array($defaults)) {
+            $errors[] = "{$at} ({$id}): defaults must be an object.";
+        } else {
+            foreach ($defaults as $name => $value) {
+                if (!isset($props[$name])) {
+                    $errors[] = "{$at} ({$id}): default references unknown prop '{$name}'.";
+                }
+                if (is_string($value) && preg_match('/<[^>]*>/', $value)) {
+                    $errors[] = "{$at} ({$id}) default '{$name}': HTML is prohibited.";
+                }
+            }
+        }
+        if (!is_array($block['slots'] ?? null)) {
+            $errors[] = "{$at} ({$id}): slots must be an array.";
+        }
+        $renderer = $block['renderer'] ?? null;
+        $template = is_array($renderer) ? ($renderer['template'] ?? '') : '';
+        $templateLabel = is_scalar($template) ? (string) $template : get_debug_type($template);
+        if (!is_string($template) || preg_match('#^blocks/[a-zA-Z0-9_-]+\.disyl$#', $template) !== 1) {
+            $errors[] = "{$at} ({$id}): renderer template '{$templateLabel}' must be a theme blocks/*.disyl path.";
+        } else {
+            $real = realpath($themeDir . '/' . $template);
+            if ($real === false || !is_file($real) || !str_starts_with($real, $themeDir . DIRECTORY_SEPARATOR)) {
+                $errors[] = "{$at} ({$id}): renderer template '{$template}' is missing or escapes the theme directory.";
+            }
+        }
+        $keys = is_array($renderer) ? ($renderer['context_keys'] ?? null) : null;
+        if ($keys !== ['props']) {
+            $errors[] = "{$at} ({$id}): renderer context_keys must be exactly ['props'].";
+        }
+        if (is_array($keys)) {
+            foreach ($keys as $key) {
+                if (in_array($key, $denyContext, true)) {
+                    $errors[] = "{$at} ({$id}): unsafe renderer context key '{$key}'.";
+                }
+            }
+        }
+    }
+    return $errors;
+}
+
+/**
  * Full native validation for one Akira theme.
  *
  * @return array{slug: string, valid: bool, errors: list<string>, warnings: list<string>, checks: array<string, mixed>, fallback_available: bool}
@@ -358,6 +478,12 @@ function catThemeValidate(string $slug): array
             }
         }
     }
+
+    $blockErrors = catThemeBlockErrors($dir);
+    foreach ($blockErrors as $error) {
+        $result['errors'][] = $error;
+    }
+    $result['checks']['blocks'] = $blockErrors === [];
 
     $contentErrors = catThemeTreeContentErrors($dir);
     foreach ($contentErrors as $error) {
@@ -969,6 +1095,21 @@ function cat_cap_akira_theme_validate_1(mixed $payload, string $capabilityId = '
         return ['ok' => false, 'error' => $error->getMessage()];
     }
     return ['ok' => true, 'data' => catThemeValidate($slug)];
+}
+
+/** @return array<string,mixed> */
+function cat_cap_akira_theme_blocks_1(mixed $payload, string $capabilityId = 'akira.theme.blocks@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload) || is_array($payload) && array_key_exists('tenant_id', $payload)) {
+        return ['ok' => false, 'error' => 'tenant_id is supplied by kernel context'];
+    }
+    $resolved = catThemeResolveActive();
+    $slug = (string) ($resolved['theme_slug'] ?? '');
+    $dir = catThemeDir($slug);
+    if (!$resolved['ok'] || $dir === null || !catThemeValidate($slug)['valid']) {
+        return ['ok' => false, 'error' => 'Active theme block catalogue unavailable'];
+    }
+    return ['ok' => true, 'theme_slug' => $slug, 'blocks' => catThemeBlocks($dir)];
 }
 
 /** @return array<string, mixed> */

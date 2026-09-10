@@ -1,0 +1,4 @@
+<figure class="akira-ark-block akira-ark-quote">
+  <blockquote>“{props.quote | esc_html}”</blockquote>
+  {if props.cite}<figcaption>— {props.cite | esc_html}</figcaption>{/if}
+</figure>

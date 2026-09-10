@@ -36,6 +36,12 @@
                 "description": "Validate an Akira theme manifest, renderer registry, DiSyL, and traversal safety"
             },
             {
+                "id": "akira.theme.blocks@1",
+                "priority": 50,
+                "modes": ["first"],
+                "description": "Read validated typed block definitions from the active theme"
+            },
+            {
                 "id": "akira.theme.customizer.schema@1",
                 "priority": 50,
                 "modes": ["first"],

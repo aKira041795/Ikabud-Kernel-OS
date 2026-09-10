@@ -1,0 +1,8 @@
+<section class="akira-ark-block">
+  {if props.title}<h2>{props.title | esc_html}</h2>{/if}
+  <div class="akira-ark-grid">
+  {foreach props.items as item}
+    <article class="akira-ark-card"><h3>{item.title | esc_html}</h3><p>{item.text | esc_html}</p>{if item.href}<a href="{item.href | esc_url | esc_attr}">Learn more →</a>{/if}</article>
+  {/foreach}
+  </div>
+</section>

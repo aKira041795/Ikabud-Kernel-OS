@@ -1,0 +1,52 @@
+{
+  "contract_version": "1.0.0",
+  "blocks": [
+    {
+      "id": "hero", "label": "Hero", "category": "layout",
+      "schema": {"props": {
+        "eyebrow": {"type": "string", "label": "Eyebrow", "default": ""},
+        "title": {"type": "string", "label": "Title", "default": "A better way to publish"},
+        "subtitle": {"type": "string", "label": "Subtitle", "default": "Structured, safe, and beautifully simple."},
+        "cta_label": {"type": "string", "label": "Button label", "default": "Learn more"},
+        "cta_href": {"type": "url", "label": "Button URL", "default": "/"}
+      }},
+      "defaults": {"eyebrow":"CMS Akira","title":"A better way to publish","subtitle":"Structured, safe, and beautifully simple.","cta_label":"Learn more","cta_href":"/"},
+      "slots": [], "renderer": {"template":"blocks/hero.disyl","context_keys":["props"]}, "contract_version":"1.0.0"
+    },
+    {
+      "id": "richtext", "label": "Rich text", "category": "content",
+      "schema": {"props": {
+        "title":{"type":"string","label":"Title","default":""},
+        "body":{"type":"string","label":"Body","default":""}
+      }},
+      "defaults":{"title":"A thoughtful heading","body":"Add your story here."},
+      "slots":[], "renderer":{"template":"blocks/richtext.disyl","context_keys":["props"]}, "contract_version":"1.0.0"
+    },
+    {
+      "id":"card-grid", "label":"Card grid", "category":"content",
+      "schema":{"props":{
+        "title":{"type":"string","label":"Title","default":"Featured"},
+        "items":{"type":"array","label":"Cards","items":{"type":"object","props":{"title":{"type":"string"},"text":{"type":"string"},"href":{"type":"url"}}},"default":[]}
+      }},
+      "defaults":{"title":"Featured","items":[]}, "slots":[], "renderer":{"template":"blocks/card-grid.disyl","context_keys":["props"]}, "contract_version":"1.0.0"
+    },
+    {
+      "id":"quote", "label":"Quote", "category":"content",
+      "schema":{"props":{
+        "quote":{"type":"string","label":"Quote","default":""},
+        "cite":{"type":"string","label":"Citation","default":""}
+      }},
+      "defaults":{"quote":"Publishing should feel calm and intentional.","cite":"CMS Akira"}, "slots":[], "renderer":{"template":"blocks/quote.disyl","context_keys":["props"]}, "contract_version":"1.0.0"
+    },
+    {
+      "id":"cta", "label":"Call to action", "category":"layout",
+      "schema":{"props":{
+        "title":{"type":"string","label":"Title","default":"Ready to begin?"},
+        "subtitle":{"type":"string","label":"Subtitle","default":"Start publishing today."},
+        "cta_label":{"type":"string","label":"Button label","default":"Get started"},
+        "cta_href":{"type":"url","label":"Button URL","default":"/"}
+      }},
+      "defaults":{"title":"Ready to begin?","subtitle":"Start publishing today.","cta_label":"Get started","cta_href":"/"}, "slots":[], "renderer":{"template":"blocks/cta.disyl","context_keys":["props"]}, "contract_version":"1.0.0"
+    }
+  ]
+}

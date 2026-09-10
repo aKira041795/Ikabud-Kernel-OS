@@ -7,6 +7,7 @@ return [
         '/api/v1/cms-akira-theme/health' => 'cms-akira-theme:catThemeHealth',
         '/api/v1/cms-akira-theme/resolve' => 'cms-akira-theme:catThemeResolveJson',
         '/api/v1/cms-akira-theme/themes' => 'cms-akira-theme:catThemeRegistryJson',
+        '/api/v1/cms-akira-theme/blocks' => 'cms-akira-theme:catThemeBlocksJson',
         '/api/v1/cms-akira-theme/themes/{slug}/validate' => 'cms-akira-theme:catThemeValidateJson',
         '/cms-akira-theme' => 'cms-akira-theme:catThemeAdminPage',
     ],

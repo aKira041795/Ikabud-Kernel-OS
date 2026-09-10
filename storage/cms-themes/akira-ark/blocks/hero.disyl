@@ -1,0 +1,6 @@
+<section class="akira-ark-block akira-ark-hero">
+  {if props.eyebrow}<p class="akira-ark-kicker">{props.eyebrow | esc_html}</p>{/if}
+  <h1>{props.title | esc_html}</h1>
+  {if props.subtitle}<p class="akira-ark-lead">{props.subtitle | esc_html}</p>{/if}
+  {if props.cta_label}<a class="akira-ark-button" href="{props.cta_href | esc_url | esc_attr}">{props.cta_label | esc_html}</a>{/if}
+</section>
