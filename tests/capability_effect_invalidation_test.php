@@ -9,6 +9,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../src/helpers/module-manager.php';
 require_once __DIR__ . '/../kernel/DiSyL/Cache/FragmentStore.php';
+require_once __DIR__ . '/_support/env_guard.php';
+
+requireTenantFixture(6401);
 
 use Ikabud\Kernel\DiSyL\Cache\FragmentStore;
 

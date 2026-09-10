@@ -1,7 +1,12 @@
 # CMS Akira Extensibility — Architecture Decision Record (ADR)
 
 Date: 2026-09-10
-Status: **ACCEPTED (architecture)** — T1–T3 pending implementation, each gated (see roadmap + refusal list)
+Status: **ACCEPTED (architecture)** — T1–T4c implemented and merged (#95–#105); T5 deferred (see roadmap + refusal list)
+Product status: **CMS Akira is both the proof that the governed Kernel works and the product** — the
+         reference CMS for this kernel and a serious CMS contender. Judge every change as product
+         code (UX, error pages, determinism, observability) *and* as a demonstration of the governed
+         architecture (capability bus → policy row → idempotency + audit in one tenant transaction →
+         cache invalidation).
 Scope: CMS Akira suite — THEMES, EXTENSIONS (submodules), PAGE BUILDER support on Ikabud Kernel OS 6
 Evidence: three-model panel debate (2026-09-10) — Panel A product/UX best-practice synthesis (chair),
          Panel B kernel-governance architecture (GPT Sol), Panel C contrarian/risk (DeepSeek flash).

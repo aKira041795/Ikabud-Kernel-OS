@@ -24,10 +24,15 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/_support/env_guard.php';
+
+requireWritableCompiledCache();
 
 $pass = 0;
 $fail = 0;
+/** @var list<string> $errors */
 $errors = [];
+/** @var list<string> $phpWarnings */
 $phpWarnings = [];
 
 function t(string $label, bool $ok, string $detail = ''): void
@@ -52,6 +57,9 @@ function heading(string $label): void
  * Render a page and return [html, engineErrors]. Any PHP warning/notice
  * mentioning undefined variables is captured into the shared $phpWarnings
  * list so the render itself can be asserted warning-free.
+ *
+ * @param array<string, mixed> $context
+ * @return array{string, list<string>}
  */
 function renderPage(string $page, array $context): array
 {
@@ -89,6 +97,7 @@ $pages = [
     ['entry-module-unavailable', 503],
     ['maintenance', 503],
 ];
+/** @var array<string, string> $rendered */
 $rendered = [];
 foreach ($pages as [$page, $expectedStatus]) {
     [$html, $engineErrors] = renderPage($page, ['base_url' => '']);
@@ -171,6 +180,7 @@ t('safe detail renders when show_detail is explicitly enabled', str_contains($de
 heading('500 hardening guarantees');
 
 $html500 = $rendered['500'] ?? '';
+// @phpstan-ignore greater.alwaysFalse (render output is populated dynamically)
 t('500 output is non-empty HTML', strlen($html500) > 50 && str_contains($html500, '<'));
 t(
     '500 output does not leak exception/stack text',
@@ -203,4 +213,4 @@ if ($errors !== []) {
     }
 }
 
-exit($fail > 0 ? 1 : 0);
+exit($errors !== [] ? 1 : 0);

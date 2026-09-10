@@ -12,6 +12,9 @@ $_SERVER['REQUEST_URI'] = '/';
 
 require __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../src/helpers/module-manager.php';
+require_once __DIR__ . '/_support/env_guard.php';
+
+requireTenantFixture(63001);
 
 $pass = 0;
 $fail = 0;
