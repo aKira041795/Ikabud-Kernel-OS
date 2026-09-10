@@ -1810,6 +1810,22 @@ set_exception_handler(function (Throwable $e): void {
 
     $isApi = function_exists('kernel_is_api_request') && kernel_is_api_request();
 
+    // A CLI invocation that dies must say *why* on stderr. The HTML error page
+    // exists for browsers; for scripts it hides the cause (the log file may even
+    // have been cleared by whatever ran last), which is how a suite full of
+    // dying tests stayed undiagnosed.
+    if (PHP_SAPI === 'cli') {
+        $debug = in_array(strtolower((string) ($_ENV['APP_DEBUG'] ?? '')), ['1', 'true', 'yes'], true);
+        fwrite(STDERR, sprintf(
+            'UNCAUGHT %s: %s in %s:%d%s',
+            $e::class,
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine(),
+            $debug ? PHP_EOL . $e->getTraceAsString() . PHP_EOL : PHP_EOL
+        ));
+    }
+
     // An uncaught exception is a failure signal. Under the CLI SAPI (tests,
     // scripts, cron wrappers) exit non-zero so a script that dies during
     // bootstrap can never be mistaken for a passing test; the web SAPI keeps a
