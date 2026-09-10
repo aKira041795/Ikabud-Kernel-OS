@@ -70,7 +70,7 @@ function cacSeedPostAdminReadPolicies(): void
             'capability_id' => $capabilityId,
             'capability_version' => '1',
             'provider' => 'cms-akira-core',
-            'caller_module' => 'cms-akira-core,cms-akira-shell',
+            'caller_module' => 'cms-akira-core,cms-akira-shell,cms-akira-seo',
             'allowed_roles' => 'contributor,author,editor,admin,administrator,superadmin',
             'provider_activation_required' => true,
             'requires_protocol' => 'v1',

@@ -168,20 +168,31 @@ function akiraShellPage(string $title, string $body, array $data = []): string
 {
     $active = (string)($data['active'] ?? '');
     $links = [
-        'dashboard' => ['/cms-akira-shell', 'Dashboard'],
-        'posts' => ['/cms-akira-shell/posts', 'Posts'],
-        'categories' => ['/cms-akira-shell/categories', 'Categories'],
-        'content-types' => ['/cms-akira-shell/content-types', 'Content types'],
+        ['id' => 'dashboard', 'route' => '/cms-akira-shell', 'label' => 'Dashboard', 'order' => 0],
+        ['id' => 'posts', 'route' => '/cms-akira-shell/posts', 'label' => 'Posts', 'order' => 10],
+        ['id' => 'categories', 'route' => '/cms-akira-shell/categories', 'label' => 'Categories', 'order' => 20],
+        ['id' => 'content-types', 'route' => '/cms-akira-shell/content-types', 'label' => 'Content types', 'order' => 30],
     ];
     if (akiraShellIsAdmin()) {
-        $links['compositions'] = ['/cms-akira-shell/compositions', 'Compositions'];
-        $links['theme-studio'] = ['/cms-akira-theme', 'Theme Studio'];
-        $links['permissions'] = ['/cms-akira-shell/permissions', 'Permissions'];
-        $links['users'] = ['/cms-akira-shell/users', 'Users'];
-        $links['health'] = ['/cms-akira-shell/health', 'Module health'];
+        $links = array_merge($links, [
+            ['id' => 'compositions', 'route' => '/cms-akira-shell/compositions', 'label' => 'Compositions', 'order' => 40],
+            ['id' => 'permissions', 'route' => '/cms-akira-shell/permissions', 'label' => 'Permissions', 'order' => 50],
+            ['id' => 'users', 'route' => '/cms-akira-shell/users', 'label' => 'Users', 'order' => 60],
+            ['id' => 'health', 'route' => '/cms-akira-shell/health', 'label' => 'Module health', 'order' => 70],
+        ]);
     }
+    foreach (kernelContributionsForHostLocation('cms-akira-shell', 'sidebar', null, kernelContributionRequestContext()) as $contribution) {
+        $links[] = [
+            'id' => (string) ($contribution['active_key'] ?: $contribution['id']),
+            'route' => (string) $contribution['route'],
+            'label' => (string) $contribution['label'],
+            'order' => (int) $contribution['order'],
+        ];
+    }
+    usort($links, static fn (array $a, array $b): int => [$a['order'], $a['id']] <=> [$b['order'], $b['id']]);
     $nav = '';
-    foreach ($links as $key => [$url, $label]) {
+    foreach ($links as $link) {
+        [$key, $url, $label] = [$link['id'], $link['route'], $link['label']];
         $classes = $key === $active ? 'bg-akira-600 text-white shadow-lg shadow-akira-950/20' : 'text-slate-300 hover:bg-white/10 hover:text-white';
         $nav .= '<a href="' . $url . '" class="flex items-center rounded-xl px-4 py-3 text-sm font-medium transition ' . $classes . '">' . $label . '</a>';
     }
@@ -329,6 +340,36 @@ function akiraShellCall(string $capability, array $payload = []): mixed
         'caller' => ['module' => 'cms-akira-shell', 'user' => app()->user()],
         'mode' => 'first',
     ]);
+}
+
+/** Render each available dashboard widget through its own capability. */
+function akiraShellDashboardWidgets(): string
+{
+    try {
+        $registry = akiraShellCall('akira.extension.widgets@1');
+    } catch (Throwable) {
+        return '';
+    }
+    if (!is_array($registry) || ($registry['ok'] ?? false) !== true || !is_array($registry['widgets'] ?? null)) {
+        return '';
+    }
+    $html = '';
+    foreach ($registry['widgets'] as $widget) {
+        if (!is_array($widget)) {
+            continue;
+        }
+        try {
+            $rendered = akiraShellCall((string) ($widget['render_capability'] ?? ''));
+        } catch (Throwable) {
+            continue;
+        }
+        if (!is_array($rendered) || ($rendered['ok'] ?? false) !== true || !is_string($rendered['html'] ?? null)) {
+            continue;
+        }
+        $html .= '<article class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><h2 class="mb-4 font-bold text-slate-950">'
+            . akiraShellEscape($widget['label'] ?? '') . '</h2>' . $rendered['html'] . '</article>';
+    }
+    return $html === '' ? '' : '<section class="mt-6 grid gap-4 lg:grid-cols-2">' . $html . '</section>';
 }
 
 /** @return array<string,mixed> */

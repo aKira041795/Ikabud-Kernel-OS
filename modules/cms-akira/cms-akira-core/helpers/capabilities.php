@@ -18,6 +18,7 @@ function cms_akira_core_capability_handlers(): array
         'akira.user.list@1' => 'cac_cap_akira_user_list_1',
         'akira.user.update_role@1' => 'cac_cap_akira_user_update_role_1',
         'akira.user.set_active@1' => 'cac_cap_akira_user_set_active_1',
+        'akira.extension.widgets@1' => 'cac_cap_akira_extension_widgets_1',
         'akira.post.get@1' => 'cac_cap_akira_post_get_1',
         'akira.post.list@1' => 'cac_cap_akira_post_list_1',
         'akira.post.admin.get@1' => 'cac_cap_akira_post_admin_get_1',
@@ -44,6 +45,48 @@ function cms_akira_core_capability_handlers(): array
         'entity.list.post@1' => 'cac_cap_entity_list_post_1',
         'entity.get.post@1' => 'cac_cap_entity_get_post_1',
     ];
+}
+
+/**
+ * Return validated raw dashboard widget declarations from enabled Akira suite members.
+ *
+ * @return array<string, mixed>
+ */
+function cac_cap_akira_extension_widgets_1(mixed $payload, string $capabilityId = 'akira.extension.widgets@1', string $caller = 'unknown'): array
+{
+    $widgets = [];
+    foreach (discoverModules() as $moduleId => $manifest) {
+        if (($manifest['suite'] ?? '') !== 'cms-akira'
+            || !kernelContributionModuleAllowed((string) $moduleId, $manifest, kernelContributionRequestContext())) {
+            continue;
+        }
+        foreach (is_array($manifest['admin_contributions'] ?? null) ? $manifest['admin_contributions'] : [] as $raw) {
+            if (!is_array($raw) || ($raw['host'] ?? '') !== 'cms-akira-shell'
+                || ($raw['location'] ?? '') !== 'dashboard.widgets') {
+                continue;
+            }
+            $id = trim((string) ($raw['id'] ?? ''));
+            $label = trim((string) ($raw['label'] ?? ''));
+            $render = trim((string) ($raw['render_capability'] ?? ''));
+            $size = trim((string) ($raw['size'] ?? ''));
+            if ($id === '' || $label === '' || preg_match('/^[a-z][a-z0-9_.-]*$/D', $id) !== 1
+                || preg_match('/^[a-z][a-z0-9_.]*@[1-9][0-9]*$/D', $render) !== 1
+                || ($size !== '' && !in_array($size, ['small', 'medium', 'large'], true))) {
+                continue;
+            }
+            $widgets[] = [
+                'id' => $id,
+                'label' => $label,
+                'size' => $size,
+                'order' => is_int($raw['order'] ?? null) ? $raw['order'] : 0,
+                'render_capability' => $render,
+                'module' => (string) $moduleId,
+            ];
+        }
+    }
+    usort($widgets, static fn (array $a, array $b): int => [$a['order'], $a['id']] <=> [$b['order'], $b['id']]);
+
+    return ['ok' => true, 'widgets' => $widgets];
 }
 
 function cacPostTenantId(): int

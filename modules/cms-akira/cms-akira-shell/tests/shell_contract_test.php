@@ -38,6 +38,25 @@ function app(): mixed
     return $app ??= new AkiraShellRenderTestApp();
 }
 
+/** @return array<string,mixed> */
+function kernelContributionRequestContext(): array
+{
+    return ['user' => app()->user()];
+}
+
+/**
+ * @param array<string,array<string,mixed>>|null $modules
+ * @param array<string,mixed>|null $context
+ * @return list<array<string,mixed>>
+ */
+function kernelContributionsForHostLocation(string $host, string $location, ?array $modules = null, ?array $context = null): array
+{
+    return (($context['user']['role'] ?? '') === 'admin') ? [[
+        'id' => 'cms-akira-theme.theme-studio', 'active_key' => 'theme-studio',
+        'route' => '/cms-akira-theme', 'label' => 'Theme Studio', 'order' => 5,
+    ]] : [];
+}
+
 $root = dirname(__DIR__);
 require_once $root . '/helpers.php';
 $manifest = json_decode((string)file_get_contents($root . '/module.json'), true);

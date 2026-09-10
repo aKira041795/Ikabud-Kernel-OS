@@ -2,7 +2,7 @@
     "id": "cms-akira-core",
     "name": "CMS Akira Core",
     "version": "1.0.0",
-    "description": "CMS Akira product core — authoritative host module for the cms-akira suite. Declares the suite's extension points and product identity.",
+    "description": "CMS Akira product core \u2014 authoritative host module for the cms-akira suite. Declares the suite's extension points and product identity.",
     "author": "Ikabud",
     "suite": "cms-akira",
     "kind": "product-core",
@@ -66,36 +66,58 @@
             {
                 "id": "akira.policy.list@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "List active Akira policy rows for governance administration"
             },
             {
                 "id": "akira.policy.set_roles@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
-                "effects": {"invalidates": ["entity.list.post"]},
+                "effects": {
+                    "invalidates": [
+                        "entity.list.post"
+                    ]
+                },
                 "description": "Create the next complete active policy version with one edited role set"
             },
             {
                 "id": "akira.user.list@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "List users in the current tenant"
             },
             {
                 "id": "akira.user.update_role@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
                 "description": "Update a tenant user's role and invalidate their sessions"
             },
             {
                 "id": "akira.user.set_active@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
                 "description": "Activate or deactivate a tenant user and invalidate their sessions"
+            },
+            {
+                "id": "akira.extension.widgets@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "List validated dashboard widgets declared by enabled Akira suite members"
             },
             {
                 "id": "akira.post.get@1",

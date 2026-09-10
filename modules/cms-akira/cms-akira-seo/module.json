@@ -25,29 +25,53 @@
             {
                 "id": "akira.seo.get@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Return one projected Akira SEO metadata record for the current tenant"
             },
             {
                 "id": "akira.seo.meta.build@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Build final escaped SEO metadata for a rendering request from a stored record plus defaults"
+            },
+            {
+                "id": "akira.seo.content_health@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Render tenant post counts with and without native SEO metadata"
             },
             {
                 "id": "akira.seo.upsert@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
-                "effects": {"invalidates": ["entity.list.seo-metadata"]},
+                "effects": {
+                    "invalidates": [
+                        "entity.list.seo-metadata"
+                    ]
+                },
                 "description": "Create or update Akira SEO metadata as an idempotent admin mutation"
             },
             {
                 "id": "akira.seo.delete@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
-                "effects": {"invalidates": ["entity.list.seo-metadata"]},
+                "effects": {
+                    "invalidates": [
+                        "entity.list.seo-metadata"
+                    ]
+                },
                 "description": "Delete Akira SEO metadata as an idempotent admin mutation"
             }
         ],
@@ -56,10 +80,22 @@
             "kernel.idempotency.claim@1",
             "kernel.idempotency.commit@1",
             "kernel.idempotency.release@1",
-            "kernel.audit.record@1"
+            "kernel.audit.record@1",
+            "akira.post.admin.list@1"
         ]
     },
     "routes": true,
     "events": [],
-    "_enabled": false
+    "_enabled": false,
+    "admin_contributions": [
+        {
+            "id": "cms-akira-seo.content-health",
+            "host": "cms-akira-shell",
+            "location": "dashboard.widgets",
+            "label": "Content health",
+            "size": "medium",
+            "order": 10,
+            "render_capability": "akira.seo.content_health@1"
+        }
+    ]
 }
