@@ -92,7 +92,7 @@ try {
     $manifest = kernelReadJsonFile($module . '/module.json');
     $ids = array_column($manifest['capabilities']['exposes'] ?? [], 'id');
     $expectedIds = array_keys(cms_akira_seo_capability_handlers());
-    $check($ids === $expectedIds, 'manifest and runtime expose exactly the four native SEO capabilities');
+    $check($ids === $expectedIds, 'manifest and runtime expose the native SEO capabilities');
     $check(($manifest['depends'] ?? []) === ['cms-akira-core'], 'only the native Akira core module dependency remains');
     $check(
         ($manifest['owns_tables'] ?? []) === ['cms_akira_seo_metadata']
@@ -109,9 +109,9 @@ try {
         );
     }
     $check(
-        !isset($manifest['nav']) && !isset($manifest['admin_contributions'])
+        !isset($manifest['nav']) && isset($manifest['admin_contributions'][0])
         && !isset($manifest['compatibility']) && !isset($manifest['uninstall']),
-        'legacy nav/admin/authority scaffolding and cms compatibility fields are removed'
+        'dashboard contribution is declared without legacy nav/compatibility scaffolding'
     );
     $policies = new CapabilityAuthorizationRegistry($db);
     $check(

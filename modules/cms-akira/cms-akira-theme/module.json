@@ -20,53 +20,77 @@
             {
                 "id": "akira.theme.resolve@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Resolve the tenant's active Akira theme slug deterministically and fail closed"
             },
             {
                 "id": "akira.theme.registry@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "List installed ARK-visible Akira themes as a projected-field allowlist"
             },
             {
                 "id": "akira.theme.validate@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Validate an Akira theme manifest, renderer registry, DiSyL, and traversal safety"
             },
             {
                 "id": "akira.theme.blocks@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Read validated typed block definitions from the active theme"
             },
             {
                 "id": "akira.theme.customizer.schema@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Read the active theme's projected declarative customizer schema"
             },
             {
                 "id": "akira.theme.customizer.values@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "description": "Read the active theme's tenant-scoped customizer values"
             },
             {
                 "id": "akira.theme.activate@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
-                "effects": {"invalidates": ["theme.active"]},
+                "effects": {
+                    "invalidates": [
+                        "theme.active"
+                    ]
+                },
                 "description": "Activate an Akira theme for the current tenant as an idempotent admin mutation"
             },
             {
                 "id": "akira.theme.customize@1",
                 "priority": 50,
-                "modes": ["first"],
+                "modes": [
+                    "first"
+                ],
                 "requires_protocol": "v2",
-                "effects": {"invalidates": ["theme.active"]},
+                "effects": {
+                    "invalidates": [
+                        "theme.active"
+                    ]
+                },
                 "description": "Persist validated per-tenant theme customization as an idempotent audited mutation"
             }
         ],
@@ -80,5 +104,18 @@
     },
     "routes": true,
     "events": [],
-    "_enabled": false
+    "_enabled": false,
+    "admin_contributions": [
+        {
+            "id": "cms-akira-theme.theme-studio",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Theme Studio",
+            "route": "/cms-akira-theme",
+            "roles": [
+                "admin"
+            ],
+            "order": 5
+        }
+    ]
 }

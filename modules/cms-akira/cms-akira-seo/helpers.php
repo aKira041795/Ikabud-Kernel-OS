@@ -10,12 +10,13 @@ function cms_akira_seo_capability_handlers(): array
     return [
         'akira.seo.get@1' => 'cas_cap_akira_seo_get_1',
         'akira.seo.meta.build@1' => 'cas_cap_akira_seo_meta_build_1',
+        'akira.seo.content_health@1' => 'cas_cap_akira_seo_content_health_1',
         'akira.seo.upsert@1' => 'cas_cap_akira_seo_upsert_1',
         'akira.seo.delete@1' => 'cas_cap_akira_seo_delete_1',
     ];
 }
 
-/** Seed only the two mutation policies; public reads remain policy-free. */
+/** Seed mutation policies and the administrator-only dashboard read. */
 function casSeedSeoMutationPolicies(): void
 {
     if (!function_exists('app')) {
@@ -23,9 +24,11 @@ function casSeedSeoMutationPolicies(): void
     }
     $rows = [];
     foreach ([
+        'akira.seo.content_health@1',
         'akira.seo.upsert@1',
         'akira.seo.delete@1',
     ] as $capabilityId) {
+        $mutation = in_array($capabilityId, ['akira.seo.upsert@1', 'akira.seo.delete@1'], true);
         $rows[] = [
             'policy_version' => 1,
             'capability_id' => $capabilityId,
@@ -34,7 +37,7 @@ function casSeedSeoMutationPolicies(): void
             'caller_module' => null,
             'allowed_roles' => 'admin',
             'provider_activation_required' => true,
-            'requires_protocol' => 'v2',
+            'requires_protocol' => $mutation ? 'v2' : null,
             'is_active' => true,
         ];
     }
@@ -217,6 +220,51 @@ function cas_cap_akira_seo_get_1(mixed $payload, string $capabilityId = 'akira.s
             : ['ok' => false, 'error' => 'SEO metadata not found'];
     } catch (Throwable) {
         return ['ok' => false, 'error' => 'SEO metadata not found'];
+    }
+}
+
+/** @return array<string, mixed> */
+function cas_cap_akira_seo_content_health_1(mixed $payload, string $capabilityId = 'akira.seo.content_health@1', string $caller = 'unknown'): array
+{
+    try {
+        $slugs = [];
+        $offset = 0;
+        do {
+            $result = app()->cap()->call('akira.post.admin.list@1', [
+                'filters' => ['include_unpublished' => true],
+                'limit' => 100,
+                'offset' => $offset,
+            ], ['caller' => ['module' => 'cms-akira-seo', 'user' => app()->user()], 'mode' => 'first']);
+            if (!is_array($result) || ($result['ok'] ?? false) !== true) {
+                return ['ok' => false, 'error' => 'Post inventory unavailable'];
+            }
+            $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
+            foreach ($rows as $row) {
+                if (is_array($row) && trim((string) ($row['slug'] ?? '')) !== '') {
+                    $slugs[(string) $row['slug']] = true;
+                }
+            }
+            $offset += count($rows);
+            $total = (int) ($result['total'] ?? count($slugs));
+        } while ($rows !== [] && $offset < $total);
+
+        $statement = casDb()->prepare(
+            "SELECT entity_key FROM cms_akira_seo_metadata WHERE tenant_id = :tenant AND entity_type = 'post'"
+        );
+        $statement->execute([':tenant' => casSeoTenantId()]);
+        $with = 0;
+        while (($key = $statement->fetchColumn()) !== false) {
+            $with += isset($slugs[(string) $key]) ? 1 : 0;
+        }
+        $without = max(0, count($slugs) - $with);
+        $html = '<div class="grid grid-cols-2 gap-4"><div><strong class="text-3xl text-emerald-700">'
+            . casSeoEscape((string) $with) . '</strong><p class="text-sm text-slate-500">With SEO metadata</p></div>'
+            . '<div><strong class="text-3xl text-amber-700">' . casSeoEscape((string) $without)
+            . '</strong><p class="text-sm text-slate-500">Without SEO metadata</p></div></div>';
+
+        return ['ok' => true, 'html' => $html];
+    } catch (Throwable) {
+        return ['ok' => false, 'error' => 'Content health unavailable'];
     }
 }
 

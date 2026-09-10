@@ -162,7 +162,8 @@ function akiraShellDashboard(array $params = []): void
     $body = '<section class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><p class="max-w-2xl text-sm text-slate-500">Here is what is live, what is in progress, and what your team touched recently.</p><div class="flex gap-2"><a href="/cms-akira-shell/posts" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">View all posts</a><a href="/cms-akira-shell/posts/new" class="rounded-2xl bg-akira-600 px-4 py-2.5 text-sm font-semibold text-white">+ Quick create</a></div></section>'
         . '<section class="grid gap-4 sm:grid-cols-3">' . $cards . '</section>'
         . '<section class="mt-6 grid gap-4 lg:grid-cols-[1.2fr_.8fr]"><div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="border-b border-slate-100 px-6 py-4"><h2 class="font-bold text-slate-950">Recent posts</h2></div>' . akiraShellRecentPosts($recent) . '</div>'
-        . '<div class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><h2 class="font-bold text-slate-950">Quick actions</h2><div class="mt-4 grid gap-3"><a class="rounded-2xl bg-akira-50 p-4 font-semibold text-akira-700" href="/cms-akira-shell/posts/new">Write a new post →</a>' . $adminQuickAction . '</div></div></section>';
+        . '<div class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><h2 class="font-bold text-slate-950">Quick actions</h2><div class="mt-4 grid gap-3"><a class="rounded-2xl bg-akira-50 p-4 font-semibold text-akira-700" href="/cms-akira-shell/posts/new">Write a new post →</a>' . $adminQuickAction . '</div></div></section>'
+        . akiraShellDashboardWidgets();
     echo akiraShellPage('CMS Akira Dashboard', $body, ['active' => 'dashboard']);
 }
 
