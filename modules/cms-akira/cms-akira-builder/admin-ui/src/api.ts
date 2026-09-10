@@ -16,6 +16,7 @@ export function readBootstrap(): Boot {
       return {
         mode: parsed.mode === 'edit' ? 'edit' : 'list',
         apiBase: parsed.apiBase ?? '/api/v1/cms-akira/builder',
+        blocks_endpoint: parsed.blocks_endpoint ?? '/api/v1/cms-akira-theme/blocks',
         entity_key: parsed.entity_key,
         posts: Array.isArray(parsed.posts) ? parsed.posts : [],
       };
@@ -23,7 +24,7 @@ export function readBootstrap(): Boot {
       // fall through to a safe default
     }
   }
-  return { mode: 'list', apiBase: '/api/v1/cms-akira/builder', posts: [] };
+  return { mode: 'list', apiBase: '/api/v1/cms-akira/builder', blocks_endpoint: '/api/v1/cms-akira-theme/blocks', posts: [] };
 }
 
 /** Creates a client-side idempotency key for governed builder mutations. */

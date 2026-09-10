@@ -112,6 +112,30 @@ $check(!preg_match('/(?:cmsRender|cmsRequireCap|cmsActiveTheme|cms_akira_posts|r
 $check(isset($routes['GET']['/cms-akira-shell/compositions']) && isset($routes['GET']['/cms-akira-shell/compositions/{key}/edit']), 'builder admin list and editor routes mounted under the shell guard');
 $check(str_contains($handlers, 'akiraShellBuilderAdmin'), 'shell handlers mount the builder admin bundle');
 $check(str_contains($helpers, 'cms-akira-builder-root') && str_contains($helpers, '/admin/assets/cms-akira-builder'), 'shell serves the CSP-safe builder bundle container');
+// Regression guard: the bootstrap lives inside <script type="application/json">,
+// whose content is RAW TEXT — the browser never decodes HTML entities there. When
+// it was htmlspecialchars()-escaped the payload arrived as '&quot;mode&quot;…',
+// JSON.parse threw, and the admin app silently fell back to defaults (losing
+// mode=edit and entity_key, so the editor rendered the list view instead).
+$bootstrapHtml = akiraShellBuilderAdmin([
+    'mode' => 'edit',
+    'apiBase' => '/api/v1/cms-akira/builder',
+    'blocks_endpoint' => '/api/v1/cms-akira-theme/blocks',
+    'entity_key' => 'sample-key',
+    'posts' => [],
+]);
+preg_match('#<script id="cms-akira-builder-bootstrap" type="application/json">(.*?)</script>#s', $bootstrapHtml, $bootstrapMatch);
+$bootstrapRaw = $bootstrapMatch[1] ?? '';
+$bootstrapDecoded = json_decode($bootstrapRaw, true);
+$check(
+    is_array($bootstrapDecoded) && ($bootstrapDecoded['mode'] ?? '') === 'edit' && ($bootstrapDecoded['entity_key'] ?? '') === 'sample-key',
+    'builder bootstrap parses as raw script text so edit mode and entity key survive'
+);
+$check(
+    !str_contains($bootstrapRaw, '&quot;') && !str_contains($bootstrapRaw, '&lt;') && !str_contains($bootstrapRaw, '</script'),
+    'builder bootstrap JSON is unescaped-for-JSON and cannot break out of the script element'
+);
+$check(($bootstrapDecoded['blocks_endpoint'] ?? '') === '/api/v1/cms-akira-theme/blocks', 'builder bootstrap advertises the active-theme block catalogue endpoint');
 $check(count($manifest['nav'] ?? []) === 8, 'dashboard, editorial, permissions, users and health navigation');
 $check(isset($routes['GET']['/cms-akira-shell/permissions'], $routes['POST']['/cms-akira-shell/permissions'])
     && isset($routes['GET']['/cms-akira-shell/users'], $routes['POST']['/cms-akira-shell/users/{id}/role'], $routes['POST']['/cms-akira-shell/users/{id}/active']), 'permissions and users governance routes mounted');

@@ -463,7 +463,13 @@ function akiraShellBuilderAdmin(array $bootstrap): string
     foreach ($assets['css'] as $href) {
         $styles .= '<link rel="stylesheet" href="' . akiraShellEscape($href) . '">';
     }
-    $json = akiraShellEscape((string) json_encode($bootstrap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    // The bootstrap lives inside <script type="application/json">, whose content is
+    // RAW TEXT — the browser never decodes HTML entities there. HTML-escaping the
+    // JSON (htmlspecialchars) therefore produced '&quot;' sequences, JSON.parse threw
+    // and the app silently fell back to defaults (losing mode=edit and entity_key).
+    // Escape at the JSON level instead: the HEX flags keep the payload valid JSON
+    // while making a '</script>' breakout impossible.
+    $json = (string) json_encode($bootstrap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     $scripts = '';
     foreach ($assets['js'] as $src) {
         $scripts .= '<script type="module" src="' . akiraShellEscape($src) . '"></script>';

@@ -98,7 +98,25 @@ try {
     $check($policies->requiresProtocol('akira.builder.update@1', '1', CAB_BUILDER_MODULE_ID) === 'v2', 'policy seed durably requires protocol v2');
 
     $valid = $call('akira.builder.validate@1', ['idempotency_key' => $keys[] = $prefix . '-validate', 'tree' => $treeA]);
-    $check(($valid['data']['valid'] ?? false) === true && ($valid['data']['tree'] ?? null) === $treeA, 'governed validator accepts and canonicalizes the fixed allowlist tree');
+    $check(($valid['data']['valid'] ?? false) === true && ($valid['data']['tree'] ?? null) === $treeA, 'governed validator accepts and canonicalizes the theme block tree');
+    $adminSource = (string) file_get_contents(dirname(__DIR__) . '/admin-ui/src/app.tsx');
+    $check(str_contains($adminSource, 'block: selectedDefinition.id') && !preg_match('/[,{]\s*type:\s*selectedDefinition\.id/', $adminSource), 'admin editor emits the canonical block key, never the legacy type key');
+    $catalogue = cat_cap_akira_theme_blocks_1([]);
+    $catalogueAccepted = ($catalogue['ok'] ?? false) === true && ($catalogue['blocks'] ?? []) !== [];
+    foreach (($catalogue['blocks'] ?? []) as $definition) {
+        $catalogueTree = ['version' => 1, 'blocks' => [[
+            'block' => (string) ($definition['id'] ?? ''),
+            'props' => is_array($definition['defaults'] ?? null) ? $definition['defaults'] : [],
+            'children' => [],
+        ]]];
+        try {
+            $accepted = cab_builder_cap_validate_1(['idempotency_key' => $keys[] = $prefix . '-catalogue-' . (string) ($definition['id'] ?? ''), 'tree' => $catalogueTree]);
+            $catalogueAccepted = $catalogueAccepted && ($accepted['data']['valid'] ?? false) === true;
+        } catch (Throwable) {
+            $catalogueAccepted = false;
+        }
+    }
+    $check($catalogueAccepted, 'every active-theme catalogue block id with defaults is accepted by cab_builder_cap_validate_1');
     $hostile = [
         ['version' => 1, 'blocks' => [['block' => 'script', 'props' => [], 'children' => []]]],
         ['version' => 1, 'blocks' => [['block' => 'cta', 'props' => ['label' => 'x', 'url' => 'javascript:alert(1)'], 'children' => []]]],

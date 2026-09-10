@@ -3,9 +3,9 @@
 // server-side validate/render endpoints only — never trust client markup.
 
 export interface Block {
-  type: string;
+  block: string;
   props: Record<string, unknown>;
-  children: Block[];
+  children?: Block[];
 }
 
 export interface Tree {
@@ -43,8 +43,30 @@ export interface PostOption {
 export interface Boot {
   mode: 'list' | 'edit';
   apiBase: string;
+  blocks_endpoint: string;
   entity_key?: string;
   posts: PostOption[];
+}
+
+export interface PropSchema {
+  type: string;
+  label?: string;
+  default?: unknown;
+  items?: { type: string; props?: Record<string, PropSchema> };
+}
+
+export interface BlockDefinition {
+  id: string;
+  label: string;
+  category: string;
+  schema: { props: Record<string, PropSchema> };
+  defaults: Record<string, unknown>;
+}
+
+export interface BlocksResponse {
+  ok: boolean;
+  theme_slug: string;
+  blocks: BlockDefinition[];
 }
 
 export interface ListResponse {
