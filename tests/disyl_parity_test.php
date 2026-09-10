@@ -477,6 +477,29 @@ parity('XSS script escaping', $engine, $cache,
     '{val}', ['val' => '<script>alert("xss")</script>']);
 
 // ─────────────────────────────────────────────────────────
+// 12. HTML raw-text elements
+// ─────────────────────────────────────────────────────────
+section('12. HTML raw-text elements');
+
+$css = '<style>*{box-sizing:border-box}:root{--x:#123}</style>';
+check('CSS is byte-identical in interpreted mode', $css, interpreted($engine, $css, []));
+check('CSS is byte-identical in compiled mode', $css, compiled($cache, $css, [], 'raw CSS'));
+
+$jsTemplateLiteral = '<script>const value=`${state.value}`;</script>';
+check('JS template literal is raw in interpreted mode',
+    $jsTemplateLiteral, interpreted($engine, $jsTemplateLiteral, ['state' => ['value' => 'changed']]));
+check('JS template literal is raw in compiled mode',
+    $jsTemplateLiteral, compiled($cache, $jsTemplateLiteral, ['state' => ['value' => 'changed']], 'JS template literal'));
+
+$script = "<script>function f(){return{a:1,b:'{v}'}};fetch('{login_endpoint}')</script>";
+$renderedScript = "<script>function f(){return{a:1,b:'X'}};fetch('/api/v1/auth/login')</script>";
+$scriptContext = ['v' => 'X', 'login_endpoint' => '/api/v1/auth/login'];
+check('nested script interpolation in interpreted mode',
+    $renderedScript, interpreted($engine, $script, $scriptContext));
+check('nested script interpolation in compiled mode',
+    $renderedScript, compiled($cache, $script, $scriptContext, 'nested script interpolation'));
+
+// ─────────────────────────────────────────────────────────
 // Summary
 // ─────────────────────────────────────────────────────────
 
