@@ -54,11 +54,18 @@ error fails closed as 500.
 
 ### Admin UI (React 18 + Vite ^5 + TypeScript ^5)
 
-The functional MVP (`admin-ui/src`) lists compositions and available posts, offers a JSON tree
-editor with an allowlisted validated-block form, saves drafts against the current base revision,
-validates, lists revisions, and renders server-rendered preview vs published HTML in a
-`sandbox`ed iframe (`srcDoc`) — React escapes by default and preview HTML is never injected as
-live markup.
+The admin UI (`admin-ui/src`) lists compositions and available posts and provides a structural
+canvas in document order. Operators select cards to use the schema-driven property editor, or
+move, duplicate, delete, retype, and append blocks. Every canvas/form action mutates and
+re-encodes the canonical JSON tree; direct valid JSON edits update the canvas, while malformed
+JSON leaves the last valid projection visible with a parse error.
+
+The canvas is only a projection of the canonical tree, never a rendering source or a second
+source of truth. The server remains responsible for validation and theme rendering. Saving a
+draft automatically requests the existing server-rendered preview and labels it as the last
+saved draft; unsaved canvas changes are not implied to be previewed. Preview and published HTML
+remain isolated in a `sandbox`ed iframe (`srcDoc`) — React escapes by default and preview HTML is
+never injected as live markup.
 
 Build/run (node 18.19.1 + npm 9.2.0; do **not** use Vite 6/7):
 
