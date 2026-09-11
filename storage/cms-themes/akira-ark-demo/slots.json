@@ -1,0 +1,5 @@
+{
+  "header.main": {"label": "Header", "accepts": ["component"], "multiple": false},
+  "content": {"label": "Page", "accepts": ["entity_list", "entity_detail"], "multiple": false},
+  "footer.main": {"label": "Footer", "accepts": ["component"], "multiple": false}
+}

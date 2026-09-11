@@ -1,0 +1,3 @@
+<footer data-akira-region="footer" style="margin-top:4rem;background:#172554;color:#fff">
+  <div class="akira-ark-wrap" style="padding-top:2rem;padding-bottom:2rem"><strong>CMS Akira</strong><div style="color:#cbd5e1">{section_settings.message}</div></div>
+</footer>

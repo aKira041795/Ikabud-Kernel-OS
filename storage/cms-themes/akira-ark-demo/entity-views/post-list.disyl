@@ -1,0 +1,15 @@
+{# Context: posts #}
+<section class="akira-ark-wrap" data-ark-renderer="post-list">
+  {if posts | count == 0}<div class="akira-ark-empty">No published posts yet.</div>{/if}
+  <div class="akira-ark-grid">
+  {foreach posts as post}
+    <article class="akira-ark-card">
+      {if post.image}<img src="{post.image | esc_url | esc_attr}" alt="{post.title | esc_attr}" loading="lazy">{/if}
+      <p class="akira-ark-kicker">{post.metadata | esc_html}</p>
+      <h2><a href="{post.url | esc_url | esc_attr}">{post.title | esc_html}</a></h2>
+      {if post.subtitle}<p>{post.subtitle | esc_html}</p>{/if}
+      <a href="{post.url | esc_url | esc_attr}">Read article →</a>
+    </article>
+  {/foreach}
+  </div>
+</section>
