@@ -293,6 +293,19 @@ $undeclaredAllowed = moduleRouteAuthorityEnforce(
 
 $undeclaredLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
 
+// A public presentation route is not a business operation: observing it once per
+// page view would be noise. Compatibility debt is measured over mutations only —
+// the same denominator the census uses.
+file_put_contents(STORAGE_PATH . '/logs/app.log', '');
+$getAllowed = moduleRouteAuthorityEnforce('gui-settings', 'GET', '/admin/gui-settings', '/admin/gui-settings', null);
+$getLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
+
+t(
+    'an undeclared presentation route proceeds without writing an observation',
+    $getAllowed === true && !str_contains($getLog, 'route.authority.undeclared'),
+    substr($getLog, 0, 300)
+);
+
 t(
     'an undeclared route still proceeds (compatibility, not breakage)',
     $undeclaredAllowed === true
