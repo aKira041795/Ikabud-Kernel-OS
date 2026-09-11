@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Workbench\AI;
 
+use Ikabud\Kernel\Capabilities\AuthorityScopeResolver;
+
 /** Provider-neutral, evidence-bounded AI diagnosis with deterministic fallback. */
 final class WorkbenchAiAnalyzer
 {
@@ -12,6 +14,7 @@ final class WorkbenchAiAnalyzer
         private readonly array $policy = [],
         private $caller = null,
         private readonly ?string $cachePath = null,
+        private readonly ?int $tenantId = null,
     ) {
     }
 
@@ -86,10 +89,40 @@ final class WorkbenchAiAnalyzer
         if (!function_exists('app')) {
             throw new \RuntimeException('Capability bus unavailable');
         }
-        $invoke = fn (): array => app()->cap()->call('ai.text.generate@1', $payload, [
+        $work = fn (): array => app()->cap()->call('ai.text.generate@1', $payload, [
             'caller_module' => 'kernel.workbench',
             'timeout_ms' => max(1000, (int)($this->policy['timeout_ms'] ?? 15000)),
         ]);
+        $invoke = function () use ($work): array {
+            if ($this->tenantId === null || $this->tenantId <= 0) {
+                return $work();
+            }
+            $scoped = false;
+            try {
+                return AuthorityScopeResolver::withScope(
+                    $this->tenantId,
+                    AuthorityScopeResolver::WORKBENCH,
+                    static function () use (&$scoped, $work): array {
+                        $scoped = true;
+                        return $work();
+                    },
+                );
+            } catch (\Throwable $e) {
+                // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+                if ($scoped) {
+                    throw $e;
+                }
+                if (function_exists('write_log')) {
+                    write_log('Workbench AI could not establish an authority scope; calling without one', 'warning', [
+                        'reason' => 'tenant_authority_store_unavailable',
+                        'tenant_id' => $this->tenantId,
+                        'entry_point' => AuthorityScopeResolver::WORKBENCH,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                return $work();
+            }
+        };
         if (function_exists('aiWithRuntimeOverrides')) {
             $provider = trim((string)($this->policy['provider'] ?? ''));
             $overrides = ['tier' => (string)($this->policy['tier'] ?? 'free')];

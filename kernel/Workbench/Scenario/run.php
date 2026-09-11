@@ -23,7 +23,8 @@ foreach (array_slice($argv, 2) as $arg) {
     }
 }
 $store = new ScenarioStore($base . '/storage/private/workbench/scenarios');
-$capabilityProvider = static function (string $module) use ($base): CapabilityScenarioDataProvider {
+$tenantId = (int)($options['tenant'] ?? 0);
+$capabilityProvider = static function (string $module) use ($base, $tenantId): CapabilityScenarioDataProvider {
     if (!function_exists('app')) {
         $target = (string)(getenv('BASE_URL') ?: '');
         $host = $target !== '' ? parse_url($target, PHP_URL_HOST) : null;
@@ -34,28 +35,84 @@ $capabilityProvider = static function (string $module) use ($base): CapabilitySc
         require_once $base . '/bootstrap.php';
     }
     app();
-    if (!preg_match('/^[a-z0-9][a-z0-9._-]*$/', $module)) {
-        throw new RuntimeException('Invalid module ID');
-    }
-    $modulePath = $base . '/modules/' . $module;
-    $manifest = json_decode((string)file_get_contents($modulePath . '/module.json'), true, flags: JSON_THROW_ON_ERROR);
-    require_once $modulePath . '/helpers.php';
-    $export = preg_replace('/[^a-z0-9]+/i', '_', $module) . '_capability_handlers';
-    $handlers = function_exists($export) ? $export() : [];
-    $allowed = ['workbench.scenario.describe@1','workbench.scenario.seed@1','workbench.scenario.verify@1','workbench.scenario.cleanup@1'];
-    $declared = array_column((array)($manifest['capabilities']['exposes'] ?? []), 'id');
-    foreach ($allowed as $capabilityId) {
-        if (!in_array($capabilityId, $declared, true) || !isset($handlers[$capabilityId]) || !is_callable($handlers[$capabilityId])) {
-            continue;
+
+    $build = static function () use ($base, $module, $tenantId): CapabilityScenarioDataProvider {
+        if (!preg_match('/^[a-z0-9][a-z0-9._-]*$/', $module)) {
+            throw new RuntimeException('Invalid module ID');
         }
-        if (!app()->capabilities()->has($capabilityId)) {
-            app()->capabilities()->register($capabilityId, $module, $handlers[$capabilityId], 50, ['first'], ['origin' => ['type' => 'headless_module_activation', 'module' => $module]]);
+        $modulePath = $base . '/modules/' . $module;
+        $manifest = json_decode((string)file_get_contents($modulePath . '/module.json'), true, flags: JSON_THROW_ON_ERROR);
+        require_once $modulePath . '/helpers.php';
+        $export = preg_replace('/[^a-z0-9]+/i', '_', $module) . '_capability_handlers';
+        $handlers = function_exists($export) ? $export() : [];
+        $allowed = ['workbench.scenario.describe@1','workbench.scenario.seed@1','workbench.scenario.verify@1','workbench.scenario.cleanup@1'];
+        $declared = array_column((array)($manifest['capabilities']['exposes'] ?? []), 'id');
+        foreach ($allowed as $capabilityId) {
+            if (!in_array($capabilityId, $declared, true) || !isset($handlers[$capabilityId]) || !is_callable($handlers[$capabilityId])) {
+                continue;
+            }
+            if (!app()->capabilities()->has($capabilityId)) {
+                app()->capabilities()->register($capabilityId, $module, $handlers[$capabilityId], 50, ['first'], ['origin' => ['type' => 'headless_module_activation', 'module' => $module]]);
+            }
         }
+        return new CapabilityScenarioDataProvider(
+            static function (string $id, array $payload, array $context) use ($tenantId, $module): array {
+                $work = static fn (): array => app()->cap()->call($id, $payload, $context + ['provider' => $module]);
+                if ($tenantId <= 0) {
+                    return $work();
+                }
+                $scoped = false;
+                try {
+                    return \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::withScope(
+                        $tenantId,
+                        \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WORKBENCH,
+                        static function () use (&$scoped, $work): array {
+                            $scoped = true;
+                            return $work();
+                        },
+                    );
+                } catch (Throwable $e) {
+                    // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+                    if ($scoped) {
+                        throw $e;
+                    }
+                    write_log('Workbench scenario could not establish an authority scope; calling without one', 'warning', [
+                        'reason' => 'tenant_authority_store_unavailable',
+                        'tenant_id' => $tenantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    return $work();
+                }
+            },
+            $module,
+        );
+    };
+
+    if ($tenantId <= 0) {
+        return $build();
     }
-    return new CapabilityScenarioDataProvider(
-        static fn (string $id, array $payload, array $context): array => app()->cap()->call($id, $payload, $context + ['provider' => $module]),
-        $module,
-    );
+    $scoped = false;
+    try {
+        return \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::withScope(
+            $tenantId,
+            \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WORKBENCH,
+            static function () use (&$scoped, $build): CapabilityScenarioDataProvider {
+                $scoped = true;
+                return $build();
+            },
+        );
+    } catch (Throwable $e) {
+        // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+        if ($scoped) {
+            throw $e;
+        }
+        write_log('Workbench scenario could not establish an authority scope; preparing without one', 'warning', [
+            'reason' => 'tenant_authority_store_unavailable',
+            'tenant_id' => $tenantId,
+            'error' => $e->getMessage(),
+        ]);
+        return $build();
+    }
 };
 
 try {
@@ -111,7 +168,7 @@ try {
         file_put_contents($file, json_encode($final, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), LOCK_EX);
         echo json_encode(['ok' => $final['status'] === 'completed', 'file' => $file, 'status' => $final['status']], JSON_UNESCAPED_SLASHES) . "\n";
     } else {
-        fwrite(STDERR, "Usage:\n  php run.php propose --module=id [--input=file.json|--question=text|--direction=text]\n  php run.php resolve --module=id --scenario=id\n  php run.php prepare --module=id --scenario=id --run-id=id\n  php run.php finalize --run-id=id\n");
+        fwrite(STDERR, "Usage:\n  php run.php propose --module=id [--input=file.json|--question=text|--direction=text]\n  php run.php resolve --module=id --scenario=id\n  php run.php prepare --module=id --scenario=id --run-id=id --tenant=N\n  php run.php finalize --run-id=id --tenant=N\n");
         exit(1);
     }
 } catch (Throwable $e) {

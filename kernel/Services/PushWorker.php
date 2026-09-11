@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel\Services;
 
+use Ikabud\Kernel\Capabilities\AuthorityScopeResolver;
+
 /**
  * Push notification delivery worker — processes pending notifications
  * from kernel_push_queue and sends them via FCM HTTP v1 API.
@@ -44,42 +46,8 @@ class PushWorker
         $stmt->execute([$batchSize]);
 
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-            $result = self::sendFcm($row);
-
-            if ($result['success']) {
-                $db->prepare(
-                    'UPDATE kernel_push_queue
-                     SET status = \'sent\', completed_at = NOW()
-                     WHERE id = ?'
-                )->execute([$row['id']]);
+            if (self::processRow($row, $db, false)) {
                 $sent++;
-            } else {
-                $newAttempts = (int)$row['attempts'] + 1;
-                $maxAttempts = (int)$row['max_attempts'];
-
-                if ($newAttempts >= $maxAttempts) {
-                    $db->prepare(
-                        'UPDATE kernel_push_queue
-                         SET status = \'dead\', attempts = ?, last_error = ?, completed_at = NOW()
-                         WHERE id = ?'
-                    )->execute([$newAttempts, $result['error'], $row['id']]);
-
-                    self::log('push_delivery_failed_max_attempts', 'error', [
-                        'queue_id' => $row['id'],
-                        'error'    => $result['error'],
-                    ]);
-                } else {
-                    // Exponential backoff: 30s, 120s, 480s, 1920s, ...
-                    $backoff = 30 * pow(4, $newAttempts - 1);
-                    $availableAt = date('Y-m-d H:i:s', time() + $backoff);
-
-                    $db->prepare(
-                        'UPDATE kernel_push_queue
-                         SET status = \'pending\', attempts = ?, last_error = ?,
-                             available_at = ?
-                         WHERE id = ?'
-                    )->execute([$newAttempts, $result['error'], $availableAt, $row['id']]);
-                }
             }
         }
 
@@ -105,20 +73,80 @@ class PushWorker
             return false;
         }
 
-        $result = self::sendFcm($row);
+        return self::processRow($row, $db, true);
+    }
 
+    /** @param array<string,mixed> $row */
+    private static function processRow(array $row, \PDO $queueDb, bool $single): bool
+    {
+        $tenantId = (int)($row['tenant_id'] ?? 0);
+        if ($tenantId <= 0) {
+            return self::processRowBody($row, $queueDb, $single);
+        }
+
+        $scoped = false;
+        try {
+            return AuthorityScopeResolver::withScope($tenantId, AuthorityScopeResolver::QUEUE, static function () use (&$scoped, $row, $queueDb, $single): bool {
+                $scoped = true;
+                self::log('push_worker_row_scope', 'info', [
+                    'queue_id' => $row['id'],
+                    'tenant_id' => app()->tenant()->current(),
+                    'authority_entry_point' => AuthorityScopeResolver::currentEntryPoint(),
+                ]);
+                return self::processRowBody($row, $queueDb, $single);
+            });
+        } catch (\Throwable $e) {
+            // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+            if ($scoped) {
+                throw $e;
+            }
+            self::log('push_worker_authority_scope_unavailable', 'warning', [
+                'reason' => 'tenant_authority_store_unavailable',
+                'tenant_id' => $tenantId,
+                'queue_id' => $row['id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            return self::processRowBody($row, $queueDb, $single);
+        }
+    }
+
+    /** @param array<string,mixed> $row */
+    private static function processRowBody(array $row, \PDO $queueDb, bool $single): bool
+    {
+        $result = self::sendFcm($row);
         if ($result['success']) {
-            $db->prepare(
+            $queueDb->prepare(
                 'UPDATE kernel_push_queue SET status = \'sent\', completed_at = NOW() WHERE id = ?'
-            )->execute([$queueId]);
+            )->execute([$row['id']]);
             return true;
         }
 
-        // Mark as dead on failure for single-item processing
-        $db->prepare(
-            'UPDATE kernel_push_queue SET status = \'failed\', last_error = ?, completed_at = NOW() WHERE id = ?'
-        )->execute([$result['error'], $queueId]);
+        if ($single) {
+            $queueDb->prepare(
+                'UPDATE kernel_push_queue SET status = \'failed\', last_error = ?, completed_at = NOW() WHERE id = ?'
+            )->execute([$result['error'], $row['id']]);
+            return false;
+        }
 
+        $newAttempts = (int)$row['attempts'] + 1;
+        $maxAttempts = (int)$row['max_attempts'];
+        if ($newAttempts >= $maxAttempts) {
+            $queueDb->prepare(
+                'UPDATE kernel_push_queue SET status = \'dead\', attempts = ?, last_error = ?, completed_at = NOW() WHERE id = ?'
+            )->execute([$newAttempts, $result['error'], $row['id']]);
+            self::log('push_delivery_failed_max_attempts', 'error', [
+                'queue_id' => $row['id'],
+                'tenant_id' => (int)($row['tenant_id'] ?? 0),
+                'error' => $result['error'],
+            ]);
+            return false;
+        }
+
+        $backoff = 30 * pow(4, $newAttempts - 1);
+        $availableAt = date('Y-m-d H:i:s', time() + $backoff);
+        $queueDb->prepare(
+            'UPDATE kernel_push_queue SET status = \'pending\', attempts = ?, last_error = ?, available_at = ? WHERE id = ?'
+        )->execute([$newAttempts, $result['error'], $availableAt, $row['id']]);
         return false;
     }
 

@@ -531,6 +531,41 @@ function kernelEmitEvent(string $eventKey, array $payload = [], string $module =
         return;
     }
 
+    if (\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::currentEntryPoint() !== \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::EVENT) {
+        $tenantId = app()->tenant()->current();
+        if (is_int($tenantId) && $tenantId > 0) {
+            // Declare the transport (and tenant) for the duration so capability
+            // calls on the trigger path resolve an explicit scope.
+            //
+            // Emitting an event records a fact; it is not an authorization
+            // decision. withScope() validates the scope and resolves the store
+            // BEFORE it invokes the work, so a throw means the body never ran and
+            // falling through emits the event exactly once. If no scope can be
+            // established the event is still emitted and the capability call
+            // inside fails closed on its own — dropping it would lose the fact
+            // with nothing but a warning.
+            try {
+                \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::withScope(
+                    $tenantId,
+                    \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::EVENT,
+                    static function () use ($eventKey, $payload, $module): void {
+                        kernelEmitEvent($eventKey, $payload, $module);
+                    },
+                );
+                return;
+            } catch (Throwable $e) {
+                write_log('kernelEmitEvent could not establish an event authority scope; emitting without one', 'warning', [
+                    'reason' => 'tenant_authority_store_unavailable',
+                    'tenant_id' => $tenantId,
+                    'event' => $eventKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        // No tenant, or no scope could be established: emit anyway. The
+        // capability call inside fails closed; the event is still recorded.
+    }
+
     $correlationId = kernelCorrelationId();
     $requestId = function_exists('request_id') ? request_id() : null;
 

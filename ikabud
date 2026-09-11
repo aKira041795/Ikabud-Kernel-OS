@@ -46,9 +46,10 @@ if (php_sapi_name() !== 'cli') {
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/src/helpers/module-manager.php';
 
-use Ikabud\Kernel\Database\MigrationRunner;
+use Ikabud\Kernel\Capabilities\AuthorityScopeResolver;
 use Ikabud\Kernel\Capabilities\CapabilityTestRunner;
 use Ikabud\Kernel\Crypto;
+use Ikabud\Kernel\Database\MigrationRunner;
 
 $args = array_slice($argv, 1);
 $command = $args[0] ?? 'help';
@@ -1236,9 +1237,13 @@ switch ($command) {
         }
 
         try {
-            $sync = function_exists('syncTenantCliMigrationsForTenant')
-                ? syncTenantCliMigrationsForTenant($tenantId, $requestedModuleId !== '' ? $requestedModuleId : null)
-                : ['ok' => false, 'error' => 'Tenant CLI migration sync helper unavailable'];
+            $sync = AuthorityScopeResolver::withScope(
+                $tenantId,
+                AuthorityScopeResolver::CLI,
+                static fn (): array => function_exists('syncTenantCliMigrationsForTenant')
+                    ? syncTenantCliMigrationsForTenant($tenantId, $requestedModuleId !== '' ? $requestedModuleId : null)
+                    : ['ok' => false, 'error' => 'Tenant CLI migration sync helper unavailable'],
+            );
 
             if (empty($sync['ok'])) {
                 throw new RuntimeException((string)($sync['error'] ?? 'Tenant migration sync failed'));
@@ -2729,9 +2734,8 @@ switch ($command) {
             exit(1);
         }
 
-        if (hasFlag('--with-modules')) {
-            loadModuleRoutes(['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []]);
-        }
+        $tenantSelector = trim((string)(getFlagValue('--tenant=') ?? ''));
+        $tenantId = $tenantSelector !== '' ? cliResolveTenantId($tenantSelector) : null;
 
         $payload = null;
         if ($json !== null) {
@@ -2761,7 +2765,37 @@ switch ($command) {
         }
 
         try {
-            $result = app()->cap()->call($capId, $payload, $opts);
+            $work = static function () use ($capId, $payload, $opts): mixed {
+                if (hasFlag('--with-modules')) {
+                    loadModuleRoutes(['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []]);
+                }
+                return app()->cap()->call($capId, $payload, $opts);
+            };
+            if (is_int($tenantId) && $tenantId > 0) {
+                $scoped = false;
+                try {
+                    $result = AuthorityScopeResolver::withScope(
+                        $tenantId,
+                        AuthorityScopeResolver::CLI,
+                        static function () use (&$scoped, $work): mixed {
+                            $scoped = true;
+                            return $work();
+                        },
+                    );
+                } catch (Throwable $e) {
+                    if ($scoped) {
+                        throw $e;
+                    }
+                    write_log('CLI capability call could not establish an authority scope; calling without one', 'warning', [
+                        'reason' => 'tenant_authority_store_unavailable',
+                        'tenant_id' => $tenantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $result = $work();
+                }
+            } else {
+                $result = $work();
+            }
             out(green('  ✓ ok'));
             out('');
             out(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: 'null');

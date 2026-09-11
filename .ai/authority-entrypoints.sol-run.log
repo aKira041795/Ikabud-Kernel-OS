@@ -1,0 +1,109 @@
+## Result
+
+**status:** PARTIAL — implementation complete, acceptance blocked by explicit tenant/schema gaps.
+
+**changed:**
+- Added stack-safe `AuthorityScopeResolver::withScope()`.
+- Wired event, workflow, PushWorker, Workbench, CLI, and registry audit entry points.
+- Wired `IntegrationBridge` as tenant-local.
+- Added/updated authority and workflow tests.
+- No migrations, Daily Ledger changes, commits, branches, or pushes.
+- `tests/admin_platform_api_test.php` untouched.
+
+**implementation summary:**
+- `withScope()` validates tenant/transport, resolves the authority store before work, establishes tenant and transport for the whole callback, and restores nested state in `finally`.
+- Event and integration dispatch fail closed and log when no tenant is established.
+- Workflow execution uses `SERVICE`; direct queue-drained runs without tenant fail closed.
+- PushWorker establishes `QUEUE` scope independently for every row.
+- Workbench capability calls require explicit tenant arguments.
+- `capability:call` now requires `--tenant`; `tenant:migrate` runs under CLI scope.
+- Registry audit dispatch passes its resolved tenant and entry point.
+- Integration tables are tenant-local migration artifacts; therefore bridge dispatch uses the current established tenant rather than inventing per-connection tenancy.
+
+**verification:**
+- `authority_scope_test.php`: **21 passed, 0 failed**
+- `capability_policy_lifecycle_test.php`: **10 passed, 0 failed**
+- Focused workflow suites: **60 passed, 0 failed**
+- `php ikabud architecture:check`: PASS
+- `workbench:governance --all --gate`: exit 0
+- PHPStan `kernel/` + `src/`: clean
+- Changed production files: php-cs-fixer clean
+- `storage/modules.json`: missing before and after `composer test`; no ownership state to restore
+- `error.log`: empty
+
+**evidence:**
+```text
+✓ withScope dispatches a real capability through the CLI tenant store
+✓ withScope visibly restores the previous tenant after success
+✓ withScope visibly restores the previous tenant after an exception
+✓ withScope refuses unresolved stores before running work and records why
+Authority scope tests: 21 passed, 0 failed
+```
+
+Fail-closed falsifier: tenant `8900001` had no resolvable store; callback did not run and `tenant_authority_store_unavailable` was recorded.
+
+PushWorker per-row proof:
+```text
+push_worker_row_scope {"queue_id":1,"tenant_id":9461,"authority_entry_point":"queue"}
+push_worker_row_scope {"queue_id":2,"tenant_id":9462,"authority_entry_point":"queue"}
+```
+
+Registry audit proof:
+```text
+Capability policy lifecycle tests: 10 passed, 0 failed
+✓ explicit transitions record who, when, state, and reason through kernel audit
+```
+
+CLI fail-closed proof:
+```text
+✗ A valid --tenant=<tenant_id|tenant_key|domain> is required.
+exit:1
+```
+
+**composer test:**
+- Full run: **94 passed, 5 failed, 9 skipped**.
+- Two failures subsequently pass in focused reruns: `unified_execution_trace_test.php`, `workflow_lifecycle_test.php`.
+- Remaining blockers:
+  - `admin_kernel_control_plane_api_test.php`
+  - `admin_platform_api_test.php`
+  - `workflow_concurrency_test.php`
+- The admin tests emit events directly without an established tenant. Preserving their old behavior would violate fail-closed semantics; the specifically protected `admin_platform_api_test.php` was not modified.
+- `workflow_concurrency_test.php` directly drains tenant-less `workflow_runs`; the table has no `tenant_id`.
+
+Local skips:
+- `capability_effect_invalidation_test.php`
+- `durable_idempotency_test.php`
+- `entity_fallback_test.php`
+- `entity_view_render_cache_test.php`
+- `error_page_contract_test.php`
+- `eventbus_durable_outbox_test.php`
+- `kernel_idempotency_capability_test.php`
+- `runner_timeout_test.php`
+- `tenant_entry_auth_shell_standard_test.php`
+
+**live check:**
+```text
+cmsnew.test /      200
+cmsnew.test /posts 404
+cmsnew.test /login 200
+error.log          empty
+```
+The required `/posts` 200 acceptance condition was not met locally.
+
+**scope not wired:**
+- Scheduled jobs: `kernel_jobs` has no tenant column suitable for dispatch; no tenant-safe runner can be wired without schema/product direction.
+- Queue-drained workflow runs: `workflow_runs` has no `tenant_id`; direct drains cannot determine authority scope.
+- Tenant-less direct event invocations: refused and logged rather than assigned a guessed tenant.
+
+**risks:**
+- Existing direct-call tests and tools must explicitly establish tenant scope.
+- Workflow queue draining remains architecturally blocked.
+- Local live `/posts` route is unavailable.
+
+**unresolved:**
+- Tenant ownership/schema for scheduled jobs.
+- Tenant ownership/schema for durable workflow runs.
+- Explicit tenant setup for protected admin platform test fixtures.
+- Live tenant `/posts` routing.
+
+**recommended next state:** BLOCKED pending owner decisions for job/workflow tenant schema and tenant-aware admin test setup; do not weaken fail-closed behavior.

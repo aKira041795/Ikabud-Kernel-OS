@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel;
 
+use Ikabud\Kernel\Capabilities\AuthorityScopeResolver;
 use Ikabud\Kernel\Http\Idempotency;
 use PDO;
 use Throwable;
@@ -37,6 +38,9 @@ final class WorkflowEngine
 
     /** @var array<string, true>|null Registered event->workflow subscriptions (in-memory cache) */
     private ?array $subscriptionsCache = null;
+
+    /** Bypass transport re-entry when scope establishment itself fails. */
+    private bool $authorityScopeFallback = false;
 
     public function __construct(private readonly App $app)
     {
@@ -560,6 +564,39 @@ final class WorkflowEngine
         ?string $entityId = null,
         ?string $externalKey = null,
     ): array {
+        if (!$this->authorityScopeFallback && AuthorityScopeResolver::currentEntryPoint() !== AuthorityScopeResolver::SERVICE) {
+            $scopeTenantId = $this->app->tenant()->current();
+            if (is_int($scopeTenantId) && $scopeTenantId > 0) {
+                $scoped = false;
+                try {
+                    return AuthorityScopeResolver::withScope(
+                        $scopeTenantId,
+                        AuthorityScopeResolver::SERVICE,
+                        function () use (&$scoped, $workflowKey, $module, $payload, $entityType, $entityId, $externalKey): array {
+                            $scoped = true;
+                            return $this->start($workflowKey, $module, $payload, $entityType, $entityId, $externalKey);
+                        },
+                    );
+                } catch (Throwable $e) {
+                    // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+                    if ($scoped) {
+                        throw $e;
+                    }
+                    write_log('WorkflowEngine: start could not establish a service authority scope; continuing without one', 'warning', [
+                        'reason' => 'tenant_authority_store_unavailable',
+                        'tenant_id' => $scopeTenantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $this->authorityScopeFallback = true;
+                    try {
+                        return $this->start($workflowKey, $module, $payload, $entityType, $entityId, $externalKey);
+                    } finally {
+                        $this->authorityScopeFallback = false;
+                    }
+                }
+            }
+        }
+
         if ($externalKey === '') {
             return ['ok' => false, 'error' => 'idempotency_key_required'];
         }
@@ -811,6 +848,40 @@ final class WorkflowEngine
      */
     public function advance(int $runId): array
     {
+        if (!$this->authorityScopeFallback && AuthorityScopeResolver::currentEntryPoint() !== AuthorityScopeResolver::SERVICE) {
+            $tenantId = $this->app->tenant()->current();
+            if (is_int($tenantId) && $tenantId > 0) {
+                $scoped = false;
+                try {
+                    return AuthorityScopeResolver::withScope(
+                        $tenantId,
+                        AuthorityScopeResolver::SERVICE,
+                        function () use (&$scoped, $runId): array {
+                            $scoped = true;
+                            return $this->advance($runId);
+                        },
+                    );
+                } catch (Throwable $e) {
+                    // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+                    if ($scoped) {
+                        throw $e;
+                    }
+                    write_log('WorkflowEngine: advance could not establish a service authority scope; continuing without one', 'warning', [
+                        'reason' => 'tenant_authority_store_unavailable',
+                        'tenant_id' => $tenantId,
+                        'run_id' => $runId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $this->authorityScopeFallback = true;
+                    try {
+                        return $this->advance($runId);
+                    } finally {
+                        $this->authorityScopeFallback = false;
+                    }
+                }
+            }
+        }
+
         try {
             $db = $this->app->db();
             $db->beginTransaction();

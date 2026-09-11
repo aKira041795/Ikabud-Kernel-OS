@@ -185,7 +185,7 @@ try {
 $policyVersion = 1700000000 + random_int(1, 999999);
 $suffix = bin2hex(random_bytes(6));
 $capabilityId = 'test.authority.scope.' . $suffix . '@1';
-$provider = 'authority-scope-provider-' . $suffix;
+$provider = 'kernel';
 $caller = 'authority-scope-caller';
 $actor = ['id' => 1, 'role' => 'administrator', 'source' => 'kernel'];
 
@@ -239,6 +239,82 @@ try {
     CapabilityAuthorizationRegistry::invalidate();
     $scopedDecision = (new CapabilityAuthorizationRegistry(null, $web, $resolver))->authorize($context);
     $check('fixture-seeded policy authorizes through the resolved scope', ($scopedDecision['allowed'] ?? false) === true, json_encode($scopedDecision));
+
+    app()->capabilities()->register(
+        $capabilityId,
+        $provider,
+        static fn (): array => [
+            'ok' => true,
+            'tenant_id' => app()->tenant()->current(),
+            'database' => (string)app()->db()->query('SELECT DATABASE()')->fetchColumn(),
+            'entry_point' => AuthorityScopeResolver::currentEntryPoint(),
+        ],
+        100,
+        ['first'],
+        ['requires_protocol' => 'v2'],
+    );
+    $capabilityResult = AuthorityScopeResolver::withScope(
+        $fixtureTenantId,
+        AuthorityScopeResolver::CLI,
+        static fn (): array => app()->cap()->call($capabilityId, [], [
+            'provider' => $provider,
+            'caller_module' => $caller,
+            'caller_user' => $actor,
+        ]),
+    );
+    $check(
+        'withScope dispatches a real capability through the CLI tenant store',
+        ($capabilityResult['ok'] ?? false) === true
+            && ($capabilityResult['tenant_id'] ?? null) === $fixtureTenantId
+            && ($capabilityResult['database'] ?? '') === $fixtureDatabase
+            && ($capabilityResult['entry_point'] ?? '') === AuthorityScopeResolver::CLI,
+        json_encode($capabilityResult)
+    );
+
+    $restorationBefore = app()->tenant()->current();
+    $insideTenant = AuthorityScopeResolver::withScope(
+        $fixtureTenantId,
+        AuthorityScopeResolver::SERVICE,
+        static fn (): ?int => app()->tenant()->current(),
+    );
+    $restorationAfter = app()->tenant()->current();
+    $check(
+        'withScope visibly restores the previous tenant after success',
+        $insideTenant === $fixtureTenantId && $restorationAfter === $restorationBefore,
+        json_encode(['before' => $restorationBefore, 'inside' => $insideTenant, 'after' => $restorationAfter])
+    );
+
+    $throwInside = null;
+    try {
+        AuthorityScopeResolver::withScope($fixtureTenantId, AuthorityScopeResolver::QUEUE, static function () use (&$throwInside): never {
+            $throwInside = app()->tenant()->current();
+            throw new RuntimeException('restoration probe');
+        });
+    } catch (RuntimeException $e) {
+        $check(
+            'withScope visibly restores the previous tenant after an exception',
+            $e->getMessage() === 'restoration probe'
+                && $throwInside === $fixtureTenantId
+                && app()->tenant()->current() === $restorationBefore,
+            json_encode(['before' => $restorationBefore, 'inside' => $throwInside, 'after' => app()->tenant()->current()])
+        );
+    }
+
+    $unresolvedWorkRan = false;
+    $unresolvedRejected = false;
+    try {
+        AuthorityScopeResolver::withScope(8900001, AuthorityScopeResolver::CLI, static function () use (&$unresolvedWorkRan): void {
+            $unresolvedWorkRan = true;
+        });
+    } catch (RuntimeException $e) {
+        $unresolvedRejected = str_contains($e->getMessage(), 'tenant_authority_store_unavailable');
+    }
+    $withScopeLogText = is_file($log) ? (string)file_get_contents($log) : '';
+    $check(
+        'withScope refuses unresolved stores before running work and records why',
+        $unresolvedRejected && !$unresolvedWorkRan && str_contains($withScopeLogText, 'tenant_authority_store_unavailable'),
+        json_encode(['rejected' => $unresolvedRejected, 'work_ran' => $unresolvedWorkRan])
+    );
 
     $decision = (new CapabilityAuthorizationRegistry())->authorize($context);
     $check(

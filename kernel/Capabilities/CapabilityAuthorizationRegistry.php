@@ -340,6 +340,12 @@ final class CapabilityAuthorizationRegistry
             });
 
             $policyKey = implode('|', [$policyVersion, $capabilityId, $capabilityVersion, $provider]);
+            $auditResolver = $this->authorityScopeResolver ?? AuthorityScopeResolver::forApplication();
+            $auditScope = $this->authorityScope ?? $auditResolver->resolveForCapability([], ['user' => $actor]);
+            if (!$auditScope instanceof AuthorityScope || !$auditResolver->database($auditScope) instanceof PDO) {
+                throw new \RuntimeException('The grant-state audit authority scope could not be resolved: '
+                    . ($auditResolver->failureReason() ?? 'missing_tenant_authority_scope'));
+            }
             $audit = app()->cap()->call('kernel.audit.record@1', [
                 'module' => '_kernel',
                 'action' => 'capability.policy.grant_' . $state,
@@ -348,6 +354,9 @@ final class CapabilityAuthorizationRegistry
                 'old_data' => ['policy_key' => $policyKey, 'grant_state' => $oldState],
                 'new_data' => ['policy_key' => $policyKey, 'grant_state' => $state, 'reason' => $reason],
                 'reason' => $reason,
+            ], [
+                'tenant_id' => $auditScope->tenantId,
+                'authority_entry_point' => $auditScope->entryPoint,
             ]);
             if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
                 throw new \RuntimeException('The grant-state audit record could not be written.');
