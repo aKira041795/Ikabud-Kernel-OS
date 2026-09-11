@@ -282,7 +282,7 @@ class DatabaseManager
         }
 
         $apcuEnabled = function_exists('apcu_fetch') && function_exists('apcu_store') && (bool)ini_get('apc.enabled');
-        $apcuKey = 'ikabud:tenant_db_conn:' . $tenantId;
+        $apcuKey = \Ikabud\Kernel\Cache::scopedKey('ikabud:tenant_db_conn:' . $tenantId);
         if ($apcuEnabled) {
             $cached = apcu_fetch($apcuKey, $success);
             if ($success) {
@@ -650,7 +650,7 @@ class DatabaseManager
 
         $apcuEnabled = function_exists('apcu_delete') && (bool)ini_get('apc.enabled');
         if ($apcuEnabled) {
-            apcu_delete('ikabud:tenant_db_conn:' . $tenantId);
+            apcu_delete(\Ikabud\Kernel\Cache::scopedKey('ikabud:tenant_db_conn:' . $tenantId));
         }
 
         return $this->dbForTenant($tenantId);

@@ -98,8 +98,12 @@ if (!function_exists('kernelHandlePageLogin')) {
         $loginContext = kernelResolveEntryModuleLoginContext();
         $ctxBuildMs = round((microtime(true) - $ctxBuildStart) * 1000, 2);
 
-        // Cache key includes tenant because module settings can customize the login UI.
-        $cacheKey = 'kernel:login:html:' . $entryModuleId . ':tenant:' . (string)($loginTenantId ?? 0);
+        // Cache key includes tenant because module settings can customize the login UI,
+        // and the installation root because a co-hosted Ikabud app on the same FPM pool
+        // shares the APCu segment and would otherwise serve its own login HTML here.
+        $cacheKey = \Ikabud\Kernel\Cache::scopedKey(
+            'kernel:login:html:' . $entryModuleId . ':tenant:' . (string) ($loginTenantId ?? 0)
+        );
 
         if (extension_loaded('apcu') && apcu_enabled()) {
             $cachedHtml = apcu_fetch($cacheKey);
@@ -838,7 +842,7 @@ if (!function_exists('kernelHandleApiHealth')) {
         }
 
         if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-            $cacheKey = 'kernel:api_health:payload';
+            $cacheKey = \Ikabud\Kernel\Cache::scopedKey('kernel:api_health:payload');
             $cached = apcu_fetch($cacheKey, $hit);
             if ($hit && is_array($cached)) {
                 log_timing('kernel.api.health.path', $healthStartedAt, [
@@ -870,7 +874,7 @@ if (!function_exists('kernelHandleApiHealth')) {
 
         if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
             // Very short TTL: enough to collapse bursts, short enough to stay fresh.
-            apcu_store('kernel:api_health:payload', $payload, 2);
+            apcu_store(\Ikabud\Kernel\Cache::scopedKey('kernel:api_health:payload'), $payload, 2);
         }
 
         log_timing('kernel.api.health.path', $healthStartedAt, [

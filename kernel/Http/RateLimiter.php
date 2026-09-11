@@ -148,8 +148,8 @@ class RateLimiter
         }
 
         $now = time();
-        $windowKey = "rate_limit:{$key}";
-        $windowStartKey = "rate_limit:{$key}:start";
+        $windowKey = \Ikabud\Kernel\Cache::scopedKey("rate_limit:{$key}");
+        $windowStartKey = \Ikabud\Kernel\Cache::scopedKey("rate_limit:{$key}:start");
 
         $windowStart = apcu_fetch($windowStartKey);
         if ($windowStart === false || $now - $windowStart > $windowSeconds) {

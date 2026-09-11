@@ -175,7 +175,15 @@ declare(strict_types=1);
     $instanceDirName = 'pagecache_t' . $tenantId;
     $versionFile = $storagePath . '/cache/' . $instanceDirName . '/.cache_version';
     $flushFile = $storagePath . '/cache/' . $instanceDirName . '/.flush';
-    $versionApcuKey = 'pagecache:version:' . $instanceDirName;
+    // APCu's shared-memory segment belongs to the PHP-FPM pool, not to the
+    // virtual host, so every key must be namespaced by installation root —
+    // otherwise a co-hosted Ikabud app on the same pool serves its cached HTML
+    // here. Derived locally because this file must stay self-contained (no
+    // autoloader, no kernel classes); kept identical to Cache::scopedKey(),
+    // which page-cache.php uses for the same version key post-bootstrap.
+    $apcuScope = 'ikabud:' . substr(sha1((string) realpath(dirname(__DIR__, 2))), 0, 12) . ':';
+
+    $versionApcuKey = $apcuScope . 'pagecache:version:' . $instanceDirName;
 
     $currentVersion = 0;
     if (function_exists('apcu_fetch')) {
@@ -189,7 +197,7 @@ declare(strict_types=1);
     }
 
     // ── 8. APCu L1: try in-memory first ──────────────────────────────
-    $apcuCacheKey = 'cache_pagecache_t' . $tenantId . '_' . md5($cacheKey);
+    $apcuCacheKey = $apcuScope . 'cache_pagecache_t' . $tenantId . '_' . md5($cacheKey);
     $entry = null;
 
     if (function_exists('apcu_fetch')) {
