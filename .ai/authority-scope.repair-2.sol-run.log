@@ -1,0 +1,75 @@
+## Result
+
+**status:** PASS — repair 2 complete
+
+**changed:**
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php`
+- `tests/authority_scope_test.php`
+
+**implementation summary:**
+- Replaced `hasDatabaseTarget()` with reason-returning `authorityStoreIssue()`.
+- Unreachable authority stores now safely return:
+  - `hasPolicyFor()` → `false`
+  - `requiresProtocol()` → `null`
+  - `activePolicyRows()` → `[]`
+  - `authorize()` → denial with `reason => tenant_authority_store_unavailable`
+- Denials are recorded through the existing authorization audit mechanism.
+- Added deterministic injected-resolver coverage independent of tenant fixtures.
+- Preserved the reflection ambient-fallback falsifier.
+
+**verification:**
+- `tests/authority_scope_test.php`: `17 passed, 0 failed`
+- PHP syntax checks: PASS
+- PHPStan on registry: PASS
+- PHP CS Fixer dry-run on both changed files: PASS
+- `git diff --check`: PASS
+- No `tenant 54` or `akira` in `tests/authority_scope_test.php`.
+- `tests/admin_platform_api_test.php` and `modules/daily-ledger/**` unchanged.
+- `storage/modules.json` restored to its pre-test absent state.
+
+**probe evidence:**
+```text
+===PROBE===
+scope resolved: yes tenant=6401
+store resolvable: NO
+resolver failureReason: tenant_authority_store_unavailable
+hasPolicyFor: RETURNED false
+requiresProtocol: RETURNED null
+activePolicyRows: RETURNED []
+authorize: RETURNED allowed=false reason=tenant_authority_store_unavailable
+===END===
+```
+
+**returned authorization array:**
+```php
+array (
+  'allowed' => false,
+  'policy_version' => NULL,
+  'reason' => 'tenant_authority_store_unavailable',
+  'capability_id' => 'akira.post.publish@1',
+  'capability_version' => '1',
+  'provider' => 'cms-akira-core',
+  'caller_module' => 'cms-akira-core',
+  'actor_role' => 'admin',
+  'tenant_id' => '6401',
+)
+```
+
+**full-suite evidence:**
+```text
+Total: 108 files — 99 passed, 9 skipped (35444ms)
+```
+Zero failures. The affected tenant-dependent tests skip locally, including the four repair-2 CI failures; CI remains the oracle for their fixture-backed paths.
+
+**scope:**
+- R1 and R2 only.
+- No commit, push, or branch operation performed.
+
+**risks:**
+- Tenant-dependent CI paths cannot be exercised locally because their configured tenant stores do not resolve.
+
+**unresolved:**
+- None within repair-2 scope.
+- `authorize()` was not weakened: its sole `allowed => true` return remains after an exact policy row is found and all grant, protocol, caller, role, and activation checks pass.
+
+**recommended next state:** READY_FOR_REVIEW / CI.

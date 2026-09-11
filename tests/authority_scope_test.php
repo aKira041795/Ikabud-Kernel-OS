@@ -31,6 +31,86 @@ $quoteIdentifier = static function (string $identifier): string {
 $log = __DIR__ . '/../storage/logs/app.log';
 @file_put_contents($log, '');
 
+// Deterministic denial check: the tenant scope resolves, but its authority
+// store does not. This must run independently of the database fixture below.
+$unreachableTenantId = 8900001;
+$recordedStoreIssues = [];
+$unreachableScope = null;
+$unreachableResolver = null;
+try {
+    $unreachableResolver = new AuthorityScopeResolver(
+        static fn (int $tenantId): ?PDO => null,
+        static fn (?array $actor): ?int => $unreachableTenantId,
+        null,
+        static function (string $reason, array $context) use (&$recordedStoreIssues): void {
+            $recordedStoreIssues[] = ['reason' => $reason, 'context' => $context];
+        },
+    );
+    $unreachableScope = $unreachableResolver->resolve(AuthorityScopeResolver::WEB);
+} catch (Throwable $e) {
+    echo 'SKIP: deterministic unreachable authority store could not be built: ' . $e->getMessage() . "\n";
+}
+
+if ($unreachableScope instanceof AuthorityScope && $unreachableResolver instanceof AuthorityScopeResolver) {
+    $unreachableRegistry = new CapabilityAuthorizationRegistry(null, $unreachableScope, $unreachableResolver);
+    $readErrors = [];
+
+    try {
+        $hasPolicy = $unreachableRegistry->hasPolicyFor('test.unreachable.store@1', '1', 'test-provider');
+    } catch (Throwable $e) {
+        $hasPolicy = null;
+        $readErrors['hasPolicyFor'] = get_class($e) . ': ' . $e->getMessage();
+    }
+    try {
+        $requiredProtocol = $unreachableRegistry->requiresProtocol('test.unreachable.store@1', '1', 'test-provider');
+    } catch (Throwable $e) {
+        $requiredProtocol = false;
+        $readErrors['requiresProtocol'] = get_class($e) . ': ' . $e->getMessage();
+    }
+    try {
+        $activeRows = $unreachableRegistry->activePolicyRows();
+    } catch (Throwable $e) {
+        $activeRows = null;
+        $readErrors['activePolicyRows'] = get_class($e) . ': ' . $e->getMessage();
+    }
+    try {
+        $unreachableDecision = $unreachableRegistry->authorize([
+            'capability_id' => 'test.unreachable.store@1',
+            'capability_version' => '1',
+            'provider' => 'test-provider',
+            'caller_module' => 'test-caller',
+            'actor_role' => 'administrator',
+            'tenant_id' => (string)$unreachableTenantId,
+        ]);
+    } catch (Throwable $e) {
+        $unreachableDecision = null;
+        $readErrors['authorize'] = get_class($e) . ': ' . $e->getMessage();
+    }
+
+    $check('unreachable store makes hasPolicyFor return false without throwing', $hasPolicy === false && !isset($readErrors['hasPolicyFor']), json_encode($readErrors));
+    $check('unreachable store makes requiresProtocol return null without throwing', $requiredProtocol === null && !isset($readErrors['requiresProtocol']), json_encode($readErrors));
+    $check('unreachable store makes activePolicyRows return an empty array without throwing', $activeRows === [] && !isset($readErrors['activePolicyRows']), json_encode($readErrors));
+    $check(
+        'unreachable store makes authorize deny with the recorded reason without throwing',
+        is_array($unreachableDecision)
+            && ($unreachableDecision['allowed'] ?? null) === false
+            && ($unreachableDecision['reason'] ?? null) === 'tenant_authority_store_unavailable'
+            && !isset($readErrors['authorize']),
+        json_encode(['decision' => $unreachableDecision, 'errors' => $readErrors])
+    );
+    $recordedReasons = array_column($recordedStoreIssues, 'reason');
+    $check(
+        'every unreachable-store read records the denial reason',
+        count(array_filter($recordedReasons, static fn (string $reason): bool => $reason === 'tenant_authority_store_unavailable')) >= 4,
+        json_encode($recordedStoreIssues)
+    );
+    $unreachableLogText = is_file($log) ? (string)file_get_contents($log) : '';
+    $check('unreachable-store denial is diagnosable from the authorization log', str_contains($unreachableLogText, 'tenant_authority_store_unavailable'), $unreachableLogText);
+} elseif ($unreachableResolver instanceof AuthorityScopeResolver) {
+    echo 'SKIP: deterministic unreachable authority scope did not resolve: '
+        . ($unreachableResolver->failureReason() ?? 'unknown reason') . "\n";
+}
+
 $kernelDb = app()->db();
 $kernelDatabase = $dbName($kernelDb);
 $controlDb = app()->controlDb();

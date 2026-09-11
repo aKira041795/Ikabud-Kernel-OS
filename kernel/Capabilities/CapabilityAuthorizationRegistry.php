@@ -59,8 +59,9 @@ final class CapabilityAuthorizationRegistry
         ];
 
         try {
-            if (!$this->hasDatabaseTarget()) {
-                return $this->audit(array_merge($result, ['reason' => $this->scopeFailureReason]), 'warning');
+            $storeIssue = $this->authorityStoreIssue();
+            if ($storeIssue !== null) {
+                return $this->audit(array_merge($result, ['reason' => $storeIssue]), 'warning');
             }
             if ($capabilityId === '') {
                 return $this->audit(array_merge($result, ['reason' => 'missing_capability_id']), 'warning');
@@ -373,7 +374,9 @@ final class CapabilityAuthorizationRegistry
     /** @return list<array<string, mixed>> */
     public function activePolicyRows(): array
     {
-        if (!$this->hasDatabaseTarget()) {
+        $storeIssue = $this->authorityStoreIssue();
+        if ($storeIssue !== null) {
+            $this->audit(['allowed' => false, 'reason' => $storeIssue, 'read_method' => __FUNCTION__], 'warning');
             return [];
         }
         $version = $this->resolvePolicyVersion();
@@ -431,7 +434,9 @@ final class CapabilityAuthorizationRegistry
 
     public function hasPolicyFor(string $capabilityId, ?string $capabilityVersion = null, ?string $provider = null, ?int $policyVersion = null): bool
     {
-        if (!$this->hasDatabaseTarget()) {
+        $storeIssue = $this->authorityStoreIssue();
+        if ($storeIssue !== null) {
+            $this->audit(['allowed' => false, 'reason' => $storeIssue, 'read_method' => __FUNCTION__], 'warning');
             return false;
         }
         $version = $this->resolvePolicyVersion($policyVersion);
@@ -457,7 +462,9 @@ final class CapabilityAuthorizationRegistry
 
     public function requiresProtocol(string $capabilityId, string $capabilityVersion, string $provider, ?int $policyVersion = null): ?string
     {
-        if (!$this->hasDatabaseTarget()) {
+        $storeIssue = $this->authorityStoreIssue();
+        if ($storeIssue !== null) {
+            $this->audit(['allowed' => false, 'reason' => $storeIssue, 'read_method' => __FUNCTION__], 'warning');
             return null;
         }
         $version = $this->resolvePolicyVersion($policyVersion);
@@ -699,10 +706,29 @@ final class CapabilityAuthorizationRegistry
         return $previous instanceof Throwable ? $this->isMissingTableError($previous) : false;
     }
 
-    private function hasDatabaseTarget(): bool
+    /**
+     * Why tenant authorization reads cannot proceed, or null when they can.
+     *
+     * A resolved tenant whose store is unreachable is a DENIAL condition, not a
+     * crash: module helpers read policies while loading, so throwing here takes the
+     * whole request down instead of failing closed.
+     */
+    private function authorityStoreIssue(): ?string
     {
-        return $this->db instanceof PDO
-            || ($this->authorityScope instanceof AuthorityScope && $this->authorityScopeResolver instanceof AuthorityScopeResolver);
+        if ($this->db instanceof PDO) {
+            return null;
+        }
+
+        if (!$this->authorityScope instanceof AuthorityScope
+            || !$this->authorityScopeResolver instanceof AuthorityScopeResolver) {
+            return $this->scopeFailureReason;
+        }
+
+        if ($this->authorityScopeResolver->database($this->authorityScope) instanceof PDO) {
+            return null;
+        }
+
+        return $this->authorityScopeResolver->failureReason() ?? 'tenant_authority_store_unavailable';
     }
 
     private function storeCacheKey(): string
