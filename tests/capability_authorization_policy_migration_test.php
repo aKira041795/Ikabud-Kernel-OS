@@ -127,22 +127,52 @@ $tenantResolver = app()->tenant();
 $previousTenantId = $tenantResolver->current();
 
 try {
+    $tenantResolver->setTenantId(null);
+    $noScopeCapability = 'test.authz.no-scope.' . $suffix . '@1';
+    $noScopeCount = $db->prepare('SELECT COUNT(*) FROM capability_authorization_policies WHERE capability_id = ?');
+    $noScopeCount->execute([$noScopeCapability]);
+    $beforeNoScopeSeed = (int)$noScopeCount->fetchColumn();
+    CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
+        'policy_version' => $policyVersion,
+        'capability_id' => $noScopeCapability,
+        'capability_version' => '1',
+        'provider' => 'no-scope-provider',
+        'caller_module' => 'no-scope-caller',
+        'allowed_roles' => 'admin',
+    ]]);
+    $noScopeCount->execute([$noScopeCapability]);
+    capAuthzPolicyTest(
+        'policy seeding without an explicit tenant scope writes no authority row',
+        (int)$noScopeCount->fetchColumn() === $beforeNoScopeSeed
+    );
+    $tenantResolver->setTenantId($previousTenantId);
+
     $policy = [
         'policy_version' => $policyVersion,
         'capability_id' => $capabilityId,
         'capability_version' => '2',
         'provider' => $providerId,
-        'caller_module' => 'superseded-caller',
-        'allowed_roles' => 'editor',
-        'provider_activation_required' => true,
+        'caller_module' => $callerModule . ',' . $alternateCallerModule,
+        'allowed_roles' => 'admin,editor',
+        'provider_activation_required' => false,
         'requires_protocol' => 'v1',
         'is_active' => true,
     ];
     $registry->seedPolicy([$policy]);
-    $registry->seedPolicy([array_merge($policy, [
-        'caller_module' => $callerModule . ',' . $alternateCallerModule,
+    $narrowPolicy = array_merge($policy, [
+        'caller_module' => $callerModule,
         'allowed_roles' => 'admin',
+        'provider_activation_required' => true,
         'requires_protocol' => 'v2',
+    ]);
+    $registry->seedPolicy([$narrowPolicy]);
+    // Ratified D-Q4 rule: declared permissions may narrow automatically, but
+    // adding a caller/role or relaxing another gate requires operator re-grant.
+    $registry->seedPolicy([array_merge($narrowPolicy, [
+        'caller_module' => $callerModule . ',' . $alternateCallerModule,
+        'allowed_roles' => 'admin,editor',
+        'provider_activation_required' => false,
+        'requires_protocol' => 'v1',
     ])]);
     $registry->seedPolicy([array_merge($policy, [
         'provider' => $legacyProviderId,
@@ -153,19 +183,21 @@ try {
 
     $stored = $db->prepare(
         'SELECT COUNT(*) AS row_count, MAX(caller_module) AS caller_module, '
-        . 'MAX(allowed_roles) AS allowed_roles, MAX(requires_protocol) AS requires_protocol '
+        . 'MAX(allowed_roles) AS allowed_roles, MAX(requires_protocol) AS requires_protocol, '
+        . 'MAX(provider_activation_required) AS provider_activation_required '
         . 'FROM capability_authorization_policies '
         . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider = ?'
     );
     $stored->execute([$policyVersion, $capabilityId, '2', $providerId]);
     $storedPolicy = $stored->fetch(PDO::FETCH_ASSOC);
     capAuthzPolicyTest(
-        'seedPolicy upserts its natural key and updates governed fields',
+        'seedPolicy applies narrowing and refuses widening of a stored grant (ratified D-Q4)',
         is_array($storedPolicy)
             && (int)$storedPolicy['row_count'] === 1
-            && $storedPolicy['caller_module'] === $callerModule . ',' . $alternateCallerModule
+            && $storedPolicy['caller_module'] === $callerModule
             && $storedPolicy['allowed_roles'] === 'admin'
-            && $storedPolicy['requires_protocol'] === 'v2',
+            && $storedPolicy['requires_protocol'] === 'v2'
+            && (int)$storedPolicy['provider_activation_required'] === 1,
         json_encode($storedPolicy, JSON_UNESCAPED_SLASHES)
     );
 
@@ -227,12 +259,22 @@ try {
     $resolverFixtureTenant = 9411;
     ensureTestTenant($resolverFixtureTenant, 'gui-settings');
     $tenantResolver->setTenantId($resolverFixtureTenant);
-    $tenantRegistry = new CapabilityAuthorizationRegistry();
-    $tenantRegistry->seedPolicy([array_merge($policy, [
+    CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([array_merge($policy, [
         'caller_module' => $callerModule,
         'allowed_roles' => 'admin',
         'requires_protocol' => 'v2',
     ])]);
+    $tenantPolicyDb = app()->dbForTenant($resolverFixtureTenant);
+    $tenantPolicyCount = $tenantPolicyDb instanceof PDO ? $tenantPolicyDb->prepare(
+        'SELECT COUNT(*) FROM capability_authorization_policies WHERE policy_version = ? AND capability_id = ? AND provider = ?'
+    ) : null;
+    if ($tenantPolicyCount instanceof PDOStatement) {
+        $tenantPolicyCount->execute([$policyVersion, $capabilityId, $providerId]);
+    }
+    capAuthzPolicyTest(
+        'tenant-scoped seeding resolves and writes the explicit tenant authority store',
+        $tenantPolicyCount instanceof PDOStatement && (int)$tenantPolicyCount->fetchColumn() === 1
+    );
     CapabilityAuthorizationRegistry::invalidate();
     $resolverResult = capAuthzPolicyOutcome($bus, $capabilityId, $resolverOptions);
     capAuthzPolicyTest(
@@ -263,12 +305,10 @@ try {
         $adminResult['reason']
     );
 
-    // Re-assert the precondition so this assertion documents the bounded
-    // comma-separated allowlist rather than depending on earlier seed order.
-    $registry->seedPolicy([array_merge($policy, [
+    // Falsifier: removing seedPolicy's widening guard makes this assertion fail,
+    // because the alternate caller would be silently added to the live grant.
+    $registry->seedPolicy([array_merge($narrowPolicy, [
         'caller_module' => $callerModule . ',' . $alternateCallerModule,
-        'allowed_roles' => 'admin',
-        'requires_protocol' => 'v2',
     ])]);
     CapabilityAuthorizationRegistry::invalidate();
 
@@ -277,8 +317,8 @@ try {
         'caller_user' => ['role' => 'admin'],
     ]));
     capAuthzPolicyTest(
-        'caller_module accepts every member of a bounded comma-separated allowlist',
-        $alternateCallerResult['allowed'] === true,
+        'a widening caller declaration is refused until operator re-grant',
+        $alternateCallerResult['allowed'] === false && str_contains($alternateCallerResult['reason'], 'disabled_caller'),
         $alternateCallerResult['reason']
     );
     capAuthzPolicyTest(

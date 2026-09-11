@@ -1401,7 +1401,8 @@ function syncTenantMigrationsForTenant(int $tenantId, ?string $entryModuleId = n
 
 /**
  * CLI-focused tenant migration sync that mirrors `php ikabud migrate` semantics.
- * It applies kernel + module migrations only, without tenant seed artifacts.
+ * Module helper declarations are projected only after an explicit tenant scope
+ * is installed, so policy seeding cannot fall through to the control store.
  */
 function syncTenantCliMigrationsForTenant(int $tenantId, ?string $moduleId = null): array
 {
@@ -1420,6 +1421,8 @@ function syncTenantCliMigrationsForTenant(int $tenantId, ?string $moduleId = nul
     $plannedModules = tenantProvisionModulePlan($entryModuleId !== '' ? $entryModuleId : null);
     $allModules = discoverModules();
     $results = [];
+    $previousTenantId = app()->tenant()->current();
+    app()->tenant()->setTenantId($tenantId);
 
     try {
         $allApplied = tenantAllAppliedMigrations($db);
@@ -1459,6 +1462,9 @@ function syncTenantCliMigrationsForTenant(int $tenantId, ?string $moduleId = nul
             if ($executed !== []) {
                 $results[$requestedModuleId] = $executed;
             }
+            if (function_exists('loadModuleHelpers')) {
+                loadModuleHelpers($manifest);
+            }
 
             return [
                 'ok' => true,
@@ -1478,6 +1484,9 @@ function syncTenantCliMigrationsForTenant(int $tenantId, ?string $moduleId = nul
             if ($executed !== []) {
                 $results[$plannedModuleId] = $executed;
             }
+            if (function_exists('loadModuleHelpers')) {
+                loadModuleHelpers($manifest);
+            }
         }
 
         return [
@@ -1494,6 +1503,8 @@ function syncTenantCliMigrationsForTenant(int $tenantId, ?string $moduleId = nul
             'entry_module_id' => $entryModuleId !== '' ? $entryModuleId : null,
             'modules' => $results,
         ];
+    } finally {
+        app()->tenant()->setTenantId($previousTenantId);
     }
 }
 

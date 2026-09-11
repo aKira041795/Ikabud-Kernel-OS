@@ -45,7 +45,7 @@ function cabBuilderSeedMutationPolicies(): void
             'provider_activation_required' => true, 'requires_protocol' => 'v2', 'is_active' => true,
         ];
     }
-    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 function cabBuilderCtx(): \Ikabud\Kernel\Contracts\ModuleContext

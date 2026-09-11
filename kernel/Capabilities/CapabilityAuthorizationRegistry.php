@@ -150,37 +150,103 @@ final class CapabilityAuthorizationRegistry
     }
 
     /**
+     * Seed declarations only when an explicit tenant authority scope exists.
+     * Helper loading without a tenant (CLI/cron/control-plane bootstrap) is a
+     * deliberate no-op; it must never fall through to the ambient database.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     */
+    public static function seedPolicyForCurrentScope(array $rows): void
+    {
+        if (!function_exists('app')) {
+            self::logSeedDecision('skipped', ['reason' => 'application_unavailable']);
+            return;
+        }
+
+        $application = app();
+        $tenant = method_exists($application, 'tenant') ? $application->tenant() : null;
+        $tenantId = is_object($tenant) && method_exists($tenant, 'current') ? (int)($tenant->current() ?? 0) : 0;
+        if ($tenantId <= 0) {
+            self::logSeedDecision('skipped', ['reason' => 'missing_explicit_tenant_scope']);
+            return;
+        }
+
+        $db = method_exists($application, 'dbForTenant') ? $application->dbForTenant($tenantId) : null;
+        if (!$db instanceof PDO) {
+            self::logSeedDecision('skipped', ['reason' => 'tenant_authority_store_unavailable', 'tenant_id' => $tenantId]);
+            return;
+        }
+
+        (new self($db))->seedPolicy($rows);
+    }
+
+    /**
+     * Reconcile declarations for an explicitly selected authority store.
+     * Existing non-granted rows are immutable. Existing granted rows may be
+     * narrowed (or left unchanged), but any widening rejects the whole row.
+     *
      * @param array<int, array<string, mixed>> $rows
      */
     public function seedPolicy(array $rows): void
     {
-        $sql = 'INSERT INTO capability_authorization_policies '
-            . '(policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active, grant_state, updated_at) '
-            . "VALUES (:policy_version, :capability_id, :capability_version, :provider, :caller_module, :allowed_roles, :provider_activation_required, :requires_protocol, :is_active, 'granted', NOW()) "
-            . 'ON DUPLICATE KEY UPDATE '
-            . "caller_module = IF(grant_state = 'granted', VALUES(caller_module), caller_module), "
-            . "allowed_roles = IF(grant_state = 'granted', VALUES(allowed_roles), allowed_roles), "
-            . "provider_activation_required = IF(grant_state = 'granted', VALUES(provider_activation_required), provider_activation_required), "
-            . "requires_protocol = IF(grant_state = 'granted', VALUES(requires_protocol), requires_protocol), "
-            . "updated_at = IF(grant_state = 'granted', NOW(), updated_at)";
-
         try {
-            $this->withKernelTableAccess(function () use ($rows, $sql): void {
-                $stmt = $this->db()->prepare($sql);
+            $this->withKernelTableAccess(function () use ($rows): void {
+                $db = $this->db();
+                $select = $db->prepare(
+                    'SELECT caller_module, allowed_roles, provider_activation_required, requires_protocol, grant_state '
+                    . 'FROM capability_authorization_policies WHERE policy_version = :policy_version '
+                    . 'AND capability_id = :capability_id AND capability_version = :capability_version AND provider = :provider'
+                );
+                $insert = $db->prepare(
+                    'INSERT INTO capability_authorization_policies '
+                    . '(policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active, grant_state, updated_at) '
+                    . "VALUES (:policy_version, :capability_id, :capability_version, :provider, :caller_module, :allowed_roles, :provider_activation_required, :requires_protocol, :is_active, 'granted', NOW())"
+                );
+                $update = $db->prepare(
+                    'UPDATE capability_authorization_policies SET caller_module = :caller_module, allowed_roles = :allowed_roles, '
+                    . 'provider_activation_required = :provider_activation_required, requires_protocol = :requires_protocol, updated_at = NOW() '
+                    . 'WHERE policy_version = :policy_version AND capability_id = :capability_id '
+                    . "AND capability_version = :capability_version AND provider = :provider AND grant_state = 'granted'"
+                );
+
                 foreach ($rows as $row) {
                     if (!is_array($row)) {
                         continue;
                     }
-                    $stmt->execute([
-                        ':policy_version' => (int)($row['policy_version'] ?? 0),
-                        ':capability_id' => trim((string)($row['capability_id'] ?? '')),
-                        ':capability_version' => trim((string)($row['capability_version'] ?? '')),
-                        ':provider' => trim((string)($row['provider'] ?? '')),
-                        ':caller_module' => $this->nullableString($row['caller_module'] ?? null),
-                        ':allowed_roles' => $this->nullableString($row['allowed_roles'] ?? null),
-                        ':provider_activation_required' => !array_key_exists('provider_activation_required', $row) || (bool)$row['provider_activation_required'] ? 1 : 0,
-                        ':requires_protocol' => trim((string)($row['requires_protocol'] ?? 'v1')),
-                        ':is_active' => !array_key_exists('is_active', $row) || (bool)$row['is_active'] ? 1 : 0,
+                    $declared = $this->normalizeSeedRow($row);
+                    $key = array_intersect_key($declared, array_flip(['policy_version', 'capability_id', 'capability_version', 'provider']));
+                    $select->execute($this->prefixParams($key));
+                    $stored = $select->fetch(PDO::FETCH_ASSOC);
+                    if (!is_array($stored)) {
+                        $insert->execute($this->prefixParams($declared));
+                        continue;
+                    }
+                    if ((string)$stored['grant_state'] !== 'granted') {
+                        continue;
+                    }
+
+                    $widenedFields = $this->widenedFields($stored, $declared);
+                    if ($widenedFields !== []) {
+                        self::logSeedDecision('widening_refused', $key + [
+                            'fields' => $widenedFields,
+                            'stored' => $stored,
+                            'declared' => $declared,
+                            'actor' => 'system',
+                            'reason' => 'operator_regrant_required',
+                        ]);
+                        continue;
+                    }
+
+                    $changed = $this->governedFieldsChanged($stored, $declared);
+                    if (!$changed) {
+                        continue;
+                    }
+                    $update->execute($this->prefixParams(array_diff_key($declared, ['is_active' => true])));
+                    self::logSeedDecision('narrowing_applied', $key + [
+                        'stored' => $stored,
+                        'declared' => $declared,
+                        'actor' => 'system',
+                        'reason' => 'declaration_permission_narrowing',
                     ]);
                 }
             });
@@ -307,6 +373,11 @@ final class CapabilityAuthorizationRegistry
      */
     public function replaceActiveRowRoles(string $capabilityId, string $capabilityVersion, string $provider, string $callerModule, array $allowedRoles): int
     {
+        $db = $this->db();
+        if (!$db->inTransaction()) {
+            throw new \LogicException('Replacing active policy roles requires an existing transaction.');
+        }
+
         $rows = $this->activePolicyRows();
         if ($rows === []) {
             throw new CapabilityAuthorizationRegistryUnavailableException('active capability policy is unavailable');
@@ -314,7 +385,6 @@ final class CapabilityAuthorizationRegistry
         $oldVersion = (int)$rows[0]['policy_version'];
         $nextVersion = $oldVersion + 1;
         $matched = false;
-        $statesToPreserve = [];
         foreach ($rows as &$row) {
             $row['policy_version'] = $nextVersion;
             $rowState = (string)($row['grant_state'] ?? 'granted');
@@ -328,30 +398,15 @@ final class CapabilityAuthorizationRegistry
                 $row['allowed_roles'] = implode(',', $allowedRoles);
                 $matched = true;
             }
-            if ($rowState !== 'granted') {
-                $statesToPreserve[] = [
-                    'capability_id' => (string)$row['capability_id'],
-                    'capability_version' => (string)$row['capability_version'],
-                    'provider' => (string)$row['provider'],
-                    'state' => $rowState,
-                ];
-            }
         }
         unset($row);
         if (!$matched) {
             throw new \InvalidArgumentException('The selected active policy row no longer exists.');
         }
-        $this->seedPolicy($rows);
-        foreach ($statesToPreserve as $preserved) {
-            $this->transitionGrantState(
-                $nextVersion,
-                $preserved['capability_id'],
-                $preserved['capability_version'],
-                $preserved['provider'],
-                $preserved['state'],
-                'Preserved while cloning policy version ' . $oldVersion . ' to ' . $nextVersion
-            );
-        }
+        // Insert each clone exactly once with its final state. In particular,
+        // suspended/revoked rows must never exist in N+1 as granted, even inside
+        // the caller's transaction or during an audit-capability dispatch.
+        $this->insertPolicyRowsWithFinalState($rows);
         $this->withKernelTableAccess(function () use ($oldVersion): void {
             $stmt = $this->db()->prepare('UPDATE capability_authorization_policies SET is_active = 0, updated_at = NOW() WHERE policy_version = :version');
             $stmt->execute([':version' => $oldVersion]);
@@ -400,6 +455,124 @@ final class CapabilityAuthorizationRegistry
         }
 
         return null;
+    }
+
+    /** @param list<array<string, mixed>> $rows */
+    private function insertPolicyRowsWithFinalState(array $rows): void
+    {
+        $sql = 'INSERT INTO capability_authorization_policies '
+            . '(policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active, grant_state, updated_at) '
+            . 'VALUES (:policy_version, :capability_id, :capability_version, :provider, :caller_module, :allowed_roles, :provider_activation_required, :requires_protocol, :is_active, :grant_state, NOW())';
+
+        $this->withKernelTableAccess(function () use ($rows, $sql): void {
+            $stmt = $this->db()->prepare($sql);
+            foreach ($rows as $row) {
+                $normalized = $this->normalizeSeedRow($row);
+                $normalized['grant_state'] = in_array(($row['grant_state'] ?? ''), ['granted', 'suspended', 'revoked'], true)
+                    ? (string)$row['grant_state']
+                    : 'granted';
+                $stmt->execute($this->prefixParams($normalized));
+            }
+        });
+    }
+
+    /** @param array<string, mixed> $row
+     *  @return array<string, mixed>
+     */
+    private function normalizeSeedRow(array $row): array
+    {
+        return [
+            'policy_version' => (int)($row['policy_version'] ?? 0),
+            'capability_id' => trim((string)($row['capability_id'] ?? '')),
+            'capability_version' => trim((string)($row['capability_version'] ?? '')),
+            'provider' => trim((string)($row['provider'] ?? '')),
+            'caller_module' => $this->nullableString($row['caller_module'] ?? null),
+            'allowed_roles' => $this->nullableString($row['allowed_roles'] ?? null),
+            'provider_activation_required' => !array_key_exists('provider_activation_required', $row) || (bool)$row['provider_activation_required'] ? 1 : 0,
+            'requires_protocol' => strtolower(trim((string)($row['requires_protocol'] ?? 'v1'))),
+            'is_active' => !array_key_exists('is_active', $row) || (bool)$row['is_active'] ? 1 : 0,
+        ];
+    }
+
+    /** @param array<string, mixed> $values
+     *  @return array<string, mixed>
+     */
+    private function prefixParams(array $values): array
+    {
+        $params = [];
+        foreach ($values as $key => $value) {
+            $params[':' . $key] = $value;
+        }
+        return $params;
+    }
+
+    /** @param array<string, mixed> $stored
+     *  @param array<string, mixed> $declared
+     *  @return list<string>
+     */
+    private function widenedFields(array $stored, array $declared): array
+    {
+        $widened = [];
+        foreach (['allowed_roles', 'caller_module'] as $field) {
+            if (!$this->declaredSetIsSubset($declared[$field] ?? null, $stored[$field] ?? null)) {
+                $widened[] = $field;
+            }
+        }
+
+        $storedProtocol = strtolower(trim((string)($stored['requires_protocol'] ?? 'v1')));
+        $declaredProtocol = strtolower(trim((string)($declared['requires_protocol'] ?? 'v1')));
+        $protocolRank = ['v1' => 0, 'v2' => 1];
+        if ($storedProtocol !== $declaredProtocol
+            && (!isset($protocolRank[$storedProtocol], $protocolRank[$declaredProtocol])
+                || $protocolRank[$declaredProtocol] < $protocolRank[$storedProtocol])) {
+            $widened[] = 'requires_protocol';
+        }
+
+        if ((int)($stored['provider_activation_required'] ?? 1) === 1
+            && (int)($declared['provider_activation_required'] ?? 1) === 0) {
+            $widened[] = 'provider_activation_required';
+        }
+        return $widened;
+    }
+
+    private function declaredSetIsSubset(mixed $declared, mixed $stored): bool
+    {
+        $declaredSet = $this->parseCsv($declared);
+        $storedSet = $this->parseCsv($stored);
+        // An empty allowlist means unrestricted. It is the widest possible set.
+        if ($storedSet === []) {
+            return true;
+        }
+        if ($declaredSet === []) {
+            return false;
+        }
+        return array_diff($declaredSet, $storedSet) === [];
+    }
+
+    /** @param array<string, mixed> $stored
+     *  @param array<string, mixed> $declared
+     */
+    private function governedFieldsChanged(array $stored, array $declared): bool
+    {
+        foreach (['allowed_roles', 'caller_module'] as $field) {
+            $old = $this->parseCsv($stored[$field] ?? null);
+            $new = $this->parseCsv($declared[$field] ?? null);
+            sort($old);
+            sort($new);
+            if ($old !== $new) {
+                return true;
+            }
+        }
+        return strtolower(trim((string)($stored['requires_protocol'] ?? 'v1'))) !== (string)$declared['requires_protocol']
+            || (int)($stored['provider_activation_required'] ?? 1) !== (int)$declared['provider_activation_required'];
+    }
+
+    /** @param array<string, mixed> $context */
+    private static function logSeedDecision(string $decision, array $context): void
+    {
+        if (function_exists('write_log')) {
+            write_log('capability.policy.seed.' . $decision, $decision === 'widening_refused' ? 'warning' : 'info', $context);
+        }
     }
 
     /** @return array<int, array<string, mixed>> */

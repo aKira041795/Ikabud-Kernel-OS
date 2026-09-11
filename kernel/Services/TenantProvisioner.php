@@ -179,6 +179,17 @@ class TenantProvisioner
         $this->migrationDetails = $coordinated['details'];
         $migrationCount += $coordinated['count'];
 
+        // Project helper-owned policy declarations only after the provisioned
+        // tenant is the explicit authority scope and its kernel table exists.
+        if (function_exists('discoverModules') && function_exists('loadModuleHelpers')) {
+            $modules = discoverModules();
+            foreach ((array)($this->migrationDetails['plan'] ?? []) as $moduleId) {
+                if (isset($modules[$moduleId])) {
+                    loadModuleHelpers($modules[$moduleId]);
+                }
+            }
+        }
+
         // Step 8: Seed admin user (fail-fast when required).
         if ($adminUser !== '' && $adminPass !== '') {
             $seeded = $this->seedAdminUser($tenantPdo, $adminUser, $adminPass, $adminName, $entryModule, $spec);
