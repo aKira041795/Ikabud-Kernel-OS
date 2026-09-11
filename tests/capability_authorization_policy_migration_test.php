@@ -9,6 +9,7 @@ $_SERVER['REQUEST_URI'] = '/';
 
 require __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../src/helpers/module-manager.php';
+require_once __DIR__ . '/_support/tenant_fixture.php';
 
 use Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry;
 use Ikabud\Kernel\Capabilities\CapabilityBus;
@@ -217,21 +218,31 @@ try {
         'caller_module' => $callerModule,
         'caller_user' => ['role' => 'admin'],
     ];
-    $tenantResolver->setTenantId(54);
+    // Resolver propagation — the tenant comes from app()->tenant(), not from
+    // options and not from request context — is asserted on a synthetic fixture
+    // tenant that resolves to this suite's own database. Binding this to a live
+    // product tenant made a persistence test seed and then delete rows in a real
+    // tenant's policy table, which is not a test's business. The fixture keeps
+    // the coverage and drops the live dependency.
+    $resolverFixtureTenant = 9411;
+    ensureTestTenant($resolverFixtureTenant, 'gui-settings');
+    $tenantResolver->setTenantId($resolverFixtureTenant);
     $tenantRegistry = new CapabilityAuthorizationRegistry();
     $tenantRegistry->seedPolicy([array_merge($policy, [
         'caller_module' => $callerModule,
         'allowed_roles' => 'admin',
         'requires_protocol' => 'v2',
     ])]);
+    CapabilityAuthorizationRegistry::invalidate();
     $resolverResult = capAuthzPolicyOutcome($bus, $capabilityId, $resolverOptions);
     capAuthzPolicyTest(
         'governed dispatch resolves tenant from the app tenant resolver without options or request context',
         $resolverResult['allowed'] === true,
         $resolverResult['reason']
     );
-
     $tenantResolver->setTenantId(null);
+    cleanupTestTenant($resolverFixtureTenant);
+
     CapabilityAuthorizationRegistry::invalidate();
     capAuthzPolicyTest(
         'governed dispatch without a tenant anywhere remains fail-closed',
@@ -252,12 +263,8 @@ try {
         $adminResult['reason']
     );
 
-    // The tenant-scoped seed above re-uses this natural key but narrows the
-    // allowlist to the primary caller. On a host without tenant 54 that seed lands
-    // in the base row (tenant 54 absorbs it on developer machines), so without
-    // re-asserting the precondition the assertion below would test the order of
-    // previous seeds rather than the documented behaviour: a bounded
-    // comma-separated allowlist contains every member it names.
+    // Re-assert the precondition so this assertion documents the bounded
+    // comma-separated allowlist rather than depending on earlier seed order.
     $registry->seedPolicy([array_merge($policy, [
         'caller_module' => $callerModule . ',' . $alternateCallerModule,
         'allowed_roles' => 'admin',
@@ -302,23 +309,7 @@ try {
         ])
     );
 } finally {
-    // The tenant-scoped cleanup only applies where tenant 54 is actually
-    // configured (developer machines are; CI is not). Touching it unconditionally
-    // made this test die during teardown — *after* every assertion had already
-    // passed — and that death was invisible while uncaught CLI exceptions still
-    // exited 0. Resolver state is always restored, so the guard cannot leak.
-    try {
-        $tenantResolver->setTenantId(54);
-        $tenantCleanup = app()->db()->prepare(
-            'DELETE FROM capability_authorization_policies '
-            . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider = ?'
-        );
-        $tenantCleanup->execute([$policyVersion, $capabilityId, '2', $providerId]);
-    } catch (Throwable $tenantCleanupUnavailable) {
-        // No tenant 54 database here — the tenant-scoped rows were never written.
-    } finally {
-        $tenantResolver->setTenantId($previousTenantId);
-    }
+    $tenantResolver->setTenantId($previousTenantId);
     $cleanup = $db->prepare(
         'DELETE FROM capability_authorization_policies '
         . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider IN (?, ?)'

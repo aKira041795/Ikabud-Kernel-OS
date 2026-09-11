@@ -65,6 +65,7 @@ function tenantSafeKernelMigrationArtifacts(?string $entryModuleId = null): arra
         '015_users_token_version.sql' => BASE_PATH . '/database/migrations/015_users_token_version.sql',
         '015_kernel_durable_event_outbox.sql' => BASE_PATH . '/migrations/015_kernel_durable_event_outbox.sql',
         '016_capability_authorization_policies.sql' => BASE_PATH . '/migrations/016_capability_authorization_policies.sql',
+        '017_capability_policy_grant_lifecycle.sql' => BASE_PATH . '/migrations/017_capability_policy_grant_lifecycle.sql',
         '017_audit_logs_actor_module.sql' => BASE_PATH . '/database/migrations/017_audit_logs_actor_module.sql',
         '018_audit_logs_actor_columns_ensure.sql' => BASE_PATH . '/database/migrations/018_audit_logs_actor_columns_ensure.sql',
         '019_kernel_password_resets.sql' => BASE_PATH . '/database/migrations/019_kernel_password_resets.sql',

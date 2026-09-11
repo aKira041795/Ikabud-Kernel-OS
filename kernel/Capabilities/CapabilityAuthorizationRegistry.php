@@ -111,6 +111,14 @@ final class CapabilityAuthorizationRegistry
                 return $this->audit(array_merge($result, ['reason' => 'version_mismatch']), 'warning');
             }
 
+            $grantState = strtolower(trim((string)($exactRow['grant_state'] ?? 'granted')));
+            if ($grantState !== 'granted') {
+                $reason = in_array($grantState, ['revoked', 'suspended'], true)
+                    ? 'grant_' . $grantState
+                    : 'grant_state_invalid';
+                return $this->audit(array_merge($result, ['reason' => $reason]), 'warning');
+            }
+
             // Protocol-v2 policy is a dispatch invariant, not informational metadata.
             // The bus supplies this value from trusted provider metadata/configuration.
             // Missing, legacy, and unknown dispatch protocols all fail closed for v2 rows.
@@ -126,7 +134,7 @@ final class CapabilityAuthorizationRegistry
 
             $allowedRoles = $this->parseAllowedRoles($exactRow['allowed_roles'] ?? null);
             if ($allowedRoles !== [] && !in_array($actorRole, $allowedRoles, true)) {
-                return $this->audit(array_merge($result, ['reason' => 'unknown_role']), 'warning');
+                return $this->audit(array_merge($result, ['reason' => 'role_not_allowed']), 'warning');
             }
 
             if ((int)($exactRow['provider_activation_required'] ?? 1) === 1 && !$providerActivation) {
@@ -147,15 +155,14 @@ final class CapabilityAuthorizationRegistry
     public function seedPolicy(array $rows): void
     {
         $sql = 'INSERT INTO capability_authorization_policies '
-            . '(policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active, updated_at) '
-            . 'VALUES (:policy_version, :capability_id, :capability_version, :provider, :caller_module, :allowed_roles, :provider_activation_required, :requires_protocol, :is_active, NOW()) '
+            . '(policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active, grant_state, updated_at) '
+            . "VALUES (:policy_version, :capability_id, :capability_version, :provider, :caller_module, :allowed_roles, :provider_activation_required, :requires_protocol, :is_active, 'granted', NOW()) "
             . 'ON DUPLICATE KEY UPDATE '
-            . 'caller_module = VALUES(caller_module), '
-            . 'allowed_roles = VALUES(allowed_roles), '
-            . 'provider_activation_required = VALUES(provider_activation_required), '
-            . 'requires_protocol = VALUES(requires_protocol), '
-            . 'is_active = VALUES(is_active), '
-            . 'updated_at = NOW()';
+            . "caller_module = IF(grant_state = 'granted', VALUES(caller_module), caller_module), "
+            . "allowed_roles = IF(grant_state = 'granted', VALUES(allowed_roles), allowed_roles), "
+            . "provider_activation_required = IF(grant_state = 'granted', VALUES(provider_activation_required), provider_activation_required), "
+            . "requires_protocol = IF(grant_state = 'granted', VALUES(requires_protocol), requires_protocol), "
+            . "updated_at = IF(grant_state = 'granted', NOW(), updated_at)";
 
         try {
             $this->withKernelTableAccess(function () use ($rows, $sql): void {
@@ -183,6 +190,109 @@ final class CapabilityAuthorizationRegistry
         }
     }
 
+    /**
+     * Perform an explicit, audited grant-state transition. The audit capability
+     * derives "who" from the authenticated kernel actor and records "when";
+     * reason is mandatory and is persisted in the audit payload.
+     */
+    public function transitionGrantState(
+        int $policyVersion,
+        string $capabilityId,
+        string $capabilityVersion,
+        string $provider,
+        string $state,
+        string $reason
+    ): void {
+        $state = strtolower(trim($state));
+        $reason = trim($reason);
+        if (!in_array($state, ['granted', 'suspended', 'revoked'], true)) {
+            throw new \InvalidArgumentException('Grant state must be granted, suspended, or revoked.');
+        }
+        if ($reason === '') {
+            throw new \InvalidArgumentException('A grant-state transition requires a reason.');
+        }
+
+        $actor = function_exists('app') ? app()->user() : null;
+        if (!is_array($actor) || (int)($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
+            throw new \LogicException('An authenticated actor is required for a grant-state transition.');
+        }
+
+        $db = $this->db();
+        $ownsTransaction = !$db->inTransaction();
+        $savepoint = 'cap_policy_grant_state';
+        try {
+            if ($ownsTransaction) {
+                $db->beginTransaction();
+            } else {
+                $db->exec('SAVEPOINT ' . $savepoint);
+            }
+
+            $oldState = $this->withKernelTableAccess(function () use ($db, $policyVersion, $capabilityId, $capabilityVersion, $provider): string {
+                $stmt = $db->prepare(
+                    'SELECT grant_state FROM capability_authorization_policies '
+                    . 'WHERE policy_version = :policy_version AND capability_id = :capability_id '
+                    . 'AND capability_version = :capability_version AND provider = :provider FOR UPDATE'
+                );
+                $stmt->execute([
+                    ':policy_version' => $policyVersion,
+                    ':capability_id' => $capabilityId,
+                    ':capability_version' => $capabilityVersion,
+                    ':provider' => $provider,
+                ]);
+                $found = $stmt->fetchColumn();
+                if ($found === false) {
+                    throw new \InvalidArgumentException('The selected policy grant does not exist.');
+                }
+                return (string)$found;
+            });
+
+            $this->withKernelTableAccess(function () use ($db, $policyVersion, $capabilityId, $capabilityVersion, $provider, $state): void {
+                $stmt = $db->prepare(
+                    'UPDATE capability_authorization_policies SET grant_state = :state, updated_at = NOW() '
+                    . 'WHERE policy_version = :policy_version AND capability_id = :capability_id '
+                    . 'AND capability_version = :capability_version AND provider = :provider'
+                );
+                $stmt->execute([
+                    ':state' => $state,
+                    ':policy_version' => $policyVersion,
+                    ':capability_id' => $capabilityId,
+                    ':capability_version' => $capabilityVersion,
+                    ':provider' => $provider,
+                ]);
+            });
+
+            $policyKey = implode('|', [$policyVersion, $capabilityId, $capabilityVersion, $provider]);
+            $audit = app()->cap()->call('kernel.audit.record@1', [
+                'module' => '_kernel',
+                'action' => 'capability.policy.grant_' . $state,
+                'entity_type' => 'capability_authorization_policy',
+                'entity_id' => md5($policyKey),
+                'old_data' => ['policy_key' => $policyKey, 'grant_state' => $oldState],
+                'new_data' => ['policy_key' => $policyKey, 'grant_state' => $state, 'reason' => $reason],
+                'reason' => $reason,
+            ]);
+            if (!is_array($audit) || ($audit['ok'] ?? false) !== true) {
+                throw new \RuntimeException('The grant-state audit record could not be written.');
+            }
+
+            if ($ownsTransaction) {
+                $db->commit();
+            } else {
+                $db->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+            self::invalidate();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                if ($ownsTransaction) {
+                    $db->rollBack();
+                } else {
+                    $db->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                }
+            }
+            throw $e;
+        }
+    }
+
     /** @return list<array<string, mixed>> */
     public function activePolicyRows(): array
     {
@@ -204,14 +314,27 @@ final class CapabilityAuthorizationRegistry
         $oldVersion = (int)$rows[0]['policy_version'];
         $nextVersion = $oldVersion + 1;
         $matched = false;
+        $statesToPreserve = [];
         foreach ($rows as &$row) {
             $row['policy_version'] = $nextVersion;
+            $rowState = (string)($row['grant_state'] ?? 'granted');
             if ((string)$row['capability_id'] === $capabilityId
                 && (string)$row['capability_version'] === $capabilityVersion
                 && (string)$row['provider'] === $provider
                 && (string)($row['caller_module'] ?? '') === $callerModule) {
+                if ($rowState !== 'granted') {
+                    throw new \InvalidArgumentException('A suspended or revoked policy declaration cannot be edited.');
+                }
                 $row['allowed_roles'] = implode(',', $allowedRoles);
                 $matched = true;
+            }
+            if ($rowState !== 'granted') {
+                $statesToPreserve[] = [
+                    'capability_id' => (string)$row['capability_id'],
+                    'capability_version' => (string)$row['capability_version'],
+                    'provider' => (string)$row['provider'],
+                    'state' => $rowState,
+                ];
             }
         }
         unset($row);
@@ -219,6 +342,16 @@ final class CapabilityAuthorizationRegistry
             throw new \InvalidArgumentException('The selected active policy row no longer exists.');
         }
         $this->seedPolicy($rows);
+        foreach ($statesToPreserve as $preserved) {
+            $this->transitionGrantState(
+                $nextVersion,
+                $preserved['capability_id'],
+                $preserved['capability_version'],
+                $preserved['provider'],
+                $preserved['state'],
+                'Preserved while cloning policy version ' . $oldVersion . ' to ' . $nextVersion
+            );
+        }
         $this->withKernelTableAccess(function () use ($oldVersion): void {
             $stmt = $this->db()->prepare('UPDATE capability_authorization_policies SET is_active = 0, updated_at = NOW() WHERE policy_version = :version');
             $stmt->execute([':version' => $oldVersion]);
@@ -278,7 +411,7 @@ final class CapabilityAuthorizationRegistry
 
         try {
             $rows = $this->withKernelTableAccess(function () use ($policyVersion): array {
-                $stmt = $this->db()->prepare('SELECT policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active FROM capability_authorization_policies WHERE is_active = 1 AND policy_version = :policy_version ORDER BY capability_id ASC, capability_version ASC, provider ASC');
+                $stmt = $this->db()->prepare('SELECT policy_version, capability_id, capability_version, provider, caller_module, allowed_roles, provider_activation_required, requires_protocol, is_active, grant_state FROM capability_authorization_policies WHERE is_active = 1 AND policy_version = :policy_version ORDER BY capability_id ASC, capability_version ASC, provider ASC');
                 $stmt->execute([':policy_version' => $policyVersion]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 return is_array($rows) ? $rows : [];

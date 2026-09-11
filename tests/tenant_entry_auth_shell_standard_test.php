@@ -10,6 +10,8 @@ if ($configuredMultiTenant !== null) {
 }
 
 require __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/_support/env_guard.php';
+requireTenantFixture(9054);
 require_once __DIR__ . '/../src/helpers/module-manager.php';
 require_once __DIR__ . '/../src/http/core-routes.php';
 require_once __DIR__ . '/../src/http/page-handlers.php';
@@ -36,9 +38,10 @@ $previousTenant = app()->tenant()->current();
 $previousUser = app()->user();
 $previousTenantHost = $_SERVER['IK_TENANT_HOST'] ?? null;
 $previousEntry = $_SERVER['IK_ENTRY_MODULE_ID'] ?? null;
-$admin = ['id' => 54, 'role' => 'admin', 'source' => 'kernel', 'username' => 'tenant-admin'];
+// Use only the isolated test fixture; never borrow a live product tenant.
+$admin = ['id' => 9054, 'role' => 'admin', 'source' => 'kernel', 'username' => 'tenant-admin'];
 
-app()->tenant()->setTenantId(54);
+app()->tenant()->setTenantId(9054);
 app()->setUser($admin);
 $_SERVER['IK_TENANT_HOST'] = '1';
 $_SERVER['IK_ENTRY_MODULE_ID'] = 'cms-akira-shell';
