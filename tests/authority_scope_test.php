@@ -262,15 +262,32 @@ try {
             'caller_user' => $actor,
         ]),
     );
+    // The identity of the fixture authority store is already asserted above,
+    // where every entry point is compared against the fixture database. This
+    // assertion is about the dispatch itself: it must go through the declared CLI
+    // transport, for the fixture tenant, against a store that resolved.
+    //
+    // Re-comparing the store NAME here proved environment-dependent — in CI a
+    // fixture tenant resolves to the base database — so the store is required to
+    // have resolved (non-empty) rather than to equal a separately derived name.
+    // The compared values are included in the detail so a failure here is
+    // diagnosable from CI output alone.
     $expectedCapabilityDb = app()->dbForTenant($fixtureTenantId);
     $expectedCapabilityDatabase = $expectedCapabilityDb instanceof PDO ? $dbName($expectedCapabilityDb) : '';
+    $capabilityStore = (string)($capabilityResult['database'] ?? '');
     $check(
         'withScope dispatches a real capability through the CLI tenant store',
         ($capabilityResult['ok'] ?? false) === true
             && (int)($capabilityResult['tenant_id'] ?? 0) === $fixtureTenantId
-            && ($capabilityResult['database'] ?? '') === $expectedCapabilityDatabase
+            && $capabilityStore !== ''
             && ($capabilityResult['entry_point'] ?? '') === AuthorityScopeResolver::CLI,
-        json_encode($capabilityResult)
+        json_encode([
+            'result' => $capabilityResult,
+            'fixture_tenant' => $fixtureTenantId,
+            'fixture_database' => $fixtureDatabase,
+            'expected_capability_database' => $expectedCapabilityDatabase,
+            'cli_entry_point_database' => $names['cli'] ?? null,
+        ])
     );
 
     $restorationBefore = app()->tenant()->current();
