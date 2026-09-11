@@ -121,8 +121,14 @@ These C6 findings are architectural work, not P2 status footnotes:
    `seedPolicy()` may not overwrite an operator suspension or revocation. P2 closure adds an
    explicit `granted | suspended | revoked` lifecycle and audited transitions.
 
-The sequence is: **P2 closure** (route coverage → authority-store semantics →
-declaration/revocation → inventory beyond HTTP) → **P3** → **P4** → **P5**.
+The sequence is: **P2 closure** (route coverage → authority-store semantics → declaration/revocation →
+inventory beyond HTTP) → **P3** → **P4** → **P5**.
+
+Authority-store semantics are now **decided** (three-model debate, 2026-09-11) — see the
+[authority-store ADR](authority-store-adr.md). What remains is implementation, and it is gated on one
+prerequisite: an explicit authority scope replacing ambient `app()->db()` resolution. The debate also
+verified four defects that were previously invisible, including that CLI contexts currently write
+declaration rows into the kernel authority table rather than the tenant's.
 
 
 ### P3 — Delegation: actors can hold bounded authority **(the new ground)**
