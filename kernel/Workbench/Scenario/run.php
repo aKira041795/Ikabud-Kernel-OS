@@ -76,7 +76,7 @@ $capabilityProvider = static function (string $module) use ($base, $tenantId): C
                     if ($scoped) {
                         throw $e;
                     }
-                    write_log('Workbench scenario could not establish an authority scope; calling without one', 'warning', [
+                    write_log('Workbench scenario could not establish an authority scope; calling without one', 'info', [
                         'reason' => 'tenant_authority_store_unavailable',
                         'tenant_id' => $tenantId,
                         'error' => $e->getMessage(),
@@ -106,7 +106,7 @@ $capabilityProvider = static function (string $module) use ($base, $tenantId): C
         if ($scoped) {
             throw $e;
         }
-        write_log('Workbench scenario could not establish an authority scope; preparing without one', 'warning', [
+        write_log('Workbench scenario could not establish an authority scope; preparing without one', 'info', [
             'reason' => 'tenant_authority_store_unavailable',
             'tenant_id' => $tenantId,
             'error' => $e->getMessage(),

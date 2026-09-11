@@ -582,7 +582,7 @@ final class WorkflowEngine
                     if ($scoped) {
                         throw $e;
                     }
-                    write_log('WorkflowEngine: start could not establish a service authority scope; continuing without one', 'warning', [
+                    write_log('WorkflowEngine: start could not establish a service authority scope; continuing without one', 'info', [
                         'reason' => 'tenant_authority_store_unavailable',
                         'tenant_id' => $scopeTenantId,
                         'error' => $e->getMessage(),
@@ -866,7 +866,7 @@ final class WorkflowEngine
                     if ($scoped) {
                         throw $e;
                     }
-                    write_log('WorkflowEngine: advance could not establish a service authority scope; continuing without one', 'warning', [
+                    write_log('WorkflowEngine: advance could not establish a service authority scope; continuing without one', 'info', [
                         'reason' => 'tenant_authority_store_unavailable',
                         'tenant_id' => $tenantId,
                         'run_id' => $runId,

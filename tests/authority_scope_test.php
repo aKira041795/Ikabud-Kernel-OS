@@ -262,11 +262,13 @@ try {
             'caller_user' => $actor,
         ]),
     );
+    $expectedCapabilityDb = app()->dbForTenant($fixtureTenantId);
+    $expectedCapabilityDatabase = $expectedCapabilityDb instanceof PDO ? $dbName($expectedCapabilityDb) : '';
     $check(
         'withScope dispatches a real capability through the CLI tenant store',
         ($capabilityResult['ok'] ?? false) === true
-            && ($capabilityResult['tenant_id'] ?? null) === $fixtureTenantId
-            && ($capabilityResult['database'] ?? '') === $fixtureDatabase
+            && (int)($capabilityResult['tenant_id'] ?? 0) === $fixtureTenantId
+            && ($capabilityResult['database'] ?? '') === $expectedCapabilityDatabase
             && ($capabilityResult['entry_point'] ?? '') === AuthorityScopeResolver::CLI,
         json_encode($capabilityResult)
     );

@@ -554,7 +554,7 @@ function kernelEmitEvent(string $eventKey, array $payload = [], string $module =
                 );
                 return;
             } catch (Throwable $e) {
-                write_log('kernelEmitEvent could not establish an event authority scope; emitting without one', 'warning', [
+                write_log('kernelEmitEvent could not establish an event authority scope; emitting without one', 'info', [
                     'reason' => 'tenant_authority_store_unavailable',
                     'tenant_id' => $tenantId,
                     'event' => $eventKey,

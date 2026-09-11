@@ -289,7 +289,7 @@ class IntegrationBridge
                         throw $e;
                     }
                     if (function_exists('write_log')) {
-                        write_log('integration bridge could not establish a service authority scope; dispatching without one', 'warning', [
+                        write_log('integration bridge could not establish a service authority scope; dispatching without one', 'info', [
                             'reason' => 'tenant_authority_store_unavailable',
                             'tenant_id' => $tenantId,
                             'event' => $event,

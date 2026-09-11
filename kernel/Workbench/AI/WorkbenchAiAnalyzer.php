@@ -113,7 +113,7 @@ final class WorkbenchAiAnalyzer
                     throw $e;
                 }
                 if (function_exists('write_log')) {
-                    write_log('Workbench AI could not establish an authority scope; calling without one', 'warning', [
+                    write_log('Workbench AI could not establish an authority scope; calling without one', 'info', [
                         'reason' => 'tenant_authority_store_unavailable',
                         'tenant_id' => $this->tenantId,
                         'entry_point' => AuthorityScopeResolver::WORKBENCH,

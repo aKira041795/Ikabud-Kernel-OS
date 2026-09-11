@@ -85,7 +85,8 @@ final class AuthorityScopeResolver
             },
             static function (string $reason, array $context): void {
                 if (function_exists('write_log')) {
-                    write_log('capability.authority_scope.unresolved', 'warning', ['reason' => $reason] + $context);
+                    $level = $reason === 'unknown_authority_entry_point' ? 'warning' : 'info';
+                    write_log('capability.authority_scope.unresolved', $level, ['reason' => $reason] + $context);
                 }
             },
         );

@@ -565,7 +565,7 @@ final class WorkflowRuntime
                 'reason' => 'tenant_authority_store_unavailable',
                 'tenant_id' => $tenantId,
                 'error' => $e->getMessage(),
-            ]);
+            ], 'info');
             $this->authorityScopeFallback = true;
             try {
                 return $work();
@@ -649,10 +649,10 @@ final class WorkflowRuntime
         $this->log($message, $this->dbLogContext($phase, $context, $e));
     }
 
-    private function log(string $message, array $context = []): void
+    private function log(string $message, array $context = [], string $level = 'warning'): void
     {
         if (function_exists('write_log')) {
-            write_log($message, 'warning', $context);
+            write_log($message, $level, $context);
         }
     }
 }

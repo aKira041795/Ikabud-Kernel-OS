@@ -100,7 +100,7 @@ class PushWorker
             if ($scoped) {
                 throw $e;
             }
-            self::log('push_worker_authority_scope_unavailable', 'warning', [
+            self::log('push_worker_authority_scope_unavailable', 'info', [
                 'reason' => 'tenant_authority_store_unavailable',
                 'tenant_id' => $tenantId,
                 'queue_id' => $row['id'] ?? null,
