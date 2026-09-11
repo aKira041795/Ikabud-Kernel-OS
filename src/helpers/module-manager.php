@@ -3080,9 +3080,13 @@ function moduleRouteAuthorityEnforce(
     ];
 
     if ($outcome['state'] === 'undeclared') {
-        // Compatibility debt: the operation still runs, but it is observed and
-        // counted. `workbench:governance --gate` refuses to let it grow.
-        if (function_exists('write_log')) {
+        // Compatibility debt concerns *business* operations — the same
+        // denominator the census uses. A public presentation route (GET) is not
+        // a business operation, so warning once per page view would be noise
+        // rather than signal. Enforcement is unaffected: a route that declares
+        // authority is checked on any method.
+        if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH', 'DELETE'], true)
+            && function_exists('write_log')) {
             write_log('route.authority.undeclared', 'warning', $log);
         }
         return true;
