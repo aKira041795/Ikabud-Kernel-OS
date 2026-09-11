@@ -19,7 +19,7 @@ function readModuleRegistry(): array
     // Cross-request APCu cache. Bluehost-safe: gracefully falls back to the
     // disk file when APCu is unavailable. Invalidated on write so module
     // enable/disable changes are picked up immediately.
-    $apcuKey = 'ikabud:module_registry_v1';
+    $apcuKey = \Ikabud\Kernel\Cache::scopedKey('ikabud:module_registry_v1');
     if (function_exists('apcu_fetch') && ini_get('apc.enabled')) {
         $reg = apcu_fetch($apcuKey, $hit);
         if ($hit && is_array($reg)) {
@@ -57,7 +57,7 @@ function writeModuleRegistry(array $registry): void
 
     // Invalidate the cached registry so module enable/disable takes effect immediately.
     if (function_exists('apcu_delete')) {
-        apcu_delete('ikabud:module_registry_v1');
+        apcu_delete(\Ikabud\Kernel\Cache::scopedKey('ikabud:module_registry_v1'));
     }
 }
 

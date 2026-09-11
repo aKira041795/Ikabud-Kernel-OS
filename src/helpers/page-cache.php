@@ -42,7 +42,10 @@ define('PAGE_CACHE_SKIP_PREFIXES', require __DIR__ . '/../../config/page-cache-p
 
 function pageCacheVersionKey(string $instance): string
 {
-    return 'pagecache:version:' . $instance;
+    // Namespaced by installation root: APCu's segment is shared by every vhost
+    // in a PHP-FPM pool, so an unscoped key lets a co-hosted Ikabud app read —
+    // and invalidate — this installation's page-cache version.
+    return \Ikabud\Kernel\Cache::scopedKey('pagecache:version:' . $instance);
 }
 
 function pageCacheVersionFile(string $instance): string

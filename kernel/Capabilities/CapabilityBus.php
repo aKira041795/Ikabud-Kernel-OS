@@ -1260,7 +1260,7 @@ final class CapabilityBus implements CapabilityBusContract
      */
     private function loadState(string $kind): array
     {
-        $apcuKey = 'ikabud_capbus_' . $kind;
+        $apcuKey = \Ikabud\Kernel\Cache::scopedKey('ikabud_capbus_' . $kind);
         if (function_exists('apcu_enabled') && apcu_enabled()) {
             $success = false;
             $data = apcu_fetch($apcuKey, $success);
@@ -1276,7 +1276,7 @@ final class CapabilityBus implements CapabilityBusContract
      */
     private function saveState(string $kind, array $data): void
     {
-        $apcuKey = 'ikabud_capbus_' . $kind;
+        $apcuKey = \Ikabud\Kernel\Cache::scopedKey('ikabud_capbus_' . $kind);
         if (function_exists('apcu_enabled') && apcu_enabled()) {
             apcu_store($apcuKey, $data, 3600);
         }

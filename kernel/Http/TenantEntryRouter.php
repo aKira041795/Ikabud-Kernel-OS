@@ -121,7 +121,7 @@ class TenantEntryRouter
 
         // Check APCu for cross-process cache before expensive routes.php load
         $apcuEnabled = function_exists('apcu_fetch') && function_exists('apcu_store') && ini_get('apc.enabled');
-        $apcuKey = 'ikabud:entry_landing:v4:' . sha1($delegate);
+        $apcuKey = \Ikabud\Kernel\Cache::scopedKey('ikabud:entry_landing:v4:' . sha1($delegate));
         if ($apcuEnabled) {
             $cached = apcu_fetch($apcuKey, $success);
             if ($success && is_string($cached)) {

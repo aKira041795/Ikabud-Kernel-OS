@@ -203,12 +203,13 @@ final class FragmentStore
 
     private function apcKey(string $key, string $tenantId): string
     {
-        return 'disyl_frag:' . $tenantId . ':' . hash('sha256', $key);
+        // Installation-scoped: tenant ids are only unique within one installation.
+        return \Ikabud\Kernel\Cache::scopedKey('disyl_frag:' . $tenantId . ':' . hash('sha256', $key));
     }
 
     private function depApcKey(string $tenantId): string
     {
-        return 'disyl_frag_dv:' . $tenantId;
+        return \Ikabud\Kernel\Cache::scopedKey('disyl_frag_dv:' . $tenantId);
     }
 
     private function safe(string $s): string
