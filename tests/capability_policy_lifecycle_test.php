@@ -27,11 +27,14 @@ $column = $db->query(
     . "WHERE table_schema = DATABASE() AND table_name = 'capability_authorization_policies' AND column_name = 'grant_state'"
 )->fetch(PDO::FETCH_ASSOC);
 $column = is_array($column) ? array_change_key_case($column, CASE_LOWER) : $column;
+// MySQL reports an ENUM default unquoted ('granted'); MariaDB reports it quoted
+// ("'granted'"). Normalise before asserting so the check is engine-independent.
+$columnDefault = is_array($column) ? trim((string)($column['column_default'] ?? ''), "'") : null;
 $check(
     'migration installs the explicit three-state lifecycle with granted default',
     is_array($column)
         && $column['column_type'] === "enum('granted','suspended','revoked')"
-        && $column['column_default'] === 'granted',
+        && $columnDefault === 'granted',
     json_encode($column)
 );
 $notMigrated = (int)$db->query(
