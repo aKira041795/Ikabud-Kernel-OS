@@ -21,7 +21,29 @@ function governedHelper(array $p): void { app()->cap()->call('probe.write@1', $p
 function plainHandler(array $p): void { $x = "app()->cap()->call('fake')"; /* app()->cap()->call('fake') */ }
 PHP);
 
-/** @return array<string, array{dispatch: string, reach: string}> */
+$transportFixtures = [
+    'event-handler.php' => ['EVENT', 'event'],
+    'workflow-step.php' => ['SERVICE', 'workflow'],
+    'cli-command.php' => ['CLI', 'cli'],
+    'workbench-command.php' => ['WORKBENCH', 'workbench'],
+    'service-handler.php' => ['SERVICE', 'service'],
+    'queue-worker.php' => ['QUEUE', 'worker'],
+];
+foreach ($transportFixtures as $file => [$constant, $transport]) {
+    file_put_contents($module . '/' . $file, "<?php\nfunction fixture_" . str_replace('-', '_', $transport) . "(): void { AuthorityScopeResolver::withScope(1, AuthorityScopeResolver::{$constant}, static function (): void { app()->cap()->call('probe.{$transport}@1', []); }); }\n");
+}
+file_put_contents($module . '/unresolved-service.php', <<<'PHP'
+<?php
+function unresolved_service(string $capability, array $options): void {
+    app()->cap()->call($capability, [], $options);
+    app()->cap()->call('probe.provider@1', [], ['provider' => $options['provider']]);
+}
+PHP);
+
+/**
+ * @param array<string, mixed> $result
+ * @return array<string, array{dispatch: string, reach: string}>
+ */
 function censusIndex(array $result): array
 {
     $index = [];
@@ -35,6 +57,28 @@ try {
     $result = (new GovernanceCensus($root))->scan('probe');
     $index = censusIndex($result);
 
+    $nonHttp = $result['modules'][0]['non_http'] ?? [];
+    $declaredTransports = [];
+    $unresolvedReasons = [];
+    foreach ($nonHttp as $entry) {
+        if (($entry['scope'] ?? '') === 'declared') {
+            $declaredTransports[] = $entry['transport'] ?? '';
+        }
+        if (($entry['scope'] ?? '') === 'unresolved') {
+            $unresolvedReasons[] = $entry['how'] ?? '';
+        }
+    }
+    sort($declaredTransports);
+    $expectedTransports = ['cli', 'event', 'service', 'workbench', 'worker', 'workflow'];
+    if ($declaredTransports !== $expectedTransports) {
+        throw new RuntimeException('non-HTTP transport discovery mismatch: ' . json_encode($declaredTransports));
+    }
+    if (count($unresolvedReasons) !== 2
+        || !in_array('capability id is held in a variable or computed expression', $unresolvedReasons, true)
+        || !in_array('provider routing is selected dynamically', $unresolvedReasons, true)) {
+        throw new RuntimeException('dynamic non-HTTP calls were not honestly unresolved: ' . json_encode($unresolvedReasons));
+    }
+
     // reach: a real (transitive) bus call is detected; a string/comment is not.
     if (($index['/governed']['reach'] ?? null) !== 'bus-reachable') {
         throw new RuntimeException('real transitive bus call was not detected as bus-reachable');
@@ -44,7 +88,7 @@ try {
     }
 
     // dispatch: reaching the bus inside a handler is NOT request authority.
-    if (($index['/governed']['dispatch'] ?? null) !== 'undeclared') {
+    if ($index['/governed']['dispatch'] !== 'undeclared') {
         throw new RuntimeException('a handler bus call was misreported as dispatch-enforced');
     }
 
@@ -84,7 +128,7 @@ try {
         }
     }
 
-    echo "PASS: dispatch vs reach reported separately; comment/string rejection; declaration, exemption and reason validation\n";
+    echo "PASS: routed dispatch/reach remain separate; six non-HTTP transports found; dynamic capability/provider calls unresolved\n";
 } finally {
     $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
     foreach ($it as $f) {
