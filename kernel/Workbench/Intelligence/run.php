@@ -9,8 +9,14 @@ if (PHP_SAPI !== 'cli') {
 $base = dirname(__DIR__, 3);
 $runId = $argv[1] ?? '';
 $module = $argv[2] ?? 'unknown';
+$tenantId = null;
+foreach (array_slice($argv, 3) as $argument) {
+    if (str_starts_with($argument, '--tenant=')) {
+        $tenantId = (int)substr($argument, 9);
+    }
+}
 if ($runId === '') {
-    fwrite(STDERR, "Usage: run.php <run-id> <module>\n");
+    fwrite(STDERR, "Usage: run.php <run-id> <module> [--tenant=N]\n");
     exit(1);
 }
 
@@ -99,7 +105,7 @@ $ai = new WorkbenchAiAnalyzer([
     'max_evidence_bytes' => (int)($settings['workbench_ai_max_evidence_bytes'] ?? 32768),
     'prompt_version' => 'workbench-pattern-intelligence-v1',
     'metrics_path' => $base . '/storage/private/workbench/metrics.json',
-], null, $base . '/storage/private/comprehension/ai-cache');
+], null, $base . '/storage/private/comprehension/ai-cache', $tenantId);
 $rawAi = $ai->analyze([
     'task' => 'latent_quality_assessment',
     // Keep the validator's authoritative citation contract ahead of the potentially

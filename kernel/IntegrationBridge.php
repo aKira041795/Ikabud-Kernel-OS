@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel;
 
+use Ikabud\Kernel\Capabilities\AuthorityScopeResolver;
 use Ikabud\Kernel\Database\KernelPDO;
 use Throwable;
 
 class IntegrationBridge
 {
     private static int $activeDepth = 0;
+    private static bool $authorityScopeFallback = false;
 
     /**
      * Per-request cache for integration configs (avoids DB query per event fire).
@@ -269,6 +271,40 @@ class IntegrationBridge
     {
         if ($event === '' || str_starts_with($event, 'kernel.database.') || str_starts_with($event, 'integration.result.')) {
             return;
+        }
+
+        if (!self::$authorityScopeFallback && AuthorityScopeResolver::currentEntryPoint() !== AuthorityScopeResolver::SERVICE) {
+            $tenantId = app()->tenant()->current();
+            if (is_int($tenantId) && $tenantId > 0) {
+                $scoped = false;
+                try {
+                    AuthorityScopeResolver::withScope($tenantId, AuthorityScopeResolver::SERVICE, static function () use (&$scoped, $payload, $event): void {
+                        $scoped = true;
+                        self::handle($payload, $event);
+                    });
+                    return;
+                } catch (Throwable $e) {
+                    // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+                    if ($scoped) {
+                        throw $e;
+                    }
+                    if (function_exists('write_log')) {
+                        write_log('integration bridge could not establish a service authority scope; dispatching without one', 'info', [
+                            'reason' => 'tenant_authority_store_unavailable',
+                            'tenant_id' => $tenantId,
+                            'event' => $event,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                    self::$authorityScopeFallback = true;
+                    try {
+                        self::handle($payload, $event);
+                    } finally {
+                        self::$authorityScopeFallback = false;
+                    }
+                    return;
+                }
+            }
         }
 
         if (self::$activeDepth > 0) {

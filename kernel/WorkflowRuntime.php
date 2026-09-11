@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Ikabud\Kernel;
 
+use Ikabud\Kernel\Capabilities\AuthorityScopeResolver;
 use PDO;
 use Throwable;
 
 final class WorkflowRuntime
 {
+    private bool $authorityScopeFallback = false;
+
     /**
      * Modules that have registered themselves as workflow callers.
      * @var array<string, true>
@@ -344,6 +347,9 @@ final class WorkflowRuntime
 
     public function stateGet(mixed $payload): array
     {
+        if (!$this->authorityScopeFallback && AuthorityScopeResolver::currentEntryPoint() !== AuthorityScopeResolver::SERVICE) {
+            return $this->withWorkflowAuthorityScope(fn (): array => $this->stateGet($payload));
+        }
         if (!is_array($payload)) {
             return ['ok' => false, 'error' => 'Invalid payload'];
         }
@@ -382,6 +388,9 @@ final class WorkflowRuntime
 
     public function transition(mixed $payload): array
     {
+        if (!$this->authorityScopeFallback && AuthorityScopeResolver::currentEntryPoint() !== AuthorityScopeResolver::SERVICE) {
+            return $this->withWorkflowAuthorityScope(fn (): array => $this->transition($payload));
+        }
         if (!is_array($payload)) {
             return ['ok' => false, 'error' => 'Invalid payload'];
         }
@@ -522,6 +531,50 @@ final class WorkflowRuntime
         ];
     }
 
+    /** @param callable():array<string,mixed> $work
+     * @return array<string,mixed>
+     */
+    private function withWorkflowAuthorityScope(callable $work): array
+    {
+        $tenantId = $this->app->tenant()->current();
+        if (!is_int($tenantId) || $tenantId <= 0) {
+            $this->authorityScopeFallback = true;
+            try {
+                return $work();
+            } finally {
+                $this->authorityScopeFallback = false;
+            }
+        }
+
+        $scoped = false;
+        try {
+            return AuthorityScopeResolver::withScope(
+                $tenantId,
+                AuthorityScopeResolver::SERVICE,
+                static function () use (&$scoped, $work): array {
+                    $scoped = true;
+                    return $work();
+                },
+            );
+        } catch (Throwable $e) {
+            // @phpstan-ignore if.alwaysFalse (closure mutates the by-reference execution guard)
+            if ($scoped) {
+                throw $e;
+            }
+            $this->log('WorkflowRuntime could not establish a service authority scope; continuing without one', [
+                'reason' => 'tenant_authority_store_unavailable',
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ], 'info');
+            $this->authorityScopeFallback = true;
+            try {
+                return $work();
+            } finally {
+                $this->authorityScopeFallback = false;
+            }
+        }
+    }
+
     private function resolveCaller(array $payload = []): array
     {
         $context = function_exists('capability_call_context') ? capability_call_context() : null;
@@ -596,10 +649,10 @@ final class WorkflowRuntime
         $this->log($message, $this->dbLogContext($phase, $context, $e));
     }
 
-    private function log(string $message, array $context = []): void
+    private function log(string $message, array $context = [], string $level = 'warning'): void
     {
         if (function_exists('write_log')) {
-            write_log($message, 'warning', $context);
+            write_log($message, $level, $context);
         }
     }
 }

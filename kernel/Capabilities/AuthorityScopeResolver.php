@@ -23,11 +23,15 @@ final class AuthorityScopeResolver
     public const CRON = 'cron';
     public const QUEUE = 'queue';
     public const SERVICE = 'service';
+    public const EVENT = 'event';
     public const WORKBENCH = 'workbench';
     public const TEST = 'test';
 
     /** @var list<string> */
-    private const ENTRY_POINTS = [self::WEB, self::CLI, self::CRON, self::QUEUE, self::SERVICE, self::WORKBENCH, self::TEST];
+    private const ENTRY_POINTS = [self::WEB, self::CLI, self::CRON, self::QUEUE, self::SERVICE, self::EVENT, self::WORKBENCH, self::TEST];
+
+    /** @var list<string> */
+    private static array $entryPointStack = [];
 
     private ?string $failureReason = null;
 
@@ -81,7 +85,8 @@ final class AuthorityScopeResolver
             },
             static function (string $reason, array $context): void {
                 if (function_exists('write_log')) {
-                    write_log('capability.authority_scope.unresolved', 'warning', ['reason' => $reason] + $context);
+                    $level = $reason === 'unknown_authority_entry_point' ? 'warning' : 'info';
+                    write_log('capability.authority_scope.unresolved', $level, ['reason' => $reason] + $context);
                 }
             },
         );
@@ -90,6 +95,52 @@ final class AuthorityScopeResolver
     public static function supportsEntryPoint(string $entryPoint): bool
     {
         return in_array($entryPoint, self::ENTRY_POINTS, true);
+    }
+
+    public static function currentEntryPoint(): ?string
+    {
+        $entryPoint = end(self::$entryPointStack);
+        return is_string($entryPoint) ? $entryPoint : null;
+    }
+
+    /**
+     * Run one complete unit of work against a resolvable tenant authority store.
+     * Tenant and transport are stack-scoped so nested units restore their parent.
+     */
+    public static function withScope(int $tenantId, string $entryPoint, callable $work): mixed
+    {
+        $entryPoint = strtolower(trim($entryPoint));
+        if ($tenantId <= 0) {
+            throw new \InvalidArgumentException('An authority scope requires a positive tenant id.');
+        }
+        if (!self::supportsEntryPoint($entryPoint)) {
+            throw new \InvalidArgumentException('Unknown authority entry point: ' . $entryPoint);
+        }
+
+        $application = function_exists('app') ? app() : null;
+        $resolver = self::forApplication(is_object($application) ? $application : null);
+        $scope = $resolver->resolve($entryPoint, ['tenant_id' => $tenantId]);
+        if (!$scope instanceof AuthorityScope || !$resolver->database($scope) instanceof PDO) {
+            $reason = $resolver->failureReason() ?? 'tenant_authority_store_unavailable';
+            throw new \RuntimeException('Authority scope unavailable: ' . $reason);
+        }
+        if (!is_object($application) || !method_exists($application, 'tenant')) {
+            throw new \RuntimeException('Authority scope unavailable: tenant_resolver_unavailable');
+        }
+        $tenant = $application->tenant();
+        if (!is_object($tenant) || !method_exists($tenant, 'current') || !method_exists($tenant, 'setTenantId')) {
+            throw new \RuntimeException('Authority scope unavailable: tenant_resolver_unavailable');
+        }
+
+        $previousTenant = $tenant->current();
+        self::$entryPointStack[] = $entryPoint;
+        $tenant->setTenantId($tenantId);
+        try {
+            return $work($scope);
+        } finally {
+            $tenant->setTenantId(is_numeric($previousTenant) ? (int)$previousTenant : null);
+            array_pop(self::$entryPointStack);
+        }
     }
 
     /**
@@ -129,6 +180,9 @@ final class AuthorityScopeResolver
     public function resolveForCapability(array $options, array $caller): ?AuthorityScope
     {
         $entryPoint = strtolower(trim((string)($options['authority_entry_point'] ?? '')));
+        if ($entryPoint === '') {
+            $entryPoint = self::currentEntryPoint() ?? '';
+        }
         if ($entryPoint === '') {
             $entryPoint = PHP_SAPI === 'cli' ? self::CLI : self::WEB;
         }

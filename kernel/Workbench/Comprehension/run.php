@@ -169,7 +169,7 @@ $workbenchAi = new WorkbenchAiAnalyzer([
     'prompt_version' => 'workbench-diagnosis-v1',
     'rollout_mode' => $rollout['mode'],
     'metrics_path' => $base . '/storage/private/workbench/metrics.json',
-], null, $base . '/storage/private/comprehension/ai-cache');
+], null, $base . '/storage/private/comprehension/ai-cache', $tenantId);
 
 $engine = new SemanticComprehensionEngine(
     $moduleId,

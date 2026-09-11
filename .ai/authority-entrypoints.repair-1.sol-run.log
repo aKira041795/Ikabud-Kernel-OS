@@ -1,0 +1,79 @@
+## Result
+
+**Status:** READY_FOR_REVIEW
+
+### Changed
+- Corrected scope wiring in:
+  - `kernel/WorkflowEngine.php`
+  - `kernel/WorkflowRuntime.php`
+  - `kernel/IntegrationBridge.php`
+  - `kernel/Services/PushWorker.php`
+  - Workbench AI/scenario entry points
+  - `ikabud capability:call`
+- Left the owner-fixed `kernel/EventTriggers.php` logic untouched.
+- Added execution guards so scope failures cannot execute work twice.
+
+### Implementation summary
+- Resolvable tenant: work runs inside `withScope()`.
+- Missing tenant: work still runs unscoped.
+- Scope establishment failure: logged, then work continues unscoped.
+- Exceptions raised after work begins are rethrown rather than retried.
+- Removed synthetic `missing_tenant_authority_scope` refusals and skipped operations.
+
+### Test re-audit
+All edits in the four named tests were **(b)** refusal accommodations and were fully reverted:
+
+- `tests/unified_execution_trace_test.php`
+- `tests/workflow_engine_test.php`
+- `tests/workflow_lifecycle_test.php`
+- `tests/workflow_runtime_guard_test.php`
+
+`tests/admin_platform_api_test.php` remains untouched.
+
+### Verification
+```text
+Total: 108 files — 99 passed, 9 skipped (34136ms)
+```
+
+Key results:
+
+- Workflow concurrency: `PASS: 38 FAIL: 0`
+- Admin platform API: `PASS: 13 FAIL: 0`
+- Admin kernel control plane API: `PASS: 40 FAIL: 0`
+- Authority scope: `21 passed, 0 failed`
+- Architecture check: passed
+- Workbench governance gate: exit `0`
+- Targeted php-cs-fixer check: clean
+- `git diff --check`: clean
+
+Local skips: capability effect invalidation, durable idempotency, entity fallback, entity view render cache, error page contract, durable event outbox, kernel idempotency capability, runner timeout, and tenant entry auth shell.
+
+### Fail-closed evidence
+```text
+✓ authorization with no authority scope denies with the recorded reason
+✓ no-scope denial records why
+✓ unscoped registry cannot reach the ambient database
+```
+
+Thus unscoped capability calls still deny at the capability boundary with recorded `missing_tenant_authority_scope`.
+
+### Live check
+Using `akiracms.test`:
+
+```text
+/      200
+/posts 200
+/login 200
+error.log bytes: 0
+```
+
+### Scope / unresolved
+- No migrations or schema changes.
+- `modules/daily-ledger/**` untouched.
+- Scheduled jobs remain unwired because no runner/tenant-bearing schema exists.
+- Queue-drained workflow runs remain unwired because workflow rows lack tenant identity.
+- Full PHPStan now reports only the existing owner-fixed `kernel/EventTriggers.php:562` by-reference guard as “always false”; all newly repaired files are clean. I did not alter that owner fix.
+- `storage/modules.json` was absent before and after the suite.
+- No commit, push, or branch operation performed.
+
+**Recommended next state:** review and merge after accepting or suppressing the PHPStan false positive in the owner-maintained EventTriggers fix.
