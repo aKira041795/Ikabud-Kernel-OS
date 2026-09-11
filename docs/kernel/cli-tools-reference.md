@@ -572,6 +572,7 @@ its additive suite fields (`suite`/`kind`/`extends`/`extension_points`/`contribu
 | Command | Description |
 |---|---|
 | `workbench:audit` | Static regression tripwire over the hardened `kernel/WorkflowEngine.php` invariants (advisory-lock symmetry, atomic step claims, dispatch-outside-lock ordering, cancel/replay run-row guards, fail-closed post-dispatch persistence, MySQL-8-only SQL). Emits findings via the Workbench `IssueLedger` (issue.v1 format); exits non-zero on criticals. Runs statically (no live DB). Source: `kernel/Workbench/Audit/WorkflowGuardAuditor.php` |
+| `workbench:governance` | Static census of routed-operation authority. Reports two independent facts per operation — `dispatch` (declared in `module.json` `capabilities.routes` and enforced before the handler body: `enforced` / `exempt` / `undeclared`) and `reach` (does the handler body itself reach the capability bus: `bus-reachable` / `no-bus-call` / `unresolved`) — plus per-module and Akira-wide ratios. Domain-neutral: it reads declarations, never domain nouns. `--json` for machines; `--gate` fails (exit 1) when any module's undeclared count exceeds `.governance-baseline.json`, so new ungoverned routes cannot ship; `--update-baseline` rewrites that freeze. Tokenizes module PHP and never loads or executes it. Source: `kernel/Workbench/Governance/GovernanceCensus.php` |
 
 ---
 

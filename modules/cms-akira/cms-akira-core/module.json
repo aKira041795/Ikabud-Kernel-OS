@@ -406,7 +406,14 @@
             "kernel.idempotency.commit@1",
             "kernel.idempotency.release@1",
             "kernel.audit.record@1"
-        ]
+        ],
+        "routes": {
+            "POST /api/v1/cms-akira/posts": "akira.post.create@1",
+            "PUT /api/v1/cms-akira/posts/{slug}": "akira.post.update@1",
+            "POST /api/v1/cms-akira/posts/{slug}/publish": "akira.post.publish@1",
+            "POST /api/v1/cms-akira/posts/{slug}/unpublish": "akira.post.unpublish@1",
+            "DELETE /api/v1/cms-akira/posts/{slug}": "akira.post.delete@1"
+        }
     },
     "routes": true,
     "events": [],

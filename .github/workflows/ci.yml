@@ -87,6 +87,13 @@ jobs:
       - name: Architecture boundary check
         run: php ikabud architecture:check
 
+      # Route authority is a property of the request, not a courtesy of the
+      # handler. This gate refuses to let the undeclared-route remainder grow:
+      # declare the authority in module.json (capabilities.routes) or declare a
+      # reasoned exemption (governance.exemptions).
+      - name: Route authority zero-growth gate
+        run: php ikabud workbench:governance --all --gate
+
       - name: CMS Akira rendered editor contract
         run: php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
 
