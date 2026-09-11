@@ -1170,7 +1170,7 @@ switch ($command) {
         out('    ' . green('test:module') . ' <id> --browser-only  Run browser tests only');
         out('    ' . green('workbench:benchmark') . ' [--json]  Run competitive quality gates');
         out('    ' . green('workbench:audit') . ' [--json]  Audit WorkflowEngine concurrency and MySQL 5.7 guards');
-        out('    ' . green('workbench:governance') . ' <module>|--all [--json] [--gate|--update-baseline]  Census routed-operation authority');
+        out('    ' . green('workbench:governance') . ' <module>|--all [--json] [--gate|--update-baseline]  Census routed and non-HTTP authority');
         out('    ' . green('workbench:init') . ' <module> [--force]  Create/migrate the v1 test contract');
         out('    ' . green('workbench:validate') . ' <module> [--json] Validate test contract claims');
         out('    ' . green('workbench:doctor') . ' <module> [--url=] [--user=] [--pass=] [--json]   Run the pre-browser release gate with optional env readiness');
@@ -6283,22 +6283,31 @@ MD;
                     if (($row['undeclared'] ?? 0) > 0) $baseline[$row['module']] = $row['undeclared'];
                 }
                 ksort($baseline);
+                $nonHttpBaseline = [];
+                foreach ($result['non_http_summary'] as $row) {
+                    if (($row['unscoped'] ?? 0) > 0) $nonHttpBaseline[$row['module']] = $row['unscoped'];
+                }
+                ksort($nonHttpBaseline);
                 if (hasFlag('--update-baseline')) {
                     file_put_contents(
                         $baselineFile,
                         json_encode([
                             'rule' => 'Frozen undeclared-route debt. Any module whose undeclared count rises fails the gate; modules must reach zero to be removed.',
+                            'non_http_rule' => 'Frozen unscoped non-HTTP debt. Any module whose unscoped count rises fails the gate; unresolved sites are reported separately and are not debt.',
+                            'non_http_baseline' => $nonHttpBaseline,
                             'baseline' => $baseline,
                         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
                     );
-                    out('  Baseline written: ' . count($baseline) . ' module(s) carrying undeclared-route debt.');
+                    out('  Baseline written: ' . count($baseline) . ' routed-debt module(s), ' . count($nonHttpBaseline) . ' non-HTTP-debt module(s).');
                     break;
                 }
 
                 $previous = [];
+                $previousNonHttp = [];
                 if (is_file($baselineFile)) {
                     $decoded = json_decode((string) file_get_contents($baselineFile), true);
                     $previous = is_array($decoded['baseline'] ?? null) ? $decoded['baseline'] : [];
+                    $previousNonHttp = is_array($decoded['non_http_baseline'] ?? null) ? $decoded['non_http_baseline'] : [];
                 }
                 $violations = [];
                 foreach ($result['summary'] as $row) {
@@ -6306,16 +6315,24 @@ MD;
                     $allowed = (int) ($previous[$module] ?? 0);
                     $actual = (int) ($row['undeclared'] ?? 0);
                     if ($actual > $allowed) {
-                        $violations[] = sprintf('%s: undeclared rose %d -> %d', $module, $allowed, $actual);
+                        $violations[] = sprintf('%s: routed undeclared rose %d -> %d', $module, $allowed, $actual);
+                    }
+                }
+                foreach ($result['non_http_summary'] as $row) {
+                    $module = (string) $row['module'];
+                    $allowed = (int) ($previousNonHttp[$module] ?? 0);
+                    $actual = (int) ($row['unscoped'] ?? 0);
+                    if ($actual > $allowed) {
+                        $violations[] = sprintf('%s: non-HTTP unscoped rose %d -> %d', $module, $allowed, $actual);
                     }
                 }
                 if ($violations === []) {
-                    out('  ' . green('GOVERNANCE GATE=PASS') . ' — no module added undeclared-route debt.');
+                    out('  ' . green('GOVERNANCE GATE=PASS') . ' — neither routed nor non-HTTP debt grew.');
                 } else {
                     out('  ' . red('GOVERNANCE GATE=BLOCKED'));
                     foreach ($violations as $violation) out('    ' . $violation);
-                    out('    Declare the route authority in module.json (capabilities.routes) or declare a');
-                    out('    reasoned exemption (governance.exemptions). Do not relabel debt as exempt.');
+                    out('    Establish explicit route/non-HTTP authority or reduce the debt.');
+                    out('    Do not relabel debt as exempt or governed.');
                     exit(1);
                 }
             }
@@ -6332,6 +6349,13 @@ MD;
                         out('      ' . $op['handler'] . ' @ ' . $op['source']);
                         out('      ' . $op['how']);
                     }
+                    if ($module['non_http'] !== []) {
+                        out('    ' . bold('Non-HTTP capability calls'));
+                        foreach ($module['non_http'] as $entry) {
+                            out(sprintf('    %-10s %-10s %s @ %s', strtoupper($entry['scope']), $entry['transport'], $entry['capability'], $entry['source']));
+                            out('      ' . $entry['how']);
+                        }
+                    }
                 }
                 out('');
                 out(sprintf('  %-40s %9s %10s %8s %10s %7s %8s', 'Module', 'Enforced', 'Bus-reach', 'Exempt', 'Undeclared', 'Total', 'Ratio'));
@@ -6339,6 +6363,10 @@ MD;
                 $a=$result['akira']; out(sprintf('  %-40s %9d %10d %8d %10d %7d %7.1f%%', $a['module'], $a['dispatch_enforced'], $a['bus_reachable'], $a['exempt'], $a['undeclared'], $a['total'], $a['ratio'])); out('');
                 out('  Ratio = dispatch-enforced / routed business operations. Bus-reach is reported');
                 out('  separately because a bus call inside a handler is not request authority.'); out('');
+                out('  ' . bold('Non-HTTP authority (separate; never included in routed ratio)'));
+                out(sprintf('  %-40s %9s %10s %10s %7s %8s', 'Module', 'Declared', 'Unscoped', 'Unresolved', 'Total', 'Ratio'));
+                foreach ($result['non_http_summary'] as $s) out(sprintf('  %-40s %9d %10d %10d %7d %7.1f%%', $s['module'], $s['declared'], $s['unscoped'], $s['unresolved'], $s['total'], $s['ratio']));
+                out('  Non-HTTP ratio = declared / non-HTTP capability call sites; unresolved is not governed or debt.'); out('');
             }
         } catch (Throwable $e) { out(red('  Governance census failed: ' . $e->getMessage())); exit(2); }
         break;

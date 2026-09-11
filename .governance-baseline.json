@@ -1,5 +1,7 @@
 {
     "rule": "Frozen undeclared-route debt. Any module whose undeclared count rises fails the gate; modules must reach zero to be removed.",
+    "non_http_rule": "Frozen unscoped non-HTTP debt. Any module whose unscoped count rises fails the gate; unresolved sites are reported separately and are not debt.",
+    "non_http_baseline": [],
     "baseline": {
         "cms-akira-builder": 6,
         "cms-akira-shell": 15,
