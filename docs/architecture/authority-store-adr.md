@@ -1,13 +1,16 @@
 # ADR: authority-store ownership and resolution
 
-status: decisions taken (2026-09-11, three-model debate); implementation not started
+status: **ratified** by the product owner (2026-09-11); implementation not started
 deciders: product owner / architecture chair
 scope: policy declarations and grant state used by `CapabilityAuthorizationRegistry`
 
 > The five questions this ADR originally left open were answered on 2026-09-11 after a debate between
-> GPT Sol, Claude and DeepSeek Flash. See **Decisions** below. The **Decision** section immediately
-> following scopes only the P2-closure slice that has already shipped — it is a subset of, and not in
-> conflict with, the later answers.
+> GPT Sol, Claude and DeepSeek Flash, and the product owner approved the result. See **Decisions**
+> below. The **Decision** section immediately following scopes only the P2-closure slice that has
+> already shipped — it is a subset of, and not in conflict with, the later answers.
+>
+> Ratification settles the five decisions. It does not settle the four items still listed for the
+> chair at the end of this document.
 
 ## Context
 
@@ -199,11 +202,18 @@ The debate surfaced four defects that were invisible before it. Each is verified
    marker, once the authority scope from the precondition exists.
 2. Which capabilities are `sensitive` for dual control (D-Q5) — requires a risk catalogue that does not
    exist yet.
-3. Whether `capability_authorization_policies` remains kernel-escalated via `withKernelTableAccess()`
-   once it lives in a tenant database; if that escalation is ever removed, module-originated policy
-   reads will be denied by the module access firewall.
-4. Whether `kernel_tenant_db_connections` credentials are usable from a background process with no
-   HTTP request, which the containment sync (D-Q1) depends on.
+
+### Answered
+
+3. ~~Whether `capability_authorization_policies` remains kernel-escalated via `withKernelTableAccess()`
+   once it lives in a tenant database.~~ **Deferred to implementation** — it is a consequence of the
+   store move, not a precondition for it. Must be re-tested when the table moves: if the escalation is
+   dropped, module-originated policy reads fall to `enforceModuleAccess()` and are denied.
+4. ~~Whether `kernel_tenant_db_connections` credentials are usable from a background process with no
+   HTTP request.~~ **Yes — verified 2026-09-11.** `app()->dbForTenant(54)` resolves and connects from
+   the CLI with no request context, returning the tenant database, and `ensureTestTenant()` already
+   relies on the same path from tests. The containment sync in D-Q1 is therefore not blocked by
+   credential reachability.
 
 ## Superseded
 
