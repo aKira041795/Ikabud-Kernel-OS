@@ -101,7 +101,17 @@ function cacGovernanceMutate(string $operation, array $payload, callable $write)
 /** @return array<string,mixed> */
 function cac_cap_akira_policy_list_1(mixed $payload): array
 {
-    $rows = (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->activePolicyRows();
+    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
+    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
+        'actor' => app()->user(),
+    ]);
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+        null,
+        $scope,
+        $resolver,
+        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
+    );
+    $rows = $registry->activePolicyRows();
     $rows = array_values(array_filter($rows, static fn (array $row): bool => str_starts_with((string)$row['capability_id'], 'akira.')
         && in_array((string)$row['provider'], ['cms-akira-core', 'cms-akira-workflow'], true)));
     return ['ok' => true, 'rows' => $rows];

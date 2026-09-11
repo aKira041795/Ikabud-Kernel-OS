@@ -10,13 +10,17 @@ use Throwable;
 
 final class CapabilityAuthorizationRegistry
 {
-    /** @var array<int, array<int, array<string, mixed>>> */
+    /** @var array<string, array<int, array<int, array<string, mixed>>>> */
     private static array $policyCache = [];
     /** @var array<string, int|null> */
     private static array $activeVersionCache = [];
 
-    public function __construct(private readonly ?PDO $db = null)
-    {
+    public function __construct(
+        private readonly ?PDO $db = null,
+        private readonly ?AuthorityScope $authorityScope = null,
+        private readonly ?AuthorityScopeResolver $authorityScopeResolver = null,
+        private readonly string $scopeFailureReason = 'missing_tenant_authority_scope',
+    ) {
     }
 
     public static function invalidate(): void
@@ -55,6 +59,9 @@ final class CapabilityAuthorizationRegistry
         ];
 
         try {
+            if (!$this->hasDatabaseTarget()) {
+                return $this->audit(array_merge($result, ['reason' => $this->scopeFailureReason]), 'warning');
+            }
             if ($capabilityId === '') {
                 return $this->audit(array_merge($result, ['reason' => 'missing_capability_id']), 'warning');
             }
@@ -164,20 +171,15 @@ final class CapabilityAuthorizationRegistry
         }
 
         $application = app();
-        $tenant = method_exists($application, 'tenant') ? $application->tenant() : null;
-        $tenantId = is_object($tenant) && method_exists($tenant, 'current') ? (int)($tenant->current() ?? 0) : 0;
-        if ($tenantId <= 0) {
-            self::logSeedDecision('skipped', ['reason' => 'missing_explicit_tenant_scope']);
+        $resolver = AuthorityScopeResolver::forApplication($application);
+        $actor = method_exists($application, 'user') ? $application->user() : null;
+        $scope = $resolver->resolveForCapability([], ['user' => is_array($actor) ? $actor : null]);
+        if (!$scope instanceof AuthorityScope) {
+            self::logSeedDecision('skipped', ['reason' => $resolver->failureReason() ?? 'missing_explicit_tenant_scope']);
             return;
         }
 
-        $db = method_exists($application, 'dbForTenant') ? $application->dbForTenant($tenantId) : null;
-        if (!$db instanceof PDO) {
-            self::logSeedDecision('skipped', ['reason' => 'tenant_authority_store_unavailable', 'tenant_id' => $tenantId]);
-            return;
-        }
-
-        (new self($db))->seedPolicy($rows);
+        (new self(null, $scope, $resolver))->seedPolicy($rows);
     }
 
     /**
@@ -362,6 +364,9 @@ final class CapabilityAuthorizationRegistry
     /** @return list<array<string, mixed>> */
     public function activePolicyRows(): array
     {
+        if (!$this->hasDatabaseTarget()) {
+            return [];
+        }
         $version = $this->resolvePolicyVersion();
         return $version === null ? [] : $this->rowsForVersion($version);
     }
@@ -417,6 +422,9 @@ final class CapabilityAuthorizationRegistry
 
     public function hasPolicyFor(string $capabilityId, ?string $capabilityVersion = null, ?string $provider = null, ?int $policyVersion = null): bool
     {
+        if (!$this->hasDatabaseTarget()) {
+            return false;
+        }
         $version = $this->resolvePolicyVersion($policyVersion);
         if ($version === null) {
             return false;
@@ -440,6 +448,9 @@ final class CapabilityAuthorizationRegistry
 
     public function requiresProtocol(string $capabilityId, string $capabilityVersion, string $provider, ?int $policyVersion = null): ?string
     {
+        if (!$this->hasDatabaseTarget()) {
+            return null;
+        }
         $version = $this->resolvePolicyVersion($policyVersion);
         if ($version === null) {
             return null;
@@ -578,8 +589,9 @@ final class CapabilityAuthorizationRegistry
     /** @return array<int, array<string, mixed>> */
     private function rowsForVersion(int $policyVersion): array
     {
-        if (isset(self::$policyCache[$policyVersion])) {
-            return self::$policyCache[$policyVersion];
+        $storeKey = $this->storeCacheKey();
+        if (isset(self::$policyCache[$storeKey][$policyVersion])) {
+            return self::$policyCache[$storeKey][$policyVersion];
         }
 
         try {
@@ -589,12 +601,12 @@ final class CapabilityAuthorizationRegistry
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 return is_array($rows) ? $rows : [];
             });
-            self::$policyCache[$policyVersion] = $rows;
-            return self::$policyCache[$policyVersion];
+            self::$policyCache[$storeKey][$policyVersion] = $rows;
+            return self::$policyCache[$storeKey][$policyVersion];
         } catch (Throwable $e) {
             if ($this->isMissingTableError($e)) {
-                self::$policyCache[$policyVersion] = [];
-                return self::$policyCache[$policyVersion];
+                self::$policyCache[$storeKey][$policyVersion] = [];
+                return self::$policyCache[$storeKey][$policyVersion];
             }
             throw new CapabilityAuthorizationRegistryUnavailableException('capability authorization registry query failed: ' . $e->getMessage(), 0, $e);
         }
@@ -602,7 +614,7 @@ final class CapabilityAuthorizationRegistry
 
     private function resolvePolicyVersion(?int $override = null): ?int
     {
-        $cacheKey = $override === null ? 'active' : 'override:' . $override;
+        $cacheKey = $this->storeCacheKey() . ':' . ($override === null ? 'active' : 'override:' . $override);
         if (array_key_exists($cacheKey, self::$activeVersionCache)) {
             return self::$activeVersionCache[$cacheKey];
         }
@@ -635,7 +647,7 @@ final class CapabilityAuthorizationRegistry
     /**
      * Kernel services that read KERNEL-OWNED tables from within a module request MUST route those
      * reads through kernel escalation (KernelPDO::kernelEscalationEnter/Leave); never query a
-     * kernel-owned table via app()->db() in an active module context, or the ModuleDB ownership gate
+     * kernel-owned table via an ambient request-selected connection in an active module context, or the ModuleDB ownership gate
      * will deny it. This is the same contract moduleCatalogWithKernelDbEscalation() implements for
      * module-manager catalog reads.
      */
@@ -678,14 +690,31 @@ final class CapabilityAuthorizationRegistry
         return $previous instanceof Throwable ? $this->isMissingTableError($previous) : false;
     }
 
+    private function hasDatabaseTarget(): bool
+    {
+        return $this->db instanceof PDO
+            || ($this->authorityScope instanceof AuthorityScope && $this->authorityScopeResolver instanceof AuthorityScopeResolver);
+    }
+
+    private function storeCacheKey(): string
+    {
+        if ($this->db instanceof PDO) {
+            return 'pdo:' . spl_object_id($this->db);
+        }
+        if ($this->authorityScope instanceof AuthorityScope) {
+            return 'tenant:' . $this->authorityScope->tenantId;
+        }
+        return 'no-scope';
+    }
+
     private function db(): PDO
     {
         if ($this->db instanceof PDO) {
             return $this->db;
         }
 
-        if (function_exists('app')) {
-            $db = app()->db();
+        if ($this->authorityScope instanceof AuthorityScope && $this->authorityScopeResolver instanceof AuthorityScopeResolver) {
+            $db = $this->authorityScopeResolver->database($this->authorityScope);
             if ($db instanceof PDO) {
                 return $db;
             }
