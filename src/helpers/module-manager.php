@@ -2772,13 +2772,379 @@ function buildModuleContext(string $moduleId, array $manifest): \Ikabud\Kernel\C
     );
 }
 
+// ─── Route Authority ──────────────────────────────────────────────────────
+//
+// "Authority is a property of the request, not a courtesy of the handler."
+//
+// A module declares, in its module.json, the capability each routed operation
+// requires:
+//
+//   "capabilities": { "routes": { "POST /api/v1/x/things": "mod.thing.create@1" } }
+//
+// Routes that legitimately need no authority are declared separately, with a
+// mandatory reason:
+//
+//   "governance": { "exemptions": [ { "method": "POST", "route": "/x/login",
+//                                     "reason": "session establishment" } ] }
+//
+// An exemption means "this operation does not need authority" — never
+// "I could not make it governed". An undeclared route is compatibility debt:
+// it still runs, but it is observed, counted by the census, and gated against
+// growth. Only *declared* routes fail closed.
+
+/**
+ * Read a module's route-authority declarations from its manifest.
+ *
+ * @param string $moduleId Module id
+ * @param string $block 'routes' (capability ids) or 'exemptions' (reasons)
+ * @return array<string, string> "METHOD /path" => capability id | exemption reason
+ */
+function moduleRouteAuthorityManifestBlock(string $moduleId, string $block): array
+{
+    static $cache = [];
+    $cacheKey = $moduleId . "\0" . $block;
+    if (array_key_exists($cacheKey, $cache)) {
+        return $cache[$cacheKey];
+    }
+
+    $modules = discoverModules();
+    $manifest = is_array($modules[$moduleId] ?? null) ? $modules[$moduleId] : [];
+
+    $cache[$cacheKey] = moduleRouteAuthorityManifestBlockFromManifest($manifest, $block, $moduleId);
+    return $cache[$cacheKey];
+}
+
+/**
+ * Pure declaration reader — no discovery, no disk, no cache.
+ *
+ * Split from moduleRouteAuthorityManifestBlock() so the declaration contract
+ * can be tested against a manifest literal instead of a module on disk.
+ *
+ * @param array<string, mixed> $manifest
+ * @return array<string, string> "METHOD /path" => capability id | exemption reason
+ */
+function moduleRouteAuthorityManifestBlockFromManifest(array $manifest, string $block, string $moduleId = ''): array
+{
+    $out = [];
+
+    if ($block === 'routes') {
+        $declared = is_array($manifest['capabilities']['routes'] ?? null)
+            ? $manifest['capabilities']['routes']
+            : [];
+        foreach ($declared as $routeKey => $capabilityId) {
+            $normalized = moduleRouteAuthorityNormalizeKey((string)$routeKey);
+            // A declaration that names no real capability would turn the guard
+            // into decoration; reject it instead of accepting it.
+            if ($normalized === null || !is_string($capabilityId)
+                || preg_match('/^[a-z0-9_.\-]+@\d+$/', $capabilityId) !== 1) {
+                if (function_exists('write_log')) {
+                    write_log('route.authority.invalid_declaration', 'warning', [
+                        'module' => $moduleId,
+                        'route' => (string)$routeKey,
+                        'capability_id' => is_string($capabilityId) ? $capabilityId : null,
+                    ]);
+                }
+                continue;
+            }
+
+            // The declared capability must be one this module exposes or depends
+            // on. A stale declaration (renamed/removed capability) is a silent
+            // hole: it would authorize against nothing.
+            if ($moduleId !== '' && !moduleRouteAuthorityModuleOwns($manifest, $capabilityId)) {
+                if (function_exists('write_log')) {
+                    write_log('route.authority.stale_declaration', 'warning', [
+                        'module' => $moduleId,
+                        'route' => (string)$routeKey,
+                        'capability_id' => $capabilityId,
+                    ]);
+                }
+                continue;
+            }
+
+            $out[$normalized] = $capabilityId;
+        }
+    } elseif ($block === 'exemptions') {
+        $exemptions = is_array($manifest['governance']['exemptions'] ?? null)
+            ? $manifest['governance']['exemptions']
+            : [];
+        foreach ($exemptions as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $reason = trim((string)($item['reason'] ?? ''));
+            $normalized = moduleRouteAuthorityNormalizeKey(
+                ((string)($item['method'] ?? '')) . ' ' . ((string)($item['route'] ?? ''))
+            );
+            // An exemption without a reason is rejected, not silently accepted.
+            if ($normalized === null || $reason === '') {
+                if (function_exists('write_log')) {
+                    write_log('route.authority.invalid_exemption', 'warning', [
+                        'module' => $moduleId,
+                        'route' => (string)($item['route'] ?? ''),
+                        'method' => (string)($item['method'] ?? ''),
+                    ]);
+                }
+                continue;
+            }
+            $out[$normalized] = $reason;
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * Whether a capability id is exposed or depended on by the given manifest.
+ *
+ * @param array<string, mixed> $manifest
+ */
+function moduleRouteAuthorityModuleOwns(array $manifest, string $capabilityId): bool
+{
+    foreach (is_array($manifest['capabilities']['depends'] ?? null) ? $manifest['capabilities']['depends'] : [] as $dependency) {
+        if (is_string($dependency) && $dependency === $capabilityId) {
+            return true;
+        }
+    }
+
+    foreach (is_array($manifest['capabilities']['exposes'] ?? null) ? $manifest['capabilities']['exposes'] : [] as $expose) {
+        if (is_array($expose) && (string)($expose['id'] ?? '') === $capabilityId) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/** @return array<string, string> "METHOD /path" => capability id */
+function moduleRouteAuthorityDeclarations(string $moduleId): array
+{
+    return moduleRouteAuthorityManifestBlock($moduleId, 'routes');
+}
+
+/** @return array<string, string> "METHOD /path" => exemption reason */
+function moduleRouteAuthorityExemptions(string $moduleId): array
+{
+    return moduleRouteAuthorityManifestBlock($moduleId, 'exemptions');
+}
+
+/** Normalize "post /a/b" to "POST /a/b"; null when malformed. */
+function moduleRouteAuthorityNormalizeKey(string $key): ?string
+{
+    $key = trim($key);
+    if ($key === '' || !str_contains($key, ' ')) {
+        return null;
+    }
+
+    [$method, $route] = explode(' ', $key, 2);
+    $method = strtoupper(trim($method));
+    $route = trim($route);
+    if ($route === '' || !str_starts_with($route, '/')) {
+        return null;
+    }
+    if (!in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'], true)) {
+        return null;
+    }
+
+    return $method . ' ' . $route;
+}
+
+/**
+ * Resolve which declaration key an incoming routed request satisfies.
+ *
+ * The router already holds the exact declaration pattern, so prefer it. Fall
+ * back to matching the concrete URI so that entry points which bypass the
+ * router (CLI, direct callables) are still governed by the same declarations.
+ *
+ * @param array<string, string> $keys
+ */
+function moduleRouteAuthorityResolveKey(string $method, ?string $routePattern, string $requestUri, array $keys): ?string
+{
+    $method = strtoupper($method);
+
+    if ($routePattern !== null && $routePattern !== '') {
+        $exact = $method . ' ' . $routePattern;
+        if (isset($keys[$exact])) {
+            return $exact;
+        }
+    }
+
+    $uri = rtrim((string)(parse_url($requestUri, PHP_URL_PATH) ?: $requestUri), '/');
+    $uri = $uri === '' ? '/' : $uri;
+
+    foreach (array_keys($keys) as $key) {
+        [$keyMethod, $keyPattern] = explode(' ', $key, 2) + [1 => ''];
+        if ($keyMethod !== $method || $keyPattern === '') {
+            continue;
+        }
+        $regex = '#^' . preg_replace('/\{(\w+)\}/', '(?P<$1>[^/]+)', $keyPattern) . '$#';
+        if (preg_match($regex, $uri) === 1) {
+            return $key;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Classify a routed request against its module's declarations.
+ *
+ * @param array<string, mixed>|null $user Authenticated actor for the module surface
+ * @return array{state: string, allowed: bool, reason: string, capability_id: ?string, decision: array<string, mixed>}
+ */
+function moduleRouteAuthorityDecision(
+    string $moduleId,
+    string $method,
+    ?string $routePattern,
+    string $requestUri,
+    ?array $user
+): array {
+    $declared = moduleRouteAuthorityDeclarations($moduleId);
+    $key = moduleRouteAuthorityResolveKey($method, $routePattern, $requestUri, $declared);
+
+    if ($key !== null) {
+        $capabilityId = $declared[$key];
+        try {
+            $decision = app()->cap()->authorize($capabilityId, [
+                'caller_module' => $moduleId,
+                'caller_user' => $user,
+            ]);
+        } catch (\Throwable $e) {
+            // An unavailable registry must deny, never degrade to allowed.
+            return [
+                'state' => 'declared',
+                'allowed' => false,
+                'reason' => 'authorization_unavailable',
+                'capability_id' => $capabilityId,
+                'decision' => ['error' => $e->getMessage()],
+            ];
+        }
+
+        return [
+            'state' => 'declared',
+            'allowed' => ($decision['allowed'] ?? false) === true,
+            'reason' => (string)($decision['reason'] ?? 'missing_policy_row'),
+            'capability_id' => $capabilityId,
+            'decision' => $decision,
+        ];
+    }
+
+    $exemptions = moduleRouteAuthorityExemptions($moduleId);
+    $exemptKey = moduleRouteAuthorityResolveKey($method, $routePattern, $requestUri, $exemptions);
+    if ($exemptKey !== null) {
+        return [
+            'state' => 'exempt',
+            'allowed' => true,
+            'reason' => $exemptions[$exemptKey],
+            'capability_id' => null,
+            'decision' => [],
+        ];
+    }
+
+    return [
+        'state' => 'undeclared',
+        'allowed' => true,
+        'reason' => 'no_authority_declared',
+        'capability_id' => null,
+        'decision' => [],
+    ];
+}
+
+/**
+ * Establish route authority before the handler body runs.
+ *
+ * Returns true when the request may proceed. Returns false when a denial has
+ * already been emitted — the caller must return without invoking the handler.
+ * The handler body not executing is the whole point; a warning would not be
+ * enforcement.
+ *
+ * @param array<string, mixed>|null $user
+ */
+function moduleRouteAuthorityEnforce(
+    string $moduleId,
+    string $method,
+    ?string $routePattern,
+    string $requestUri,
+    ?array $user
+): bool {
+    $outcome = moduleRouteAuthorityDecision($moduleId, $method, $routePattern, $requestUri, $user);
+
+    $log = [
+        'module' => $moduleId,
+        'method' => strtoupper($method),
+        'route' => $routePattern ?? $requestUri,
+        'state' => $outcome['state'],
+        'allowed' => $outcome['allowed'],
+        'reason' => $outcome['reason'],
+        'capability_id' => $outcome['capability_id'],
+        'actor_role' => is_array($user) ? (string)($user['role'] ?? '') : '',
+    ];
+
+    if ($outcome['state'] === 'undeclared') {
+        // Compatibility debt: the operation still runs, but it is observed and
+        // counted. `workbench:governance --gate` refuses to let it grow.
+        if (function_exists('write_log')) {
+            write_log('route.authority.undeclared', 'warning', $log);
+        }
+        return true;
+    }
+
+    if ($outcome['allowed']) {
+        if ($outcome['state'] === 'declared' && function_exists('write_log')) {
+            write_log('route.authority.allowed', 'info', $log);
+        }
+        return true;
+    }
+
+    if (function_exists('write_log')) {
+        write_log('route.authority.denied', 'warning', $log + ['decision' => $outcome['decision']]);
+    }
+
+    $isApiRoute = \Ikabud\Kernel\Http\ContentNegotiator::isApiRoute();
+    if (!headers_sent()) {
+        http_response_code(403);
+    }
+
+    if ($isApiRoute) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Forbidden',
+            'reason' => $outcome['reason'],
+            'capability' => $outcome['capability_id'],
+            'state' => 'route_authority_denied',
+        ]);
+    } else {
+        echo app()->render('pages/404.disyl', [
+            'status_code' => 403,
+            'page_title' => 'Forbidden',
+            'message' => 'You do not have authority for this operation.'
+                . ($outcome['capability_id'] !== null
+                    ? ' Required authority: ' . $outcome['capability_id'] . '.'
+                    : '')
+                . ' Reason: ' . $outcome['reason'] . '.',
+            'back_url' => rtrim((string)kernel_request_base_path(), '/') . '/',
+            'action_label' => 'Open Home',
+        ]);
+    }
+
+    return false;
+}
+
 // ─── Handler Execution ────────────────────────────────────────────────────
 
 /**
  * @param array<string, string> $params
+ * @param string|null $routePattern Matched route declaration pattern, when the router dispatched
+ * @param string|null $routeMethod  Matched HTTP method, when the router dispatched
  */
-function executeModuleHandler(string $handler, array $params = []): void
-{
+function executeModuleHandler(
+    string $handler,
+    array $params = [],
+    ?string $routePattern = null,
+    ?string $routeMethod = null
+): void {
     if (!str_contains($handler, ':')) {
         http_response_code(500);
         echo 'Invalid module handler format';
@@ -2993,6 +3359,22 @@ function executeModuleHandler(string $handler, array $params = []): void
             }
             $pageCacheLock = null; // Timeout — build without lock
         }
+    }
+
+    // ── Route authority: declared authority must hold before the body runs ──
+    // The guard sits immediately before handler invocation, so a denial leaves
+    // the handler body completely unexecuted. Undeclared routes proceed as
+    // observed compatibility debt (see moduleRouteAuthorityEnforce()).
+    if (!moduleRouteAuthorityEnforce(
+        $moduleId,
+        (string)($routeMethod ?? $requestMethod),
+        $routePattern,
+        (string)$requestUri,
+        is_array($user) ? $user : null
+    )) {
+        modulePopContext();
+        kernel_request_context_delete('_capability_call_context');
+        return;
     }
 
     // ── Output-buffered, exception-safe handler execution ────────────

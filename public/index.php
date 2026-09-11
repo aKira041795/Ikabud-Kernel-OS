@@ -557,6 +557,7 @@ usort($routePatterns, 'compareRoutePatternsForMatching');
 
 $handler = null;
 $params = [];
+$matchedPattern = null;
 foreach ($routePatterns as $pattern) {
     $candidate = $routes[$method][$pattern];
     $regex = preg_replace('/\{(\w+)\}/', '(?P<$1>[^/]+)', $pattern);
@@ -564,6 +565,7 @@ foreach ($routePatterns as $pattern) {
 
     if (preg_match($regex, $uri, $matches)) {
         $handler = $candidate;
+        $matchedPattern = $pattern;
         foreach ($matches as $key => $value) {
             if (is_string($key)) {
                 $params[$key] = $value;
@@ -586,7 +588,7 @@ if ($handler === null) {
 }
 
 if (str_contains($handler, ':')) {
-    executeModuleHandler($handler, $params);
+    executeModuleHandler($handler, $params, $matchedPattern, $method);
     exit;
 }
 

@@ -268,6 +268,123 @@ final class CapabilityBus implements CapabilityBusContract
     }
 
     /**
+     * Authorization probe — decide whether a capability WOULD be authorized,
+     * without invoking any provider.
+     *
+     * Unlike call(), which is fail-OPEN for a capability that has no policy row
+     * (applyAuthorizationRegistry() returns the providers untouched), this probe
+     * is FAIL-CLOSED: when no resolvable provider carries an active policy row the
+     * decision is `missing_policy_row`, not allowed.
+     *
+     * That difference is the whole point. A route that *declares* its required
+     * authority must prove the authority exists; "a provider happens to be
+     * registered" is not authority.
+     *
+     * Every input is the trusted one call() uses: provider resolution, caller
+     * policy (allow/deny_callers), and CapabilityAuthorizationRegistry. No request
+     * payload ever becomes authority — the only caller-supplied inputs are the
+     * caller identity, which the dispatch layer derives from the authenticated
+     * session, never from request data.
+     *
+     * @param array<string, mixed> $options
+     * @return array{allowed: bool, reason: string, capability_id: string, capability_version: string, policy_version: int|null, tenant_id: string, caller_module: string, actor_role: string}
+     */
+    public function authorize(string $capabilityId, array $options = []): array
+    {
+        $capabilityId = $this->registry->resolve($capabilityId);
+        $caller = $this->resolveCaller($options);
+
+        $capabilityVersion = $this->capabilityVersionString($capabilityId);
+        $callerModule = (string)($caller['module'] ?? '');
+        $actorRole = is_array($caller['user'] ?? null) ? (string)($caller['user']['role'] ?? '') : '';
+
+        $decision = [
+            'allowed' => false,
+            'reason' => 'missing_policy_row',
+            'capability_id' => $capabilityId,
+            'capability_version' => $capabilityVersion,
+            'policy_version' => null,
+            'tenant_id' => $this->resolveTenantId($options),
+            'caller_module' => $callerModule,
+            'actor_role' => $actorRole,
+        ];
+
+        $providers = $this->registry->providers($capabilityId);
+        if (empty($providers)) {
+            return array_merge($decision, ['reason' => 'capability_not_found']);
+        }
+
+        $providers = $this->applyPolicy($capabilityId, $providers, $callerModule);
+        if (empty($providers)) {
+            return array_merge($decision, ['reason' => 'caller_policy']);
+        }
+
+        $explicitProvider = isset($options['provider']) ? (string)$options['provider'] : null;
+        if ($explicitProvider !== null && $explicitProvider !== '') {
+            $providers = array_values(array_filter($providers, static fn ($p) => $p['provider'] === $explicitProvider));
+            if (empty($providers)) {
+                return array_merge($decision, ['reason' => 'provider_not_found']);
+            }
+        }
+
+        $registry = new CapabilityAuthorizationRegistry();
+
+        // Fail-closed precondition: some resolvable provider must actually be
+        // governed — an active policy row, or protocol v2 (governed by definition).
+        $governed = false;
+        foreach ($providers as $provider) {
+            $providerId = (string)$provider['provider'];
+            if ($this->providerRequiresProtocolV2($provider) || $registry->hasPolicyFor($capabilityId, null, $providerId)) {
+                $governed = true;
+                break;
+            }
+        }
+        if (!$governed) {
+            return $decision;
+        }
+
+        $lastReason = 'missing_policy_row';
+        foreach ($providers as $provider) {
+            $providerId = (string)$provider['provider'];
+
+            $dispatchProtocol = $this->providerProtocol($provider);
+            $requiredProtocol = strtolower(trim((string)$registry->requiresProtocol(
+                $capabilityId,
+                $capabilityVersion,
+                $providerId
+            )));
+            if ($requiredProtocol === 'v2' && $dispatchProtocol !== 'v2') {
+                $lastReason = 'protocol_mismatch';
+                continue;
+            }
+
+            $result = $registry->authorize([
+                'capability_id' => $capabilityId,
+                'capability_version' => $capabilityVersion,
+                'provider' => $providerId,
+                'caller_module' => $callerModule,
+                'actor_role' => $actorRole,
+                'tenant_id' => (string)$decision['tenant_id'],
+                'provider_activation' => $providerId === 'kernel' || !function_exists('moduleIsActive') || moduleIsActive($providerId),
+                'dispatch_protocol' => $dispatchProtocol,
+                'explicit_provider' => $explicitProvider,
+            ]);
+
+            if (($result['allowed'] ?? false) === true) {
+                return array_merge($decision, [
+                    'allowed' => true,
+                    'reason' => 'authorized',
+                    'policy_version' => $result['policy_version'] ?? null,
+                ]);
+            }
+
+            $lastReason = (string)($result['reason'] ?? $lastReason);
+        }
+
+        return array_merge($decision, ['reason' => $lastReason]);
+    }
+
+    /**
      * @param array<int, array{provider: string, modes: string[], handler: callable, meta?: array}> $providers
      * @return array<int, array{provider: string, modes: string[], handler: callable, meta?: array}>
      */

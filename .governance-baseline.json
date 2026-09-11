@@ -1,0 +1,11 @@
+{
+    "rule": "Frozen undeclared-route debt. Any module whose undeclared count rises fails the gate; modules must reach zero to be removed.",
+    "baseline": {
+        "cms-akira-builder": 6,
+        "cms-akira-shell": 15,
+        "cms-akira-theme": 4,
+        "cms-akira-workflow": 1,
+        "daily-ledger": 52,
+        "gui-settings": 2
+    }
+}

@@ -1169,6 +1169,7 @@ switch ($command) {
         out('    ' . green('test:module') . ' <id> --browser-only  Run browser tests only');
         out('    ' . green('workbench:benchmark') . ' [--json]  Run competitive quality gates');
         out('    ' . green('workbench:audit') . ' [--json]  Audit WorkflowEngine concurrency and MySQL 5.7 guards');
+        out('    ' . green('workbench:governance') . ' <module>|--all [--json] [--gate|--update-baseline]  Census routed-operation authority');
         out('    ' . green('workbench:init') . ' <module> [--force]  Create/migrate the v1 test contract');
         out('    ' . green('workbench:validate') . ' <module> [--json] Validate test contract claims');
         out('    ' . green('workbench:doctor') . ' <module> [--url=] [--user=] [--pass=] [--json]   Run the pre-browser release gate with optional env readiness');
@@ -6228,6 +6229,85 @@ MD;
             out(red('  Capability authority audit failed: ' . $e->getMessage()));
             exit(2);
         }
+
+    // ── workbench:governance ───────────────────────────────────────
+    case 'workbench:governance':
+        require_once __DIR__ . '/kernel/Workbench/Governance/GovernanceCensus.php';
+        try {
+            $census = new \Ikabud\Kernel\Workbench\Governance\GovernanceCensus(__DIR__);
+            $result = hasFlag('--all') ? $census->scanAll() : $census->scan(paramsWithoutFlags($params)[0] ?? '');
+            $akira=['module'=>'Akira (cms-akira-* + gui-settings)','dispatch_enforced'=>0,'bus_reachable'=>0,'exempt'=>0,'undeclared'=>0,'total'=>0];
+            foreach ($result['summary'] as $row) if (str_starts_with($row['module'], 'cms-akira-') || $row['module'] === 'gui-settings') foreach (['dispatch_enforced','bus_reachable','exempt','undeclared','total'] as $key) $akira[$key]+=$row[$key];
+            $akira['ratio']=$akira['total'] ? round(100*$akira['dispatch_enforced']/$akira['total'],1) : 0.0;
+            $akira['bus_ratio']=$akira['total'] ? round(100*$akira['bus_reachable']/$akira['total'],1) : 0.0;
+            $result['akira']=$akira;
+
+            $baselineFile = __DIR__ . '/.governance-baseline.json';
+            if (hasFlag('--gate') || hasFlag('--update-baseline')) {
+                $baseline = [];
+                foreach ($result['summary'] as $row) {
+                    if (($row['undeclared'] ?? 0) > 0) $baseline[$row['module']] = $row['undeclared'];
+                }
+                ksort($baseline);
+                if (hasFlag('--update-baseline')) {
+                    file_put_contents(
+                        $baselineFile,
+                        json_encode([
+                            'rule' => 'Frozen undeclared-route debt. Any module whose undeclared count rises fails the gate; modules must reach zero to be removed.',
+                            'baseline' => $baseline,
+                        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
+                    );
+                    out('  Baseline written: ' . count($baseline) . ' module(s) carrying undeclared-route debt.');
+                    break;
+                }
+
+                $previous = [];
+                if (is_file($baselineFile)) {
+                    $decoded = json_decode((string) file_get_contents($baselineFile), true);
+                    $previous = is_array($decoded['baseline'] ?? null) ? $decoded['baseline'] : [];
+                }
+                $violations = [];
+                foreach ($result['summary'] as $row) {
+                    $module = (string) $row['module'];
+                    $allowed = (int) ($previous[$module] ?? 0);
+                    $actual = (int) ($row['undeclared'] ?? 0);
+                    if ($actual > $allowed) {
+                        $violations[] = sprintf('%s: undeclared rose %d -> %d', $module, $allowed, $actual);
+                    }
+                }
+                if ($violations === []) {
+                    out('  ' . green('GOVERNANCE GATE=PASS') . ' — no module added undeclared-route debt.');
+                } else {
+                    out('  ' . red('GOVERNANCE GATE=BLOCKED'));
+                    foreach ($violations as $violation) out('    ' . $violation);
+                    out('    Declare the route authority in module.json (capabilities.routes) or declare a');
+                    out('    reasoned exemption (governance.exemptions). Do not relabel debt as exempt.');
+                    exit(1);
+                }
+            }
+
+            if (hasFlag('--json')) {
+                out(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            } else {
+                out(''); out('  ' . bold('Workbench Governance Census'));
+                out('  ' . $result['rule']); out('  ' . $result['detection']); out('');
+                foreach ($result['modules'] as $module) {
+                    out('  ' . bold($module['module']));
+                    foreach ($module['operations'] as $op) {
+                        out(sprintf('  %-10s %-6s %s', strtoupper($op['dispatch']), $op['method'], $op['route']));
+                        out('      ' . $op['handler'] . ' @ ' . $op['source']);
+                        out('      ' . $op['how']);
+                    }
+                }
+                out('');
+                out(sprintf('  %-40s %9s %10s %8s %10s %7s %8s', 'Module', 'Enforced', 'Bus-reach', 'Exempt', 'Undeclared', 'Total', 'Ratio'));
+                foreach ($result['summary'] as $s) out(sprintf('  %-40s %9d %10d %8d %10d %7d %7.1f%%', $s['module'], $s['dispatch_enforced'], $s['bus_reachable'], $s['exempt'], $s['undeclared'], $s['total'], $s['ratio']));
+                $a=$result['akira']; out(sprintf('  %-40s %9d %10d %8d %10d %7d %7.1f%%', $a['module'], $a['dispatch_enforced'], $a['bus_reachable'], $a['exempt'], $a['undeclared'], $a['total'], $a['ratio'])); out('');
+                out('  Ratio = dispatch-enforced / routed business operations. Bus-reach is reported');
+                out('  separately because a bus call inside a handler is not request authority.'); out('');
+            }
+        } catch (Throwable $e) { out(red('  Governance census failed: ' . $e->getMessage())); exit(2); }
+        break;
 
     // ── workbench:audit ────────────────────────────────────────────
     case 'workbench:audit':
