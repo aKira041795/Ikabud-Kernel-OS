@@ -1515,7 +1515,10 @@ function discoverModules(): array
     // result is cached; the per-call enabled state and ReadContractRegistry
     // registrations below are applied fresh on every request so module
     // enable/disable and table-ownership stay correct.
-    $cacheKey = 'kernel.discovered_modules_scan_v1';
+    // Namespaced per installation root: APCu's segment is shared across every
+    // virtual host in a PHP-FPM pool, so an unscoped key would let a co-hosted
+    // Ikabud checkout's module tree be served to this one.
+    $cacheKey = \Ikabud\Kernel\Cache::scopedKey('kernel.discovered_modules_scan_v1');
     $apcuEnabled = function_exists('apcu_fetch') && function_exists('apcu_store') && ini_get('apc.enabled');
     $result = null;
     if ($apcuEnabled) {

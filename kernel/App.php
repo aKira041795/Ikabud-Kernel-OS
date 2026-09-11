@@ -1027,7 +1027,7 @@ final class App
         }
 
         if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-            $cached = apcu_fetch('kernel:platform_identity:v1', $hit);
+            $cached = apcu_fetch(\Ikabud\Kernel\Cache::scopedKey('kernel:platform_identity:v1'), $hit);
             if ($hit && is_array($cached)) {
                 $requestCache = $cached;
                 return $cached;
@@ -1075,7 +1075,7 @@ final class App
         $requestCache = $identity;
         if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
             // Short TTL keeps admin/runtime changes fresh while collapsing bursts.
-            apcu_store('kernel:platform_identity:v1', $identity, 15);
+            apcu_store(\Ikabud\Kernel\Cache::scopedKey('kernel:platform_identity:v1'), $identity, 15);
         }
 
         return $identity;

@@ -50,6 +50,39 @@ class Cache
     /** @var bool Whether routine cache invalidations should be logged */
     private bool $logInvalidations;
 
+    /**
+     * Namespace an APCu key to this installation root.
+     *
+     * APCu's shared-memory segment belongs to the PHP-FPM pool, not to the
+     * virtual host. Two Ikabud installations served by the same pool therefore
+     * share one segment, so an unscoped key lets one installation read another's
+     * cached state. A co-hosted checkout once filled this installation's module
+     * scan key with its own module tree, which surfaced as
+     * `missing_capability_providers` and a 503 on every tenant page.
+     *
+     * Every kernel APCu key must be routed through this method so co-hosted
+     * installations stay isolated.
+     *
+     * Deliberate exceptions: the host-keyed tenant lookups
+     * (`ikabud:tenant_host:*`) and the DiSyL source cache
+     * (`disyl:source:<md5(path|mtime)>`) are already scoped by a value that
+     * cannot resolve to two installations at once — the requested host, and the
+     * absolute template path. The tenant-host keys additionally share a prefix
+     * sweep during invalidation, so re-keying them would silently disable it.
+     */
+    public static function scopedKey(string $key): string
+    {
+        static $prefix = null;
+
+        if ($prefix === null) {
+            $root = defined('BASE_PATH') ? (string) BASE_PATH : dirname(__DIR__);
+            $real = realpath($root);
+            $prefix = 'ikabud:' . substr(sha1($real !== false ? $real : $root), 0, 12) . ':';
+        }
+
+        return $prefix . $key;
+    }
+
     public function __construct(?string $cacheDir = null, int $maxCacheSizeMB = 0, bool $logInvalidations = false)
     {
         $this->cacheDir = $cacheDir ?? dirname(__DIR__) . '/storage/cache';
@@ -87,7 +120,7 @@ class Cache
     {
         // Try APCu first (faster)
         if (self::$apcuAvailable) {
-            $stats = apcu_fetch('guidance_cache_stats', $success);
+            $stats = apcu_fetch(self::scopedKey('guidance_cache_stats'), $success);
             if ($success && is_array($stats)) {
                 $this->stats = array_merge($this->stats, $stats);
                 return;
@@ -133,7 +166,7 @@ class Cache
 
         if (array_sum($this->stats) <= 0) {
             if (self::$apcuAvailable) {
-                apcu_delete('guidance_cache_stats');
+                apcu_delete(self::scopedKey('guidance_cache_stats'));
             }
             @unlink($this->statsFile);
             return;
@@ -141,7 +174,7 @@ class Cache
 
         // Save to APCu (fast, shared across requests)
         if (self::$apcuAvailable) {
-            apcu_store('guidance_cache_stats', $this->stats, 86400); // 24 hours
+            apcu_store(self::scopedKey('guidance_cache_stats'), $this->stats, 86400); // 24 hours
         }
 
         // Also save to file (persistent across restarts)
@@ -235,11 +268,11 @@ class Cache
     public function get(string $instanceId, string $uri): ?array
     {
         $key = $this->getCacheKey($uri);
-        $apcuKey = $instanceId . '_' . $key;
+        $apcuKey = self::scopedKey('cache_' . $instanceId . '_' . $key);
 
         // Tier 1: Try APCu first (fastest)
         if (self::$apcuAvailable) {
-            $cached = apcu_fetch('cache_' . $apcuKey, $success);
+            $cached = apcu_fetch($apcuKey, $success);
             if ($success && is_array($cached)) {
                 $this->incrementStat('hits');
                 return $cached;
@@ -291,7 +324,7 @@ class Cache
                 // Evict it so it is re-written with the correct stamp on next set().
                 @unlink($file);
                 if (self::$apcuAvailable) {
-                    apcu_delete('cache_' . $apcuKey);
+                    apcu_delete($apcuKey);
                 }
                 $this->incrementStat('misses');
                 return null;
@@ -300,7 +333,7 @@ class Cache
                 // Entry has expired — remove stale file and return miss.
                 @unlink($file);
                 if (self::$apcuAvailable) {
-                    apcu_delete('cache_' . $apcuKey);
+                    apcu_delete($apcuKey);
                 }
                 $this->incrementStat('misses');
                 return null;
@@ -309,7 +342,7 @@ class Cache
             // Promote to APCu using the remaining time from the stored expiry.
             if (self::$apcuAvailable) {
                 $remainingTtl = max(1, $expiresAt - time());
-                apcu_store('cache_' . $apcuKey, $result, $remainingTtl);
+                apcu_store($apcuKey, $result, $remainingTtl);
             }
 
             $this->incrementStat('hits');
@@ -337,7 +370,7 @@ class Cache
         $key = $this->getCacheKey($uri);
         $file = $this->getCacheFile($instanceId, $key);
         $tempFile = $file . '.tmp.' . getmypid();
-        $apcuKey = $instanceId . '_' . $key;
+        $apcuKey = self::scopedKey('cache_' . $instanceId . '_' . $key);
         $cacheTtl = $ttl ?? $this->ttl;
 
         try {
@@ -379,7 +412,7 @@ class Cache
 
             // Also store in APCu for faster reads
             if (self::$apcuAvailable) {
-                apcu_store('cache_' . $apcuKey, $response, $cacheTtl);
+                apcu_store($apcuKey, $response, $cacheTtl);
             }
 
         } catch (\Exception $e) {
@@ -535,7 +568,7 @@ class Cache
             }
             // Also clear from APCu
             if (self::$apcuAvailable) {
-                apcu_delete('cache_' . $instanceId . '_' . $key);
+                apcu_delete(self::scopedKey('cache_' . $instanceId . '_' . $key));
             }
         }
 
@@ -590,7 +623,7 @@ class Cache
             $info = apcu_cache_info();
             if (isset($info['cache_list'])) {
                 foreach ($info['cache_list'] as $entry) {
-                    if (isset($entry['info']) && str_starts_with($entry['info'], 'cache_' . $instanceId . '_')) {
+                    if (isset($entry['info']) && str_starts_with($entry['info'], self::scopedKey('cache_' . $instanceId . '_'))) {
                         apcu_delete($entry['info']);
                     }
                 }
@@ -683,7 +716,7 @@ class Cache
             $cleared++;
             // Also clear from APCu
             if (self::$apcuAvailable) {
-                apcu_delete('cache_' . $instanceId . '_' . $key);
+                apcu_delete(self::scopedKey('cache_' . $instanceId . '_' . $key));
             }
         }
 
@@ -695,7 +728,7 @@ class Cache
                 @unlink($depFile);
                 $cleared++;
                 if (self::$apcuAvailable) {
-                    apcu_delete('cache_' . $instanceId . '_' . $depKey);
+                    apcu_delete(self::scopedKey('cache_' . $instanceId . '_' . $depKey));
                 }
             }
         }
@@ -817,7 +850,7 @@ class Cache
 
         // Clear persisted stats
         if (self::$apcuAvailable) {
-            apcu_delete('guidance_cache_stats');
+            apcu_delete(self::scopedKey('guidance_cache_stats'));
         }
         @unlink($this->statsFile);
     }
@@ -1031,7 +1064,7 @@ class Cache
         }
 
         // ── Module registry ──────────────────────────────────────────
-        $registryKey = 'kernel.module_registry_' . self::KERNEL_STATE_VERSION;
+        $registryKey = self::scopedKey('kernel.module_registry_' . self::KERNEL_STATE_VERSION);
         $registry = apcu_fetch($registryKey);
         if ($registry === false) {
             // Rebuild from storage/modules.json (canonical source)
@@ -1050,7 +1083,7 @@ class Cache
         }
 
         // ── Capability map ───────────────────────────────────────────
-        $capKey = 'kernel.capability_map_' . self::KERNEL_STATE_VERSION;
+        $capKey = self::scopedKey('kernel.capability_map_' . self::KERNEL_STATE_VERSION);
         $capMap = apcu_fetch($capKey);
         if ($capMap === false) {
             // Rebuild from all module manifests
@@ -1108,7 +1141,7 @@ class Cache
         }
 
         // ── Entity presets ───────────────────────────────────────────
-        $presetKey = 'kernel.entity_presets_' . self::KERNEL_STATE_VERSION;
+        $presetKey = self::scopedKey('kernel.entity_presets_' . self::KERNEL_STATE_VERSION);
         $presets = apcu_fetch($presetKey);
         if ($presets === false) {
             $presetsDir = defined('CONFIG_PATH')
@@ -1149,9 +1182,9 @@ class Cache
             return;
         }
 
-        apcu_delete('kernel.module_registry_' . self::KERNEL_STATE_VERSION);
-        apcu_delete('kernel.capability_map_' . self::KERNEL_STATE_VERSION);
-        apcu_delete('kernel.entity_presets_' . self::KERNEL_STATE_VERSION);
-        apcu_delete('kernel.discovered_modules_scan_v1');
+        apcu_delete(self::scopedKey('kernel.module_registry_' . self::KERNEL_STATE_VERSION));
+        apcu_delete(self::scopedKey('kernel.capability_map_' . self::KERNEL_STATE_VERSION));
+        apcu_delete(self::scopedKey('kernel.entity_presets_' . self::KERNEL_STATE_VERSION));
+        apcu_delete(self::scopedKey('kernel.discovered_modules_scan_v1'));
     }
 }

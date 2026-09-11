@@ -429,7 +429,7 @@ function tenantEntryModuleIdForTenant(int $tenantId): ?string
     }
 
     if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-        $cacheKey = 'tenant:entry_module:' . $tenantId;
+        $cacheKey = \Ikabud\Kernel\Cache::scopedKey('tenant:entry_module:' . $tenantId);
         $cached = apcu_fetch($cacheKey, $hit);
         if ($hit) {
             $resolved = is_string($cached) && $cached !== '' ? $cached : null;
@@ -450,7 +450,7 @@ function tenantEntryModuleIdForTenant(int $tenantId): ?string
         $resolved = $value !== '' ? $value : null;
         $requestCache[$tenantId] = $resolved;
         if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-            $cacheKey = 'tenant:entry_module:' . $tenantId;
+            $cacheKey = \Ikabud\Kernel\Cache::scopedKey('tenant:entry_module:' . $tenantId);
             // Short TTL balances freshness with burst protection.
             apcu_store($cacheKey, $resolved ?? '', 30);
         }

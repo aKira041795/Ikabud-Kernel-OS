@@ -320,7 +320,7 @@ final class ReadContractRegistry
                 $dbName = (string)$db->query('SELECT DATABASE()')->fetchColumn();
                 self::$schemaName = $dbName;
             }
-            $cacheKey = 'ikabud:read_contract_cols_v1:' . $dbName . ':' . strtolower($tableName);
+            $cacheKey = \Ikabud\Kernel\Cache::scopedKey('ikabud:read_contract_cols_v1:' . $dbName . ':' . strtolower($tableName));
 
             if (function_exists('apcu_fetch') && ini_get('apc.enabled')) {
                 $cached = apcu_fetch($cacheKey, $hit);

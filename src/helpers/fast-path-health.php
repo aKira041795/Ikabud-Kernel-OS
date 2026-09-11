@@ -35,9 +35,17 @@ declare(strict_types=1);
         return;
     }
 
+    // APCu's shared-memory segment belongs to the PHP-FPM pool, not to the
+    // virtual host, so an unscoped key would let a co-hosted Ikabud installation
+    // on the same pool answer — and mask — this installation's health probe.
+    // Derived locally because this file runs before bootstrap.php and the
+    // autoloader: neither BASE_PATH nor the kernel Cache class exist yet.
+    $apcuKey = 'ikabud:' . substr(sha1((string) realpath(dirname(__DIR__, 2))), 0, 12)
+        . ':kernel:fast_health:payload';
+
     // Try APCu cache first (collapses bursts from monitoring probes)
     if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-        $cached = apcu_fetch('kernel:fast_health:payload', $hit);
+        $cached = apcu_fetch($apcuKey, $hit);
         if ($hit && is_array($cached)) {
             http_response_code(200);
             header('Content-Type: application/json');
@@ -60,7 +68,7 @@ declare(strict_types=1);
     // Cache for 5 seconds to collapse bursts, 2 seconds preferred for freshness
     $ttl = max(2, (int)($_ENV['HEALTH_FAST_CACHE_TTL'] ?? 5));
     if (extension_loaded('apcu') && function_exists('apcu_enabled') && apcu_enabled()) {
-        apcu_store('kernel:fast_health:payload', $payload, $ttl);
+        apcu_store($apcuKey, $payload, $ttl);
     }
 
     http_response_code(200);
