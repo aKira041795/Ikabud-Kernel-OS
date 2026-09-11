@@ -179,7 +179,16 @@ final class CapabilityAuthorizationRegistry
             return;
         }
 
-        (new self(null, $scope, $resolver))->seedPolicy($rows);
+        $db = $resolver->database($scope);
+        if (!$db instanceof PDO) {
+            self::logSeedDecision('skipped', [
+                'reason' => $resolver->failureReason() ?? 'tenant_authority_store_unavailable',
+                'tenant_id' => $scope->tenantId,
+            ]);
+            return;
+        }
+
+        (new self($db, $scope, $resolver))->seedPolicy($rows);
     }
 
     /**
