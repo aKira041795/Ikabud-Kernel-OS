@@ -5,6 +5,8 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/../src/helpers/module-manager.php';
+require_once __DIR__ . '/_support/tenant_fixture.php';
 
 use Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry;
 use Ikabud\Kernel\Database\MigrationRunner;
@@ -76,6 +78,12 @@ app()->setUser([
     'role' => (string)$admin['role'],
     'source' => 'kernel',
 ]);
+
+$previousTenantId = app()->tenant()->current();
+$fixtureTenantId = 9412;
+ensureTestTenant($fixtureTenantId, 'gui-settings');
+app()->tenant()->setTenantId($fixtureTenantId);
+$db = app()->reconnectDb();
 
 $version = 4200000000 + (getmypid() % 1000000);
 $suffix = bin2hex(random_bytes(5));
@@ -204,6 +212,9 @@ try {
     $auditCleanup = $db->prepare("DELETE FROM audit_logs WHERE entity_type = 'capability_authorization_policy' AND entity_id = ?");
     $auditCleanup->execute([$entityId]);
     CapabilityAuthorizationRegistry::invalidate();
+    app()->tenant()->setTenantId($previousTenantId);
+    app()->reconnectDb();
+    cleanupTestTenant($fixtureTenantId);
 }
 
 echo "\nCapability policy lifecycle tests: {$passed} passed, {$failed} failed\n";

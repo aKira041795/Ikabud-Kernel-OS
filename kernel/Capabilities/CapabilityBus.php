@@ -327,7 +327,10 @@ final class CapabilityBus implements CapabilityBusContract
             }
         }
 
-        $registry = new CapabilityAuthorizationRegistry();
+        [$registry, $authorityScope, $scopeFailureReason] = $this->authorizationRegistry($options, $caller);
+        if (!$authorityScope instanceof AuthorityScope) {
+            return array_merge($decision, ['reason' => $scopeFailureReason]);
+        }
 
         // Fail-closed precondition: some resolvable provider must actually be
         // governed — an active policy row, or protocol v2 (governed by definition).
@@ -564,7 +567,7 @@ final class CapabilityBus implements CapabilityBusContract
         }
 
         $capabilityVersion = $this->capabilityVersionString($capabilityId);
-        $registry = new CapabilityAuthorizationRegistry();
+        [$registry, $authorityScope, $scopeFailureReason] = $this->authorizationRegistry($options, $caller);
         $isGoverned = false;
 
         foreach ($providers as $provider) {
@@ -585,8 +588,11 @@ final class CapabilityBus implements CapabilityBusContract
         if (!$isGoverned) {
             return $providers;
         }
+        if (!$authorityScope instanceof AuthorityScope) {
+            throw new CapabilityCallException('Capability authorization denied: ' . $scopeFailureReason, $capabilityId, $explicitProvider);
+        }
 
-        $tenantId = $this->resolveTenantId($options);
+        $tenantId = (string)$authorityScope->tenantId;
         $authorized = [];
         $lastDeniedReason = 'missing_policy_row';
 
@@ -634,6 +640,20 @@ final class CapabilityBus implements CapabilityBusContract
         }
 
         return $authorized;
+    }
+
+    /**
+     * @param array<string,mixed> $options
+     * @param array<string,mixed> $caller
+     * @return array{CapabilityAuthorizationRegistry,AuthorityScope|null,string}
+     */
+    private function authorizationRegistry(array $options, array $caller): array
+    {
+        $resolver = AuthorityScopeResolver::forApplication();
+        $scope = $resolver->resolveForCapability($options, $caller);
+        $reason = $resolver->failureReason() ?? 'missing_tenant_authority_scope';
+
+        return [new CapabilityAuthorizationRegistry(null, $scope, $resolver, $reason), $scope, $reason];
     }
 
     private function capabilityVersionString(string $capabilityId): string

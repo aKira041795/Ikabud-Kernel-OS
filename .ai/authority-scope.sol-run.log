@@ -1,0 +1,112 @@
+status: PASS
+
+changed:
+  - kernel/Capabilities/AuthorityScope.php
+  - kernel/Capabilities/AuthorityScopeResolver.php
+  - kernel/Capabilities/CapabilityAuthorizationRegistry.php
+  - kernel/Capabilities/CapabilityBus.php
+  - modules/cms-akira/cms-akira-core/helpers/governance.php
+  - tests/authority_scope_test.php
+  - tests/capability_authorization_policy_migration_test.php
+  - tests/capability_policy_lifecycle_test.php
+  - tests/admin_platform_api_test.php
+
+implementation_summary:
+  - Added immutable `AuthorityScope` carrying tenant ID, actor, declaration revision, and entry-point discriminator.
+  - Added one resolver supporting web, CLI, cron, queue, service, Workbench, and test contexts.
+  - Non-web contexts require a transported tenant ID or an explicitly established `TenantResolver` tenant.
+  - Authority databases resolve explicitly through `dbForTenant(scope.tenantId)`.
+  - Removed the registry’s ambient `app()->db()` fallback.
+  - Preserved explicit PDO injection.
+  - Converted both CapabilityBus read paths and Akira governance policy reads to scoped registries.
+  - Authorization without tenant scope denies with `missing_tenant_authority_scope` and logs the reason.
+  - Registry caches are now isolated by tenant or injected PDO.
+  - `declarationRevision` is transported but does not yet enforce anything.
+
+verification:
+  - A1/A3 authority-scope test: 11 passed, 0 failed.
+  - Full suite: 108 files, 99 passed, 0 failed, 9 skipped.
+  - Workbench governance gate: exit 0.
+  - Live tenant 54 `/`, `/login`, and `/posts`: HTTP 200.
+  - Authenticated governed `akira.post.admin.list@1` web read: HTTP 200.
+  - `storage/logs/error.log`: 0 bytes.
+  - Kernel authority rows: 0; tenant 54 authority rows: 43.
+  - `storage/modules.json`: restored to `kajagogoo:www-data`, mode `666`.
+  - No commit, push, or branch operation performed.
+  - No `modules/daily-ledger/**` files touched.
+
+evidence: |
+  $ php tests/authority_scope_test.php
+    ✓ web resolves tenant 54 authority scope
+    ✓ cli resolves tenant 54 authority scope
+    ✓ cron resolves tenant 54 authority scope
+    ✓ web, CLI, and cron resolve the same authority database
+    ✓ tenant 54 authority database is akira
+    ✓ tenant authority database is never the kernel database
+    ✓ tenant fixture has a granted policy for the ambient-fallback falsifier
+    ✓ authorization with no authority scope denies with the recorded reason
+    ✓ unscoped registry cannot reach the ambient database (fallback falsifier)
+    ✓ no-scope denial records why
+    ✓ registry source contains no ambient app database selection
+
+  Authority scope tests: 11 passed, 0 failed
+  AUTHORITY_SCOPE_EXIT=0
+
+  Falsifier: the reflection assertion invokes the unscoped registry database
+  selector and requires an unavailable exception. Restoring the old ambient
+  fallback returns the current tenant PDO and fails that assertion. The source
+  assertion independently fails if `app()->db()` is restored.
+
+  $ rg -n 'app\(\)->db\(' kernel/Capabilities/CapabilityAuthorizationRegistry.php
+  [no output]
+
+  $ rg -n 'new (\\Ikabud\\Kernel\\Capabilities\\)?CapabilityAuthorizationRegistry\(\)' kernel modules/cms-akira --glob '!modules/daily-ledger/**'
+  [no output]
+
+  $ rg -n 'new (\\Ikabud\\Kernel\\Capabilities\\)?CapabilityAuthorizationRegistry' kernel/Capabilities/CapabilityBus.php modules/cms-akira/cms-akira-core/helpers/governance.php
+  kernel/Capabilities/CapabilityBus.php:656: return [new CapabilityAuthorizationRegistry(null, $scope, $resolver, $reason), $scope, $reason];
+  modules/cms-akira/cms-akira-core/helpers/governance.php:108: $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+  modules/cms-akira/cms-akira-core/helpers/governance.php:136: $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry($db);
+
+  $ composer test
+  Total: 108 files — 99 passed, 9 skipped (30594ms)
+  RESTORED kajagogoo:www-data 666 2453 storage/modules.json
+
+  $ php ikabud workbench:governance --all --gate
+  Akira (cms-akira-* + gui-settings)  5  31  0  28  33  15.2%
+  WORKBENCH_GATE_EXIT=0
+
+  $ live tenant 54 checks
+  GET / HTTP 200
+  GET /login HTTP 200
+  GET /posts HTTP 200
+  LOGIN {"ok":true,"redirect":"\/cms-akira-shell"}
+  GET /cms-akira-shell/posts (akira.post.admin.list@1 governed read) HTTP 200
+  BODY_BYTES=5193
+  ERROR_LOG_BYTES=0
+
+  $ authority table counts
+  kernel=0
+  tenant54=43
+
+scope:
+  - Implemented explicit scope resolution for the core authorization registry and CapabilityBus paths.
+  - Web requests use the request tenant resolver and retain tenant-database parity.
+  - Global kernel maintenance legitimately has no tenant scope; it must avoid tenant authorization reads or use an intentionally injected PDO for maintenance-only operations.
+  - Existing ungoverned capability providers retain their compatibility behavior and do not become governed merely because this slice introduced scopes.
+
+risks:
+  - Scheduled jobs, event handlers, CLI handlers, service callers, and Workbench operations can now use the common resolver, but their individual dispatch/command entry points have not all been inventoried or wired to transport tenant scope.
+  - Direct callables outside CapabilityBus remain outside this slice.
+  - Ungoverned capability calls remain compatibility debt.
+  - Declaration revisions are carried but neither materialized nor validated.
+  - `withKernelTableAccess()` remains unchanged and must be retested when the authority table moves.
+
+unresolved:
+  - Declaration-manifest schema and immutable declaration revisions.
+  - Containment synchronization and acknowledged control revisions.
+  - Sensitive-capability dual control.
+  - Full authority inventory beyond HTTP routes.
+  - Remaining scheduled-job, event, CLI, service, and Workbench entry-point adoption.
+
+recommended_next_state: READY_FOR_CHAIR_REVIEW

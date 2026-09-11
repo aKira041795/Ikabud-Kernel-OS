@@ -1,0 +1,63 @@
+## Result
+
+**status:** PASS — R1 and R2 implemented; no commit, push, or branch operations.
+
+**changed:**
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php`
+- `tests/authority_scope_test.php`
+
+**implementation summary:**
+- R1 now resolves the tenant authority database once and skips seeding with a recorded reason when unavailable.
+- R2 now creates and cleans up its own tenant fixture, uses an isolated authority schema when necessary, seeds its own policy, compares resolved databases without environment-specific names, and retains the reflection falsifier.
+- `authorize()` remains fail-closed when a scoped authority store is unreachable.
+
+**exact R1 guard:**
+```php
+$db = $resolver->database($scope);
+if (!$db instanceof PDO) {
+    self::logSeedDecision('skipped', [
+        'reason' => $resolver->failureReason() ?? 'tenant_authority_store_unavailable',
+        'tenant_id' => $scope->tenantId,
+    ]);
+    return;
+}
+
+(new self($db, $scope, $resolver))->seedPolicy($rows);
+```
+
+**verification:**
+- `composer test`: 0 failed.
+- Local total:
+  `Total: 108 files — 99 passed, 9 skipped  (34480ms)`
+- Standalone authority test:
+  `Authority scope tests: 11 passed, 0 failed`
+- Confirmed `tests/authority_scope_test.php` contains neither the fixed tenant reference nor the environment-specific database name.
+- Direct R1 probe passed for a known tenant whose configured database does not exist:
+  `PASS: known tenant with unavailable authority store skipped without throwing`
+- Direct read-path probe:
+  `PASS: authorize still throws when the scoped authority store is unavailable`
+- PHP lint and `git diff --check` passed.
+
+**evidence:**
+The five tenant-dependent tests skip locally, so the local suite cannot prove their CI execution path:
+- `capability_effect_invalidation_test.php`
+- `durable_idempotency_test.php`
+- `entity_view_render_cache_test.php`
+- `kernel_idempotency_capability_test.php`
+- `tenant_entry_auth_shell_standard_test.php`
+
+Confidence in R1 was increased with the direct unavailable-store integration probe above, exercising a resolved tenant scope with an unresolvable database and confirming seeding returns without throwing.
+
+**scope:**
+- Did not modify `tests/admin_platform_api_test.php`.
+- Did not touch `modules/daily-ledger/**`.
+- Read-path ambient database fallback and reflection falsifier remain intact.
+- `storage/modules.json` was absent before testing and restored to that missing state afterward.
+
+**risks:**
+- Full R1 fixture boot remains observable only in CI where those five tenant configurations resolve.
+- The hermetic authority test requires database-creation permission when the fixture initially shares the kernel database; it emits an explicit `SKIP:` if that precondition is unavailable.
+
+**unresolved:** None within the repair brief.
+
+**recommended next state:** Ready for CI rerun and chair review.

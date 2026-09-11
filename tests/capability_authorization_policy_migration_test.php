@@ -125,6 +125,7 @@ $alternateCallerModule = 'authz-policy-alternate-caller-' . $suffix;
 $registry = new CapabilityAuthorizationRegistry($db);
 $tenantResolver = app()->tenant();
 $previousTenantId = $tenantResolver->current();
+$resolverFixtureTenant = null;
 
 try {
     $tenantResolver->setTenantId(null);
@@ -265,6 +266,15 @@ try {
         'requires_protocol' => 'v2',
     ])]);
     $tenantPolicyDb = app()->dbForTenant($resolverFixtureTenant);
+    $tenantRegistry = $tenantPolicyDb instanceof PDO ? new CapabilityAuthorizationRegistry($tenantPolicyDb) : null;
+    if ($tenantRegistry instanceof CapabilityAuthorizationRegistry) {
+        $tenantRegistry->seedPolicy([array_merge($policy, [
+            'provider' => $legacyProviderId,
+            'caller_module' => $callerModule,
+            'allowed_roles' => 'admin',
+            'requires_protocol' => 'v2',
+        ])]);
+    }
     $tenantPolicyCount = $tenantPolicyDb instanceof PDO ? $tenantPolicyDb->prepare(
         'SELECT COUNT(*) FROM capability_authorization_policies WHERE policy_version = ? AND capability_id = ? AND provider = ?'
     ) : null;
@@ -283,18 +293,18 @@ try {
         $resolverResult['reason']
     );
     $tenantResolver->setTenantId(null);
-    cleanupTestTenant($resolverFixtureTenant);
 
     CapabilityAuthorizationRegistry::invalidate();
     capAuthzPolicyTest(
         'governed dispatch without a tenant anywhere remains fail-closed',
-        capAuthzPolicyDeniedForReason($bus, $capabilityId, $resolverOptions, 'missing_tenant')
+        capAuthzPolicyDeniedForReason($bus, $capabilityId, $resolverOptions, 'missing_tenant_authority_scope')
     );
 
     $baseOptions = [
         'provider' => $providerId,
         'caller_module' => $callerModule,
-        'tenant_id' => 'tenant-' . $suffix,
+        'tenant_id' => $resolverFixtureTenant,
+        'authority_entry_point' => 'test',
     ];
     $adminResult = capAuthzPolicyOutcome($bus, $capabilityId, array_merge($baseOptions, [
         'caller_user' => ['role' => 'admin'],
@@ -307,9 +317,13 @@ try {
 
     // Falsifier: removing seedPolicy's widening guard makes this assertion fail,
     // because the alternate caller would be silently added to the live grant.
-    $registry->seedPolicy([array_merge($narrowPolicy, [
+    $wideningDeclaration = array_merge($narrowPolicy, [
         'caller_module' => $callerModule . ',' . $alternateCallerModule,
-    ])]);
+    ]);
+    $registry->seedPolicy([$wideningDeclaration]);
+    if ($tenantRegistry instanceof CapabilityAuthorizationRegistry) {
+        $tenantRegistry->seedPolicy([$wideningDeclaration]);
+    }
     CapabilityAuthorizationRegistry::invalidate();
 
     $alternateCallerResult = capAuthzPolicyOutcome($bus, $capabilityId, array_merge($baseOptions, [
@@ -350,6 +364,9 @@ try {
     );
 } finally {
     $tenantResolver->setTenantId($previousTenantId);
+    if (is_int($resolverFixtureTenant)) {
+        cleanupTestTenant($resolverFixtureTenant);
+    }
     $cleanup = $db->prepare(
         'DELETE FROM capability_authorization_policies '
         . 'WHERE policy_version = ? AND capability_id = ? AND capability_version = ? AND provider IN (?, ?)'
