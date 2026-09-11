@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "entity_views": {
+    "post": {
+      "list": {
+        "fields": ["title", "subtitle", "metadata", "image", "url"],
+        "actions": ["view"]
+      },
+      "detail": {
+        "fields": ["title", "subtitle", "body", "metadata", "image", "url", "categories"],
+        "actions": ["view"]
+      }
+    }
+  }
+}

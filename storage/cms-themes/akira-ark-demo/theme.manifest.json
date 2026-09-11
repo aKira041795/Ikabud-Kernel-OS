@@ -1,0 +1,42 @@
+{
+    "id": "akira-ark",
+    "name": "akira-ark",
+    "version": "1.0.1",
+    "label": "Akira Demo (violet)",
+    "description": "Minimal self-contained declarative ARK public theme for CMS Akira.",
+    "author": "Ikabud",
+    "kernel_os_compat": "6.1",
+    "disyl_compat": "4.0",
+    "supported_surfaces": [
+        "public"
+    ],
+    "tokens": "tokens.json",
+    "shell": "layouts/public.disyl",
+    "entity_views": "entity-views",
+    "customizer": {
+        "owns": true,
+        "schema": "customizer.schema.json",
+        "sections": [
+            "header",
+            "footer"
+        ]
+    },
+    "regions": {
+        "header": "templates/regions/header.disyl",
+        "footer": "templates/regions/footer.disyl"
+    },
+    "supported_slots": [
+        "header.main",
+        "content",
+        "footer.main"
+    ],
+    "fallback_views": {
+        "card": "entity-views/post-list.disyl",
+        "detail": "entity-views/post-detail.disyl"
+    },
+    "layout": {
+        "max_width": "1120px",
+        "reading_width": "720px",
+        "gutter": "1.25rem"
+    }
+}

@@ -7,26 +7,148 @@
     "suite": "cms-akira",
     "kind": "extension",
     "extends": "cms-akira-core",
-    "depends": ["cms-akira-core"],
-    "owns_tables": ["cms_akira_compositions", "cms_akira_composition_revisions"],
-    "reads_tables": ["cms_akira_compositions", "cms_akira_composition_revisions"],
+    "depends": [
+        "cms-akira-core"
+    ],
+    "owns_tables": [
+        "cms_akira_compositions",
+        "cms_akira_composition_revisions"
+    ],
+    "reads_tables": [
+        "cms_akira_compositions",
+        "cms_akira_composition_revisions"
+    ],
     "migrations": [
         "database/migrations/001_initial.sql",
         "database/migrations/002_create_compositions.sql"
     ],
     "capabilities": {
         "exposes": [
-            {"id":"akira.builder.compositions@1","priority":50,"modes":["first"],"description":"List current-tenant composition projections"},
-            {"id":"akira.builder.get@1","priority":50,"modes":["first"],"description":"Get one composition and its current preview tree"},
-            {"id":"akira.builder.revisions@1","priority":50,"modes":["first"],"description":"List projected composition revisions"},
-            {"id":"akira.builder.provenance@1","priority":50,"modes":["first"],"requires_protocol":"v2","description":"Read the governed composition timeline and semantic revision diff"},
-            {"id":"akira.builder.render@1","priority":50,"modes":["first"],"description":"Render a validated preview or published composition through ARK and DiSyL"},
-            {"id":"akira.builder.create@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Create a draft composition and initial revision"},
-            {"id":"akira.builder.update@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Append a preview revision with optimistic concurrency"},
-            {"id":"akira.builder.publish@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Promote the current preview revision"},
-            {"id":"akira.builder.unpublish@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Remove the published pointer without changing preview"},
-            {"id":"akira.builder.delete@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Delete a composition and its same-member revisions"},
-            {"id":"akira.builder.validate@1","priority":50,"modes":["first"],"requires_protocol":"v2","effects":{"invalidates":["entity.list.composition"]},"description":"Govern and audit fail-closed composition validation"}
+            {
+                "id": "akira.builder.compositions@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "List current-tenant composition projections"
+            },
+            {
+                "id": "akira.builder.get@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Get one composition and its current preview tree"
+            },
+            {
+                "id": "akira.builder.revisions@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "List projected composition revisions"
+            },
+            {
+                "id": "akira.builder.provenance@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Read the governed composition timeline and semantic revision diff"
+            },
+            {
+                "id": "akira.builder.render@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Render a validated preview or published composition through ARK and DiSyL"
+            },
+            {
+                "id": "akira.builder.create@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.composition"
+                    ]
+                },
+                "description": "Create a draft composition and initial revision"
+            },
+            {
+                "id": "akira.builder.update@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.composition"
+                    ]
+                },
+                "description": "Append a preview revision with optimistic concurrency"
+            },
+            {
+                "id": "akira.builder.publish@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.composition"
+                    ]
+                },
+                "description": "Promote the current preview revision"
+            },
+            {
+                "id": "akira.builder.unpublish@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.composition"
+                    ]
+                },
+                "description": "Remove the published pointer without changing preview"
+            },
+            {
+                "id": "akira.builder.delete@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.composition"
+                    ]
+                },
+                "description": "Delete a composition and its same-member revisions"
+            },
+            {
+                "id": "akira.builder.validate@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.composition"
+                    ]
+                },
+                "description": "Govern and audit fail-closed composition validation"
+            }
         ],
         "depends": [
             "akira.post.get@1",
