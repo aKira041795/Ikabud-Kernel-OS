@@ -3,19 +3,36 @@
 status: direction (chair, 2026-09-10) · authority: product owner — *"Akira can now freely take its
 intended shape and form, unbounded by WordPress's shadow and other CMS's. Let's break new ground."*
 
-Depends on: [kernel-substrate-thesis.md](kernel-substrate-thesis.md) (Akira = POC, kernel =
-substrate, Workbench = instrument).
+Depends on: [kernel-substrate-thesis.md](kernel-substrate-thesis.md).
+
+The ecosystem has four deliberately different jobs: **Kernel = product; Akira = demonstrates the
+claim; Daily Ledger = tries to break it; Workbench = proves the result.** Akira remains a reference
+application and POC, not the boundary of the substrate.
 
 ## The ground we are leaving
 
-A CMS is software that stores content and renders it. WordPress, Contentful, Sanity, Strapi,
-Payload — all of them, regardless of polish, are **content stores with a rendering path**. Their
-architectures record *what the content is*. None of them record *what the system was permitted to
-do, or who permitted it*.
+A CMS is software that stores content and renders it. WordPress, Contentful, Sanity, Strapi and
+Payload are principally **content stores with a rendering path**. IAM, workflow, provenance and
+policy engines can each record part of authority or history; the distinction intended in Akira is
+that authority, execution, provenance and verification form **one continuous enforced model**, not
+independently bolted-on subsystems:
 
-So every CMS in existence bolts governance on afterwards: plugins with unrestricted power, audit
-logs the operator can edit, "AI features" with no notion of authority, approvals implemented as
-workflow settings rather than as an enforced property of the system.
+```text
+Authority governs execution
+          |
+          v
+      Capability
+       /      \\
+      v        v
+ evidence   provenance
+      \\        /
+       v      v
+        effects
+```
+
+Conventional CMS governance is commonly added afterwards: plugins with broad power, operator-owned
+audit logs, machine features with no delegated authority, and approvals implemented as workflow
+settings rather than an enforced property of execution.
 
 That is the shadow we were building inside. Competing there means competing on blocks, themes,
 media libraries and editor ergonomics — a mature, crowded, well-defended category where our
@@ -89,52 +106,69 @@ Verified over real HTTP on tenant 54: an `author`-role caller was refused `POST
 execute. An allowed caller created a post (201), and replaying the idempotency key produced one
 domain transition, not two.
 
-Two findings from that verification, both recorded rather than papered over:
-
-1. **The authorization registry reads `app()->db()`** (the kernel store), not the tenant's database.
-   For a tenant-local module the authority is therefore kernel-scoped. Whether that is correct for
-   a multi-tenant product or a gap in tenant-scoped authority is an architectural question for P5.
-2. **Policies are re-asserted from code.** `seedPolicy()` runs `ON DUPLICATE KEY UPDATE … is_active
-   = VALUES(is_active)`, so deactivating a policy row in the database is silently undone on the next
-   activation. Revocation's real lever is the module's seed declaration. Policy-as-code is defensible
-   — a silent no-op is not, and must be surfaced.
-
 Not yet covered, and not claimed: scheduled jobs, event handlers, CLI handlers and other direct
 callables remain outside this inventory.
 
+#### Standing authority architecture findings
 
-### P3 — Delegation: machines can hold bounded authority **(the new ground)**
+These C6 findings are architectural work, not P2 status footnotes:
 
-Not "AI writes a draft". An **actor** with an identity, a **grant** with scope/constraints/expiry,
-**enforcement at the bus**, **attribution** in provenance, and **segregation of duties** where a
-policy requires human authorization for machine-originated change.
+1. **Authority-store resolution is context-dependent.** The registry falls back to `app()->db()`;
+   measurement for one tenant resolved web to the tenant DB and CLI to the kernel DB. Declaration
+   and grant-state ownership, consequences, and chair questions are recorded in the
+   [authority-store ADR](authority-store-adr.md). P3/P5 may not rely on ambient DB selection.
+2. **Declaration must not restore grant state.** Code may declare requirements, but a repeated
+   `seedPolicy()` may not overwrite an operator suspension or revocation. P2 closure adds an
+   explicit `granted | suspended | revoked` lifecycle and audited transitions.
 
-This is the piece that does not exist anywhere. Every CMS treats a machine as a client of its API;
-here a machine is a *participant with accountable authority*. And it is only possible because
-authority is a runtime property of the substrate rather than a plugin's opinion.
+The sequence is: **P2 closure** (route coverage → authority-store semantics →
+declaration/revocation → inventory beyond HTTP) → **P3** → **P4** → **P5**.
+
+
+### P3 — Delegation: actors can hold bounded authority **(the new ground)**
+
+This is generic delegation, not "AI writes a draft":
+
+- `Actor{identity: human | service | machine}`
+- `Grant{grantor, grantee, capability, subject scope, constraints, issued_at, expires_at, revocable}`
+- `ExecutionContext{actor, delegated_by, grant_id}`
+
+The kernel understands **delegated authority**, never **AI authority**. HARPP, a cron worker, an ERP
+integration, a device and an AI agent all use this one primitive. Enforcement occurs at the bus and
+attribution remains in provenance because authority is a runtime property, not a plugin's opinion.
+
+Segregation of duties belongs to Authority, not AI: **no actor may satisfy incompatible authority
+roles in the same decision.** In Daily Ledger terms, a cashier records a transaction, a supervisor
+voids it, and that cashier cannot approve their own void. This financial-operations case is a
+required demonstration that the substrate is not publishing-shaped.
 
 ### P4 — Verification: the claim proves itself to a third party
 
-A CMS audit log is for the operator and can be edited by the operator. Here, a published artifact
-can answer *who authored this, who authorized it, under which policy, at what time* — verifiably,
-without the verifier trusting the operator. Trust shifts from "trust the CMS" to "verify the
-claim" — which is the only honest basis for machine-authored work.
+A CMS audit log — including `GET /audit` — is not third-party verifiable when its operator controls
+the server. Start with the smallest tamper-evident export: `artifact.json` + `proof.json` + a public
+key + `verify-artifact()`. The proof binds the content hash, actor, authority/grant, policy version
+and provenance chain, so one exported artifact remains verifiable after it leaves the server.
+Blockchain, public ledgers, PKI infrastructure and DID are explicitly refused **for now**; they are
+not required to prove the local-verifier claim.
 
-### P5 — Consent: authority is granted, never assumed
+### P5 — Grant: authority is granted, never assumed
 
 The WordPress extension model installs code and grants it everything. Here an extension **declares
-the authority it needs**, and the tenant grants or denies it. This inverts the security model of
-the entire extension ecosystem and is a natural consequence of policy rows existing at all.
+the authority it needs**, and the tenant grants or denies it. `Grant` is the authority primitive;
+`Consent` is reserved for any future data-subject consent with privacy, GDPR or medical semantics.
+This inverts the security model of the extension ecosystem and follows from policy rows existing.
 
 ## What we will not build
 
 The WordPress shadow is shed by refusing its shopping list:
 
-- no parity features (media library, taxonomies, menus, widgets, SEO scorecards)
+- **No feature is implemented for parity alone.** Minimum product completeness — for example
+  taxonomy, media, or a basic editor — is allowed when it demonstrates a named substrate claim
 - no block-editor competition — the builder exists to prove that structured content is *diffable
   and semantically provable*, and it has done that
 - no theme marketplace, no plugin store, no admin-UX arms race
 - no feature that cannot name the substrate claim it proves
+- no rebranding, renaming, or new major version before the substrate earns branding through proof
 
 ## Where this leaves the project
 
@@ -149,6 +183,20 @@ measurement). Workbench is the instrument that makes all of it provable rather t
 (architect → implement → review → release-gate), contracts before code, evidence over assertion,
 tests as the oracle, CI as the gate, no scope creep, and honest reporting of what was not verified.
 
-The risk of "break new ground" is inventing something unfalsifiable. Mitigation: every pillar must
-be demonstrable in Akira, measurable by Workbench, and breakable by a test that would fail if the
-claim were false.
+A feature request passes the discipline gate only if it names the substrate claim it demonstrates:
+
+```text
+Feature request
+      |
+      v
+Names a substrate claim? -- no --> reject or defer
+      |
+     yes
+      v
+Define the falsifiable two-domain demonstration --> govern implementation
+```
+
+**No substrate primitive is considered general until it is demonstrated in at least two materially
+different domains: publication and financial operations.** The risk of "break new ground" is
+inventing something unfalsifiable; every pillar must therefore be demonstrable in Akira, challenged
+by Daily Ledger, measurable by Workbench, and breakable by a test that fails when the claim is false.
