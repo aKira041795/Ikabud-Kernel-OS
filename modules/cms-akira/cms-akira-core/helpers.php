@@ -27,7 +27,6 @@ function cacSeedPostMutationPolicies(): void
     if (!function_exists('app')) {
         return;
     }
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
     foreach ([
         'akira.post.create@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
@@ -48,7 +47,7 @@ function cacSeedPostMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    $registry->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedPostMutationPolicies();
@@ -77,7 +76,7 @@ function cacSeedPostAdminReadPolicies(): void
             'is_active' => true,
         ];
     }
-    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedPostAdminReadPolicies();
@@ -94,7 +93,6 @@ function cacSeedTaxonomyMutationPolicies(): void
     if (!function_exists('app')) {
         return;
     }
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
     foreach ([
         'akira.taxonomy.create@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
@@ -113,7 +111,7 @@ function cacSeedTaxonomyMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    $registry->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedTaxonomyMutationPolicies();
@@ -131,7 +129,6 @@ function cacSeedContentTypeMutationPolicies(): void
     if (!function_exists('app')) {
         return;
     }
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
     foreach ([
         'akira.content_type.create@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
@@ -150,7 +147,7 @@ function cacSeedContentTypeMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    $registry->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedContentTypeMutationPolicies();
@@ -168,7 +165,6 @@ function cacSeedPostTaxonomyMutationPolicies(): void
     if (!function_exists('app')) {
         return;
     }
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
     foreach ([
         'akira.post.set_taxonomies@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
@@ -185,7 +181,7 @@ function cacSeedPostTaxonomyMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    $registry->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedPostTaxonomyMutationPolicies();
@@ -205,7 +201,6 @@ function cacSeedPostRevisionMutationPolicies(): void
     if (!function_exists('app')) {
         return;
     }
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db());
     $rows = [];
     foreach ([
         'akira.post.revision.revert@1' => ['admin,editor,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
@@ -222,7 +217,7 @@ function cacSeedPostRevisionMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    $registry->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedPostRevisionMutationPolicies();
@@ -242,7 +237,7 @@ function cacSeedGovernancePolicies(): void
             'requires_protocol' => 'v2', 'is_active' => true,
         ];
     }
-    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 cacSeedGovernancePolicies();

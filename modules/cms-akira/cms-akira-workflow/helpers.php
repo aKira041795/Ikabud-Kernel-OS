@@ -98,7 +98,7 @@ function cawSeedTransitionPolicy(): void
     if (!function_exists('app')) {
         return;
     }
-    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy([[
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
         'policy_version' => 1,
         'capability_id' => 'akira.workflow.transition@1',
         'capability_version' => '1',

@@ -42,7 +42,7 @@ function camSeedMediaMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    (new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->db()))->seedPolicy($rows);
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
 camSeedMediaMutationPolicies();

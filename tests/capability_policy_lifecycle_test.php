@@ -142,6 +142,39 @@ try {
             && ($lastData['reason'] ?? '') === 'temporary incident hold',
         json_encode($audits, JSON_UNESCAPED_SLASHES)
     );
+
+    try {
+        $registry->replaceActiveRowRoles($roleCapability, '1', $provider, 'declared-caller', ['admin']);
+        $missingTransactionRejected = false;
+    } catch (LogicException $e) {
+        $missingTransactionRejected = str_contains($e->getMessage(), 'requires an existing transaction');
+    }
+    $check('policy cloning rejects a caller without an existing transaction', $missingTransactionRejected);
+
+    $db->beginTransaction();
+    try {
+        $nextVersion = $registry->replaceActiveRowRoles($roleCapability, '1', $provider, 'declared-caller', ['admin', 'editor']);
+        $cloneStateStmt = $db->prepare(
+            'SELECT grant_state FROM capability_authorization_policies WHERE policy_version = ? '
+            . 'AND capability_id = ? AND capability_version = ? AND provider = ?'
+        );
+        $cloneStateStmt->execute([$nextVersion, $capability, '1', $provider]);
+        $cloneState = $cloneStateStmt->fetchColumn();
+        $cloneAuditId = md5(implode('|', [$nextVersion, $capability, '1', $provider]));
+        $cloneAuditStmt = $db->prepare(
+            "SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'capability_authorization_policy' AND entity_id = ?"
+        );
+        $cloneAuditStmt->execute([$cloneAuditId]);
+        $cloneTransitionAudits = (int)$cloneAuditStmt->fetchColumn();
+        $check(
+            'a non-granted clone is inserted once in its final state without a corrective transition',
+            $cloneState === 'suspended' && $cloneTransitionAudits === 0,
+            json_encode(['state' => $cloneState, 'corrective_transition_audits' => $cloneTransitionAudits])
+        );
+    } finally {
+        $db->rollBack();
+        CapabilityAuthorizationRegistry::invalidate();
+    }
 } catch (Throwable $e) {
     $check('lifecycle scenario completes without exception', false, $e::class . ': ' . $e->getMessage());
 } finally {
