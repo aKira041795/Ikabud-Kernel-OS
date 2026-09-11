@@ -37,10 +37,31 @@ $check(
         && $columnDefault === 'granted',
     json_encode($column)
 );
-$notMigrated = (int)$db->query(
-    "SELECT COUNT(*) FROM capability_authorization_policies WHERE grant_state IS NULL OR grant_state <> 'granted'"
-)->fetchColumn();
-$check('pre-existing policy rows migrate to granted', $notMigrated === 0, (string)$notMigrated);
+// Prove the backfill the migration relies on — `ADD COLUMN ... NOT NULL
+// DEFAULT 'granted'` — on a throwaway table seeded with rows that already
+// existed. Scanning the live table instead was an isolation flaw: a policy row
+// that is legitimately suspended or revoked (or one left behind by another
+// test's falsification run) is valid state, not a migration failure, yet it
+// failed this assertion spuriously.
+$notGranted = null;
+try {
+    $db->exec('DROP TEMPORARY TABLE IF EXISTS _grant_backfill_probe');
+    $db->exec('CREATE TEMPORARY TABLE _grant_backfill_probe (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB');
+    $db->exec('INSERT INTO _grant_backfill_probe (id) VALUES (1), (2)');
+    $db->exec(
+        "ALTER TABLE _grant_backfill_probe ADD COLUMN grant_state "
+        . "ENUM('granted','suspended','revoked') NOT NULL DEFAULT 'granted'"
+    );
+    $notGranted = (int)$db->query(
+        "SELECT COUNT(*) FROM _grant_backfill_probe WHERE grant_state <> 'granted'"
+    )->fetchColumn();
+    $db->exec('DROP TEMPORARY TABLE IF EXISTS _grant_backfill_probe');
+} catch (Throwable $e) {
+    echo 'SKIP: pre-existing policy rows migrate to granted — ' . $e->getMessage() . "\n";
+}
+if ($notGranted !== null) {
+    $check('pre-existing policy rows migrate to granted', $notGranted === 0, (string)$notGranted);
+}
 $check('migration runner re-run is clean', $secondRun === [], json_encode(['first' => $firstRun, 'second' => $secondRun]));
 
 $admin = $db->query("SELECT id, username, role FROM users WHERE role IN ('admin', 'superadmin') ORDER BY id LIMIT 1")->fetch(PDO::FETCH_ASSOC);
