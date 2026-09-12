@@ -1,0 +1,109 @@
+All acceptance checks are complete. The HARPP bridge binary is absent in this environment, so I could not file the architecture decision through `harpp_submit_decision`; it is stated in the report instead.
+
+```
+status:        PARTIAL
+task:          read-authority-extension
+
+declared:
+  - route: GET /cms-akira-shell/posts/{slug}/edit
+    capability: akira.post.admin.get@1
+    handler_line: modules/cms-akira/cms-akira-shell/handlers.php:247 akiraShellPostEditForm -> :252 akiraShellFetchPost -> helpers.php:331 akiraShellCall('akira.post.admin.get@1', ...)
+
+excluded:
+  - route: GET /cms-akira-shell/posts/new
+    reason: akiraShellPostCreateForm -> akiraShellPostForm invokes only akira.taxonomy.list@1
+            (conditionally, via akiraShellCategories() for the category panel), an R5-ungoverned
+            read with no policy row. Fail-closed dispatch would 403 it. The governing write
+            akira.post.create@1 is not called by the GET handler and is already declared on POST.
+  - route: GET /cms-akira-shell/categories
+    reason: akiraShellCategoryList -> akiraShellCategoryPage calls akira.taxonomy.list@1
+            (handlers.php:474). No tenant policy row (R5 ungoverned); authorize() is fail-closed,
+            so declaring would 403 every operator. Substituting the write caps
+            (taxonomy.create/update/delete) would narrow access for contributor/author, who
+            currently view this participant read surface.
+  - route: GET /cms-akira-shell/content-types
+    reason: akiraShellContentTypeList -> akiraShellContentTypePage calls akira.content_type.list@1
+            (handlers.php:782). No policy row until R5 => 403; write caps are editor+ and would
+            narrow contributor/author view access.
+  - route: GET /cms-akira-shell/permissions
+    reason: akiraShellPermissions calls akira.policy.list@1 (handlers.php:869). No policy row
+            until R5 => authorize() returns missing_policy_row, 403 for every actor including
+            administrators. No safe declaration exists without inventing read authority (R5).
+  - route: GET /cms-akira-shell/users
+    reason: akiraShellUsers calls akira.user.list@1 (handlers.php:913). No policy row until R5
+            => 403 for every actor including administrators. Same R5 blocker.
+  - route: GET /cms-akira-shell/compositions
+    reason: akiraShellCompositions reads posts through app()->entityViews()->resolve('post','list',...)
+            (handlers.php:604) => entity.list.post@1, no policy row until R5 => 403; cms-akira-shell
+            depends on no akira.builder.* capability, so no owned policy-bearing substitute exists.
+  - route: GET /cms-akira-shell/compositions/{key}/edit
+    reason: akiraShellCompositionEdit (handlers.php:623) calls no read capability at all; it gates
+            on the admin role and mounts the builder bundle. Nothing to mirror.
+  - route: GET /cms-akira-shell/login
+    reason: authentication entry point; excluded per contract (lockout). Verified unaffected.
+  - route: GET /cms-akira-shell/forbidden
+    reason: denial surface; excluded per contract (denial loop). Verified reachable (own 403).
+  - route: GET /cms-akira-shell/health
+    reason: operational probe; handler calls no read capability.
+  - route: GET / , /posts , /posts/{slug}
+    reason: anonymous public presentation, not business operations; excluded per contract.
+
+B1 mirrors_handler:        yes — GET /posts/{slug}/edit names exactly akira.post.admin.get@1,
+                           the capability akiraShellPostEditForm reaches via akiraShellFetchPost
+                           (handlers.php:247 -> :252 -> helpers.php:331).
+B2 enforcement_proven:     partial — GET /cms-akira-shell/posts/{slug}/edit is refused at dispatch
+                           with no authority (probe §4: guard returns false, denial logged with
+                           capability akira.post.admin.get@1). /permissions and /users cannot be
+                           declared: their read capabilities have NO tenant policy row (verified
+                           against tenant 54 DB and via app()->cap()->authorize(), reason
+                           missing_policy_row for admin/editor/contributor), and authorize() is
+                           fail-closed, so declaring would 403 every operator. Probe §3 asserts
+                           those routes stay undeclared; browser proves they still render.
+B3 no_operator_lockout:    yes (real Chromium, logged-in admin charlienacario884):
+                             declared:   /cms-akira-shell/posts 200;
+                                         /cms-akira-shell/posts/read-authority-<ts>/edit 200
+                             excluded:   /posts/new 200, /categories 200, /content-types 200,
+                                         /permissions 200, /users 200, /compositions 200,
+                                         /compositions/smoke-test/edit 200, /health 200
+                             /forbidden 403 by design (handler's own denial, not dispatch)
+                             zero 403s on any declared page; 0 console errors on declared pages.
+B4 login_unaffected:       yes — fresh unauthenticated GET /cms-akira-shell/login -> redirect ->
+                           /login 200, #username/#password visible, no 403.
+B5 gate_and_suite:         php ikabud workbench:governance --all --gate exit 0;
+                           .governance-baseline.json unchanged (git diff empty);
+                           composer test = 109 files, 99 passed, 1 failed, 9 skipped; the single
+                           failure is the pre-existing disyl_include_root_test.php.
+B6 ratio:                  before 28/33 Akira (cms-akira-shell 14/15) -> after 28/33 Akira
+                           (cms-akira-shell 14/15). UNCHANGED. isBusiness() excludes GET reads, so
+                           the declaration cannot move the headline number; this is stated, not
+                           presented as progress.
+
+changed:       modules/cms-akira/cms-akira-shell/module.json  (+1 declaration)
+               tests/read_authority_probe_test.php           (extended; 14 -> 22 assertions)
+               tests/browser/read-authority.spec.ts          (extended; 1 -> 2 tests)
+verification:  php -l tests/read_authority_probe_test.php                    -> no syntax errors
+               python3 -m json.tool module.json                              -> valid
+               php tests/read_authority_probe_test.php                       -> 22 passed / 0 failed
+               composer test                                                 -> 109 files 99/1/9, failure = disyl_include_root_test
+               php ikabud workbench:governance --all --gate                  -> exit 0, baseline untouched
+               npx playwright test -c /tmp/pw-live.config.js ...             -> 2 passed
+scope:         Only the three files above. No template, handler, GovernanceCensus.php,
+               dispatch-guard, baseline, daily-ledger or gui-settings edits.
+               No commit, push, or branch operation.
+risks:         The remaining Akira admin reads stay dispatch-ungoverned until R5 seeds read
+               policy rows; declaring them now would break them. The one declared route
+               inherits akira.post.admin.get@1's contributor..superadmin policy, which exactly
+               matches the page's existing participant gate, so access is neither widened nor
+               narrowed.
+unresolved:    Whether to seed R5 read policies (akira.taxonomy.list@1, akira.content_type.list@1,
+               akira.policy.list@1, akira.user.list@1, entity.list.post@1) so the remaining
+               admin reads can be declared. Documented in-repo as "Reads (list/get) remain
+               ungoverned until R5 governs reads" (cms-akira-core/helpers.php, helpers/capabilities.php).
+               This is a chair architectural decision, not part of a declarations-only slice.
+recommended_next_state: ARCHITECTURE_DECISION_REQUIRED (R5 read-governance decision), then a
+               follow-up slice declares the remaining reads once their policy rows exist.
+```
+
+**The single most important thing, verified:** `GET /cms-akira-shell/login` was **not** declared. A fresh anonymous visit still reaches the kernel login form. `/forbidden` was also left undeclared and still returns its own 403, not a dispatch denial.
+
+**Why 7 of the 8 table entries are excluded:** the dispatch guard's `authorize()` is fail-closed, while the in-handler `call()` is fail-open. Only `akira.post.admin.get@1` and `akira.post.admin.list@1` have tenant policy rows; every other read the declare table points at is deliberately ungoverned until increment R5. Declaring any of them would have produced a 403 for every operator, exactly the regression the contract warns about. That is confirmed in code, in the tenant 54 policy table, and by test assertion, and the excluded pages were loaded in a real browser to prove the exclusions did not break them.
