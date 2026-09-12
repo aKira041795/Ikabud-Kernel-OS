@@ -75,6 +75,30 @@ try {
     cleanupTestTenant($tenantB);
     testEnvironmentSkip('media tenant fixtures are unavailable: ' . $error->getMessage());
 }
+
+// CapabilityBus checks moduleIsActive($provider) without an explicit tenant.
+// In the CI single-tenant configuration that means global module activation;
+// tenant settings alone only satisfy the explicit-tenant form used above.
+$moduleRegistryPath = $root . '/storage/modules.json';
+$moduleRegistryExisted = is_file($moduleRegistryPath);
+$originalModuleRegistry = $moduleRegistryExisted ? file_get_contents($moduleRegistryPath) : null;
+$restoreModuleRegistry = static function () use ($moduleRegistryPath, $moduleRegistryExisted, $originalModuleRegistry): void {
+    if ($moduleRegistryExisted && is_string($originalModuleRegistry)) {
+        file_put_contents($moduleRegistryPath, $originalModuleRegistry);
+    } elseif (!$moduleRegistryExisted) {
+        @unlink($moduleRegistryPath);
+    }
+};
+if (!moduleTenantSettingsModeEnabled()) {
+    try {
+        enableModule('cms-akira-media');
+    } catch (Throwable $error) {
+        $restoreModuleRegistry();
+        cleanupTestTenant($tenantA);
+        cleanupTestTenant($tenantB);
+        testEnvironmentSkip('global cms-akira-media activation fixture is unavailable: ' . $error->getMessage());
+    }
+}
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $prefix = 'media-' . bin2hex(random_bytes(5));
@@ -164,8 +188,9 @@ try {
         && ($fixtureActivationRows[$tenantA] ?? null) === 'true'
         && ($fixtureActivationRows[$tenantB] ?? null) === 'true'
         && moduleIsActive('cms-akira-media', $tenantA)
-        && moduleIsActive('cms-akira-media', $tenantB),
-        'tenant activation is explicit, fixture tenants permit media, and media claims no Kernel Entity Authority'
+        && moduleIsActive('cms-akira-media', $tenantB)
+        && moduleIsActive('cms-akira-media'),
+        'tenant activation is explicit, fixture tenants and the dispatch scope permit media, and media claims no Kernel Entity Authority'
     );
     foreach ($mutations as $id) {
         $entry = $manifest['capabilities']['exposes'][array_search($id, $ids, true)] ?? [];
@@ -582,6 +607,7 @@ try {
     kernel_request_context_delete('tenant_id');
     cleanupTestTenant($tenantA);
     cleanupTestTenant($tenantB);
+    $restoreModuleRegistry();
     @file_put_contents($root . '/storage/logs/app.log', '');
     @file_put_contents($root . '/storage/logs/error.log', '');
 }
