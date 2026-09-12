@@ -114,17 +114,18 @@ try {
             "activation seeds idempotent taxonomy policy for {$id}"
         );
     }
-    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%'")->fetchAll(PDO::FETCH_ASSOC);
+    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%' AND is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
     $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
-    $check(count($policyRows) === 3
+    $check(count($policyRows) === 4
+        && ($policyRoles['akira.taxonomy.list@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.taxonomy.create@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyRoles['akira.taxonomy.update@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyRoles['akira.taxonomy.delete@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyCallers['akira.taxonomy.create@1'] ?? '') === 'cms-akira-core,cms-akira-shell'
         && ($policyCallers['akira.taxonomy.delete@1'] ?? '') === 'cms-akira-core,cms-akira-shell', 'taxonomy policies bind editor+ roles and the shell caller');
-    $readPolicies = $db->query("SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%' AND (capability_id LIKE '%.list@1' OR capability_id LIKE '%.get@1')")->fetchColumn();
-    $check((int)$readPolicies === 0, 'taxonomy reads carry no policy rows (R5 governs reads later)');
+    $readPolicies = $db->query("SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%' AND is_active = 1 AND (capability_id LIKE '%.list@1' OR capability_id LIKE '%.get@1')")->fetchColumn();
+    $check((int)$readPolicies === 1, 'taxonomy list carries the active shell read policy');
 
     $createPayload = [
         'idempotency_key' => $keys[] = $prefix . '-create',

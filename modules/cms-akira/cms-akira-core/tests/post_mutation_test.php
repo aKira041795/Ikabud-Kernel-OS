@@ -12,6 +12,7 @@ $_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -50,6 +51,7 @@ cacRegisterPostEntityViews(app()->entityViews());
 
 $tenantA = (int) app()->tenant()->current();
 $tenantB = 992102;
+requireWritableCacheDirectory($root . '/storage/cache/disyl-fragments/' . $tenantA, 'DiSyL fragment cache for tenant ' . $tenantA);
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $prefix = 'p2-' . bin2hex(random_bytes(6));
@@ -105,7 +107,7 @@ try {
         && $policyDb->requiresProtocol('akira.post.delete@1', '1', 'cms-akira-core') === 'v2',
         'activation seeds idempotent admin mutation policies'
     );
-    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%'")->fetchAll(PDO::FETCH_ASSOC);
+    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.post.%' AND is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
     $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
     // The post family has seven governed writes plus R5's two protocol-v1,

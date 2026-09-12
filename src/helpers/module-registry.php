@@ -612,7 +612,10 @@ function moduleIsActive(string $moduleId, ?int $tenantId = null): bool
 
     // The module must be enabled at all. A disabled module's helpers are not
     // loaded and its capabilities are not registered.
-    if (!isModuleEnabled($moduleId)) {
+    if ($tenantId !== null
+        ? !isModuleEnabledForTenant($moduleId, $tenantId)
+        : !isModuleEnabled($moduleId)
+    ) {
         return false;
     }
 

@@ -1,0 +1,218 @@
+status:        PASS
+task:          module-test-visibility
+
+classification:          # F1 — all 27
+  - file: modules/cms-akira/cmsilho-akira-ai/tests/ai_contract_test.php
+    verdict: ENV-TENANT
+    evidence: "UNCAUGHT Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.ai.summary.suggest@1 in /var/www/html/ikabudsix/kernel/Capabilities/CapabilityBus.php:204"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-builder/tests/builder_admin_http_bridge_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ hostile script tree is rejected by the bridge fail-closed" — subsequent bridge operations failed because tenant 994721 does not activate the required modules
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-builder/tests/builder_contract_test.php
+    verdict: ENV-CACHE
+    evidence: "UNCAUGHT RuntimeException: Test module cms-akira-core is not active for tenant 994701. in /var/www/html/ikabudsix/tests/_support/tenant_fixture.php:67"; after fixing explicit-tenant activation lookup, the DiSyL fragment cache parent cannot be created by this CLI process
+    action: activation defect fixed; cache guard added
+
+  - file: modules/cms-akira/cms-akira-builder/tests/builder_dedicated_tenant_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ dedicated connections are distinct and reject the base database"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-builder/tests/builder_profile_visual_install_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+  - file: modules/cms-akira/cms-akira-core/tests/content_type_mutation_test.php
+    verdict: REAL
+    evidence: "✗ content type policies bind editor+ roles and the shell caller"
+    action: corrected stale policy-history assertions; test now passes
+
+  - file: modules/cms-akira/cms-akira-core/tests/extension_widget_registry_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+  - file: modules/cms-akira/cms-akira-core/tests/post_composition_override_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ builder absent -> canonical article-page body render (baseline unchanged)"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-core/tests/post_mutation_test.php
+    verdict: ENV-CACHE
+    evidence: "✗ registry policy binds roles and actual production callers"; also "✗ P2 scenario completes — RuntimeException: Unable to write fragment cache file: /var/www/html/ikabudsix/storage/cache/disyl-fragments/54/133174ddfd07a0f9ade05fd31fe324f422fcbce82ca3700edb4d5e4e0551015a.json"
+    action: stale policy-history query corrected; cache guard added
+
+  - file: modules/cms-akira/cms-akira-core/tests/post_read_render_test.php
+    verdict: ENV-TENANT
+    evidence: "UNCAUGHT Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.post.list@1 in /var/www/html/ikabudsix/kernel/Capabilities/CapabilityBus.php:204"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-core/tests/post_revision_mutation_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+  - file: modules/cms-akira/cms-akira-core/tests/post_taxonomy_mutation_test.php
+    verdict: REAL
+    evidence: "✗ post.get includes empty taxonomy_ids + categories on a fresh post"
+    action: corrected stale public/admin read assumptions; test now passes
+
+  - file: modules/cms-akira/cms-akira-core/tests/taxonomy_mutation_test.php
+    verdict: REAL
+    evidence: "✗ taxonomy policies bind editor+ roles and the shell caller"
+    action: corrected stale policy-history assertions; test now passes
+
+  - file: modules/cms-akira/cms-akira-editor/tests/editor_contract_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+  - file: modules/cms-akira/cms-akira-media/tests/media_contract_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ Phase 5A media scenario completes — Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.media.upload@1"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-media/tests/media_dedicated_tenant_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ live connected identities reject the Kernel/base database"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-navigation/tests/navigation_contract_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ Phase 4 navigation scenario completes — Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.navigation.menu.create@1"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-navigation/tests/navigation_dedicated_tenant_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ live connected identities reject the Kernel/base database"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-search/tests/search_contract_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ Phase 7 search scenario completes — Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.search.document.build@1"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-search/tests/search_dedicated_tenant_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ live connections reject the Kernel/base database"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-seo/tests/seo_contract_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ Phase 5B SEO scenario completes — Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.seo.upsert@1"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-seo/tests/seo_dedicated_tenant_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ live connected identities reject the Kernel/base database"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+  - file: modules/cms-akira/cms-akira-theme/tests/theme_blocks_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+  - file: modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ Phase 4A theme scenario completes — Ikabud\\Kernel\\Capabilities\\CapabilityNotFoundException: No permitted capability providers for: akira.theme.resolve@1"; an earlier stale Theme Studio assertion was also corrected
+    action: stale assertion corrected; guard added
+
+  - file: modules/cms-akira/cms-akira-theme/tests/theme_dedicated_tenant_test.php
+    verdict: ENV-TENANT
+    evidence: "✗ live connected identities reject the Kernel/base database"
+    action: guard added
+
+  - file: modules/cms-akira/cms-akira-workflow/tests/workflow_contract_test.php
+    verdict: PASS
+    evidence: passes
+    action: none
+
+F1 total:      pass=7 env_cache=2 env_tenant=15 real=3
+
+F2 skips:
+  modules/cms-akira/cms-akira-ai/tests/ai_contract_test.php -> "SKIP: tenant 995801 does not activate required CLI module cms-akira-core" (exit 0)
+  modules/cms-akira/cms-akira-builder/tests/builder_admin_http_bridge_test.php -> "SKIP: tenant 994721 does not activate required CLI module cms-akira-core" (exit 0)
+  modules/cms-akira/cms-akira-builder/tests/builder_contract_test.php -> "SKIP: DiSyL fragment cache for tenant 994701 cannot be created by the current process" (exit 0)
+  modules/cms-akira/cms-akira-builder/tests/builder_dedicated_tenant_test.php -> "SKIP: two distinct dedicated tenant databases do not resolve in CLI" (exit 0)
+  modules/cms-akira/cms-akira-core/tests/post_composition_override_test.php -> "SKIP: tenant 991200 does not activate required CLI module cms-akira-core" (exit 0)
+  modules/cms-akira/cms-akira-core/tests/post_mutation_test.php -> "SKIP: DiSyL fragment cache for tenant 54 is not writable by the current process" (exit 0)
+  modules/cms-akira/cms-akira-core/tests/post_read_render_test.php -> "SKIP: tenant 991001 does not activate required CLI module cms-akira-core" (exit 0)
+  modules/cms-akira/cms-akira-media/tests/media_contract_test.php -> "SKIP: tenant 994201 does not activate required CLI module cms-akira-media" (exit 0)
+  modules/cms-akira/cms-akira-media/tests/media_dedicated_tenant_test.php -> "SKIP: two distinct dedicated tenant databases do not resolve in CLI" (exit 0)
+  modules/cms-akira/cms-akira-navigation/tests/navigation_contract_test.php -> "SKIP: tenant 994101 does not activate required CLI module cms-akira-navigation" (exit 0)
+  modules/cms-akira/cms-akira-navigation/tests/navigation_dedicated_tenant_test.php -> "SKIP: two distinct dedicated tenant databases do not resolve in CLI" (exit 0)
+  modules/cms-akira/cms-akira-search/tests/search_contract_test.php -> "SKIP: tenant 994901 does not activate required CLI module cms-akira-core" (exit 0)
+  modules/cms-akira/cms-akira-search/tests/search_dedicated_tenant_test.php -> "SKIP: two distinct dedicated tenant databases do not resolve in CLI" (exit 0)
+  modules/cms-akira/cms-akira-seo/tests/seo_contract_test.php -> "SKIP: tenant 994501 does not activate required CLI module cms-akira-core" (exit 0)
+  modules/cms-akira/cms-akira-seo/tests/seo_dedicated_tenant_test.php -> "SKIP: two distinct dedicated tenant databases do not resolve in CLI" (exit 0)
+  modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php -> "SKIP: tenant 994701 does not activate required CLI module cms-akira-theme" (exit 0)
+  modules/cms-akira/cms-akira-theme/tests/theme_dedicated_tenant_test.php -> "SKIP: two distinct dedicated tenant databases do not resolve in CLI" (exit 0)
+
+F3 discovery:  files before=109 after=136; `scripts/run-tests.php` recursively discovers `*_test.php` under `modules/` and retains only paths containing `/tests/`. Module paths remain root-relative in console and JSON output.
+
+F4 suite:      110 passed / 0 failed / 26 skipped / 136 total; composer gate exit=0. Accounting is exact: 110+0+26=136. No test was made green by weakening or deleting an assertion.
+
+F5 real:       4 genuine defect clusters across 6 files, all addressed:
+  - Explicit-tenant `moduleIsActive()` incorrectly consulted current-tenant/global enablement before its explicit tenant lookup. Evidence: builder fixture reported `Test module cms-akira-core is not active for tenant 994701.` Fixed in `src/helpers/module-registry.php`.
+  - Policy tests counted inactive historical policy versions and omitted the active shell list policy. Evidence: content-type, taxonomy, and post mutation policy assertions failed. Queries now explicitly inspect `is_active = 1` and assert the current shell list authority.
+  - Post-taxonomy tests used published-only public capabilities for a draft and expected the public entity bridge to honor admin controls. Evidence: `post.get includes empty taxonomy_ids + categories on a fresh post`. Draft reads now use governed admin capabilities; the public bridge assertion now verifies the draft is excluded.
+  - Theme test denied the now-canonical Theme Studio contribution. Evidence: `legacy nav/admin/compat/uninstall scaffolding removed`. It now checks the exact single `cms-akira-theme.theme-studio` shell contribution.
+  Recommended action: retain these corrected authority-boundary assertions and provision activated/dedicated tenants in CI if execution rather than visible skips is required.
+
+F6 lost:       no test file deleted. No assertion removed or weakened.
+  - Content type/taxonomy policy counts changed from `=== 3` to `=== 4`, adding an exact assertion for the active shell list policy; read-policy count changed from `=== 0` to `=== 1`. Queries now exclude inactive historical versions.
+  - Post taxonomy changed from requiring an unpublished draft to appear through public `entity.list.post@1` to requiring `$bridgeRow === null`; this strengthens the published-only boundary. Draft checks use `akira.post.admin.get@1` / `akira.post.admin.list@1`.
+  - Theme changed from requiring no `admin_contributions` to checking exactly one canonical Theme Studio contribution with its ID, host, and route.
+  - `git diff --diff-filter=D --name-only` returned empty.
+
+F7 pre_existing: the 109 `tests/` files remain exactly 100 passed / 0 failed / 9 skipped.
+
+changed:
+  .github/copilot-instructions.md
+  scripts/run-tests.php
+  src/helpers/module-registry.php
+  tests/_support/env_guard.php
+  modules/cms-akira/cms-akira-ai/tests/ai_contract_test.php
+  modules/cms-akira/cms-akira-builder/tests/builder_admin_http_bridge_test.php
+  modules/cms-akira/cms-akira-builder/tests/builder_contract_test.php
+  modules/cms-akira/cms-akira-builder/tests/builder_dedicated_tenant_test.php
+  modules/cms-akira/cms-akira-core/tests/content_type_mutation_test.php
+  modules/cms-akira/cms-akira-core/tests/post_composition_override_test.php
+  modules/cms-akira/cms-akira-core/tests/post_mutation_test.php
+  modules/cms-akira/cms-akira-core/tests/post_read_render_test.php
+  modules/cms-akira/cms-akira-core/tests/post_taxonomy_mutation_test.php
+  modules/cms-akira/cms-akira-core/tests/taxonomy_mutation_test.php
+  modules/cms-akira/cms-akira-media/tests/media_contract_test.php
+  modules/cms-akira/cms-akira-media/tests/media_dedicated_tenant_test.php
+  modules/cms-akira/cms-akira-navigation/tests/navigation_contract_test.php
+  modules/cms-akira/cms-akira-navigation/tests/navigation_dedicated_tenant_test.php
+  modules/cms-akira/cms-akira-search/tests/search_contract_test.php
+  modules/cms-akira/cms-akira-search/tests/search_dedicated_tenant_test.php
+  modules/cms-akira/cms-akira-seo/tests/seo_contract_test.php
+  modules/cms-akira/cms-akira-seo/tests/seo_dedicated_tenant_test.php
+  modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+  modules/cms-akira/cms-akira-theme/tests/theme_dedicated_tenant_test.php
+
+verification:
+  - `php -l` on every touched PHP file: PASS
+  - `composer test`: exit 0; 136 files — 110 passed, 0 failed, 26 skipped
+  - `php scripts/run-tests.php`: exit 0; 136 files — 110 passed, 0 failed, 26 skipped
+  - `php tests/read_authority_probe_test.php`: exit 0; 23 passed, 0 failed
+  - `php ikabud workbench:governance --all --gate`: exit 0; `GOVERNANCE GATE=PASS`
+  - `storage/logs/error.log`: cleared before checks; 0 bytes after final verification
+  - `git diff --stat`: 24 files changed; no deletions
+
+scope:         no prohibited files, templates, storage permissions, daily-ledger, or gui-settings were changed
+risks:         17 module tests remain visibly skipped until suitable tenant activation, dedicated databases, or writable cache ownership is provisioned
+unresolved:    module integration coverage represented by those 17 skips is still unavailable in this CLI environment, but is no longer silent
+recommended_next_state: REVIEW_REQUIRED

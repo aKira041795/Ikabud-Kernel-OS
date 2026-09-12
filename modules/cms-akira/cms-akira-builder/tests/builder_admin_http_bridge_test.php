@@ -9,6 +9,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once $root . '/modules/cms-akira/cms-akira-core/helpers.php';
 require_once $root . '/modules/cms-akira/cms-akira-editor/helpers.php';
 require_once $root . '/modules/cms-akira/cms-akira-theme/helpers.php';
@@ -40,6 +41,7 @@ $register(CAB_BUILDER_MODULE_ID, cms_akira_builder_capability_handlers(), $mutat
 
 $db = app()->db();
 $tenant = 994721;
+requireTenantModulesActive($tenant, ['cms-akira-core', 'cms-akira-editor', 'cms-akira-theme', 'cms-akira-builder']);
 $originalTenant = app()->tenant()->current();
 $prefix = 'bridge-' . bin2hex(random_bytes(4));
 $slug = $prefix . '-post';

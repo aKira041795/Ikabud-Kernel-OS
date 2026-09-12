@@ -114,17 +114,18 @@ try {
             "activation seeds idempotent content type policy for {$id}"
         );
     }
-    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.content_type.%'")->fetchAll(PDO::FETCH_ASSOC);
+    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.content_type.%' AND is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
     $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
-    $check(count($policyRows) === 3
+    $check(count($policyRows) === 4
+        && ($policyRoles['akira.content_type.list@1'] ?? '') === 'contributor,author,editor,admin,administrator,superadmin'
         && ($policyRoles['akira.content_type.create@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyRoles['akira.content_type.update@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyRoles['akira.content_type.delete@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyCallers['akira.content_type.create@1'] ?? '') === 'cms-akira-core,cms-akira-shell'
         && ($policyCallers['akira.content_type.delete@1'] ?? '') === 'cms-akira-core,cms-akira-shell', 'content type policies bind editor+ roles and the shell caller');
-    $readPolicies = $db->query("SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.content_type.%' AND (capability_id LIKE '%.list@1' OR capability_id LIKE '%.get@1')")->fetchColumn();
-    $check((int)$readPolicies === 0, 'content type reads carry no policy rows (R5 governs reads later)');
+    $readPolicies = $db->query("SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.content_type.%' AND is_active = 1 AND (capability_id LIKE '%.list@1' OR capability_id LIKE '%.get@1')")->fetchColumn();
+    $check((int)$readPolicies === 1, 'content type list carries the active shell read policy');
 
     $schema = '{"fields":{"title":{"type":"text","label":"Title","required":true},"summary":{"type":"textarea","label":"Summary"},"views":{"type":"number","required":true},"featured":{"type":"boolean","label":"Featured"},"published":{"type":"date"},"category":{"type":"select"},"cover":{"type":"image","label":"Cover image"}}}';
     $createPayload = [

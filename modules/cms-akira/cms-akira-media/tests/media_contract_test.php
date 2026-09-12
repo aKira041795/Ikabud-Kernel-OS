@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -48,6 +49,7 @@ foreach (cms_akira_media_capability_handlers() as $id => $handler) {
 
 $tenantA = 994201;
 $tenantB = 994202;
+requireTenantModulesActive($tenantA, ['cms-akira-media']);
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $prefix = 'media-' . bin2hex(random_bytes(5));

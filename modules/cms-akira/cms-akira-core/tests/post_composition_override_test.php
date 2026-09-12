@@ -27,6 +27,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 require_once $root . '/modules/cms-akira/cms-akira-theme/helpers.php';
@@ -56,6 +57,7 @@ $register('cms-akira-core', cms_akira_core_capability_handlers());
 
 $tenantA = 991200;
 $tenantB = 991201;
+requireTenantModulesActive($tenantA, ['cms-akira-core', 'cms-akira-builder', 'cms-akira-theme']);
 $db = app()->db();
 
 // ── fixtures: clean + seed posts + compositions/revisions (direct SQL) ─────
