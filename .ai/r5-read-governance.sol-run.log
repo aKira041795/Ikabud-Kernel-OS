@@ -1,0 +1,125 @@
+status:        PASS
+task:          r5-read-governance
+
+mapping:
+  - route: /cms-akira-shell
+    handler: akiraShellDashboard
+    gate: akiraShellAuthorize()
+    read_capability: akira.post.admin.list@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:140 -> modules/cms-akira/cms-akira-shell/helpers.php:310
+  - route: /cms-akira-shell/posts/new
+    handler: akiraShellPostCreateForm
+    gate: akiraShellAuthorize()
+    read_capability: akira.taxonomy.list@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:242 -> modules/cms-akira/cms-akira-shell/handlers.php:226 -> modules/cms-akira/cms-akira-shell/helpers.php:733
+  - route: /cms-akira-shell/posts/{slug}/edit
+    handler: akiraShellPostEditForm
+    gate: akiraShellAuthorize()
+    read_capability: akira.post.admin.get@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:252 -> modules/cms-akira/cms-akira-shell/helpers.php:331
+  - route: /cms-akira-shell/categories
+    handler: akiraShellCategoryList
+    gate: akiraShellAuthorize()
+    read_capability: akira.taxonomy.list@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:394 -> modules/cms-akira/cms-akira-shell/handlers.php:474
+  - route: /cms-akira-shell/content-types
+    handler: akiraShellContentTypeList
+    gate: akiraShellAuthorize()
+    read_capability: akira.content_type.list@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:696 -> modules/cms-akira/cms-akira-shell/handlers.php:782
+  - route: /cms-akira-shell/permissions
+    handler: akiraShellPermissions
+    gate: akiraShellAuthorizeAdmin()
+    read_capability: akira.policy.list@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:869
+  - route: /cms-akira-shell/users
+    handler: akiraShellUsers
+    gate: akiraShellAuthorizeAdmin()
+    read_capability: akira.user.list@1
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:913
+  - route: /cms-akira-shell/compositions
+    handler: akiraShellCompositions
+    gate: akiraShellAuthorizeAdmin()
+    read_capability: not declarable
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:604
+  - route: /cms-akira-shell/compositions/{key}/edit
+    handler: akiraShellCompositionEdit
+    gate: akiraShellAuthorizeAdmin()
+    read_capability: not declarable
+    proof: modules/cms-akira/cms-akira-shell/handlers.php:623-640
+
+seeded:
+  - capability: akira.taxonomy.list@1
+    allowed_roles: contributor,author,editor,admin,administrator,superadmin
+    gate_roles: contributor,author,editor,admin,administrator,superadmin
+    identical: yes
+  - capability: akira.content_type.list@1
+    allowed_roles: contributor,author,editor,admin,administrator,superadmin
+    gate_roles: contributor,author,editor,admin,administrator,superadmin
+    identical: yes
+  - capability: akira.policy.list@1
+    allowed_roles: admin,administrator,superadmin
+    gate_roles: admin,administrator,superadmin
+    identical: yes
+  - capability: akira.user.list@1
+    allowed_roles: admin,administrator,superadmin
+    gate_roles: admin,administrator,superadmin
+    identical: yes
+
+not_declarable:
+  - route: /cms-akira-shell/compositions
+    reason: The handler calls EntityViewResolver, not a capability; the resolver’s actual entity.list.post@1 caller is kernel. GovernanceCensus confirms no executable capability bus call is reachable from the handler.
+  - route: /cms-akira-shell/compositions/{key}/edit
+    reason: Handler mounts the builder client and calls no read capability.
+  - route: /cms-akira-shell/health
+    reason: Operational probe with no read capability call.
+
+D3 no_outcome_change:      yes — real HTTP matrix:
+  participant routes:
+    admin=200; author=200; viewer=403
+    edit with missing slug: admin=404, author=404, viewer=403; Chromium proved a real edit page returns 200
+  admin routes:
+    admin=200; author=403; viewer=403
+  The temporary real viewer account was removed after testing.
+
+D4 browser:                yes
+  /cms-akira-shell=200
+  /cms-akira-shell/posts=200
+  /cms-akira-shell/posts/{real-slug}/edit=200
+  /cms-akira-shell/posts/new=200
+  /cms-akira-shell/categories=200
+  /cms-akira-shell/content-types=200
+  /cms-akira-shell/permissions=200
+  /cms-akira-shell/users=200
+  Playwright: 2 passed
+
+D5 login_and_public:       yes — shell login reached the Kernel login form; anonymous /=200, /posts=200, missing public detail reached its handler with 404.
+
+D6 gate_and_suite:         governance gate exit 0; composer test: 109 files, 100 passed, 0 failed, 9 skipped; baseline unchanged, SHA-256 7a1f1f483abe814870edd2a4da6b89330efebc5b8d79e41eca81ae87ebb4c4b2
+
+D7 ratio:                  28/33 -> 28/33 unchanged; cms-akira-shell remains 14/15. Reads remain excluded by isBusiness().
+
+D8 tenant_scoping:         Tenant 54 was seeded in active policy version 2. A fresh tenant receives the four rows in its active policy version when cms-akira-core helpers run under an explicit tenant scope; no ambient/control-plane seeding occurs.
+
+mechanism_used:            seedPolicy() via CapabilityAuthorizationRegistry::seedPolicyForCurrentScope(); unlike capabilities.policy, this established mechanism expresses allowed_roles and the complete tenant policy-row shape. It also targets the active cloned policy version and refuses widening.
+
+changed:
+  - modules/cms-akira/cms-akira-core/helpers.php
+  - modules/cms-akira/cms-akira-shell/module.json
+  - tests/read_authority_probe_test.php
+  - tests/browser/read-authority.spec.ts
+
+verification:
+  - php -l modules/cms-akira/cms-akira-core/helpers.php — pass
+  - php -l tests/read_authority_probe_test.php — pass
+  - php tests/module_route_authority_test.php — 29 passed, 0 failed
+  - php tests/read_authority_probe_test.php — 22 passed, 0 failed; final error.log size 0
+  - composer test — 109 files, 100 passed, 0 failed, 9 skipped
+  - php ikabud workbench:governance --all --gate — exit 0
+  - npx playwright test -c /tmp/pw-live.config.js tests/browser/read-authority.spec.ts --reporter=list — 2 passed
+  - module.json JSON validation and git diff --check — pass
+
+scope:                     No prohibited tracked files changed. Login, forbidden, public routes, compositions, health, daily-ledger, gui-settings, dispatch guard, handlers, templates, GovernanceCensus, and baseline were untouched.
+risks:                     Compositions remain dispatch-undeclared until they have a handler-owned read capability whose caller and policy can match the route without governing anonymous entity-view reads.
+unresolved:                None within the declarable handler-call set.
+recommended_next_state:    REVIEW_REQUIRED

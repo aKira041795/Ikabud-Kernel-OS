@@ -6,18 +6,12 @@
 // status check passed (PR #125) — "the API is fine" is not evidence that a page
 // works, and neither is "the test suite is green".
 //
-// Declared reads now carried by cms-akira-shell:
-//   GET /cms-akira-shell/posts                 => akira.post.admin.list@1
-//   GET /cms-akira-shell/posts/{slug}/edit     => akira.post.admin.get@1
-//
-// The extension's other candidates are deliberately NOT declared: their handler
-// capabilities (akira.taxonomy.list@1, akira.content_type.list@1,
-// akira.policy.list@1, akira.user.list@1, entity.list.post@1) have no policy
-// row until increment R5, and the dispatch guard's authorize() is fail-closed —
-// declaring them would 403 the page for every operator, administrators
-// included. Those pages are loaded below too, to prove the exclusion left them
-// working rather than quietly broken. login and forbidden are excluded for
-// lockout/loop safety and are checked here as well.
+// R5 seeds policy rows whose role sets exactly mirror each handler gate, then
+// declares dashboard, post create/list/edit, categories, content types,
+// permissions, and users. Compositions stay undeclared: EntityViewResolver is
+// the capability caller (as kernel), not the route handler; the editor handler
+// calls no read capability. login, forbidden, health, and public presentation
+// routes remain excluded for lockout/loop/operational/anonymous safety.
 //
 // The authenticated checks share one login on purpose: the kernel login rate
 // limiter is per-IP, and a spec that logs in once per page would trip its own
@@ -92,6 +86,7 @@ test('admin surfaces render for an authorised operator (declared reads and exclu
     await login(page);
 
     // ── Declared reads: must not 403, must actually render the admin surface ──
+    await expectRendered(page, '/cms-akira-shell', /cms akira dashboard/i);
     const postList = await expectRendered(page, '/cms-akira-shell/posts', /governed kernel entity-view pipeline/i);
 
     // The tenant currently has no live post, so create a disposable one through
@@ -106,12 +101,13 @@ test('admin surfaces render for an authorised operator (declared reads and exclu
         await deleteDisposablePost(page);
     }
 
-    // ── Excluded (ungoverned) admin reads: must still render exactly as before ─
     await expectRendered(page, '/cms-akira-shell/posts/new', /create post/i);
     await expectRendered(page, '/cms-akira-shell/categories', /categor/i);
     await expectRendered(page, '/cms-akira-shell/content-types', /content type/i);
     await expectRendered(page, '/cms-akira-shell/permissions', /permission/i);
     await expectRendered(page, '/cms-akira-shell/users', /user/i);
+
+    // ── Non-declarable admin reads remain handler-gated and render as before ─
     await expectRendered(page, '/cms-akira-shell/compositions', /composition/i);
     await expectRendered(page, '/cms-akira-shell/compositions/smoke-test/edit', /edit composition/i);
     await expectRendered(page, '/cms-akira-shell/health', /module health/i);
@@ -130,7 +126,7 @@ test('admin surfaces render for an authorised operator (declared reads and exclu
     expect(editStatus).toBe(200);
 });
 
-test('login entry point is unaffected for a fresh unauthenticated visitor', async ({ page }) => {
+test('login entry point and anonymous public browsing are unaffected', async ({ page }) => {
     // No login() call — this test starts anonymous and never submits credentials.
     const response = await page.goto(`${TENANT}/cms-akira-shell/login`, { waitUntil: 'domcontentloaded' });
 
@@ -141,4 +137,10 @@ test('login entry point is unaffected for a fresh unauthenticated visitor', asyn
     await page.waitForURL(/\/login$/, { timeout: 20000 });
     await expect(page.locator('#username')).toBeVisible();
     await expect(page.locator('#password')).toBeVisible();
+
+    await expectRendered(page, '/', /cms akira|latest stories/i);
+    await expectRendered(page, '/posts', /all posts|cms akira/i);
+    const missing = await page.goto(`${TENANT}/posts/read-authority-missing`, { waitUntil: 'domcontentloaded' });
+    expect(missing?.status(), 'public detail must reach its handler, not dispatch authority').toBe(404);
+    await expect(page.locator('body')).toContainText(/post not found/i);
 });

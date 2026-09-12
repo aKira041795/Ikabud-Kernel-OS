@@ -17,8 +17,14 @@
     "capabilities": {
         "exposes": [],
         "routes": {
+            "GET /cms-akira-shell": "akira.post.admin.list@1",
             "GET /cms-akira-shell/posts": "akira.post.admin.list@1",
+            "GET /cms-akira-shell/posts/new": "akira.taxonomy.list@1",
             "GET /cms-akira-shell/posts/{slug}/edit": "akira.post.admin.get@1",
+            "GET /cms-akira-shell/categories": "akira.taxonomy.list@1",
+            "GET /cms-akira-shell/content-types": "akira.content_type.list@1",
+            "GET /cms-akira-shell/permissions": "akira.policy.list@1",
+            "GET /cms-akira-shell/users": "akira.user.list@1",
             "POST /cms-akira-shell/posts": "akira.post.create@1",
             "POST /cms-akira-shell/posts/{slug}": "akira.post.update@1",
             "POST /cms-akira-shell/posts/{slug}/taxonomies": "akira.post.set_taxonomies@1",
