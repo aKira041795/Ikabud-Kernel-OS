@@ -204,10 +204,19 @@ final class Parser
             }
             $content = substr($this->source, $this->pos + 1, $end - $this->pos - 1);
             $trimmed = trim($content);
+            // Raw-text bodies are JavaScript/CSS, so a brace is only DiSyL when it
+            // cannot be a CSS rule or a JS object literal — hence the ":", ";" and
+            // nested-brace guards.
+            //
+            // Those guards alone are not sufficient: they recognise EXPRESSIONS but
+            // never control TAGS, because "if x" / "else" / "/if" do not match the
+            // expression grammar. Without the tag branch below, {if}...{/if} inside a
+            // <script> block was emitted verbatim as literal text (this broke the
+            // kernel login form: the endpoint URL was rendered as the raw tag).
             return !str_contains($content, '{')
                 && $this->findUnquotedChar($content, ':') === false
                 && $this->findUnquotedChar($content, ';') === false
-                && $this->isProcessableTemplateExpression($trimmed);
+                && ($this->isRawTextTag($trimmed) || $this->isProcessableTemplateExpression($trimmed));
         }
         $next = $this->source[$this->pos + 1];
         // Comments  {!-- or {* or {#
@@ -371,6 +380,33 @@ final class Parser
         $this->pos = $savedPos;
         $this->pos++; // consume the `{` as text
         return new TextNode([], '{');
+    }
+
+    /**
+     * Recognise a control-flow TAG inside an HTML raw-text element.
+     *
+     * The caller has already rejected content containing a nested brace, an unquoted
+     * ":" or an unquoted ";", so CSS rules and JS object literals never reach here.
+     * What remains is either an expression or one of these tags — and the tag
+     * vocabulary must stay in step with the dispatch in parseTag().
+     */
+    private function isRawTextTag(string $expr): bool
+    {
+        if ($expr === '') {
+            return false;
+        }
+
+        // Closing tag: {/if}, {/foreach}, {/block}, ...
+        if (preg_match('/^\/\s*[a-zA-Z_]\w*$/', $expr) === 1) {
+            return true;
+        }
+
+        // Opening / branch tag: {if x}, {else}, {elseif x}, {foreach x in y}, {set x = y}, ...
+        return preg_match(
+            '/^(if|elseif|else|foreach|for|each|while|break|continue|match|case|default'
+            . '|set|block|include|extends|macro|call|math|slot|verbatim|literal|embed|apply|filter)\b/i',
+            $expr
+        ) === 1;
     }
 
     private function isProcessableTemplateExpression(string $expr): bool
