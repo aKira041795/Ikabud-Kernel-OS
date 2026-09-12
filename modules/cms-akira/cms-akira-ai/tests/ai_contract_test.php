@@ -9,6 +9,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once $root . '/modules/cms-akira/cms-akira-core/helpers.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
@@ -35,6 +36,7 @@ $register(CAA_AI_MODULE_ID, cms_akira_ai_capability_handlers());
 
 $tenantA = 995801;
 $tenantB = 995802;
+requireTenantModulesActive($tenantA, ['cms-akira-core', CAA_AI_MODULE_ID]);
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $setTenant = static function (int $tenantId): void {

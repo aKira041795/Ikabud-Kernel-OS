@@ -12,6 +12,7 @@ $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
 require_once $root . '/tests/_support/tenant_fixture.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once $root . '/modules/cms-akira/cms-akira-core/helpers.php';
 require_once $root . '/modules/cms-akira/cms-akira-editor/helpers.php';
 require_once $root . '/modules/cms-akira/cms-akira-theme/helpers.php';
@@ -48,6 +49,7 @@ $register(CAB_BUILDER_MODULE_ID, cms_akira_builder_capability_handlers(), $gover
 $db = app()->db();
 $tenantA = 994701;
 $tenantB = 994702;
+requireWritableCacheDirectory($root . '/storage/cache/disyl-fragments/' . $tenantA, 'DiSyL fragment cache for tenant ' . $tenantA);
 foreach (['cms-akira-core', 'cms-akira-editor', 'cms-akira-theme', CAB_BUILDER_MODULE_ID] as $fixtureModule) {
     ensureTestTenant($tenantA, $fixtureModule);
     ensureTestTenant($tenantB, $fixtureModule);

@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -62,6 +63,11 @@ $tenantA = (int) app()->tenant()->current();
 $tenantB = 992103;
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
+requireCapabilityAuthorizationPolicies($db, [
+    ['capability_id' => 'akira.post.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.taxonomy.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.set_taxonomies@1', 'provider' => 'cms-akira-core'],
+]);
 $prefix = 'ptx-' . bin2hex(random_bytes(6));
 $slug = $prefix . '-post';
 $keys = [];
@@ -136,7 +142,7 @@ try {
         && $policyDb->requiresProtocol('akira.post.set_taxonomies@1', '1', 'cms-akira-core') === 'v2',
         'activation seeds idempotent set_taxonomies policy'
     );
-    $policyRow = $db->query("SELECT caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id = 'akira.post.set_taxonomies@1'")->fetch(PDO::FETCH_ASSOC);
+    $policyRow = $db->query("SELECT caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id = 'akira.post.set_taxonomies@1' AND policy_version = 1")->fetch(PDO::FETCH_ASSOC);
     $check(
         is_array($policyRow)
         && ($policyRow['allowed_roles'] ?? '') === 'admin,editor,administrator,superadmin'
@@ -168,7 +174,7 @@ try {
     $check(($catA['ok'] ?? false) === true && ($catB['ok'] ?? false) === true, 'two governed categories exist');
 
     // Reads are additive: fresh rows carry empty (but present) assignment keys.
-    $freshGet = $call('akira.post.get@1', ['slug' => $slug, 'include_unpublished' => true]);
+    $freshGet = $call('akira.post.admin.get@1', ['slug' => $slug, 'include_unpublished' => true]);
     $check(
         ($freshGet['ok'] ?? false) === true
         && ($freshGet['data']['taxonomy_ids'] ?? null) === []
@@ -234,7 +240,7 @@ try {
 
     // Reads now project the assignment (labels + ids) on get, list and the bridge.
     $versionStmt->execute([$tenantA, $slug]);
-    $get = $call('akira.post.get@1', ['slug' => $slug, 'include_unpublished' => true]);
+    $get = $call('akira.post.admin.get@1', ['slug' => $slug, 'include_unpublished' => true]);
     $names = array_column(is_array($get['data']['categories'] ?? null) ? $get['data']['categories'] : [], 'name');
     $check(
         ($get['ok'] ?? false) === true
@@ -242,7 +248,7 @@ try {
         && in_array('Product News', $names, true) && in_array('Releases', $names, true),
         'post.get returns taxonomy_ids and category labels after assignment'
     );
-    $list = $call('akira.post.list@1', ['slug' => $slug, 'include_unpublished' => true, 'filters' => ['search' => $slug]]);
+    $list = $call('akira.post.admin.list@1', ['slug' => $slug, 'include_unpublished' => true, 'filters' => ['search' => $slug]]);
     $listRow = null;
     foreach (is_array($list['rows'] ?? null) ? $list['rows'] : [] as $row) {
         if (($row['slug'] ?? '') === $slug) {
@@ -265,14 +271,12 @@ try {
         }
     }
     $check(
-        ($bridged['ok'] ?? false) === true && is_array($bridgeRow)
-        && count($bridgeRow['categories'] ?? []) === 2
-        && ($bridgeRow['taxonomy_ids'] ?? null) === [(int)$catA['taxonomy']['id'], (int)$catB['taxonomy']['id']],
-        'entity.list.post admin rows carry taxonomy_ids + categories for chips'
+        ($bridged['ok'] ?? false) === true && $bridgeRow === null,
+        'public entity.list.post excludes the unpublished draft despite admin-shaped filters'
     );
 
-    // List filter by one category returns exactly the assigned post.
-    $filtered = $call('akira.post.list@1', ['include_unpublished' => true, 'filters' => ['taxonomy_id' => (int)$catA['taxonomy']['id']]]);
+    // Administration list filter by one category returns the assigned draft.
+    $filtered = $call('akira.post.admin.list@1', ['include_unpublished' => true, 'filters' => ['taxonomy_id' => (int)$catA['taxonomy']['id']]]);
     $filteredSlugs = array_column(is_array($filtered['rows'] ?? null) ? $filtered['rows'] : [], 'slug');
     $check(($filtered['ok'] ?? false) === true && in_array($slug, $filteredSlugs, true), 'list filters by a category id');
 
@@ -300,7 +304,7 @@ try {
         'expected_updated_at' => (string)$versionStmt->fetchColumn(),
     ]);
     $links->execute([$tenantA, $slug]);
-    $get = $call('akira.post.get@1', ['slug' => $slug, 'include_unpublished' => true]);
+    $get = $call('akira.post.admin.get@1', ['slug' => $slug, 'include_unpublished' => true]);
     $check(
         ($cleared['ok'] ?? false) === true
         && count($links->fetchAll(PDO::FETCH_COLUMN)) === 0

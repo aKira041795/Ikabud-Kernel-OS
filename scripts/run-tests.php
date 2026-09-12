@@ -2,7 +2,7 @@
 
 /**
  * Full test suite runner.
- * Discovers all tests/**\/*_test.php files recursively, runs each in a
+ * Discovers *_test.php files under tests/ and module test directories, runs each in a
  * sub-process with per-test timeout, captures output/exit-code, prints a
  * summary table, writes machine-readable JSON manifest, and reports slow tests.
  *
@@ -48,6 +48,14 @@ $searchPath = $subDir !== null
     : $testDir;
 
 $files = findTestFiles($searchPath);
+if ($subDir === null) {
+    $moduleFiles = findTestFiles($root . '/modules');
+    $moduleTestsSegment = DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR;
+    $files = array_merge($files, array_values(array_filter(
+        $moduleFiles,
+        static fn (string $file): bool => str_contains($file, $moduleTestsSegment)
+    )));
+}
 if (count($files) === 0) {
     echo "No test files found in {$searchPath}\n";
     exit(1);
@@ -75,8 +83,14 @@ if ($subDir === null && getenv('RUN_E2E_SHARED') === false) {
 }
 sort($files);
 
-// Resolve display names relative to tests/
-$displayName = fn (string $f): string => str_replace($testDir . '/', '', $f);
+// Keep existing tests/ names stable; module tests are root-relative so their
+// location remains unambiguous in console output and the JSON manifest.
+$displayName = static function (string $file) use ($root, $testDir): string {
+    if (str_starts_with($file, $testDir . '/')) {
+        return substr($file, strlen($testDir) + 1);
+    }
+    return str_starts_with($file, $root . '/') ? substr($file, strlen($root) + 1) : $file;
+};
 
 $pass    = 0;
 $fail    = 0;

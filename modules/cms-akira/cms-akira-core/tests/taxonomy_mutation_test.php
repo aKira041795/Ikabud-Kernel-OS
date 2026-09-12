@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -49,6 +50,11 @@ $tenantA = (int) app()->tenant()->current();
 $tenantB = 992102;
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
+requireCapabilityAuthorizationPolicies($db, [
+    ['capability_id' => 'akira.taxonomy.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.taxonomy.update@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.taxonomy.delete@1', 'provider' => 'cms-akira-core'],
+]);
 $prefix = 'tax-' . bin2hex(random_bytes(6));
 $keys = [];
 $setIdentity = static function (int $tenant, array $user): void {
@@ -114,7 +120,7 @@ try {
             "activation seeds idempotent taxonomy policy for {$id}"
         );
     }
-    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%'")->fetchAll(PDO::FETCH_ASSOC);
+    $policyRows = $db->query("SELECT capability_id, caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id IN ('akira.taxonomy.create@1','akira.taxonomy.update@1','akira.taxonomy.delete@1') AND policy_version = 1")->fetchAll(PDO::FETCH_ASSOC);
     $policyRoles = array_column($policyRows, 'allowed_roles', 'capability_id');
     $policyCallers = array_column($policyRows, 'caller_module', 'capability_id');
     $check(count($policyRows) === 3
@@ -123,8 +129,8 @@ try {
         && ($policyRoles['akira.taxonomy.delete@1'] ?? '') === 'admin,editor,administrator,superadmin'
         && ($policyCallers['akira.taxonomy.create@1'] ?? '') === 'cms-akira-core,cms-akira-shell'
         && ($policyCallers['akira.taxonomy.delete@1'] ?? '') === 'cms-akira-core,cms-akira-shell', 'taxonomy policies bind editor+ roles and the shell caller');
-    $readPolicies = $db->query("SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%' AND (capability_id LIKE '%.list@1' OR capability_id LIKE '%.get@1')")->fetchColumn();
-    $check((int)$readPolicies === 0, 'taxonomy reads carry no policy rows (R5 governs reads later)');
+    $readPolicies = $db->query("SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id LIKE 'akira.taxonomy.%' AND requires_protocol = 'v2' AND (capability_id LIKE '%.list@1' OR capability_id LIKE '%.get@1')")->fetchColumn();
+    $check((int)$readPolicies === 0, 'taxonomy reads carry no protocol-v2 mutation policy rows');
 
     $createPayload = [
         'idempotency_key' => $keys[] = $prefix . '-create',

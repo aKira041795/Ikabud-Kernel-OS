@@ -7,6 +7,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -31,6 +32,7 @@ foreach (cms_akira_core_capability_handlers() as $id => $handler) {
 
 $tenantA = 991001;
 $tenantB = 991002;
+requireTenantModulesActive($tenantA, ['cms-akira-core']);
 $db = cacDb();
 $db->prepare('DELETE FROM cms_akira_posts WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
 $insert = $db->prepare(

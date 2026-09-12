@@ -13,6 +13,9 @@ $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
 require_once $root . '/src/helpers/module-migrations.php';
+require_once $root . '/tests/_support/env_guard.php';
+
+requireTwoDistinctDedicatedTenantDatabases();
 
 $passed = 0;
 $failed = 0;

@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -53,6 +54,12 @@ $tenantA = (int) app()->tenant()->current();
 $tenantB = 992102;
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
+requireCapabilityAuthorizationPolicies($db, [
+    ['capability_id' => 'akira.post.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.update@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.delete@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.revision.revert@1', 'provider' => 'cms-akira-core'],
+]);
 $prefix = 'prev-' . bin2hex(random_bytes(6));
 $slug = $prefix . '-post';
 $deleteSlug = $prefix . '-delete-post';
@@ -127,7 +134,7 @@ try {
     )->fetch(PDO::FETCH_ASSOC);
     $readPolicyCount = $db->query(
         "SELECT COUNT(*) FROM capability_authorization_policies WHERE provider = 'cms-akira-core' "
-        . "AND capability_id IN ('akira.post.revisions.list@1','akira.post.revision.get@1')"
+        . "AND capability_id IN ('akira.post.revisions.list@1','akira.post.revision.get@1') AND policy_version = 1"
     )->fetchColumn();
     $check(
         is_array($revertPolicy)

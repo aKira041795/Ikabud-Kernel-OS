@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'cmsnew.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -47,6 +48,7 @@ foreach (cms_akira_theme_capability_handlers() as $id => $handler) {
 
 $tenantA = 994701;
 $tenantB = 994702;
+requireTenantModulesActive($tenantA, ['cms-akira-theme']);
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $prefix = 'theme-' . bin2hex(random_bytes(5));
@@ -123,7 +125,15 @@ try {
     $check(($manifest['owns_tables'] ?? null) === [] && ($manifest['reads_tables'] ?? null) === [], 'theme is table-free with explicit empty owns/reads');
     $check(($manifest['migrations'] ?? []) === ['database/migrations/001_initial.sql'], 'only the table-free 001 ledger marker remains (no 002)');
     $check(($manifest['_enabled'] ?? null) === false && !isset($manifest['entities']), 'tenant activation is explicit and theme claims no Kernel Entity Authority');
-    $check(!isset($manifest['nav']) && !isset($manifest['admin_contributions']) && !isset($manifest['compatibility']) && !isset($manifest['uninstall']), 'legacy nav/admin/compat/uninstall scaffolding removed');
+    $themeStudio = $manifest['admin_contributions'][0] ?? [];
+    $check(
+        !isset($manifest['nav']) && !isset($manifest['compatibility']) && !isset($manifest['uninstall'])
+        && count($manifest['admin_contributions'] ?? []) === 1
+        && ($themeStudio['id'] ?? '') === 'cms-akira-theme.theme-studio'
+        && ($themeStudio['host'] ?? '') === 'cms-akira-shell'
+        && ($themeStudio['route'] ?? '') === '/cms-akira-theme',
+        'theme exposes only the canonical shell Theme Studio contribution'
+    );
     $activateEntry = $manifest['capabilities']['exposes'][array_search('akira.theme.activate@1', $ids, true)] ?? [];
     $check(
         ($activateEntry['requires_protocol'] ?? '') === 'v2'

@@ -29,9 +29,9 @@ Tests that require them are quarantined in `tests/_retired/` (see its README).
 - `storage/cache/compiled` is shared with the web SAPI. If the CLI user cannot write it, the
   engine now degrades to the interpreted pipeline with a warning instead of failing — do not
   "fix" that by re-throwing cache errors as fatal.
-- Module tests are **not** discovered by `scripts/run-tests.php` (it scans `tests/**`); the
-  shell contract test runs in CI explicitly. Do not assume a module test passes because CI
-  is green.
+- Module tests under `modules/**/tests/` are discovered by `scripts/run-tests.php`. Tests
+  that require activated synthetic tenants, two distinct dedicated tenant databases, or a
+  CLI-writable cache report a specific `SKIP:` when that prerequisite is unavailable.
 
 ## Big-picture architecture (read first)
 - Runtime entrypoint is [public/index.php](../public/index.php): core routes + dynamic module routes are resolved there, then dispatched (including `module-id:functionName` handlers).
