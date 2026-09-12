@@ -863,7 +863,7 @@ function akiraShellContentTypeRow(array $row, bool $manager): string
 /** @param array<string,mixed> $params */
 function akiraShellMediaList(array $params = []): void
 {
-    if (!akiraShellAuthorizeAdmin()) {
+    if (!akiraShellAuthorize()) {
         return;
     }
     akiraShellMediaPage();
@@ -887,14 +887,14 @@ function akiraShellMediaPage(string $error = '', string $alt = ''): void
         . '<label class="text-xs font-semibold text-slate-500">Alt text (optional)<input class="' . $control . ' mt-1" type="text" name="alt" maxlength="255" value="' . akiraShellEscape($alt) . '"></label>'
         . '<input type="hidden" name="idempotency_key" value="media-upload-' . bin2hex(random_bytes(10)) . '"><button type="submit" class="self-end rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white">Upload</button></div></form>';
     $body = akiraShellMediaNotice() . $errorHtml . $upload
-        . '<section data-akira-entity-view="media-list">' . akiraShellMediaTable($rows) . '</section>';
+        . '<section data-akira-entity-view="media-list">' . akiraShellMediaTable($rows, akiraShellIsAdmin()) . '</section>';
     echo akiraShellPage('Media', $body, ['active' => 'media']);
 }
 
 /** @param array<string,mixed> $params */
 function akiraShellMediaUpload(array $params = []): void
 {
-    if (!akiraShellAuthorizeAdmin()) {
+    if (!akiraShellAuthorize()) {
         return;
     }
     app()->csrfEnforce();

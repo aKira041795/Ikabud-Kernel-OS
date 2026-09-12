@@ -408,6 +408,23 @@ The WordPress shadow is shed by refusing its shopping list:
   proves, or belong to the minimum completeness without which no claim can be judged at all
 - no rebranding, renaming, or new major version before the substrate earns branding through proof
 
+## CMS media-contribution authority convention
+
+In Akira, and in future CMS products built on this kernel, authority to contribute media follows the
+CMS's canonical drafting-and-publishing participant roles. Upload, metadata update, library list,
+and media detail therefore travel together: a contributor must be able to find and manage what they
+uploaded. Each CMS derives this role set from its workflow definition and keeps a deterministic
+fallback for module load independence; it does not create a separate media-role concept.
+
+Destructive media authority is deliberately separate. Akira keeps media deletion administrator-only
+because contributed media may already be referenced by published content. Public media resolution
+also remains outside this governed contribution surface so rendering is not coupled to editorial
+access.
+
+Declaration defaults apply only where no grant row exists. A wider declaration never rewrites an
+existing granted tenant policy: an authenticated operator must widen it in the Permissions surface,
+where the new policy version and reason are audited.
+
 ## Where this leaves the project
 
 The kernel becomes the product. Akira becomes the **reference product** — a real, manageable CMS that

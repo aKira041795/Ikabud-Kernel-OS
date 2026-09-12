@@ -18,46 +18,61 @@ function cms_akira_media_capability_handlers(): array
     ];
 }
 
-/** Seed the three admin-only mutation policies. */
-function camSeedMediaMutationPolicies(): void
+/**
+ * Ordered, byte-stable role CSV for media contribution. Workflow owns the
+ * definition when its helpers are loaded; the fallback preserves module load
+ * independence without adding a cms-akira-workflow dependency.
+ */
+function camMediaContributionRoleCsv(): string
 {
-    if (!function_exists('app')) {
-        return;
+    $canonical = ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin'];
+    $derived = function_exists('cawPostLifecycleParticipantRoles')
+        ? cawPostLifecycleParticipantRoles()
+        : $canonical;
+    $roles = [];
+    foreach (is_array($derived) ? $derived : [] as $role) {
+        $role = is_string($role) ? trim($role) : '';
+        if ($role !== '') {
+            $roles[$role] = true;
+        }
     }
+    if ($roles === []) {
+        $roles = array_fill_keys($canonical, true);
+    }
+    $ordered = array_values(array_filter($canonical, static fn (string $role): bool => isset($roles[$role])));
+    $additional = array_values(array_diff(array_keys($roles), $canonical));
+    sort($additional, SORT_STRING);
+    return implode(',', array_merge($ordered, $additional));
+}
+
+/** @return list<array<string, mixed>> */
+function camMediaMutationPolicyRows(int $policyVersion = 1): array
+{
     $rows = [];
     foreach ([
-        'akira.media.upload@1',
-        'akira.media.update@1',
-        'akira.media.delete@1',
-    ] as $capabilityId) {
+        'akira.media.upload@1' => camMediaContributionRoleCsv(),
+        'akira.media.update@1' => camMediaContributionRoleCsv(),
+        // Destructive authority is deliberately narrower than contribution.
+        'akira.media.delete@1' => 'admin',
+    ] as $capabilityId => $allowedRoles) {
         $rows[] = [
-            'policy_version' => 1,
+            'policy_version' => $policyVersion,
             'capability_id' => $capabilityId,
             'capability_version' => '1',
             'provider' => 'cms-akira-media',
             'caller_module' => null,
-            'allowed_roles' => 'admin',
+            'allowed_roles' => $allowedRoles,
             'provider_activation_required' => true,
             'requires_protocol' => 'v2',
             'is_active' => true,
         ];
     }
-    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    return $rows;
 }
 
-camSeedMediaMutationPolicies();
-
-/**
- * Seed the admin media reads into the active policy version. The permissions
- * surface can clone version 1, so a fixed-version seed would leave declared
- * media routes without authority in an already-running tenant.
- */
-function camSeedMediaReadPolicies(): void
+/** Resolve the active declaration version so newly enabled media routes are not inert. */
+function camMediaActivePolicyVersion(): int
 {
-    if (!function_exists('app')) {
-        return;
-    }
-
     $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
     $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
         'actor' => app()->user(),
@@ -69,9 +84,33 @@ function camSeedMediaReadPolicies(): void
         $resolver->failureReason() ?? 'missing_tenant_authority_scope'
     );
     $activeRows = $registry->activePolicyRows();
-    $policyVersion = $activeRows === [] ? 1 : (int) ($activeRows[0]['policy_version'] ?? 1);
+    return $activeRows === [] ? 1 : (int)($activeRows[0]['policy_version'] ?? 1);
+}
 
+/** Seed media mutations with contribution authority; delete remains admin-only. */
+function camSeedMediaMutationPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope(
+        camMediaMutationPolicyRows(camMediaActivePolicyVersion())
+    );
+}
+
+camSeedMediaMutationPolicies();
+
+/**
+ * Seed contributor-facing media reads into the active policy version. The permissions
+ * surface can clone version 1, so a fixed-version seed would leave declared
+ * media routes without authority in an already-running tenant.
+ */
+/** @return list<array<string, mixed>> */
+function camMediaReadPolicyRows(int $policyVersion): array
+{
     $rows = [];
+    // An uploader who cannot list or inspect the library cannot manage what
+    // they uploaded, so contribution authority necessarily includes reads.
     foreach (['akira.media.library@1', 'akira.media.get@1'] as $capabilityId) {
         $rows[] = [
             'policy_version' => $policyVersion,
@@ -79,13 +118,24 @@ function camSeedMediaReadPolicies(): void
             'capability_version' => '1',
             'provider' => 'cms-akira-media',
             'caller_module' => null,
-            'allowed_roles' => 'admin',
+            'allowed_roles' => camMediaContributionRoleCsv(),
             'provider_activation_required' => true,
             'requires_protocol' => 'v1',
             'is_active' => true,
         ];
     }
-    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    return $rows;
+}
+
+function camSeedMediaReadPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope(
+        camMediaReadPolicyRows(camMediaActivePolicyVersion())
+    );
 }
 
 camSeedMediaReadPolicies();
@@ -429,14 +479,20 @@ function cam_cap_akira_media_resolve_1(mixed $payload, string $capabilityId = 'a
 }
 
 /** @return array{id: int, role: string, source?: string} */
-function camMediaActor(): array
+function camMediaActor(string $operation): array
 {
     $actor = app()->user();
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CamMediaMutationException('Authentication required.', 401);
     }
-    if ((string) ($actor['role'] ?? '') !== 'admin') {
-        throw new CamMediaMutationException('Administrator role required.', 403);
+    $allowedRoles = $operation === 'delete'
+        ? ['admin']
+        : explode(',', camMediaContributionRoleCsv());
+    if (!in_array((string) ($actor['role'] ?? ''), $allowedRoles, true)) {
+        throw new CamMediaMutationException(
+            $operation === 'delete' ? 'Administrator role required.' : 'Media contributor role required.',
+            403
+        );
     }
     return $actor;
 }
@@ -453,7 +509,7 @@ function camMediaCorrelationId(): string
  */
 function camMediaMutate(string $operation, array $payload): array
 {
-    $actor = camMediaActor();
+    $actor = camMediaActor($operation);
     $tenantId = camMediaTenantId();
     if (array_key_exists('tenant_id', $payload)) {
         throw new CamMediaMutationException('tenant_id is supplied by kernel context.', 422);
