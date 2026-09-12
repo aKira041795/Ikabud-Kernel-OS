@@ -24,9 +24,14 @@ foreach (['cacPostMutationActor', 'akiraShellMutation'] as $name) {
 
 $seedBindings = str_contains($coreHelpers, "'akira.post.create@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell']")
     && str_contains($coreHelpers, "'akira.post.update@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell']")
-    && str_contains($coreHelpers, "'akira.post.delete@1' => ['admin', 'cms-akira-core,cms-akira-shell']")
-    && str_contains($coreHelpers, "'akira.post.publish@1' => ['admin', 'cms-akira-core']")
-    && str_contains($coreHelpers, "'akira.post.unpublish@1' => ['admin', 'cms-akira-core']")
+    // Administrative-tier writes bind the canonical tier via cacAkiraAdminRoleCsv(),
+    // not the single `admin` role: seeding `admin` alone refused administrator and
+    // superadmin, and contradicted the workflow, which already admits all three to
+    // publish. Asserting the variable forces the tier to stay a single definition.
+    && str_contains($coreHelpers, "'akira.post.delete@1' => [\$adminTier, 'cms-akira-core,cms-akira-shell']")
+    && str_contains($coreHelpers, "'akira.post.publish@1' => [\$adminTier, 'cms-akira-core']")
+    && str_contains($coreHelpers, "'akira.post.unpublish@1' => [\$adminTier, 'cms-akira-core']")
+    && str_contains($coreHelpers, 'cacAkiraAdminRoleCsv()')
     && str_contains($workflowHelpers, "CAW_WORKFLOW_MODULE_ID . ',cms-akira-shell'");
 
 $passed = 0;

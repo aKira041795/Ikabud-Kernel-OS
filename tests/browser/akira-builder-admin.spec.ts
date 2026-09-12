@@ -37,20 +37,28 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
+const TENANT = process.env.TENANT_URL ?? process.env.APP_URL ?? 'http://akiracms.test';
+// Same env convention as the other Akira specs (akira-media-admin, live-hosts) and
+// the same defaults they document, so one command runs every Akira journey.
+const TENANT_USER = process.env.TENANT_USER ?? 'charlienacario884';
+const TENANT_PASS = process.env.TENANT_PASS ?? 'iKabud6123!#';
+
 const API_BASE = '/api/v1/cms-akira/builder';
 
 async function ensureAuthed(page: Page): Promise<void> {
-  // Kernel-auth shell: the login page redirects to the Kernel /login form. Drive
-  // it if present; otherwise assume a session cookie already exists (injected
-  // via the test harness/storage state).
+  // Log in proactively. The previous version navigated first and only logged in if
+  // the URL looked like a /login redirect -- but the shell's protected routes are
+  // refused by the fail-closed route authority guard with a 403, they do not
+  // redirect. So the branch never ran, and the fallback credentials
+  // (admin@example.test / change-me) could never authenticate: the spec was
+  // unrunnable against any real tenant.
+  await page.goto(`${TENANT}/login`);
+  await page.fill('#username', TENANT_USER);
+  await page.fill('#password', TENANT_PASS);
+  await page.locator('button[type="submit"]').first().click();
+  await page.waitForURL(/\/cms-akira-shell(?:\/|$)/, { timeout: 20000 });
+
   await page.goto('/cms-akira-shell/compositions');
-  const url = page.url();
-  if (/\/login(\?|$)/.test(url)) {
-    await page.fill('input[name="email"], input[name="username"], input[name="login"]', process.env.AKIRA_USER ?? 'admin@example.test');
-    await page.fill('input[name="password"]', process.env.AKIRA_PASS ?? 'change-me');
-    await Promise.all([page.waitForNavigation(), page.click('button[type="submit"], input[type="submit"]')]);
-    await page.goto('/cms-akira-shell/compositions');
-  }
   await expect(page.locator('#cms-akira-builder-root')).toBeVisible({ timeout: 15000 });
 }
 

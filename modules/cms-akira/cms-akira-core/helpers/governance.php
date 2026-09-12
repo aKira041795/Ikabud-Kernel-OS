@@ -7,6 +7,20 @@ require_once dirname(__DIR__, 4) . '/src/helpers/kernel-users-admin.php';
 const CAC_AKIRA_ROLES = ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin', 'manager', 'viewer'];
 const CAC_AKIRA_ADMIN_ROLES = ['admin', 'administrator', 'superadmin'];
 
+/**
+ * The canonical administrative tier as a policy CSV.
+ *
+ * Every admin-tier policy row must use this. Seeding the single `admin` role instead
+ * silently excludes `administrator` and `superadmin` -- including a kernel superadmin
+ * -- from capabilities they are meant to own, and leaves a surface refusing a role it
+ * rendered itself. That inconsistency was confirmed live: an `administrator` was
+ * refused by every builder capability with "Administrator role required."
+ */
+function cacAkiraAdminRoleCsv(): string
+{
+    return implode(',', CAC_AKIRA_ADMIN_ROLES);
+}
+
 final class CacGovernanceException extends RuntimeException
 {
     public function __construct(string $message, public readonly int $httpStatus = 422)
