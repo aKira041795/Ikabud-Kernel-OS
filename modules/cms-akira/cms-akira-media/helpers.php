@@ -56,8 +56,10 @@ function camMediaMutationPolicyRows(int $policyVersion = 1): array
         'akira.media.update@1' => camMediaContributionRoleCsv(),
         'akira.media.delete.request@1' => camMediaContributionRoleCsv(),
         'akira.media.delete.cancel@1' => camMediaContributionRoleCsv(),
-        // Destructive authority is deliberately narrower than contribution.
-        'akira.media.delete@1' => 'admin',
+        // Finalisation is restricted to the administrator tier: contribution roles
+        // may only request. This matches akiraShellIsAdmin() and CAC_AKIRA_ADMIN_ROLES
+        // so the presentation gate and the policy row cannot disagree.
+        'akira.media.delete@1' => 'admin,administrator,superadmin',
     ] as $capabilityId => $allowedRoles) {
         $rows[] = [
             'policy_version' => $policyVersion,
@@ -514,8 +516,9 @@ function camMediaActor(string $operation): array
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CamMediaMutationException('Authentication required.', 401);
     }
+    // Finalisation stays with the administrator tier; contribution roles may only request.
     $allowedRoles = $operation === 'delete'
-        ? ['admin']
+        ? ['admin', 'administrator', 'superadmin']
         : explode(',', camMediaContributionRoleCsv());
     if (!in_array((string) ($actor['role'] ?? ''), $allowedRoles, true)) {
         throw new CamMediaMutationException(

@@ -218,8 +218,8 @@ try {
         && ($mutationDeclarations['akira.media.update@1'] ?? '') === $draftingRoles
         && ($mutationDeclarations['akira.media.delete.request@1'] ?? '') === $draftingRoles
         && ($mutationDeclarations['akira.media.delete.cancel@1'] ?? '') === $draftingRoles
-        && ($mutationDeclarations['akira.media.delete@1'] ?? '') === 'admin',
-        'fresh mutation declarations give request/cancel the drafting set while delete stays admin-only'
+        && ($mutationDeclarations['akira.media.delete@1'] ?? '') === 'admin,administrator,superadmin',
+        'fresh mutation declarations give request/cancel the drafting set while delete is the administrator tier'
     );
     $check(
         ($readDeclarations['akira.media.library@1'] ?? '') === $draftingRoles
@@ -302,11 +302,30 @@ try {
             'caller_module' => 'cms-akira-shell', 'actor_role' => 'author', 'tenant_id' => (string)$tenantA,
             'provider_activation' => true, 'dispatch_protocol' => 'v2', 'policy_version' => $probeVersion,
         ]);
+        // Finalisation: the administrator tier must be ADMITTED, not merely un-refused.
+        $administratorDelete = $policies->authorize([
+            'capability_id' => 'akira.media.delete@1', 'capability_version' => '1', 'provider' => 'cms-akira-media',
+            'caller_module' => 'cms-akira-shell', 'actor_role' => 'administrator', 'tenant_id' => (string)$tenantA,
+            'provider_activation' => true, 'dispatch_protocol' => 'v2', 'policy_version' => $probeVersion,
+        ]);
+        $superadminDelete = $policies->authorize([
+            'capability_id' => 'akira.media.delete@1', 'capability_version' => '1', 'provider' => 'cms-akira-media',
+            'caller_module' => 'cms-akira-shell', 'actor_role' => 'superadmin', 'tenant_id' => (string)$tenantA,
+            'provider_activation' => true, 'dispatch_protocol' => 'v2', 'policy_version' => $probeVersion,
+        ]);
+        $editorDelete = $policies->authorize([
+            'capability_id' => 'akira.media.delete@1', 'capability_version' => '1', 'provider' => 'cms-akira-media',
+            'caller_module' => 'cms-akira-shell', 'actor_role' => 'editor', 'tenant_id' => (string)$tenantA,
+            'provider_activation' => true, 'dispatch_protocol' => 'v2', 'policy_version' => $probeVersion,
+        ]);
         $check(
             count($freshRows) === count($probeRows)
             && ($authorUpload['allowed'] ?? false) === true
-            && ($authorDelete['allowed'] ?? true) === false,
-            'fresh policy rows authorize author contribution but refuse author deletion'
+            && ($authorDelete['allowed'] ?? true) === false
+            && ($editorDelete['allowed'] ?? true) === false
+            && ($administratorDelete['allowed'] ?? false) === true
+            && ($superadminDelete['allowed'] ?? false) === true,
+            'fresh policy rows admit the administrator tier to finalise while contribution roles may only request'
         );
 
         $uploadDeclaration = camMediaMutationPolicyRows($probeVersion)[0];
