@@ -54,26 +54,27 @@ final class TemplateRenderer
     private static bool $cacheAuthorityWarningEmitted = false;
 
     /** Build an in-memory output-cache key (fast fingerprint, else serialize fallback). */
-    public function buildOutputCacheKey(string $templatePath, array $context): string
+    public function buildOutputCacheKey(string $templatePath, array $context, ?string $includeBase = null): string
     {
+        $includeRootKey = $includeBase === null ? '' : '|include-root:' . strlen($includeBase) . ':' . $includeBase;
         $fastFingerprint = $this->tryBuildFastContextFingerprint($context);
         if ($fastFingerprint !== null) {
-            return $templatePath . '|' . $fastFingerprint;
+            return $templatePath . '|' . $fastFingerprint . $includeRootKey;
         }
 
         try {
-            return $templatePath . '|' . md5(serialize($context));
+            return $templatePath . '|' . md5(serialize($context)) . $includeRootKey;
         } catch (\Throwable $e) {
             // Non-serializable context payloads (e.g. closures) should not explode render path.
-            return $templatePath . '|uncacheable|' . md5(spl_object_hash($this) . '|' . (string)microtime(true));
+            return $templatePath . '|uncacheable|' . md5(spl_object_hash($this) . '|' . (string)microtime(true)) . $includeRootKey;
         }
     }
 
     /** Build the cross-request (APCu) shared output-cache key, mtime-versioned. */
-    public function buildSharedOutputCacheKey(string $templatePath, array $context): string
+    public function buildSharedOutputCacheKey(string $templatePath, array $context, ?string $includeBase = null): string
     {
         $mtime = (int)@filemtime($templatePath);
-        return 'disyl:render:' . md5($templatePath . '|' . $mtime . '|' . $this->buildOutputCacheKey($templatePath, $context));
+        return 'disyl:render:' . md5($templatePath . '|' . $mtime . '|' . $this->buildOutputCacheKey($templatePath, $context, $includeBase));
     }
 
     /** Shared APCu output-cache TTL (seconds). 0 = disabled. */

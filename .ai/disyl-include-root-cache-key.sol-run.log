@@ -1,0 +1,32 @@
+status:        PASS
+task:          disyl-include-root-cache-key
+
+C1 reproduced_before_fix:  yes  Temporary `public/_disyl_cache_clear.php` invoked with `curl -H 'Host: ikabudsix.test' http://127.0.0.1/_disyl_cache_clear.php`; APCu clear returned true. `compiled`, `disyl-extends`, and `disyl-sandbox` were verified at zero entries before `php tests/disyl_include_root_test.php`. The existing sandbox violation file was owner-writable only and was removed directly before invoking the endpoint. Exact failures:
+  - `the same include yields no block content without an include root`
+  - `include root does not leak into later renders on the shared engine`
+C2 passes_after_fix:       yes
+C3 key_separates_roots:    yes  Temporary HTTP probe used APCu enabled with TTL 60: same template/context, root A then root B. Output was `ROOT-A:same-context` then `ROOT-B:same-context`; output misses increased 1 -> 2, proving the warm root-A entry was not served for root B.
+C4 no_cache_churn:         yes  The same probe rendered a no-include template twice with null include root. Output hits increased 0 -> 1 on the second render, proving a shared-cache HIT.
+C5 suite:                  before 1 failed -> after 0 failed
+   lint:                   PASS — 64 templates, no issues
+C6 ci_gap:                 CI is currently green on `main` while `disyl_include_root_test` fails locally under the cache-dependent path. The gate therefore does not reliably exercise this cache state; that CI coverage gap is not fixed by this engine patch.
+
+root_cause_confirmed:      Agreed. The shared APCu output key omitted the active include root, allowing resolved rooted output to cross render boundaries.
+second_key_derivation:     Found and fixed. The per-worker/in-memory output key had the same omission and could return the same wrong-output class when the interpreted fallback is active.
+compiler_version_bumped:   no  Compiled artefact format did not change.
+
+changed:
+  - kernel/DiSyL/Renderer/TemplateRenderer.php
+  - kernel/DiSyL/TemplateEngine.php
+verification:
+  - `php -l kernel/DiSyL/TemplateEngine.php` — PASS
+  - `php -l kernel/DiSyL/Renderer/TemplateRenderer.php` — PASS
+  - `php tests/disyl_include_root_test.php` — PASS
+  - `php tests/disyl_v4_compiler_test.php` — PASS
+  - `composer test` — 100 passed, 0 failed, 9 skipped
+  - `php ikabud disyl:lint` — PASS
+  - `git diff --check` — PASS
+scope:         No files outside the allowed kernel scope remain changed. Temporary public cache-clear/probe scripts were deleted.
+risks:         Non-null include roots intentionally partition both shared and in-memory output caches. Null roots retain the previous key representation, avoiding common-case cache churn.
+unresolved:    CI still lacks reliable coverage of the cache-dependent failure path.
+recommended_next_state: REVIEW_REQUIRED
