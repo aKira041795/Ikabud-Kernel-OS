@@ -172,10 +172,10 @@ function akiraShellPage(string $title, string $body, array $data = []): string
         ['id' => 'posts', 'route' => '/cms-akira-shell/posts', 'label' => 'Posts', 'order' => 10],
         ['id' => 'categories', 'route' => '/cms-akira-shell/categories', 'label' => 'Categories', 'order' => 20],
         ['id' => 'content-types', 'route' => '/cms-akira-shell/content-types', 'label' => 'Content types', 'order' => 30],
+        ['id' => 'media', 'route' => '/cms-akira-shell/media', 'label' => 'Media', 'order' => 35],
     ];
     if (akiraShellIsAdmin()) {
         $links = array_merge($links, [
-            ['id' => 'media', 'route' => '/cms-akira-shell/media', 'label' => 'Media', 'order' => 35],
             ['id' => 'compositions', 'route' => '/cms-akira-shell/compositions', 'label' => 'Compositions', 'order' => 40],
             ['id' => 'permissions', 'route' => '/cms-akira-shell/permissions', 'label' => 'Permissions', 'order' => 50],
             ['id' => 'users', 'route' => '/cms-akira-shell/users', 'label' => 'Users', 'order' => 60],
@@ -1013,6 +1013,8 @@ function akiraShellMediaNotice(): string
 {
     $message = match ((string) (akiraShellQuery()['saved'] ?? '')) {
         'upload' => 'Media uploaded.',
+        'request' => 'Deletion requested. The media remains available until an administrator approves it.',
+        'cancel' => 'Deletion request cancelled.',
         'delete' => 'Media deleted.',
         default => '',
     };
@@ -1026,6 +1028,8 @@ function akiraShellMediaTable(array $rows, bool $manager): string
         return '<div data-akira-media-empty class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No media uploaded yet.</div>';
     }
 
+    $user = app()->user();
+    $actorId = is_array($user) ? (int) ($user['id'] ?? $user['sub'] ?? 0) : 0;
     $body = '';
     foreach ($rows as $row) {
         $key = (string) ($row['key'] ?? '');
@@ -1043,15 +1047,40 @@ function akiraShellMediaTable(array $rows, bool $manager): string
         $height = $row['height'] ?? null;
         $dimensions = is_numeric($width) && is_numeric($height) ? (int) $width . ' × ' . (int) $height : '—';
         $altLabel = $alt !== '' ? akiraShellEscape($alt) : '<span class="text-slate-300">—</span>';
-        if ($manager) {
-            $actions = '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete" onsubmit="return confirm(\'Delete this media file? This cannot be undone.\')">' . akiraShellCsrfField()
+        $pending = ($row['delete_requested_at'] ?? null) !== null;
+        $requesterId = (int) ($row['delete_requested_by'] ?? 0);
+        $reason = trim((string) ($row['delete_request_reason'] ?? ''));
+        $pendingBadge = $pending
+            ? '<span data-akira-media-delete-pending class="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700" title="' . akiraShellEscape($reason) . '">Pending deletion</span>'
+            : '';
+
+        if ($pending && $manager) {
+            $actions = '<div class="flex justify-end gap-2">'
+                . '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete" onsubmit="return confirm(\'Approve permanent deletion? This permanently removes the stored file. Published content that references it may stop rendering. This cannot be undone.\')">' . akiraShellCsrfField()
+                . '<input type="hidden" name="idempotency_key" value="media-delete-' . bin2hex(random_bytes(10)) . '">'
+                . '<button type="submit" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Approve</button></form>'
+                . '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete-cancel">' . akiraShellCsrfField()
+                . '<input type="hidden" name="idempotency_key" value="media-cancel-' . bin2hex(random_bytes(10)) . '">'
+                . '<button type="submit" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button></form></div>';
+        } elseif ($pending && $requesterId === $actorId) {
+            $actions = '<form class="flex justify-end" method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete-cancel">' . akiraShellCsrfField()
+                . '<input type="hidden" name="idempotency_key" value="media-cancel-' . bin2hex(random_bytes(10)) . '">'
+                . '<button type="submit" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">Cancel request</button></form>';
+        } elseif ($pending) {
+            $actions = '<div class="flex justify-end text-xs font-semibold text-amber-600">Awaiting administrator</div>';
+        } elseif ($manager) {
+            $actions = '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete" onsubmit="return confirm(\'Delete this media permanently? This removes the stored file. Published content that references it may stop rendering. This cannot be undone.\')">' . akiraShellCsrfField()
                 . '<input type="hidden" name="idempotency_key" value="media-delete-' . bin2hex(random_bytes(10)) . '">'
                 . '<button type="submit" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Delete</button></form>';
         } else {
-            $actions = '<div class="flex justify-end text-xs text-slate-300">Read only</div>';
+            $actions = '<details class="relative text-right"><summary class="cursor-pointer list-none rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Request deletion</summary>'
+                . '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete-request" class="absolute right-0 z-10 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-xl">' . akiraShellCsrfField()
+                . '<label class="block text-xs font-semibold text-slate-600">Reason (optional)<input name="delete_request_reason" maxlength="255" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></label>'
+                . '<input type="hidden" name="idempotency_key" value="media-request-' . bin2hex(random_bytes(10)) . '">'
+                . '<button type="submit" class="mt-3 w-full rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white">Submit request</button></form></details>';
         }
         $body .= '<div data-akira-media-row data-media-key="' . $key . '" class="grid grid-cols-[64px_minmax(0,1.4fr)_130px_minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0">'
-            . $preview . '<span><strong class="block text-sm text-slate-900">' . $filename . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($mime) . '</code></span>'
+            . $preview . '<span><strong class="block text-sm text-slate-900">' . $filename . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($mime) . '</code>' . $pendingBadge . '</span>'
             . '<span class="text-sm text-slate-500">' . $dimensions . '</span><span class="text-sm text-slate-500">' . $altLabel . '</span>'
             . $actions . '</div>';
     }

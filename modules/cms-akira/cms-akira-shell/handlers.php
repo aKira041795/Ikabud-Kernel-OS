@@ -879,7 +879,7 @@ function akiraShellMediaPage(string $error = '', string $alt = ''): void
         $rows = [];
         $error = $error !== '' ? $error : akiraShellRootErrorMessage($exception);
     }
-    $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Upload refused:</strong> ' . akiraShellEscape($error) . '</div>';
+    $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Media operation refused:</strong> ' . akiraShellEscape($error) . '</div>';
     $control = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20';
     $upload = '<form data-akira-media-upload method="post" action="/cms-akira-shell/media" enctype="multipart/form-data" class="mb-6 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
         . '<h2 class="font-bold text-slate-950">Upload media</h2><p class="mt-1 text-sm text-slate-500">Images and PDFs are checked by the governed media capability before storage.</p>'
@@ -920,6 +920,59 @@ function akiraShellMediaUpload(array $params = []): void
     } catch (Throwable $exception) {
         http_response_code(str_contains(akiraShellRootErrorMessage($exception), 'authorization denied') ? 403 : 422);
         akiraShellMediaPage(akiraShellRootErrorMessage($exception), (string) ($input['alt'] ?? ''));
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellMediaDeleteRequest(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    app()->csrfEnforce();
+    akiraShellMediaDeleteMutation('akira.media.delete.request@1', 'request', $params);
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellMediaDeleteCancel(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    app()->csrfEnforce();
+    akiraShellMediaDeleteMutation('akira.media.delete.cancel@1', 'cancel', $params);
+}
+
+/**
+ * Request/cancel remain governed media mutations and always submit the current
+ * optimistic version. The provider owns the requester-or-admin cancellation rule.
+ * @param array<string,mixed> $params
+ */
+function akiraShellMediaDeleteMutation(string $capability, string $saved, array $params): void
+{
+    $input = akiraShellInput();
+    $key = (string) ($params['media_key'] ?? '');
+    try {
+        $detail = akiraShellCall('akira.media.get@1', ['media_key' => $key]);
+        if (!is_array($detail) || ($detail['ok'] ?? false) !== true || !is_array($detail['data'] ?? null)) {
+            throw new RuntimeException('Media not found.');
+        }
+        $payload = [
+            'idempotency_key' => trim((string) ($input['idempotency_key'] ?? '')),
+            'media_key' => $key,
+            'expected_updated_at' => (string) ($detail['data']['updated_at'] ?? ''),
+        ];
+        if ($capability === 'akira.media.delete.request@1') {
+            $payload['delete_request_reason'] = (string) ($input['delete_request_reason'] ?? '');
+        }
+        akiraShellCall($capability, $payload);
+        akiraShellRedirect('/cms-akira-shell/media?saved=' . $saved);
+    } catch (Throwable $exception) {
+        $message = akiraShellRootErrorMessage($exception);
+        $denied = str_contains($message, 'authorization denied')
+            || str_contains($message, 'Only the original requester or an administrator');
+        http_response_code($denied ? 403 : 422);
+        akiraShellMediaPage($message);
     }
 }
 

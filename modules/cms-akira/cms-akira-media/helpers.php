@@ -14,6 +14,8 @@ function cms_akira_media_capability_handlers(): array
         'akira.media.resolve@1' => 'cam_cap_akira_media_resolve_1',
         'akira.media.upload@1' => 'cam_cap_akira_media_upload_1',
         'akira.media.update@1' => 'cam_cap_akira_media_update_1',
+        'akira.media.delete.request@1' => 'cam_cap_akira_media_delete_request_1',
+        'akira.media.delete.cancel@1' => 'cam_cap_akira_media_delete_cancel_1',
         'akira.media.delete@1' => 'cam_cap_akira_media_delete_1',
     ];
 }
@@ -52,6 +54,8 @@ function camMediaMutationPolicyRows(int $policyVersion = 1): array
     foreach ([
         'akira.media.upload@1' => camMediaContributionRoleCsv(),
         'akira.media.update@1' => camMediaContributionRoleCsv(),
+        'akira.media.delete.request@1' => camMediaContributionRoleCsv(),
+        'akira.media.delete.cancel@1' => camMediaContributionRoleCsv(),
         // Destructive authority is deliberately narrower than contribution.
         'akira.media.delete@1' => 'admin',
     ] as $capabilityId => $allowedRoles) {
@@ -239,6 +243,21 @@ function camMediaAlt(mixed $value): ?string
     return $alt;
 }
 
+function camMediaDeleteRequestReason(mixed $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_string($value)) {
+        throw new CamMediaMutationException('delete_request_reason must be a string.', 422);
+    }
+    $reason = trim($value);
+    if (strlen($reason) > 255) {
+        throw new CamMediaMutationException('delete_request_reason is invalid.', 422);
+    }
+    return $reason !== '' ? $reason : null;
+}
+
 function camMediaDimension(mixed $value, string $field): ?int
 {
     if ($value === null || $value === '') {
@@ -313,9 +332,9 @@ function camMediaUrl(string $mediaKey): string
 
 /**
  * @param array<string, mixed> $row
- * @return array{key: string, filename: string, mime_type: string, size_bytes: int, alt: ?string, width: ?int, height: ?int, url: string}
+ * @return array<string, mixed>
  */
-function camMediaProject(array $row, bool $detail): array
+function camMediaProject(array $row, bool $detail, bool $includeDeleteRequest = false): array
 {
     $projection = [
         'key' => (string) $row['media_key'],
@@ -327,6 +346,14 @@ function camMediaProject(array $row, bool $detail): array
         'height' => $row['height'] !== null ? (int) $row['height'] : null,
         'url' => camMediaUrl((string) $row['media_key']),
     ];
+    if ($includeDeleteRequest) {
+        $projection['delete_requested_at'] = ($row['delete_requested_at'] ?? null) !== null
+            ? (string) $row['delete_requested_at'] : null;
+        $projection['delete_requested_by'] = ($row['delete_requested_by'] ?? null) !== null
+            ? (int) $row['delete_requested_by'] : null;
+        $projection['delete_request_reason'] = ($row['delete_request_reason'] ?? null) !== null
+            ? (string) $row['delete_request_reason'] : null;
+    }
     if ($detail) {
         $projection['created_at'] = (string) $row['created_at'];
         $projection['updated_at'] = (string) $row['updated_at'];
@@ -408,7 +435,8 @@ function camMediaRemoveFile(int $tenantId, string $storagePath): void
 /** @return array<string, mixed>|null */
 function camMediaFind(string $mediaKey, bool $forUpdate = false): ?array
 {
-    $sql = 'SELECT media_key, filename, mime_type, size_bytes, storage_path, alt, width, height, created_at, updated_at '
+    $sql = 'SELECT media_key, filename, mime_type, size_bytes, storage_path, alt, width, height, '
+        . 'delete_requested_at, delete_requested_by, delete_request_reason, created_at, updated_at '
         . 'FROM cms_akira_media WHERE tenant_id = :tenant AND media_key = :key LIMIT 1'
         . ($forUpdate ? ' FOR UPDATE' : '');
     $stmt = camDb()->prepare($sql);
@@ -430,14 +458,15 @@ function cam_cap_akira_media_library_1(mixed $payload, string $capabilityId = 'a
     $offset = max(0, (int) ($payload['offset'] ?? 0));
     try {
         $stmt = camDb()->prepare(
-            "SELECT media_key, filename, mime_type, size_bytes, alt, width, height, created_at, updated_at
+            "SELECT media_key, filename, mime_type, size_bytes, alt, width, height,
+                    delete_requested_at, delete_requested_by, delete_request_reason, created_at, updated_at
              FROM cms_akira_media
              WHERE tenant_id = :tenant
              ORDER BY created_at DESC, media_key ASC
              LIMIT {$limit} OFFSET {$offset}"
         );
         $stmt->execute([':tenant' => camMediaTenantId()]);
-        $rows = array_map(static fn (array $row): array => camMediaProject($row, false), $stmt->fetchAll(PDO::FETCH_ASSOC));
+        $rows = array_map(static fn (array $row): array => camMediaProject($row, false, true), $stmt->fetchAll(PDO::FETCH_ASSOC));
         return ['ok' => true, 'rows' => $rows, 'total' => count($rows)];
     } catch (Throwable) {
         return ['ok' => false, 'rows' => [], 'total' => 0, 'error' => 'Media storage unavailable'];
@@ -454,7 +483,7 @@ function cam_cap_akira_media_get_1(mixed $payload, string $capabilityId = 'akira
         $mediaKey = camMediaKey($payload['media_key'] ?? $payload['key'] ?? null);
         $row = camMediaFind($mediaKey);
         return $row !== null
-            ? ['ok' => true, 'data' => camMediaProject($row, true)]
+            ? ['ok' => true, 'data' => camMediaProject($row, true, true)]
             : ['ok' => false, 'error' => 'Media not found'];
     } catch (Throwable) {
         return ['ok' => false, 'error' => 'Media not found'];
@@ -523,7 +552,9 @@ function camMediaMutate(string $operation, array $payload): array
         ? ['filename', 'mime_type', 'content', 'alt', 'width', 'height']
         : ($operation === 'update'
             ? ['media_key', 'alt', 'width', 'height', 'expected_updated_at']
-            : ['media_key', 'expected_updated_at']);
+            : ($operation === 'delete.request'
+                ? ['media_key', 'delete_request_reason', 'expected_updated_at']
+                : ['media_key', 'expected_updated_at']));
     $input = array_intersect_key($payload, array_flip($allowed));
     $envelope = ['operation' => "media.{$operation}", 'media' => $input];
     $hash = app()->cap()->call('kernel.idempotency.hash@1', ['payload' => $envelope], [
@@ -564,7 +595,7 @@ function camMediaMutate(string $operation, array $payload): array
         }
         $claimed = true;
 
-        $change = camMediaMutateChange($operation, $input, $tenantId);
+        $change = camMediaMutateChange($operation, $input, $tenantId, $actor);
         $writtenPath = $change['written_path'] ?? null;
         $correlationId = camMediaCorrelationId();
         $audit = app()->cap()->call('kernel.audit.record@1', [
@@ -624,13 +655,16 @@ function camMediaMutate(string $operation, array $payload): array
 
 /**
  * @param array<string, mixed> $input
+ * @param array<string, mixed> $actor
  * @return array{key: string, old: mixed, new: array<string, mixed>, projection: array<string, mixed>, written_path?: ?string, storage_path?: string}
  */
-function camMediaMutateChange(string $operation, array $input, int $tenantId): array
+function camMediaMutateChange(string $operation, array $input, int $tenantId, array $actor): array
 {
     return match ($operation) {
         'upload' => camMediaMutateUpload($input, $tenantId),
         'update' => camMediaMutateUpdate($input, $tenantId),
+        'delete.request' => camMediaMutateDeleteRequest($input, $tenantId, $actor),
+        'delete.cancel' => camMediaMutateDeleteCancel($input, $tenantId, $actor),
         'delete' => camMediaMutateDelete($input, $tenantId),
         default => throw new InvalidArgumentException('Unsupported media mutation.'),
     };
@@ -753,6 +787,121 @@ function camMediaMutateUpdate(array $input, int $tenantId): array
 }
 
 /**
+ * Record a reversible request only. No row or file removal is reachable here.
+ *
+ * @param array<string, mixed> $input
+ * @param array<string, mixed> $actor
+ * @return array{key: string, old: mixed, new: array<string, mixed>, projection: array<string, mixed>}
+ */
+function camMediaMutateDeleteRequest(array $input, int $tenantId, array $actor): array
+{
+    $mediaKey = camMediaKey($input['media_key'] ?? null);
+    $old = camMediaFind($mediaKey, true);
+    if ($old === null) {
+        throw new CamMediaMutationException('Media not found.', 404);
+    }
+    $expected = camMediaExpectedVersion($input['expected_updated_at'] ?? null);
+    if ($old['delete_requested_at'] !== null) {
+        return [
+            'key' => $mediaKey,
+            'old' => $old,
+            'new' => [
+                'delete_requested_at' => (string) $old['delete_requested_at'],
+                'delete_requested_by' => (int) $old['delete_requested_by'],
+                'delete_request_reason' => $old['delete_request_reason'],
+            ],
+            'projection' => camMediaProject($old, false, true),
+        ];
+    }
+    if ($expected !== (string) $old['updated_at']) {
+        throw new CamMediaMutationException('Media was modified; refresh and retry.', 409);
+    }
+    $reason = camMediaDeleteRequestReason($input['delete_request_reason'] ?? null);
+    $stmt = camDb()->prepare(
+        'UPDATE cms_akira_media SET delete_requested_at = CURRENT_TIMESTAMP, '
+        . 'delete_requested_by = :actor, delete_request_reason = :reason '
+        . 'WHERE tenant_id = :tenant AND media_key = :media AND updated_at = :expected '
+        . 'AND delete_requested_at IS NULL'
+    );
+    $stmt->execute([
+        ':actor' => (int) ($actor['id'] ?? $actor['sub'] ?? 0),
+        ':reason' => $reason,
+        ':tenant' => $tenantId,
+        ':media' => $mediaKey,
+        ':expected' => $expected,
+    ]);
+    if ($stmt->rowCount() !== 1) {
+        throw new CamMediaMutationException('Media was modified; refresh and retry.', 409);
+    }
+    $row = camMediaFind($mediaKey, true);
+    if ($row === null) {
+        throw new RuntimeException('Requested media disappeared during mutation.');
+    }
+    return [
+        'key' => $mediaKey,
+        'old' => $old,
+        'new' => [
+            'delete_requested_at' => (string) $row['delete_requested_at'],
+            'delete_requested_by' => (int) $row['delete_requested_by'],
+            'delete_request_reason' => $row['delete_request_reason'],
+        ],
+        'projection' => camMediaProject($row, false, true),
+    ];
+}
+
+/**
+ * Clear a request only when called by its original requester or an administrator.
+ *
+ * @param array<string, mixed> $input
+ * @param array<string, mixed> $actor
+ * @return array{key: string, old: mixed, new: array<string, mixed>, projection: array<string, mixed>}
+ */
+function camMediaMutateDeleteCancel(array $input, int $tenantId, array $actor): array
+{
+    $mediaKey = camMediaKey($input['media_key'] ?? null);
+    $old = camMediaFind($mediaKey, true);
+    if ($old === null) {
+        throw new CamMediaMutationException('Media not found.', 404);
+    }
+    $expected = camMediaExpectedVersion($input['expected_updated_at'] ?? null);
+    if ($old['delete_requested_at'] === null) {
+        return [
+            'key' => $mediaKey,
+            'old' => $old,
+            'new' => ['delete_requested_at' => null, 'delete_requested_by' => null, 'delete_request_reason' => null],
+            'projection' => camMediaProject($old, false, true),
+        ];
+    }
+    $role = (string) ($actor['role'] ?? '');
+    $isAdmin = in_array($role, ['admin', 'administrator', 'superadmin'], true);
+    if (!$isAdmin && (int) $old['delete_requested_by'] !== (int) ($actor['id'] ?? $actor['sub'] ?? 0)) {
+        throw new CamMediaMutationException('Only the original requester or an administrator may cancel this request.', 403);
+    }
+    if ($expected !== (string) $old['updated_at']) {
+        throw new CamMediaMutationException('Media was modified; refresh and retry.', 409);
+    }
+    $stmt = camDb()->prepare(
+        'UPDATE cms_akira_media SET delete_requested_at = NULL, delete_requested_by = NULL, '
+        . 'delete_request_reason = NULL WHERE tenant_id = :tenant AND media_key = :media '
+        . 'AND updated_at = :expected AND delete_requested_at IS NOT NULL'
+    );
+    $stmt->execute([':tenant' => $tenantId, ':media' => $mediaKey, ':expected' => $expected]);
+    if ($stmt->rowCount() !== 1) {
+        throw new CamMediaMutationException('Media was modified; refresh and retry.', 409);
+    }
+    $row = camMediaFind($mediaKey, true);
+    if ($row === null) {
+        throw new RuntimeException('Cancelled media disappeared during mutation.');
+    }
+    return [
+        'key' => $mediaKey,
+        'old' => $old,
+        'new' => ['delete_requested_at' => null, 'delete_requested_by' => null, 'delete_request_reason' => null],
+        'projection' => camMediaProject($row, false, true),
+    ];
+}
+
+/**
  * @param array<string, mixed> $input
  * @return array{key: string, old: mixed, new: array<string, mixed>, projection: array<string, mixed>, storage_path: string}
  */
@@ -800,6 +949,24 @@ function cam_cap_akira_media_update_1(mixed $payload, string $capabilityId = 'ak
         throw new CamMediaMutationException('payload must be an object.');
     }
     return camMediaMutate('update', $payload);
+}
+
+/** @return array<string, mixed> */
+function cam_cap_akira_media_delete_request_1(mixed $payload, string $capabilityId = 'akira.media.delete.request@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CamMediaMutationException('payload must be an object.');
+    }
+    return camMediaMutate('delete.request', $payload);
+}
+
+/** @return array<string, mixed> */
+function cam_cap_akira_media_delete_cancel_1(mixed $payload, string $capabilityId = 'akira.media.delete.cancel@1', string $caller = 'unknown'): array
+{
+    if (!is_array($payload)) {
+        throw new CamMediaMutationException('payload must be an object.');
+    }
+    return camMediaMutate('delete.cancel', $payload);
 }
 
 /** @return array<string, mixed> */
