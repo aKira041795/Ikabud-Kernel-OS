@@ -1,0 +1,61 @@
+status: PASS
+
+task: Media contribution authority follows drafting/publishing roles
+
+changed:
+  - modules/cms-akira/cms-akira-media/helpers.php
+  - modules/cms-akira/cms-akira-core/helpers/governance.php
+  - modules/cms-akira/cms-akira-shell/module.json
+  - modules/cms-akira/cms-akira-media/tests/media_contract_test.php
+  - modules/cms-akira/cms-akira-shell/handlers.php
+  - modules/cms-akira/cms-akira-shell/helpers.php
+  - modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+  - docs/architecture/akira-beyond-the-cms.md
+
+implementation_summary:
+  - Media upload, update, library, and detail authority now follows the canonical drafting/publishing participant roles.
+  - Media list and upload handlers now use `akiraShellAuthorize()`.
+  - Media delete retains `akiraShellAuthorizeAdmin()`, an `admin`-only policy row, and the existing destructive-operation restriction in `camMediaActor()`.
+  - Non-administrators see `Read only` instead of a media delete form.
+  - The shell contract now scopes assertions to each media handler rather than using a whole-file administrator-guard count.
+  - Media navigation admits all drafting/publishing participants.
+  - Permissions lists all Akira providers and supports nullable media callers through the sanctioned replacement path.
+  - Existing granted policies are not silently widened.
+  - Mutation declarations join the active policy version.
+
+verification:
+  A1: PASS — upload/update declarations use `contributor,author,editor,admin,administrator,superadmin`; delete remains `admin`.
+  A2: PASS — library/get declarations use the drafting role set.
+  A3: PASS — Media navigation and list/upload presentation guards admit participants; shell contract passed 110/110. Real HTTP verification remains assigned to the chair.
+  A4: PASS — Permissions includes media rows and the nullable-caller replacement path is covered.
+  A5: PASS — lifecycle test 10/10; authorization-policy migration test 18/18; narrowing applies and widening remains refused.
+  A6: PASS — backed up 5 policy rows, deleted to 0, ran the real suite with exit 0, then restored all 5 rows with exit 0. Result: 136 files, 110 passed, 26 skipped.
+  A7: PASS/SKIP — media contract emitted `SKIP: media fragment-cache fixture root is not writable by the current process` and exited 0. Exactly 0 assertions ran before the early precise skip.
+  A8:
+    php_lint: PASS — every touched PHP file.
+    composer_test: PASS — 110 passed, 26 skipped.
+    run_tests: PASS — 110 passed, 26 skipped.
+    governance_gate: PASS — `GOVERNANCE GATE=PASS`, exit 0; baseline untouched.
+    shell_contract: PASS — 110 passed, 0 failed.
+    diff_check: PASS.
+
+measurement:
+  before_fix: With active policy version 3, fixed-version mutation seeding placed rows in inert version 1.
+  after_fix: Mutation rows seed into active version 3.
+  disposition: Fixed because inert mutation rows prevented effective contribution authority after policy cloning.
+
+playwright: Not applicable — the contract assigns independent real-HTTP verification to the chair.
+
+scope:
+  unexpected_files: []
+
+risks:
+  - Fresh policy rows grant contributor, author, and editor media contribution/read authority.
+  - Existing tenants still require deliberate, audited operator widening.
+  - Permissions now exposes every Akira provider.
+
+unresolved:
+  - Media delete remains restricted to `admin`; the owner may reverse this decision.
+  - The pre-existing inconsistency remains: `akiraShellAuthorizeAdmin()` admits `administrator` and `superadmin`, but the delete policy and `camMediaActor()` admit only `admin`.
+
+recommended_next_state: READY_FOR_CHAIR_HTTP_VERIFICATION

@@ -112,8 +112,10 @@ function cac_cap_akira_policy_list_1(mixed $payload): array
         $resolver->failureReason() ?? 'missing_tenant_authority_scope'
     );
     $rows = $registry->activePolicyRows();
-    $rows = array_values(array_filter($rows, static fn (array $row): bool => str_starts_with((string)$row['capability_id'], 'akira.')
-        && in_array((string)$row['provider'], ['cms-akira-core', 'cms-akira-workflow'], true)));
+    $rows = array_values(array_filter(
+        $rows,
+        static fn (array $row): bool => str_starts_with((string)$row['capability_id'], 'akira.')
+    ));
     return ['ok' => true, 'rows' => $rows];
 }
 
@@ -127,14 +129,18 @@ function cac_cap_akira_policy_set_roles_1(mixed $payload): array
     if ($roles === [] || count($roles) !== count((array)($payload['allowed_roles'] ?? [])) || array_intersect($roles, CAC_AKIRA_ADMIN_ROLES) === []) {
         throw new CacGovernanceException('Roles must be a non-empty known set containing an administrator role.');
     }
-    foreach (['capability_id', 'capability_version', 'provider', 'caller_module'] as $field) {
+    foreach (['capability_id', 'capability_version', 'provider'] as $field) {
         if (trim((string)($payload[$field] ?? '')) === '') {
             throw new CacGovernanceException("{$field} is required.");
         }
     }
-    return cacGovernanceMutate('akira.policy.set_roles', $payload, static function (PDO $db, array $actor, int $tenantId) use ($payload, $roles): array {
+    if (!array_key_exists('caller_module', $payload) || !is_string($payload['caller_module'])) {
+        throw new CacGovernanceException('caller_module must be supplied as a string.');
+    }
+    $callerModule = trim($payload['caller_module']); // Empty is the form representation of SQL NULL.
+    return cacGovernanceMutate('akira.policy.set_roles', $payload, static function (PDO $db, array $actor, int $tenantId) use ($payload, $roles, $callerModule): array {
         $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry($db);
-        $version = $registry->replaceActiveRowRoles((string)$payload['capability_id'], (string)$payload['capability_version'], (string)$payload['provider'], (string)$payload['caller_module'], $roles);
+        $version = $registry->replaceActiveRowRoles((string)$payload['capability_id'], (string)$payload['capability_version'], (string)$payload['provider'], $callerModule, $roles);
         return ['entity_type' => 'capability_policy', 'entity_id' => (string)$payload['capability_id'], 'old_data' => null,
             'new_data' => ['policy_version' => $version, 'allowed_roles' => $roles], 'outcome' => ['policy_version' => $version]];
     });

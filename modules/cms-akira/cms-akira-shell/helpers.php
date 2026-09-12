@@ -1020,7 +1020,7 @@ function akiraShellMediaNotice(): string
 }
 
 /** @param list<array<string,mixed>> $rows */
-function akiraShellMediaTable(array $rows): string
+function akiraShellMediaTable(array $rows, bool $manager): string
 {
     if ($rows === []) {
         return '<div data-akira-media-empty class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No media uploaded yet.</div>';
@@ -1043,12 +1043,17 @@ function akiraShellMediaTable(array $rows): string
         $height = $row['height'] ?? null;
         $dimensions = is_numeric($width) && is_numeric($height) ? (int) $width . ' × ' . (int) $height : '—';
         $altLabel = $alt !== '' ? akiraShellEscape($alt) : '<span class="text-slate-300">—</span>';
+        if ($manager) {
+            $actions = '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete" onsubmit="return confirm(\'Delete this media file? This cannot be undone.\')">' . akiraShellCsrfField()
+                . '<input type="hidden" name="idempotency_key" value="media-delete-' . bin2hex(random_bytes(10)) . '">'
+                . '<button type="submit" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Delete</button></form>';
+        } else {
+            $actions = '<div class="flex justify-end text-xs text-slate-300">Read only</div>';
+        }
         $body .= '<div data-akira-media-row data-media-key="' . $key . '" class="grid grid-cols-[64px_minmax(0,1.4fr)_130px_minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0">'
             . $preview . '<span><strong class="block text-sm text-slate-900">' . $filename . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($mime) . '</code></span>'
             . '<span class="text-sm text-slate-500">' . $dimensions . '</span><span class="text-sm text-slate-500">' . $altLabel . '</span>'
-            . '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete" onsubmit="return confirm(\'Delete this media file? This cannot be undone.\')">' . akiraShellCsrfField()
-            . '<input type="hidden" name="idempotency_key" value="media-delete-' . bin2hex(random_bytes(10)) . '">'
-            . '<button type="submit" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Delete</button></form></div>';
+            . $actions . '</div>';
     }
     return '<div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="grid grid-cols-[64px_minmax(0,1.4fr)_130px_minmax(0,1fr)_auto] gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Preview</span><span>File</span><span>Dimensions</span><span>Alt text</span><span>Action</span></div>' . $body . '</div>';
 }

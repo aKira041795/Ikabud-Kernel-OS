@@ -1,0 +1,67 @@
+status: BLOCKED
+
+task: Media contribution authority follows drafting/publishing roles
+
+changed:
+  - modules/cms-akira/cms-akira-media/helpers.php
+  - modules/cms-akira/cms-akira-core/helpers/governance.php
+  - modules/cms-akira/cms-akira-shell/module.json
+  - modules/cms-akira/cms-akira-media/tests/media_contract_test.php
+  - docs/architecture/akira-beyond-the-cms.md
+
+implementation_summary:
+  - Added one guarded, deterministic media contribution role helper using `cawPostLifecycleParticipantRoles()` with the canonical fallback.
+  - Upload, update, library, and get declarations now use `contributor,author,editor,admin,administrator,superadmin`.
+  - `akira.media.delete@1` remains exactly `admin`; this is an explicit decision the owner may reverse.
+  - `akira.media.resolve@1` remains untouched.
+  - Permissions listing now includes every `akira.*` provider.
+  - Permissions role replacement now accepts the empty-string form representation of a nullable `caller_module`.
+  - Media navigation manifest roles now match drafting participants.
+  - Tests allocate tenant fixtures dynamically and verify fresh declarations, nullable callers, author contribution, admin-only deletion, narrowing, and widening refusal.
+  - Documented the future-CMS media authority convention.
+  - Fixed mutation seeding to join the active policy version. Measurement showed fixed-version seeding was inert for tenants with active version greater than 1, preventing A1.
+
+verification:
+  A1: PASS — fresh declaration probe authorized `author` upload/update and refused author deletion.
+  A2: PASS — library/get declarations use the drafting role CSV.
+  A3: BLOCKED — module.json is correct, but out-of-scope `cms-akira-shell/handlers.php` still calls `akiraShellAuthorizeAdmin()` for media list/upload.
+  A4: PASS at registry/helper level — all active `akira.*` providers are listed and nullable media callers work through `replaceActiveRowRoles()`.
+  A5: PASS — focused probe retained `admin` after narrow-then-widen declaration; `capability_policy_lifecycle_test.php` passed 10/10 and authorization migration test passed 18/18.
+  A6: FAIL — policy table backup/delete/restore completed, but the required empty-table suite exited 1:
+    - backed up: 5 rows
+    - after delete: 0 rows
+    - suite: 109 passed, 1 failed, 26 skipped
+    - restored: 5 rows
+    - restore exit: 0
+    - suite exit: 1
+  A7: INCONCLUSIVE — media test correctly skipped because `storage/cache/disyl-fragments` is not writable. Before adding the precise guard, 22 assertions passed before failing at that filesystem condition.
+  A8:
+    php_lint: PASS
+    composer_test: FAIL — 109 passed, 1 failed, 26 skipped
+    run_tests: FAIL — 109 passed, 1 failed, 26 skipped
+    governance_gate: PASS — exit 0; baseline untouched
+  failure:
+    - `shell_contract_test.php` still asserts the old admin-only Media manifest roles: 108 passed, 1 failed.
+  measurement:
+    before_fix: Transactional simulation with active policy version 3 placed mutation rows in version 1 while resolution remained version 3; rows were inert.
+    after_fix: Mutation rows landed in version 3 and resolved active version remained 3.
+    disposition: Fixed because inert mutation authority prevents A1 for a tenant enabling media after policy cloning.
+
+playwright: Not run. The contract assigns real-HTTP verification to the chair, and the author flow is currently known to be blocked by the out-of-scope shell presentation guards.
+
+scope:
+  unexpected_files: []
+
+risks:
+  - Contributor, author, and editor roles gain upload/update/read authority on fresh policy rows.
+  - Existing granted rows are not silently widened.
+  - Media deletion remains admin-only.
+  - Permissions now exposes all Akira providers.
+  - Existing tenants require deliberate operator widening.
+
+unresolved:
+  - Contract scope permits only `cms-akira-shell/module.json`, but actual media list/upload handlers retain administrator-only presentation guards.
+  - The shell contract assertion requires updating but its test file is outside the allowed scope.
+  - Consequently A3, A6, A7, A8, and the author HTTP acceptance cannot all be satisfied within the stated file boundary.
+
+recommended_next_state: ARCHITECTURE_DECISION_REQUIRED — authorize the minimal shell handler/helper/test scope expansion, then rerun all gates and the empty-policy proof.

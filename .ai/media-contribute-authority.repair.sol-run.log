@@ -1,0 +1,67 @@
+Implemented and committed repair as `39634a8` on `feat/media-contribute-authority`.
+
+### Changes
+
+- Removed PHPStan-dead branches in `helpers.php`.
+- Removed the fragment-cache skip guard.
+- Explicitly activates `cms-akira-media` when switching fixture tenants and invalidates the settings cache.
+- Fixture assertion queries `_module_enabled = true` for both tenants and verifies `moduleIsActive()`.
+- No prohibited files or authority rules changed.
+
+### Evidence
+
+Pre-fix reproduction ran with `disyl-fragments` held aside: **43 passed / 0 failed / 0 skipped**.
+
+Post-fix, under the same condition:
+
+```text
+CMS Akira media: 43 passed, 0 failed
+```
+
+All new media assertions ran, including:
+
+- canonical drafting mutation roles
+- contributor-facing read roles
+- Permissions media listing
+- SQL `NULL` caller replacement
+- author upload allowed / delete denied
+- seedPolicy narrowing and widening refusal
+- fixture tenant media permission evidence
+
+The directory was restored after every run:
+
+```text
+RESTORED: storage/cache/disyl-fragments (www-data:www-data drwxr-sr-x)
+```
+
+Validation:
+
+- `php -l` both touched files: clean
+- `vendor/bin/phpstan analyse modules/cms-akira/cms-akira-media/helpers.php --no-progress`: clean
+- `php ikabud workbench:governance --all --gate`: exit 0
+- `.governance-baseline.json`, `phpstan.neon`, and `phpstan-baseline.neon`: untouched
+
+Repository-wide `vendor/bin/phpstan analyse` still reports 424 pre-existing out-of-scope errors, predominantly under `daily-ledger`.
+
+### Exact runner result blocks
+
+`composer test`:
+
+```text
+Total: 136 files — 111 passed, 1 failed, 24 skipped
+```
+
+`php scripts/run-tests.php`:
+
+```text
+Total: 136 files — 111 passed, 1 failed, 24 skipped
+```
+
+The single failure in both is the out-of-scope existing assertion:
+
+```text
+CMS Akira P2: 37 passed, 1 failed
+✗ tenant B cannot update tenant A by slug
+```
+
+`media_contract_test.php` was **PASS**, not skipped, in both runners.

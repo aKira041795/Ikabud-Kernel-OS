@@ -148,7 +148,7 @@ $check(str_contains($handlers, "akiraShellCall('akira.policy.set_roles@1'")
 $check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($handlers, 'app()->csrfEnforce()'), 'governance surfaces retain administrator and Kernel CSRF gates');
 $check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/categories' && ($manifest['nav'][2]['label'] ?? '') === 'Categories', 'categories nav entry present in shell module.json');
 $check(($manifest['nav'][3]['url'] ?? '') === '/cms-akira-shell/content-types' && ($manifest['nav'][3]['label'] ?? '') === 'Content types', 'content types nav entry present in shell module.json');
-$check(($manifest['nav'][4]['url'] ?? '') === '/cms-akira-shell/media' && ($manifest['nav'][4]['roles'] ?? []) === ['admin'], 'media nav entry mirrors the admin-only capability policy');
+$check(($manifest['nav'][4]['url'] ?? '') === '/cms-akira-shell/media' && ($manifest['nav'][4]['roles'] ?? []) === ['contributor', 'author', 'editor', 'admin', 'administrator', 'superadmin'], 'media nav entry admits every drafting and publishing participant');
 $check(($manifest['nav'][5]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
 $check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/delete']), 'delete route');
 $check(
@@ -234,9 +234,18 @@ $check(isset($routes['GET']['/cms-akira-shell/media'], $routes['POST']['/cms-aki
 foreach (['akira.media.library@1', 'akira.media.get@1', 'akira.media.upload@1', 'akira.media.delete@1'] as $capability) {
     $check(in_array($capability, $manifest['capabilities']['depends'] ?? [], true), "shell declares {$capability} dependency");
 }
-$check(str_contains($handlers, 'function akiraShellMediaList') && str_contains($handlers, 'function akiraShellMediaUpload') && str_contains($handlers, 'function akiraShellMediaDelete') && substr_count($handlers, 'akiraShellAuthorizeAdmin()') >= 3, 'every media route uses the administrator presentation gate');
+$check(
+    preg_match('/function akiraShellMediaList\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorize\(\)\) \{/s', $handlers) === 1
+    && preg_match('/function akiraShellMediaUpload\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorize\(\)\) \{/s', $handlers) === 1
+    && preg_match('/function akiraShellMediaDelete\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorizeAdmin\(\)\) \{/s', $handlers) === 1,
+    'media list and upload use the participant gate while delete keeps the administrator gate'
+);
 $check(str_contains($handlers, "akiraShellCall('akira.media.upload@1'") && str_contains($handlers, "akiraShellCall('akira.media.delete@1'") && !str_contains($handlers, 'file_put_contents'), 'media writes use only governed media capabilities');
 $check(str_contains($handlers, 'enctype="multipart/form-data"') && str_contains($handlers, 'base64_encode($content)') && str_contains($helpers, 'data-akira-media-row'), 'media surface transfers multipart content to the provider and renders entity rows');
+$check(str_contains($helpers, 'function akiraShellMediaTable(array $rows, bool $manager)')
+    && str_contains($handlers, 'akiraShellMediaTable($rows, akiraShellIsAdmin())')
+    && str_contains($helpers, "if (\$manager) {")
+    && str_contains($helpers, 'Read only'), 'media rows render delete actions only for an administrator and read-only state otherwise');
 
 echo "shell contract: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);

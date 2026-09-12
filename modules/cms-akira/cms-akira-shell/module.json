@@ -141,7 +141,12 @@
             "url": "/cms-akira-shell/media",
             "icon": "image",
             "roles": [
-                "admin"
+                "contributor",
+                "author",
+                "editor",
+                "admin",
+                "administrator",
+                "superadmin"
             ]
         },
         {

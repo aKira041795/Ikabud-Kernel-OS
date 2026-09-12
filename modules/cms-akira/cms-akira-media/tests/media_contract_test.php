@@ -12,6 +12,8 @@ $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
 require_once $root . '/tests/_support/env_guard.php';
+require_once $root . '/tests/_support/tenant_fixture.php';
+require_once dirname(__DIR__, 2) . '/cms-akira-core/helpers/governance.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -47,17 +49,66 @@ foreach (cms_akira_media_capability_handlers() as $id => $handler) {
     );
 }
 
-$tenantA = 994201;
-$tenantB = 994202;
-requireTenantModulesActive($tenantA, ['cms-akira-media']);
+requireWritableCacheDirectory(
+    $root . '/storage/cache/disyl-fragments',
+    'media fragment-cache fixture root'
+);
+
+$tenantIds = [];
+for ($attempt = 0; $attempt < 40 && count($tenantIds) < 2; $attempt++) {
+    $candidate = random_int(8000000, 8999999);
+    $exists = app()->controlDb()->prepare('SELECT 1 FROM kernel_tenants WHERE id = ?');
+    $exists->execute([$candidate]);
+    if ($exists->fetchColumn() === false && !in_array($candidate, $tenantIds, true)) {
+        $tenantIds[] = $candidate;
+    }
+}
+if (count($tenantIds) !== 2) {
+    testEnvironmentSkip('could not allocate two unused tenant fixture ids for media isolation');
+}
+[$tenantA, $tenantB] = $tenantIds;
+try {
+    ensureTestTenant($tenantA, 'cms-akira-media');
+    ensureTestTenant($tenantB, 'cms-akira-media');
+} catch (Throwable $error) {
+    cleanupTestTenant($tenantA);
+    cleanupTestTenant($tenantB);
+    testEnvironmentSkip('media tenant fixtures are unavailable: ' . $error->getMessage());
+}
+
+// CapabilityBus checks moduleIsActive($provider) without an explicit tenant.
+// In the CI single-tenant configuration that means global module activation;
+// tenant settings alone only satisfy the explicit-tenant form used above.
+$moduleRegistryPath = $root . '/storage/modules.json';
+$moduleRegistryExisted = is_file($moduleRegistryPath);
+$originalModuleRegistry = $moduleRegistryExisted ? file_get_contents($moduleRegistryPath) : null;
+$restoreModuleRegistry = static function () use ($moduleRegistryPath, $moduleRegistryExisted, $originalModuleRegistry): void {
+    if ($moduleRegistryExisted && is_string($originalModuleRegistry)) {
+        file_put_contents($moduleRegistryPath, $originalModuleRegistry);
+    } elseif (!$moduleRegistryExisted) {
+        @unlink($moduleRegistryPath);
+    }
+};
+if (!moduleTenantSettingsModeEnabled()) {
+    try {
+        enableModule('cms-akira-media');
+    } catch (Throwable $error) {
+        $restoreModuleRegistry();
+        cleanupTestTenant($tenantA);
+        cleanupTestTenant($tenantB);
+        testEnvironmentSkip('global cms-akira-media activation fixture is unavailable: ' . $error->getMessage());
+    }
+}
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $prefix = 'media-' . bin2hex(random_bytes(5));
 $keys = [];
 $admin = ['id' => 999501, 'role' => 'admin'];
-$setIdentity = static function (int $tenant, array $user): void {
+$setIdentity = static function (int $tenant, array $user) use ($db): void {
     app()->tenant()->setTenantId($tenant);
     kernel_request_context_set('tenant_id', $tenant);
+    tenantSetModuleActivationState($db, $tenant, ['cms-akira-media'], true, 'media-contract-' . $tenant);
+    invalidateTenantModuleSettingsCache();
     app()->setUser($user);
 };
 $call = static function (string $id, array $payload = []) use ($admin): array {
@@ -109,6 +160,8 @@ $pdf = "%PDF-1.4\n" . random_bytes(16);
 try {
     echo "=== CMS Akira Phase 5A native media ===\n";
     $setIdentity($tenantA, $admin);
+    camSeedMediaMutationPolicies();
+    camSeedMediaReadPolicies();
     $db->prepare('DELETE FROM cms_akira_media WHERE tenant_id IN (?, ?)')->execute([$tenantA, $tenantB]);
     $cleanupStorage();
 
@@ -123,7 +176,22 @@ try {
         && ($manifest['reads_tables'] ?? []) === ['cms_akira_media'],
         'owned and readable media tables are explicit'
     );
-    $check(($manifest['_enabled'] ?? null) === false && !isset($manifest['entities']), 'tenant activation is explicit and media claims no Kernel Entity Authority');
+    $fixtureActivation = $db->prepare(
+        "SELECT tenant_id, setting_value FROM tenant_module_settings WHERE tenant_id IN (?, ?) "
+        . "AND module_id = 'cms-akira-media' AND setting_key = '_module_enabled' ORDER BY tenant_id"
+    );
+    $fixtureActivation->execute([$tenantA, $tenantB]);
+    $fixtureActivationRows = $fixtureActivation->fetchAll(PDO::FETCH_KEY_PAIR);
+    $check(
+        ($manifest['_enabled'] ?? null) === false
+        && !isset($manifest['entities'])
+        && ($fixtureActivationRows[$tenantA] ?? null) === 'true'
+        && ($fixtureActivationRows[$tenantB] ?? null) === 'true'
+        && moduleIsActive('cms-akira-media', $tenantA)
+        && moduleIsActive('cms-akira-media', $tenantB)
+        && moduleIsActive('cms-akira-media'),
+        'tenant activation is explicit, fixture tenants and the dispatch scope permit media, and media claims no Kernel Entity Authority'
+    );
     foreach ($mutations as $id) {
         $entry = $manifest['capabilities']['exposes'][array_search($id, $ids, true)] ?? [];
         $check(
@@ -138,6 +206,121 @@ try {
         $policies->requiresProtocol('akira.media.delete@1', '1', 'cms-akira-media') === 'v2',
         'activation policy seed is durable and protocol-v2'
     );
+
+    $draftingRoles = 'contributor,author,editor,admin,administrator,superadmin';
+    $mutationDeclarations = array_column(camMediaMutationPolicyRows(), 'allowed_roles', 'capability_id');
+    $readDeclarations = array_column(camMediaReadPolicyRows(1), 'allowed_roles', 'capability_id');
+    $check(
+        camMediaContributionRoleCsv() === $draftingRoles
+        && ($mutationDeclarations['akira.media.upload@1'] ?? '') === $draftingRoles
+        && ($mutationDeclarations['akira.media.update@1'] ?? '') === $draftingRoles
+        && ($mutationDeclarations['akira.media.delete@1'] ?? '') === 'admin',
+        'fresh mutation declarations use the canonical drafting set while delete stays admin-only'
+    );
+    $check(
+        ($readDeclarations['akira.media.library@1'] ?? '') === $draftingRoles
+        && ($readDeclarations['akira.media.get@1'] ?? '') === $draftingRoles,
+        'fresh library and detail declarations use the canonical drafting set'
+    );
+
+    $activeAkiraRows = array_values(array_filter(
+        $policies->activePolicyRows(),
+        static fn (array $row): bool => str_starts_with((string)($row['capability_id'] ?? ''), 'akira.')
+    ));
+    $listed = cac_cap_akira_policy_list_1(null)['rows'] ?? [];
+    $check(
+        $listed === $activeAkiraRows
+        && count(array_filter($listed, static fn (array $row): bool => ($row['provider'] ?? '') === 'cms-akira-media')) > 0,
+        'Permissions lists every active Akira provider, including media'
+    );
+    $editableMedia = current(array_filter(
+        $listed,
+        static fn (array $row): bool => ($row['provider'] ?? '') === 'cms-akira-media'
+            && ($row['caller_module'] ?? null) === null
+    ));
+    $nullCallerEditable = false;
+    if (is_array($editableMedia)) {
+        $roles = array_values(array_unique(array_merge(
+            array_filter(array_map('trim', explode(',', (string)($editableMedia['allowed_roles'] ?? '')))),
+            ['admin', 'author']
+        )));
+        $db->beginTransaction();
+        try {
+            $nextVersion = $policies->replaceActiveRowRoles(
+                (string)$editableMedia['capability_id'],
+                (string)$editableMedia['capability_version'],
+                (string)$editableMedia['provider'],
+                '',
+                $roles
+            );
+            $edited = $db->prepare(
+                'SELECT allowed_roles FROM capability_authorization_policies WHERE policy_version = ? '
+                . 'AND capability_id = ? AND capability_version = ? AND provider = ? AND caller_module IS NULL'
+            );
+            $edited->execute([$nextVersion, $editableMedia['capability_id'], $editableMedia['capability_version'], $editableMedia['provider']]);
+            $nullCallerEditable = $edited->fetchColumn() === implode(',', $roles);
+        } finally {
+            $db->rollBack();
+            CapabilityAuthorizationRegistry::invalidate();
+        }
+    }
+    $check($nullCallerEditable, 'Permissions sanctioned replacement path accepts a media row whose caller is SQL NULL');
+
+    $probeVersion = 0;
+    for ($attempt = 0; $attempt < 20; $attempt++) {
+        $candidate = random_int(1500000000, 2000000000);
+        $versionExists = $db->prepare('SELECT 1 FROM capability_authorization_policies WHERE policy_version = ? LIMIT 1');
+        $versionExists->execute([$candidate]);
+        if ($versionExists->fetchColumn() === false) {
+            $probeVersion = $candidate;
+            break;
+        }
+    }
+    if ($probeVersion === 0) {
+        throw new RuntimeException('Could not allocate an unused policy version for the media declaration probe.');
+    }
+    $probeRows = array_merge(camMediaMutationPolicyRows($probeVersion), camMediaReadPolicyRows($probeVersion));
+    try {
+        $policies->seedPolicy($probeRows);
+        $probe = $db->prepare(
+            'SELECT capability_id, allowed_roles FROM capability_authorization_policies '
+            . 'WHERE policy_version = ? AND provider = ? ORDER BY capability_id'
+        );
+        $probe->execute([$probeVersion, 'cms-akira-media']);
+        $freshRows = array_column($probe->fetchAll(PDO::FETCH_ASSOC), 'allowed_roles', 'capability_id');
+        $authorUpload = $policies->authorize([
+            'capability_id' => 'akira.media.upload@1', 'capability_version' => '1', 'provider' => 'cms-akira-media',
+            'caller_module' => 'cms-akira-shell', 'actor_role' => 'author', 'tenant_id' => (string)$tenantA,
+            'provider_activation' => true, 'dispatch_protocol' => 'v2', 'policy_version' => $probeVersion,
+        ]);
+        $authorDelete = $policies->authorize([
+            'capability_id' => 'akira.media.delete@1', 'capability_version' => '1', 'provider' => 'cms-akira-media',
+            'caller_module' => 'cms-akira-shell', 'actor_role' => 'author', 'tenant_id' => (string)$tenantA,
+            'provider_activation' => true, 'dispatch_protocol' => 'v2', 'policy_version' => $probeVersion,
+        ]);
+        $check(
+            count($freshRows) === count($probeRows)
+            && ($authorUpload['allowed'] ?? false) === true
+            && ($authorDelete['allowed'] ?? true) === false,
+            'fresh policy rows authorize author contribution but refuse author deletion'
+        );
+
+        $uploadDeclaration = camMediaMutationPolicyRows($probeVersion)[0];
+        $policies->seedPolicy([[...$uploadDeclaration, 'allowed_roles' => 'admin']]);
+        $policies->seedPolicy([$uploadDeclaration]);
+        $narrowed = $db->prepare(
+            'SELECT allowed_roles FROM capability_authorization_policies WHERE policy_version = ? AND capability_id = ? AND provider = ?'
+        );
+        $narrowed->execute([$probeVersion, 'akira.media.upload@1', 'cms-akira-media']);
+        $check(
+            $narrowed->fetchColumn() === 'admin',
+            'seedPolicy applies narrowing and refuses a later widening until operator re-grant'
+        );
+    } finally {
+        $db->prepare('DELETE FROM capability_authorization_policies WHERE policy_version = ? AND provider = ?')
+            ->execute([$probeVersion, 'cms-akira-media']);
+        CapabilityAuthorizationRegistry::invalidate();
+    }
 
     $uploadPayload = [
         'idempotency_key' => $keys[] = $prefix . '-upload',
@@ -363,10 +546,14 @@ try {
         "SELECT table_name, engine, table_collation FROM information_schema.tables
          WHERE table_schema = DATABASE() AND table_name = 'cms_akira_media'"
     )->fetchAll(PDO::FETCH_ASSOC);
+    // information_schema returns these keys uppercase on MySQL 8 but lowercase on
+    // MySQL 5.7 and MariaDB; normalise instead of reading one fixed case, which
+    // raised "Undefined array key" and also dirtied error.log.
+    $topologyRow = array_change_key_case(is_array($topology[0] ?? null) ? $topology[0] : [], CASE_UPPER);
     $check(
         count($topology) === 1
-        && strtoupper((string) $topology[0]['ENGINE']) === 'INNODB'
-        && (string) $topology[0]['TABLE_COLLATION'] === 'utf8mb4_unicode_ci',
+        && strtoupper((string) ($topologyRow['ENGINE'] ?? '')) === 'INNODB'
+        && (string) ($topologyRow['TABLE_COLLATION'] ?? '') === 'utf8mb4_unicode_ci',
         'native media table is InnoDB utf8mb4_unicode_ci'
     );
     $migration = (string) file_get_contents($module . '/database/migrations/002_create_native_media.sql');
@@ -422,6 +609,9 @@ try {
     }
     app()->tenant()->setTenantId($originalTenant);
     kernel_request_context_delete('tenant_id');
+    cleanupTestTenant($tenantA);
+    cleanupTestTenant($tenantB);
+    $restoreModuleRegistry();
     @file_put_contents($root . '/storage/logs/app.log', '');
     @file_put_contents($root . '/storage/logs/error.log', '');
 }
