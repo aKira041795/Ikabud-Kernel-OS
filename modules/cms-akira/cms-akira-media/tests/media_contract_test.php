@@ -49,6 +49,11 @@ foreach (cms_akira_media_capability_handlers() as $id => $handler) {
     );
 }
 
+requireWritableCacheDirectory(
+    $root . '/storage/cache/disyl-fragments',
+    'media fragment-cache fixture root'
+);
+
 $tenantIds = [];
 for ($attempt = 0; $attempt < 40 && count($tenantIds) < 2; $attempt++) {
     $candidate = random_int(8000000, 8999999);
