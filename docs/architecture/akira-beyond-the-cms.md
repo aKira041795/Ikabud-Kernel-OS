@@ -3,12 +3,19 @@
 status: direction (chair, 2026-09-10) · authority: product owner — *"Akira can now freely take its
 intended shape and form, unbounded by WordPress's shadow and other CMS's. Let's break new ground."*
 revised: 2026-09-12 (chair) — P2 status reconciled with shipped PRs #112–#120.
+amended: 2026-09-12 (chair, on product-owner directive) — Akira reclassified from **POC** to
+**reference product**; the parity rule narrowed so it refuses *undemonstrative breadth* rather than
+table stakes; "intelligent but gated" stated as the product thesis. This amendment supersedes the
+POC framing wherever this document previously used it.
 
 Depends on: [kernel-substrate-thesis.md](kernel-substrate-thesis.md).
 
-The ecosystem has four deliberately different jobs: **Kernel = product; Akira = demonstrates the
-claim; Daily Ledger = tries to break it; Workbench = proves the result.** Akira remains a reference
-application and POC, not the boundary of the substrate.
+The ecosystem has four deliberately different jobs: **Kernel = product; Akira = the reference
+product that shows the claim is usable; Daily Ledger = tries to break it; Workbench = proves the
+result.** Akira remains a reference application and not the boundary of the substrate — but
+*reference* is not a licence to be merely demonstrative. Akira is the kernel's proof of **usability**,
+and a system nobody can administer is not proof of anything. It is therefore judged as a product,
+on one axis: **authority**.
 
 ## The ground we are leaving
 
@@ -222,22 +229,92 @@ the authority it needs**, and the tenant grants or denies it. `Grant` is the aut
 `Consent` is reserved for any future data-subject consent with privacy, GDPR or medical semantics.
 This inverts the security model of the extension ecosystem and follows from policy rows existing.
 
+## Product doctrine: intelligent, and gated
+
+The substrate is not the evidence standing behind the product — it **is** the product feature.
+Capabilities that competitors also have arrive here carrying a guarantee they cannot make, and that
+is what makes the feature worth shipping.
+
+### The thesis: intelligent, but gated
+
+> **An AI-driven CMS is only useful if it is also a responsible one — one that knows its own limits
+> and can prove it stayed inside them.**
+
+The market is currently attaching AI to content systems with plugin-grade power, no bound on what
+the model may do, and no way to prove what it did. Akira already holds every primitive needed to
+answer that: `Grant` (P3), per-tenant policy rows, provenance (P1), segregation of duties and
+idempotency. The resulting product claim is concrete and demonstrable today:
+
+- an agent may **draft, summarise, suggest and schedule** — it may not publish;
+- a human holding *different* authority approves the transition;
+- the published artifact carries the whole chain — actor, grant, policy version, provenance;
+- and an exported artifact stays verifiable after it leaves the server (P4).
+
+*Intelligent* means the system does real work. *Gated* means its limits are enforced properties of
+execution, not settings, prompts or operator convention. Most of the market has the first; almost
+none can demonstrate the second. That is the contender position, and it costs no new substrate.
+
+### The surface gap (measured 2026-09-12)
+
+The substrate is built; the product surface is largely absent. Measured in this repository:
+
+| Surface | Reality |
+|---|---|
+| 15 `cms-akira-*` modules | **0 DiSyL templates between them** |
+| `cms-akira-media`, `-editor`, `-seo`, `-navigation`, `-search`, `-ai` | **0 declared routes** — capability providers with no user surface |
+| `cms-akira-shell` | 14 routes, **6 templates** (`home`, `posts`, `single`, `404`, `layout`, `login`) |
+| builder UI | 6 source files |
+| ARK theme | 21 templates — the richest surface present |
+
+Media, taxonomy, menus, SEO and search cannot be managed in Akira today. That is the honest reason
+it still reads as a prototype — and it is equally where the substrate should be *shown* rather than
+asserted, because every list, filter and write in an admin surface is a capability-governed call and
+an entity-view render. Closing this gap is ordinary product work that demonstrates the substrate
+while doing something users actually need.
+
+Ordered direction — direction, not commitment; every item still passes the discipline gate:
+
+1. **Admin surface** — content list, filters, bulk actions, editor, revisions. *(unblocks usability)*
+2. **Delegation as a product (P3)** — grant issuance, an agent approval queue, visible "may not
+   publish" bounds. *(the contender claim)*
+3. **Provable history as a product (P4)** — per-change actor/authority timeline, one-click proof
+   export. *(the compliance claim)*
+4. **ARK Theme Studio** — visual theming, no PHP in themes, deterministic and diffable output.
+5. **Installation profiles as editions** — the existing `profile-*` modules, packaged and named.
+6. **Production floor** — onboarding, backup/export, redirects, sitemap/schema, images, scheduling.
+7. **Workbench as the operator's console** — governance and degradation made visible to operators,
+   not only to developers.
+
+**Relationship to the pillar sequence.** The substrate order (**P2 closure → P3 → P4 → P5**) governs
+when a *primitive* may be relied upon; it does not serialise the *product surface*. An admin surface
+depends on nothing unresolved — it exercises capabilities that are already declared and enforced.
+Items #2 and #3 make product claims that rest on P3 and P4 respectively, and **may not ship those
+claims ahead of the primitives**. Where a surface would require an unclosed primitive it waits;
+everything else may proceed in parallel. This is the difference between building the product and
+claiming the pillar, and only the second of those is gated.
+
 ## What we will not build
 
 The WordPress shadow is shed by refusing its shopping list:
 
-- **No feature is implemented for parity alone.** Minimum product completeness — for example
-  taxonomy, media, or a basic editor — is allowed when it demonstrates a named substrate claim
+- **No feature is implemented *for* parity alone — but parity is no longer refused on principle.**
+  The refused category is *undemonstrative breadth*: feature count that proves nothing. Table stakes
+  are a different matter, and refusing them was an error — it forbade the very work that turns
+  plumbing into a product. Storage, editing, media, taxonomy, navigation, search and SEO are
+  **allowed and expected**, built on the capability bus and rendered through entity views so that
+  governance is visible *in* them rather than demonstrated beside them
 - no block-editor competition — the builder exists to prove that structured content is *diffable
   and semantically provable*, and it has done that
 - no theme marketplace, no plugin store, no admin-UX arms race
-- no feature that cannot name the substrate claim it proves
+- no feature that is *undemonstrative breadth* — a feature must either name the substrate claim it
+  proves, or belong to the minimum completeness without which no claim can be judged at all
 - no rebranding, renaming, or new major version before the substrate earns branding through proof
 
 ## Where this leaves the project
 
-The kernel becomes the product. Akira becomes the reference application — small, honest, complete
-enough to demonstrate what the substrate makes possible, and explicitly a POC. `daily-ledger` is
+The kernel becomes the product. Akira becomes the **reference product** — a real, manageable CMS that
+is deliberately minimal outside the authority axis, and a contender *on that axis* rather than a POC
+awaiting one. `daily-ledger` is
 the second domain that tests whether the substrate generalises; the F1–F4 measurement (contract
 `.ai/thesis-measurement.contract.md`, run 2026-09-10) fixed the falsification criteria and returned
 the P2 finding above — 0 of 52 business operations through the capability path. Workbench is the
@@ -251,7 +328,9 @@ explained — is still open.
 (architect → implement → review → release-gate), contracts before code, evidence over assertion,
 tests as the oracle, CI as the gate, no scope creep, and honest reporting of what was not verified.
 
-A feature request passes the discipline gate only if it names the substrate claim it demonstrates:
+A feature request passes the discipline gate if it **either** names the substrate claim it
+demonstrates **or** belongs to the minimum product completeness without which no claim can be judged
+at all. The gate refuses undemonstrative breadth, not table stakes:
 
 ```text
 Feature request
