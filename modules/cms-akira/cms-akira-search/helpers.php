@@ -31,7 +31,7 @@ function casSearchSeedMutationPolicies(): void
             'capability_version' => '1',
             'provider' => CAS_SEARCH_MODULE_ID,
             'caller_module' => null,
-            'allowed_roles' => 'admin',
+            'allowed_roles' => function_exists('cacAkiraAdminRoleCsv') ? cacAkiraAdminRoleCsv() : 'admin,administrator,superadmin',
             'provider_activation_required' => true,
             'requires_protocol' => 'v2',
             'is_active' => true,

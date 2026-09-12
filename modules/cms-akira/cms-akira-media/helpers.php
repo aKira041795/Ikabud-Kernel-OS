@@ -59,7 +59,7 @@ function camMediaMutationPolicyRows(int $policyVersion = 1): array
         // Finalisation is restricted to the administrator tier: contribution roles
         // may only request. This matches akiraShellIsAdmin() and CAC_AKIRA_ADMIN_ROLES
         // so the presentation gate and the policy row cannot disagree.
-        'akira.media.delete@1' => 'admin,administrator,superadmin',
+        'akira.media.delete@1' => function_exists('cacAkiraAdminRoleCsv') ? cacAkiraAdminRoleCsv() : 'admin,administrator,superadmin',
     ] as $capabilityId => $allowedRoles) {
         $rows[] = [
             'policy_version' => $policyVersion,

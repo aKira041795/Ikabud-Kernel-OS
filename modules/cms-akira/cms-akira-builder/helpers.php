@@ -41,7 +41,10 @@ function cabBuilderSeedMutationPolicies(): void
     foreach ($governed as $id) {
         $rows[] = [
             'policy_version' => 1, 'capability_id' => $id, 'capability_version' => '1',
-            'provider' => CAB_BUILDER_MODULE_ID, 'caller_module' => null, 'allowed_roles' => 'admin',
+            'provider' => CAB_BUILDER_MODULE_ID, 'caller_module' => null,
+            // The administrative tier, not the single `admin` role. Seeding `admin`
+            // alone refused an administrator/superadmin who could already see the surface.
+            'allowed_roles' => function_exists('cacAkiraAdminRoleCsv') ? cacAkiraAdminRoleCsv() : 'admin,administrator,superadmin',
             'provider_activation_required' => true, 'requires_protocol' => 'v2', 'is_active' => true,
         ];
     }

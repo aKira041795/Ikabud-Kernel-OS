@@ -28,12 +28,17 @@ function cacSeedPostMutationPolicies(): void
         return;
     }
     $rows = [];
+    // Publish/unpublish/delete belong to the administrative tier, not the single
+    // `admin` role: cawPostLifecycleTransitions() already admits author, editor,
+    // admin, administrator and superadmin to publish, so seeding `admin` alone made
+    // the workflow offer an action the capability then refused.
+    $adminTier = function_exists('cacAkiraAdminRoleCsv') ? cacAkiraAdminRoleCsv() : 'admin,administrator,superadmin';
     foreach ([
         'akira.post.create@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
         'akira.post.update@1' => ['contributor,author,editor,admin,administrator,superadmin', 'cms-akira-core,cms-akira-shell'],
-        'akira.post.publish@1' => ['admin', 'cms-akira-core'],
-        'akira.post.unpublish@1' => ['admin', 'cms-akira-core'],
-        'akira.post.delete@1' => ['admin', 'cms-akira-core,cms-akira-shell'],
+        'akira.post.publish@1' => [$adminTier, 'cms-akira-core'],
+        'akira.post.unpublish@1' => [$adminTier, 'cms-akira-core'],
+        'akira.post.delete@1' => [$adminTier, 'cms-akira-core,cms-akira-shell'],
     ] as $capabilityId => [$allowedRoles, $allowedCallers]) {
         $rows[] = [
             'policy_version' => 1,

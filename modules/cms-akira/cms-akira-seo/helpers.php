@@ -35,7 +35,7 @@ function casSeedSeoMutationPolicies(): void
             'capability_version' => '1',
             'provider' => 'cms-akira-seo',
             'caller_module' => null,
-            'allowed_roles' => 'admin',
+            'allowed_roles' => function_exists('cacAkiraAdminRoleCsv') ? cacAkiraAdminRoleCsv() : 'admin,administrator,superadmin',
             'provider_activation_required' => true,
             'requires_protocol' => $mutation ? 'v2' : null,
             'is_active' => true,

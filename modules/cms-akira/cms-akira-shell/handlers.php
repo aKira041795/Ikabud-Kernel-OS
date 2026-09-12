@@ -208,6 +208,54 @@ function akiraShellPostList(array $params = []): void
 }
 
 /** @param array<string,mixed> $post */
+/**
+ * Featured-image picker for the post editor.
+ *
+ * The Post entity already has a featured-image column, cacPostMutationImage() already
+ * validates it, and all three public templates already render it -- but the editor
+ * never sent one, so the capability was unreachable from the UI. The library is read
+ * through the governed akira.media.library@1 capability, never through another
+ * module's tables.
+ *
+ * @param array<string, mixed> $post
+ */
+function akiraShellPostImageField(array $post = []): string
+{
+    $current = trim((string)($post['image'] ?? ''));
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-akira-500 focus:outline-none';
+    $options = '<option value="">No featured image</option>';
+    $found = false;
+    try {
+        $library = akiraShellCall('akira.media.library@1', ['limit' => 200, 'offset' => 0]);
+        foreach ((array)($library['rows'] ?? []) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $url = (string)($row['url'] ?? '');
+            if ($url === '') {
+                continue;
+            }
+            if ($url === $current) {
+                $found = true;
+            }
+            $label = (string)($row['filename'] ?? $url);
+            $options .= '<option value="' . akiraShellEscape($url) . '"' . ($url === $current ? ' selected' : '') . '>'
+                . akiraShellEscape($label) . '</option>';
+        }
+    } catch (Throwable) {
+        // The library may be unavailable for this tenant or role. Falling through keeps
+        // the editor usable; an already-set value is still rendered below.
+    }
+    if ($current !== '' && !$found) {
+        $options .= '<option value="' . akiraShellEscape($current) . '" selected>'
+            . akiraShellEscape($current) . '</option>';
+    }
+    return '<details class="mt-5" open><summary class="cursor-pointer text-sm font-semibold text-slate-700">Featured image</summary>'
+        . '<select name="image" class="' . $control . ' mt-2">' . $options . '</select>'
+        . '<p class="mt-1 text-xs text-slate-400">Upload images in <a class="underline" href="/cms-akira-shell/media">Media</a>.</p></details>';
+}
+
+/** @param array<string, mixed> $post */
 function akiraShellPostForm(array $post = [], string $error = ''): string
 {
     $slug = trim((string)($post['slug'] ?? ''));
@@ -229,10 +277,11 @@ function akiraShellPostForm(array $post = [], string $error = ''): string
     // editor form so the workflow block and allowed-actions markup above stay
     // byte-for-byte unchanged. Only saved posts have history to show.
     $revisionPanel = $editing ? akiraShellRevisionPanel($slug, (string)($post['updated_at'] ?? '')) : '';
+    $imagePanel = akiraShellPostImageField($post);
     return '<form x-data="akiraContentEditor()" class="grid gap-5 lg:grid-cols-[1fr_280px]" method="post" action="' . akiraShellEscape($action) . '">' . akiraShellCsrfField() . '<div class="space-y-5">' . $errorHtml
         . '<div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><label class="mb-2 block text-sm font-semibold">Title</label><input class="' . $control . ' text-xl font-bold" name="title" value="' . akiraShellEscape($post['title'] ?? '') . '" required><label class="mb-2 mt-5 block text-sm font-semibold">Slug</label><input class="' . $control . ' font-mono" name="slug" value="' . akiraShellEscape($slug) . '" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div>'
         . '<div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div class="flex items-center justify-between border-b border-slate-100 px-5 py-3"><strong>Content</strong><button type="button" @click="preview=!preview" class="text-sm font-semibold text-akira-700" x-text="preview ? \'Edit\' : \'Preview\'"></button></div><textarea x-show="!preview" x-model="body" class="min-h-[480px] w-full resize-y border-0 p-5 font-mono text-sm focus:outline-none" name="content" required></textarea><div x-show="preview" x-cloak class="min-h-[480px] whitespace-pre-wrap p-5 text-sm leading-7" x-text="body"></div></div></div>'
-        . '<aside><div class="sticky top-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">' . $categoryPanel . '<h2 class="font-bold">Workflow</h2><p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Current state</p><p data-akira-workflow-state class="mt-1 rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-800">' . akiraShellEscape(ucwords(str_replace('_', ' ', $workflowStatus))) . '</p><input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($post['updated_at'] ?? '') . '"><input type="hidden" name="expected_status" value="' . akiraShellEscape($workflowStatus) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '"><button class="mt-5 w-full rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button>' . akiraShellWorkflowActions($slug, $workflowActions) . '<a href="/cms-akira-shell/posts" class="mt-3 block text-center text-sm text-slate-500">Cancel</a></div></aside></form>' . $revisionPanel . '<script>function akiraContentEditor(){return{body:' . akiraShellJsString((string)($post['content'] ?? '')) . ',preview:false}}</script>';
+        . '<aside><div class="sticky top-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">' . $categoryPanel . $imagePanel . '<h2 class="font-bold">Workflow</h2><p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Current state</p><p data-akira-workflow-state class="mt-1 rounded-xl bg-slate-100 px-3 py-2 font-semibold text-slate-800">' . akiraShellEscape(ucwords(str_replace('_', ' ', $workflowStatus))) . '</p><input type="hidden" name="expected_updated_at" value="' . akiraShellEscape($post['updated_at'] ?? '') . '"><input type="hidden" name="expected_status" value="' . akiraShellEscape($workflowStatus) . '"><input type="hidden" name="idempotency_key" value="shell-' . bin2hex(random_bytes(12)) . '"><button class="mt-5 w-full rounded-xl bg-akira-600 px-5 py-3 font-semibold text-white hover:bg-akira-700" type="submit">Save post</button>' . akiraShellWorkflowActions($slug, $workflowActions) . '<a href="/cms-akira-shell/posts" class="mt-3 block text-center text-sm text-slate-500">Cancel</a></div></aside></form>' . $revisionPanel . '<script>function akiraContentEditor(){return{body:' . akiraShellJsString((string)($post['content'] ?? '')) . ',preview:false}}</script>';
 }
 
 /** @param array<string,mixed> $params */
