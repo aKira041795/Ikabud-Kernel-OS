@@ -4,7 +4,7 @@
     "non_http_baseline": [],
     "baseline": {
         "cms-akira-builder": 6,
-        "cms-akira-shell": 15,
+        "cms-akira-shell": 12,
         "cms-akira-theme": 4,
         "cms-akira-workflow": 1,
         "daily-ledger": 52,
