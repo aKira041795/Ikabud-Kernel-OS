@@ -17,6 +17,17 @@
     "capabilities": {
         "exposes": [],
         "routes": {
+            "POST /cms-akira-shell/posts": "akira.post.create@1",
+            "POST /cms-akira-shell/posts/{slug}": "akira.post.update@1",
+            "POST /cms-akira-shell/posts/{slug}/taxonomies": "akira.post.set_taxonomies@1",
+            "POST /cms-akira-shell/posts/{slug}/revisions/{revision_no}/revert": "akira.post.revision.revert@1",
+            "POST /cms-akira-shell/posts/{slug}/workflow": "akira.workflow.transition@1",
+            "POST /cms-akira-shell/categories": "akira.taxonomy.create@1",
+            "POST /cms-akira-shell/categories/{id}": "akira.taxonomy.update@1",
+            "POST /cms-akira-shell/categories/{id}/delete": "akira.taxonomy.delete@1",
+            "POST /cms-akira-shell/content-types": "akira.content_type.create@1",
+            "POST /cms-akira-shell/content-types/{id}": "akira.content_type.update@1",
+            "POST /cms-akira-shell/content-types/{id}/delete": "akira.content_type.delete@1",
             "POST /cms-akira-shell/permissions": "akira.policy.set_roles@1",
             "POST /cms-akira-shell/users/{id}/role": "akira.user.update_role@1",
             "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1"

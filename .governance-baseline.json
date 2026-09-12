@@ -3,10 +3,8 @@
     "non_http_rule": "Frozen unscoped non-HTTP debt. Any module whose unscoped count rises fails the gate; unresolved sites are reported separately and are not debt.",
     "non_http_baseline": [],
     "baseline": {
-        "cms-akira-builder": 6,
-        "cms-akira-shell": 12,
-        "cms-akira-theme": 4,
-        "cms-akira-workflow": 1,
+        "cms-akira-shell": 1,
+        "cms-akira-theme": 2,
         "daily-ledger": 52,
         "gui-settings": 2
     }
