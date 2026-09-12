@@ -7,15 +7,24 @@ amended: 2026-09-12 (chair, on product-owner directive) — Akira reclassified f
 **reference product**; the parity rule narrowed so it refuses *undemonstrative breadth* rather than
 table stakes; "intelligent but gated" stated as the product thesis. This amendment supersedes the
 POC framing wherever this document previously used it.
+refined: 2026-09-12 (chair, after product-owner review) — ecosystem roles restated as Kernel =
+authority substrate, Akira = reference product and human experience of the substrate, Daily Ledger =
+adversarial second-domain proof, Workbench = instrument and operator visibility; product work split
+from substrate work into two parallel tracks; Workbench promoted to product item #2; the competitive
+over-claim removed, since the claim worth making concerns where the guarantees live, not whether
+anyone else could make them.
 
 Depends on: [kernel-substrate-thesis.md](kernel-substrate-thesis.md).
 
-The ecosystem has four deliberately different jobs: **Kernel = product; Akira = the reference
-product that shows the claim is usable; Daily Ledger = tries to break it; Workbench = proves the
-result.** Akira remains a reference application and not the boundary of the substrate — but
-*reference* is not a licence to be merely demonstrative. Akira is the kernel's proof of **usability**,
-and a system nobody can administer is not proof of anything. It is therefore judged as a product,
-on one axis: **authority**.
+The ecosystem has four deliberately different jobs: **Kernel = authority substrate; Akira = the
+reference product, and the human experience of the substrate; Daily Ledger = adversarial
+second-domain proof; Workbench = instrument and operator visibility.** Akira remains a reference
+application and not the boundary of the substrate — but *reference* is not a licence to be merely
+demonstrative. Akira is the kernel's proof of **usability**, and a system nobody can administer is
+not proof of anything. It is therefore judged as a product, on one axis: **authority**.
+
+> **Akira is the human-facing interpretation of Kernel OS.** The kernel holds the rules; Workbench
+exposes them; Akira makes them usable.
 
 ## The ground we are leaving
 
@@ -53,8 +62,10 @@ substrate advantage is *invisible*.
 > rather than destructive, and non-human actors can be delegated real but bounded power.**
 
 The substrate already has the ingredients — capability bus, per-tenant policy rows, idempotency,
-audit, provenance (Cycle 4), and a domain-neutral instrument (Workbench). What no CMS can do is
-precisely what the kernel was built to do.
+audit, provenance (Cycle 4), and a domain-neutral instrument (Workbench). **The kernel was built to
+make these guarantees substrate properties rather than application conventions.** That is the claim,
+and it does not require asserting that nobody else could do it: the work is to prove Akira does it
+better, not to claim a monopoly on the idea.
 
 Five pillars, in order — the order below was corrected on 2026-09-10 by measurement (see P2). Each
 must be *minimal but real*, must demonstrate a substrate primitive, and must be observable in
@@ -268,55 +279,105 @@ That requires delegated authority (P3) and a signed artifact (P4), and neither e
 execution rather than settings, prompts or operator convention. Most of the market has the first;
 almost none can demonstrate the second. That is the contender position — and it is **not yet built**.
 
-### The surface gap (measured 2026-09-12)
+### The surface gap (measured 2026-09-12, corrected 2026-09-12)
 
-The substrate is built; the product surface is largely absent. Measured in this repository:
+**The first version of this section was wrong, and it understated Akira badly.** It counted DiSyL
+template files and concluded the product surface was largely absent. The admin surface is not
+absent — it is built in PHP, so counting `.disyl` files could never have found it. Corrected:
 
 | Surface | Reality |
 |---|---|
-| 15 `cms-akira-*` modules | **0 DiSyL templates between them** |
-| `cms-akira-media`, `-editor`, `-seo`, `-navigation`, `-search`, `-ai` | **0 declared routes** — capability providers with no user surface |
-| `cms-akira-shell` | 14 routes, **6 templates** (`home`, `posts`, `single`, `404`, `layout`, `login`) |
+| `cms-akira-shell` admin | **16 GET routes with handlers** — `PostList`, `PostCreateForm`, `PostEditForm`, `CategoryList`, `ContentTypeList`, `Permissions`, `Users`, `Compositions`, `CompositionEdit`, `ModuleHealth`, `Dashboard`, `Forbidden` |
+| Post administration | Real and substantial: filtered list (search, category, status, pagination), editor with live preview, category panel, workflow state and allowed actions, revision history, CSRF, idempotency key, optimistic concurrency (`expected_updated_at`, `expected_status`) |
+| 15 `cms-akira-*` modules | **0 DiSyL templates between them** — because the admin UI is PHP-built via `akiraShellPage()`, not templated |
+| `cms-akira-media`, `-navigation`, `-seo`, `-search` | **0 declared routes** — capability providers with no user surface at all |
+| Declared route authority | **14 declared, and all of them POST.** The 16 GET/read routes are **undeclared** |
 | builder UI | 6 source files |
-| ARK theme | 21 templates — the richest surface present |
+| ARK theme | 21 templates (11 under `akira-ark` itself) |
 
-Media, taxonomy, menus, SEO and search cannot be managed in Akira today. That is the honest reason
-it still reads as a prototype — and it is equally where the substrate should be *shown* rather than
-asserted, because every list, filter and write in an admin surface is a capability-governed call and
-an entity-view render. Closing this gap is ordinary product work that demonstrates the substrate
-while doing something users actually need.
+So the honest gap is **not** "there is no admin surface". It is three narrower things:
 
-Ordered direction — direction, not commitment; every item still passes the discipline gate:
+1. **The read path is ungoverned.** Every POST is dispatch-enforced; every GET is not. Those reads
+   include drafts, `/permissions` and `/users`. A draft leak or a permission read is not a lesser
+   concern than an unauthorised write, and the current declaration shape cannot express read
+   authority at all.
+2. **Four capability modules still have no surface** — media, navigation, SEO, search. Media is the
+   most concrete: `cms-akira-media` exposes capabilities that nothing in the product can invoke.
+3. **The admin UI is PHP-built HTML**, not DiSyL templates or entity views. It works, and its
+   `data-akira-entity-view` markers show the intent, but it is the one place in the product where
+   the rendering pipeline is bypassed — which is much of the reason the substrate's governance is
+   invisible *inside* the product rather than visible in it.
+
+This phase is therefore **productization, not architecture invention**, and it is narrower and
+better-shaped than the first draft of this section implied. The work is not to build a CMS admin
+from scratch; it is to govern the reads, surface the four remaining modules, and let the existing
+admin render through the pipeline the rest of the product already uses.
+
+**Measurement lesson worth keeping.** The panel was briefed with the wrong table and two panellists
+reasoned from it — Sol even corrected the taxonomy row from the shell's route file rather than
+trusting the summary. Counting one artefact type is not measuring a surface. The corrected figure
+came from reading handlers, not files.
+
+### Two tracks, one rule
+
+Product work is not serialized behind substrate work. Serializing it produces the logic *P2
+unfinished → no admin surface → no media UI → no editor → the product stagnates*, which is both
+unnecessary and self-inflicted.
+
+| Track A — substrate | Track B — product |
+|---|---|
+| P2 enforcement closure | Admin surface |
+| P3 delegation | Workbench operator console |
+| P4 verification | Delegation product surface |
+| P5 extension authority | Provable history surface |
+| | ARK Theme Studio |
+| | Installation profiles |
+| | Production floor |
+
+**The rule that keeps the two honest: a product surface may use only substrate guarantees that
+actually exist.** No screen may imply a governance property the primitive does not yet provide.
+Where a surface would need an unclosed primitive it waits; everything else may proceed. This is the
+difference between building the product and claiming the pillar — and only the second is gated.
+
+Ordered — the product owner's ordering (2026-09-12); every item still passes the discipline gate:
 
 1. **Admin surface** — content list, filters, bulk actions, editor, revisions. *(unblocks usability)*
-2. **Delegation as a product (P3)** — grant issuance, an agent approval queue, visible "may not
+2. **Workbench operator console** — the glass panel over the substrate: who may do what, what was
+   denied and why, which grant exists, what is suspended, what changed, which routes remain
+   undeclared. *(makes authority understandable, not merely present)*
+3. **Delegation as a product (P3)** — grant issuance, an agent approval queue, visible "may not
    publish" bounds. *(the contender claim)*
-3. **Provable history as a product (P4)** — per-change actor/authority timeline, one-click proof
+4. **Provable history as a product (P4)** — per-change actor/authority timeline, one-click proof
    export. *(the compliance claim)*
-4. **ARK Theme Studio** — visual theming, no PHP in themes, deterministic and diffable output.
-5. **Installation profiles as editions** — the existing `profile-*` modules, packaged and named.
-6. **Production floor** — onboarding, backup/export, redirects, sitemap/schema, images, scheduling.
-7. **Workbench as the operator's console** — governance and degradation made visible to operators,
-   not only to developers.
+5. **ARK Theme Studio** — visual theming, no PHP in themes, deterministic and diffable output.
+6. **Installation profiles as editions** — the existing `profile-*` modules, packaged and named.
+7. **Production floor** — onboarding, backup/export, redirects, sitemap/schema, images, scheduling.
 
-**Panel verdict on the ordering (2026-09-12).** An independent two-model debate
-(`.ai/akira-direction-synthesis.md`) converged on the first three items — alone, from different
-lineages, without cross-visibility — and disputed the rest. Both panellists would **cut #4 (ARK Theme
-Studio)** and **#5 (installation profiles as editions)**, the first as competitive with mature theme
-customisers and adding a second JS build to a shared-hosting target, the second as packaging rather
-than value. Sol also cut a customer-facing Workbench console (#7) until customers ask. Flash further
-argued that #1–#3 are not merely ordered but *unvalidated*: the wedge is low-confidence, the AI claim
-is not the purchase reason, and the cheapest next step is five buyer conversations rather than more
-code. **Those cuts are recorded here, not applied** — they change direction and belong to the product
-owner. What is not in dispute is that #1 must precede the others.
+**Why Workbench is #2 rather than last.** The product promise is not *authority exists* but
+**authority is understandable**. A governed system whose operator cannot see who may do what, what
+was denied, which grant is suspended and which routes remain undeclared will still feel invisible:
+the architecture would be correct and the experience unchanged. For "intelligent but gated" this is
+the entire demonstration, and a denial should be legible as something like
 
-**Relationship to the pillar sequence.** The substrate order (**P2 closure → P3 → P4 → P5**) governs
-when a *primitive* may be relied upon; it does not serialise the *product surface*. An admin surface
-depends on nothing unresolved — it exercises capabilities that are already declared and enforced.
-Items #2 and #3 make product claims that rest on P3 and P4 respectively, and **may not ship those
-claims ahead of the primitives**. Where a surface would require an unclosed primitive it waits;
-everything else may proceed in parallel. This is the difference between building the product and
-claiming the pillar, and only the second of those is gated.
+```text
+Agent:            Akira Writer 01
+Grant:            draft.create / draft.edit
+Denied:           post.publish
+Reason:           grant excludes publication
+Required actor:   human / editor
+Policy revision:  12
+```
+
+**Panel verdict, and how the owner resolved it (2026-09-12).** An independent two-model debate
+(`.ai/akira-direction-synthesis.md`) converged on admin surface → one bounded machine actor → proof
+export, and both panellists would have **cut** ARK Theme Studio and installation profiles as editions
+— the first as a second JS build on a shared-hosting target competing with mature customisers, the
+second as packaging rather than value. Sol also cut a customer-facing Workbench console. **The owner
+overruled that cut and promoted Workbench to #2**, for the reason above; Theme Studio and editions
+remain in the ordering, demoted below the authority-facing work. Flash's remaining objection is
+**unresolved and stands on the record**: the wedge is low-confidence, the AI claim is not the purchase
+reason, and the cheapest next step is buyer conversations rather than more code. What is not in
+dispute is that #1 comes first.
 
 ## What we will not build
 
