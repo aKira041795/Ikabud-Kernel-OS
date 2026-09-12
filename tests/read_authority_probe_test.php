@@ -103,6 +103,29 @@ t(
     moduleRouteAuthorityResolveKey('POST', '/cms-akira-shell/posts', '/cms-akira-shell/posts', $keys) === null
 );
 
+// A templated declaration must resolve for a concrete URI, not just the literal
+// pattern — the edit form is a {slug} route, so the declaration is only useful
+// if the resolver matches a real request against it.
+$editKeys = ['GET /cms-akira-shell/posts/{slug}/edit' => 'akira.post.admin.get@1'];
+t(
+    'a templated GET declaration resolves for a concrete URI',
+    moduleRouteAuthorityResolveKey(
+        'GET',
+        '/cms-akira-shell/posts/{slug}/edit',
+        '/cms-akira-shell/posts/some-post/edit',
+        $editKeys
+    ) === 'GET /cms-akira-shell/posts/{slug}/edit'
+);
+t(
+    'the templated declaration does not resolve for the list route',
+    moduleRouteAuthorityResolveKey(
+        'GET',
+        null,
+        '/cms-akira-shell/posts',
+        $editKeys
+    ) === null
+);
+
 echo "\n=== 3. THE REAL MANIFEST DECLARES THE READ ===\n";
 
 $shellDeclared = moduleRouteAuthorityDeclarations('cms-akira-shell');
@@ -114,6 +137,46 @@ t(
         static fn ($k) => str_starts_with((string) $k, 'GET'),
         ARRAY_FILTER_USE_KEY
     ))
+);
+
+// The edit form is the second (and, in this increment, the only other) read
+// whose capability has a tenant policy row — akira.post.admin.get@1. It is
+// seeded by cacSeedPostAdminReadPolicies() alongside the list read.
+t(
+    'cms-akira-shell declares authority for the admin post edit form',
+    ($shellDeclared['GET /cms-akira-shell/posts/{slug}/edit'] ?? null) === 'akira.post.admin.get@1',
+    json_encode(array_filter(
+        (array) $shellDeclared,
+        static fn ($k) => str_starts_with((string) $k, 'GET'),
+        ARRAY_FILTER_USE_KEY
+    ))
+);
+
+// Exclusions are deliberate, not omissions. Every other route in the
+// extension's declare table maps to a read whose capability the repository
+// deliberately leaves ungoverned until increment R5 ("Reads (list/get) remain
+// ungoverned until R5 governs reads"), so it has no policy row. The dispatch
+// guard's authorize() is fail-closed: a declared route with no policy row is
+// refused for every actor, including administrators. Declaring any of them
+// would 403 the page. login and forbidden are excluded for lockout/loop safety,
+// and health is an operational probe with no capability call.
+$excludedReads = [
+    'GET /cms-akira-shell/posts/new',
+    'GET /cms-akira-shell/categories',
+    'GET /cms-akira-shell/content-types',
+    'GET /cms-akira-shell/permissions',
+    'GET /cms-akira-shell/users',
+    'GET /cms-akira-shell/compositions',
+    'GET /cms-akira-shell/compositions/{key}/edit',
+    'GET /cms-akira-shell/login',
+    'GET /cms-akira-shell/forbidden',
+    'GET /cms-akira-shell/health',
+];
+$declaredExcluded = array_values(array_intersect(array_keys($shellDeclared), $excludedReads));
+t(
+    'the ungoverned reads and the entry/denial/probe surfaces are NOT declared',
+    $declaredExcluded === [],
+    json_encode($declaredExcluded)
 );
 
 echo "\n=== 4. THE GUARD ENFORCES IT (the actual question) ===\n";
@@ -153,6 +216,46 @@ t(
     'the refusal is recorded as a denial, not as an observation',
     str_contains($readLogs, 'route.authority.denied') && !str_contains($readLogs, 'route.authority.undeclared'),
     substr($readLogs, 0, 300)
+);
+
+// The edit form is the second declared read. Its capability
+// (akira.post.admin.get@1) has a policy row, so the guard can actually check
+// it, and an unauthorised actor must be refused at dispatch exactly like the
+// list. A declared route that is NOT enforced would make the whole slice a
+// false positive.
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/cms-akira-shell/posts/some-post/edit';
+file_put_contents($appLog, '');
+ob_start();
+$editAllowed = moduleRouteAuthorityEnforce(
+    'cms-akira-shell',
+    'GET',
+    '/cms-akira-shell/posts/{slug}/edit',
+    '/cms-akira-shell/posts/some-post/edit',
+    null
+);
+$editBody = (string) ob_get_clean();
+$editLogs = (string) @file_get_contents($appLog);
+
+t(
+    'a DECLARED edit read with no authority is refused at dispatch',
+    $editAllowed === false,
+    'guard returned ' . var_export($editAllowed, true)
+);
+t(
+    'the edit refusal is the guard denial (HTTP 403), not an allowed response',
+    str_contains($editBody, '403') && $editAllowed === false,
+    substr($editBody, 0, 240)
+);
+t(
+    'the edit denial names the required capability in the authority log',
+    str_contains($editLogs, 'akira.post.admin.get@1'),
+    substr($editLogs, 0, 400)
+);
+t(
+    'the edit refusal is recorded as a denial, not as an observation',
+    str_contains($editLogs, 'route.authority.denied') && !str_contains($editLogs, 'route.authority.undeclared'),
+    substr($editLogs, 0, 300)
 );
 
 echo "\n=== 5. NEGATIVE CONTROL — is the declaration load-bearing? ===\n";
