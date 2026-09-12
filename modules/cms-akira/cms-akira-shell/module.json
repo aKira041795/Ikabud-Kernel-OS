@@ -16,6 +16,11 @@
     "migrations": [],
     "capabilities": {
         "exposes": [],
+        "routes": {
+            "POST /cms-akira-shell/permissions": "akira.policy.set_roles@1",
+            "POST /cms-akira-shell/users/{id}/role": "akira.user.update_role@1",
+            "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1"
+        },
         "depends": [
             "akira.policy.list@1",
             "akira.policy.set_roles@1",
