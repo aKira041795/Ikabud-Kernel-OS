@@ -37,6 +37,15 @@ on every read/stream so a path can never escape its tenant root. Streaming is
 served by `GET /api/v1/cms-akira-media/stream/{media_key}` and fails closed
 (404) for missing keys, missing files, cross-tenant reads, or unsafe paths.
 
+**Runtime requirement.** The web process must be able to create and write under
+`storage/private/cms-akira-media/`. `camMediaWriteFile()` creates its tenant directory with a
+recursive `mkdir(..., 0775)`, so it can create missing parents *beneath* `storage/` — but it cannot
+create `storage/` itself, and an upload is the first operation in the product that writes there.
+That is the general storage-writability requirement documented in
+[`docs/kernel/production-deployment-guide.md`](../../../docs/kernel/production-deployment-guide.md)
+(`chmod -R 775 storage/`); this note exists because media fails *first* and reports it as a 503
+"Media storage unavailable", which is not obvious from the outside.
+
 ### Cleanup policy
 
 - `delete@1` removes the stored file after the DB row delete commits.

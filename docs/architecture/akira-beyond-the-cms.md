@@ -279,34 +279,46 @@ That requires delegated authority (P3) and a signed artifact (P4), and neither e
 execution rather than settings, prompts or operator convention. Most of the market has the first;
 almost none can demonstrate the second. That is the contender position — and it is **not yet built**.
 
-### The surface gap (measured 2026-09-12, corrected 2026-09-12)
+### The surface gap (measured 2026-09-12, corrected twice the same day)
 
 **The first version of this section was wrong, and it understated Akira badly.** It counted DiSyL
 template files and concluded the product surface was largely absent. The admin surface is not
-absent — it is built in PHP, so counting `.disyl` files could never have found it. Corrected:
+absent — it is built in PHP, so counting `.disyl` files could never have found it.
+
+**The second version was accurate about the surface but stale within hours**, because the two gaps
+it named were closed the same day. Current state:
 
 | Surface | Reality |
 |---|---|
-| `cms-akira-shell` admin | **16 GET routes with handlers** — `PostList`, `PostCreateForm`, `PostEditForm`, `CategoryList`, `ContentTypeList`, `Permissions`, `Users`, `Compositions`, `CompositionEdit`, `ModuleHealth`, `Dashboard`, `Forbidden` |
-| Post administration | Real and substantial: filtered list (search, category, status, pagination), editor with live preview, category panel, workflow state and allowed actions, revision history, CSRF, idempotency key, optimistic concurrency (`expected_updated_at`, `expected_status`) |
-| 15 `cms-akira-*` modules | **0 DiSyL templates between them** — because the admin UI is PHP-built via `akiraShellPage()`, not templated |
-| `cms-akira-media`, `-navigation`, `-seo`, `-search` | **0 declared routes** — capability providers with no user surface at all |
-| Declared route authority | **14 declared, and all of them POST.** The 16 GET/read routes are **undeclared** |
+| `cms-akira-shell` admin | 16 GET routes with handlers; **25 declared routes — 9 GET, 16 POST** |
+| Post administration | Filtered list (search, category, status, pagination), editor with live preview, category panel, workflow state and allowed actions, revision history, CSRF, idempotency key, optimistic concurrency (`expected_updated_at`, `expected_status`) |
+| Media administration | **Shipped 2026-09-12** — list, upload, delete at `GET/POST /cms-akira-shell/media`. A disallowed type is refused *by `akira.media.upload@1`* with 422, not hidden by the form |
+| Read authority | **Shipped 2026-09-12** — 9 GET routes dispatch-enforced; read policies seeded per capability, each set equal to its handler's existing gate |
+| `cms-akira-navigation`, `-seo`, `-search` | Still **0 declared routes** — capability providers with no user surface |
 | builder UI | 6 source files |
 | ARK theme | 21 templates (11 under `akira-ark` itself) |
 
-So the honest gap is **not** "there is no admin surface". It is three narrower things:
+**Two findings from closing those gaps are worth keeping.**
 
-1. **The read path is ungoverned.** Every POST is dispatch-enforced; every GET is not. Those reads
-   include drafts, `/permissions` and `/users`. A draft leak or a permission read is not a lesser
-   concern than an unauthorised write, and the current declaration shape cannot express read
-   authority at all.
-2. **Four capability modules still have no surface** — media, navigation, SEO, search. Media is the
-   most concrete: `cms-akira-media` exposes capabilities that nothing in the product can invoke.
-3. **The admin UI is PHP-built HTML**, not DiSyL templates or entity views. It works, and its
-   `data-akira-entity-view` markers show the intent, but it is the one place in the product where
-   the rendering pipeline is bypassed — which is much of the reason the substrate's governance is
+First, read authority was not merely unused — it was **untested**. Across all 17 manifests there were
+26 declared routes and **zero GET declarations**; the declaration shape permits reads, but nothing had
+ever exercised one. It works, and was proven so before it was relied on. The size of the gap was also
+understated: **107 undeclared GET routes** exist repo-wide, not 16.
+
+Second, the instrument cannot see reads at all. `GovernanceCensus::isBusiness()` returns false for any
+non-write method, so the summary ratio is **byte-identical with and without** a read declaration —
+including after nine were added. The headline "28/33" is a **write** figure presented as an authority
+figure. That is reported, not yet fixed.
+
+What remains, in the order the panel and the owner ranked it:
+
+1. **Three capability modules still have no surface** — navigation, SEO, search. Media was the fourth
+   and now has one; the same pattern applies, and it is ordinary product work rather than invention.
+2. **The admin UI is PHP-built HTML**, not DiSyL templates or entity views. It works, and its
+   `data-akira-entity-view` markers show the intent, but it is the one place in the product where the
+   rendering pipeline is bypassed — which is much of the reason the substrate's governance is
    invisible *inside* the product rather than visible in it.
+3. **Workbench is still a developer instrument**, not the operator's glass panel (product item #2).
 
 This phase is therefore **productization, not architecture invention**, and it is narrower and
 better-shaped than the first draft of this section implied. The work is not to build a CMS admin
