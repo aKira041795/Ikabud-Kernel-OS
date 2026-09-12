@@ -158,11 +158,35 @@ them — an explicit authority scope replacing ambient `app()->db()` resolution 
 (#118, #119); declaration/revocation shipped with the grant lifecycle and narrowing-only seeding;
 and the inventory now reaches beyond HTTP.
 
-**Route coverage is the one step still open.** Measured 2026-09-12: **84 write operations remain
-undeclared** — 28 across `cms-akira-*` and `gui-settings`, 56 in `daily-ledger` (52 of which count
-as business operations; the rest are auth infrastructure). Not one exemption has been declared
-anywhere, so the judgment "this route is genuinely public" has never been recorded for a single
-route. Route coverage is the next P2 work, and P3–P5 remain deferred behind it.
+**Route coverage is the one step still open.** Measured 2026-09-12 after two slices: Akira is at
+**28/33** dispatch-enforced (23 of the 25 open writes declared; `cms-akira-core`'s 5 were already
+declared). **57 business writes remain undeclared** — 5 in Akira and 52 in `daily-ledger` (the module
+has 56 write routes; 4 are auth infrastructure, excluded from the denominator by `isBusiness()`).
+
+The five Akira holdouts are not one category:
+
+- **`gui-settings` (2) — deliberately excluded, not debt.** GUI Settings is a kernel-admin companion
+  module, configured directly by the operator. Its routes are not declared **by decision**: putting an
+  administrative convenience surface behind the authority model it exists to help administer is a
+  worse trade than leaving it user-set.
+- **shell post delete (1) and theme activate (2) — declarable.** The only reason these are not declared
+  is a stop condition in the closing slice that was too broad. Each handler already calls the very
+  capability its route would declare, so the narrower policy is already in force and declaring would
+  *mirror* it rather than narrow it. They are a small, known follow-up.
+
+**Architectural boundary found while deciding the above.** The authority model covers
+**tenant-scoped** surfaces only. `AuthorityScopeResolver::forApplication()` derives the subject tenant
+from `app()->tenant()->current()`, and on the kernel host no tenant resolves — so a kernel-scoped
+surface has **no authority store at all**, and `seedPolicyForCurrentScope()` deliberately skips rather
+than writing to one (that skip is what stopped CLI work contaminating the kernel authority table).
+Governing any kernel-scoped surface therefore requires an explicit non-tenant store path, and that
+amends the [authority-store ADR](authority-store-adr.md), which today models federation between tenant
+stores only.
+
+No exemption has been declared anywhere yet: `governance.exemptions` remains unused, including for the
+deliberate `gui-settings` exclusion above — so that exclusion currently reads as compatibility debt in
+the census rather than as the decision it is. Route coverage is the next P2 work, and P3–P5 remain
+deferred behind it.
 
 
 ### P3 — Delegation: actors can hold bounded authority **(the new ground)**
@@ -245,7 +269,7 @@ different domains: publication and financial operations.** The risk of "break ne
 inventing something unfalsifiable; every pillar must therefore be demonstrable in Akira, challenged
 by Daily Ledger, measurable by Workbench, and breakable by a test that fails when the claim is false.
 
-**Where that bar stands (2026-09-12): not yet met.** Route coverage is **5/33** in publication
-(Akira) and **0/52** in financial operations (`daily-ledger`); 84 write operations across both
-remain undeclared. The primitive is real, and enforced where declared — it is not yet *general*,
-and this document claims no more than that.
+**Where that bar stands (2026-09-12): not yet met.** Route coverage is **28/33** in publication
+(Akira) and **0/52** in financial operations (`daily-ledger`); 57 business writes across both remain
+undeclared. The primitive is real, and enforced where declared — it is not yet *general*, and this
+document claims no more than that.
