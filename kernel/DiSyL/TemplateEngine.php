@@ -419,7 +419,7 @@ class TemplateEngine
         $context = array_merge($this->globals, $context);
         $sharedCacheKey = null;
         if ($this->templateRenderer()->sharedOutputCacheTtl() > 0 && $this->cacheEnabled && $this->hasApcuCache()) {
-            $sharedCacheKey = $this->templateRenderer()->buildSharedOutputCacheKey($templatePath, $context);
+            $sharedCacheKey = $this->templateRenderer()->buildSharedOutputCacheKey($templatePath, $context, $this->includeBase);
             $shared = apcu_fetch($sharedCacheKey, $sharedHit);
             if ($sharedHit && is_string($shared)) {
                 TemplateRenderer::incrementMetric('output_hits');
@@ -550,7 +550,7 @@ class TemplateEngine
 
         // In-memory cache for repeated renders within same request (e.g., HTMX partials)
         if ($this->cacheEnabled) {
-            $memKey = $this->templateRenderer()->buildOutputCacheKey($templatePath, $context);
+            $memKey = $this->templateRenderer()->buildOutputCacheKey($templatePath, $context, $this->includeBase);
             if ($this->templateRenderer()->hasOutputCacheKey($memKey)) {
                 $this->currentTemplatePath = $prevTemplatePath;
                 return $this->templateRenderer()->outputCacheGet($memKey);
@@ -600,14 +600,14 @@ class TemplateEngine
         return $result;
     }
 
-    private function buildOutputCacheKey(string $templatePath, array $context): string
+    private function buildOutputCacheKey(string $templatePath, array $context, ?string $includeBase = null): string
     {
-        return $this->templateRenderer()->buildOutputCacheKey($templatePath, $context);
+        return $this->templateRenderer()->buildOutputCacheKey($templatePath, $context, $includeBase);
     }
 
-    private function buildSharedOutputCacheKey(string $templatePath, array $context): string
+    private function buildSharedOutputCacheKey(string $templatePath, array $context, ?string $includeBase = null): string
     {
-        return $this->templateRenderer()->buildSharedOutputCacheKey($templatePath, $context);
+        return $this->templateRenderer()->buildSharedOutputCacheKey($templatePath, $context, $includeBase);
     }
 
     private function hasApcuCache(): bool
