@@ -104,6 +104,7 @@ app()->role = 'author';
 $authorNav = akiraShellPage('Test', '');
 app()->role = 'admin';
 $check(str_contains($adminNav, 'href="/cms-akira-theme"') && str_contains($adminNav, 'Theme Studio') && !str_contains($authorNav, 'href="/cms-akira-theme"'), 'Theme Studio navigation is administrator-only');
+$check(str_contains($adminNav, 'href="/cms-akira-shell/media"') && str_contains($authorNav, 'href="/cms-akira-shell/media"'), 'media navigation is visible to administrators and contributors');
 $mutationBody = explode('function akiraShellMutation', $helpers, 2)[1] ?? '';
 $mutationBody = explode("\n}", $mutationBody, 2)[0] ?? '';
 $check(str_contains($mutationBody, 'akiraShellAuthorize()') && !str_contains($mutationBody, 'akiraShellAdmin'), 'delete delegates role authority to its governed policy row');
@@ -230,22 +231,56 @@ $check(str_contains($renderedForm, 'data-akira-post-revisions') && str_contains(
 $check(str_contains($renderedForm, 'x-data="akiraContentEditor()"') && str_contains($renderedForm, 'function akiraContentEditor()') && !str_contains($renderedForm, 'x-data="{body:'), 'rendered editor uses a named Alpine component safe for DiSyL parsing');
 $check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'") && str_contains($helpers, "'expected_status'"), 'saves and workflow transitions preserve optimistic concurrency');
 $check(str_contains($handlers, "['Published', \$published") && str_contains($handlers, 'akiraShellRecentPosts'), 'dashboard presents governed counts and recent posts');
-$check(isset($routes['GET']['/cms-akira-shell/media'], $routes['POST']['/cms-akira-shell/media'], $routes['POST']['/cms-akira-shell/media/{media_key}/delete']), 'media list, upload and delete routes mounted');
-foreach (['akira.media.library@1', 'akira.media.get@1', 'akira.media.upload@1', 'akira.media.delete@1'] as $capability) {
+$check(
+    isset(
+        $routes['GET']['/cms-akira-shell/media'],
+        $routes['POST']['/cms-akira-shell/media'],
+        $routes['POST']['/cms-akira-shell/media/{media_key}/delete-request'],
+        $routes['POST']['/cms-akira-shell/media/{media_key}/delete-cancel'],
+        $routes['POST']['/cms-akira-shell/media/{media_key}/delete']
+    ),
+    'media list, upload, deletion request/cancel, and final delete routes mounted'
+);
+foreach (['akira.media.library@1', 'akira.media.get@1', 'akira.media.upload@1', 'akira.media.delete.request@1', 'akira.media.delete.cancel@1', 'akira.media.delete@1'] as $capability) {
     $check(in_array($capability, $manifest['capabilities']['depends'] ?? [], true), "shell declares {$capability} dependency");
 }
 $check(
     preg_match('/function akiraShellMediaList\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorize\(\)\) \{/s', $handlers) === 1
     && preg_match('/function akiraShellMediaUpload\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorize\(\)\) \{/s', $handlers) === 1
+    && preg_match('/function akiraShellMediaDeleteRequest\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorize\(\)\) \{/s', $handlers) === 1
+    && preg_match('/function akiraShellMediaDeleteCancel\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorize\(\)\) \{/s', $handlers) === 1
     && preg_match('/function akiraShellMediaDelete\(array \$params = \[\]\): void\s*\{\s*if \(!akiraShellAuthorizeAdmin\(\)\) \{/s', $handlers) === 1,
-    'media list and upload use the participant gate while delete keeps the administrator gate'
+    'media list, upload, request, and cancel use the participant gate while delete keeps the administrator gate'
 );
-$check(str_contains($handlers, "akiraShellCall('akira.media.upload@1'") && str_contains($handlers, "akiraShellCall('akira.media.delete@1'") && !str_contains($handlers, 'file_put_contents'), 'media writes use only governed media capabilities');
+$check(
+    str_contains($handlers, "akiraShellCall('akira.media.upload@1'")
+    && str_contains($handlers, "'akira.media.delete.request@1'")
+    && str_contains($handlers, "'akira.media.delete.cancel@1'")
+    && str_contains($handlers, "akiraShellCall('akira.media.delete@1'")
+    && !str_contains($handlers, 'file_put_contents'),
+    'media writes use separate governed request, cancel, and administrator-delete capabilities only'
+);
 $check(str_contains($handlers, 'enctype="multipart/form-data"') && str_contains($handlers, 'base64_encode($content)') && str_contains($helpers, 'data-akira-media-row'), 'media surface transfers multipart content to the provider and renders entity rows');
 $check(str_contains($helpers, 'function akiraShellMediaTable(array $rows, bool $manager)')
     && str_contains($handlers, 'akiraShellMediaTable($rows, akiraShellIsAdmin())')
-    && str_contains($helpers, "if (\$manager) {")
-    && str_contains($helpers, 'Read only'), 'media rows render delete actions only for an administrator and read-only state otherwise');
+    && str_contains($helpers, 'Request deletion')
+    && str_contains($helpers, 'data-akira-media-delete-pending')
+    && str_contains($helpers, 'Published content that references it may stop rendering.'), 'media rows distinguish request, pending, and irreversible approval states');
+
+$mediaRow = [
+    'key' => str_repeat('a', 32), 'filename' => 'hero.png', 'mime_type' => 'image/png',
+    'size_bytes' => 10, 'alt' => 'Hero', 'width' => 10, 'height' => 10, 'url' => '/media/hero',
+    'delete_requested_at' => null, 'delete_requested_by' => null, 'delete_request_reason' => null,
+];
+app()->role = 'author';
+$contributorMedia = akiraShellMediaTable([$mediaRow], false);
+$ownPendingMedia = akiraShellMediaTable([[...$mediaRow, 'delete_requested_at' => '2026-09-12 12:00:00', 'delete_requested_by' => 900001]], false);
+app()->role = 'admin';
+$adminMedia = akiraShellMediaTable([$mediaRow], true);
+$adminPendingMedia = akiraShellMediaTable([[...$mediaRow, 'delete_requested_at' => '2026-09-12 12:00:00', 'delete_requested_by' => 900001]], true);
+$check(str_contains($contributorMedia, 'Request deletion') && !str_contains($contributorMedia, '>Delete<'), 'contributor sees Request deletion and no destructive Delete action');
+$check(str_contains($ownPendingMedia, 'Pending deletion') && str_contains($ownPendingMedia, 'Cancel request'), 'requester sees pending badge and own cancellation action');
+$check(str_contains($adminMedia, '>Delete<') && str_contains($adminPendingMedia, '>Approve<') && str_contains($adminPendingMedia, '>Cancel<'), 'administrator sees Delete and pending Approve/Cancel actions');
 
 echo "shell contract: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);

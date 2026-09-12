@@ -36,6 +36,8 @@ return [
         '/cms-akira-shell/content-types/{id}' => 'cms-akira-shell:akiraShellContentTypeUpdate',
         '/cms-akira-shell/content-types/{id}/delete' => 'cms-akira-shell:akiraShellContentTypeDelete',
         '/cms-akira-shell/media' => 'cms-akira-shell:akiraShellMediaUpload',
+        '/cms-akira-shell/media/{media_key}/delete-request' => 'cms-akira-shell:akiraShellMediaDeleteRequest',
+        '/cms-akira-shell/media/{media_key}/delete-cancel' => 'cms-akira-shell:akiraShellMediaDeleteCancel',
         '/cms-akira-shell/media/{media_key}/delete' => 'cms-akira-shell:akiraShellMediaDelete',
         '/cms-akira-shell/permissions' => 'cms-akira-shell:akiraShellPermissionUpdate',
         '/cms-akira-shell/users/{id}/role' => 'cms-akira-shell:akiraShellUserUpdateRole',

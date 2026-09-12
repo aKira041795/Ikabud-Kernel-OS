@@ -416,10 +416,21 @@ and media detail therefore travel together: a contributor must be able to find a
 uploaded. Each CMS derives this role set from its workflow definition and keeps a deterministic
 fallback for module load independence; it does not create a separate media-role concept.
 
-Destructive media authority is deliberately separate. Akira keeps media deletion administrator-only
-because contributed media may already be referenced by published content. Public media resolution
-also remains outside this governed contribution surface so rendering is not coupled to editorial
-access.
+Destructive media authority is deliberately separate. Akira keeps final media deletion
+administrator-only because contributed media may already be referenced by published content.
+Drafting participants use separate request and own-request cancellation capabilities; requesting
+only records nullable pending state, while the media row, stored file, library visibility, and public
+resolution remain intact. An administrator may cancel or approve a pending request, and approval is
+the only step that removes the row and file. The approval surface warns that published content may
+stop rendering and that deletion cannot be undone.
+
+**Named follow-up — media reference count for deletion approval.** A correct count requires governed
+cross-module reads of post and composition references. `cms-akira-media` deliberately reads only
+`cms_akira_media`, so this count is deferred until a cross-module capability supplies it; the media
+module must not bypass its declared table boundary to compute it.
+
+Public media resolution remains outside this governed contribution surface so rendering is not
+coupled to editorial access or pending deletion state.
 
 Declaration defaults apply only where no grant row exists. A wider declaration never rewrites an
 existing granted tenant policy: an authenticated operator must widen it in the Permissions surface,

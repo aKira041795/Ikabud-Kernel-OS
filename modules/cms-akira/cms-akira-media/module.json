@@ -18,7 +18,8 @@
     ],
     "migrations": [
         "database/migrations/001_initial.sql",
-        "database/migrations/002_create_native_media.sql"
+        "database/migrations/002_create_native_media.sql",
+        "database/migrations/003_add_delete_requests.sql"
     ],
     "capabilities": {
         "exposes": [
@@ -55,6 +56,22 @@
                 "requires_protocol": "v2",
                 "effects": {"invalidates": ["entity.list.media"]},
                 "description": "Update Akira media metadata as an idempotent admin mutation"
+            },
+            {
+                "id": "akira.media.delete.request@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.media"]},
+                "description": "Request administrative deletion of Akira media"
+            },
+            {
+                "id": "akira.media.delete.cancel@1",
+                "priority": 50,
+                "modes": ["first"],
+                "requires_protocol": "v2",
+                "effects": {"invalidates": ["entity.list.media"]},
+                "description": "Cancel an own pending Akira media deletion request"
             },
             {
                 "id": "akira.media.delete@1",

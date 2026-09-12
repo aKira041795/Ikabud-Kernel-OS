@@ -27,6 +27,8 @@ $check = static function (bool $ok, string $label, string $detail = '') use (&$p
 $mutations = [
     'akira.media.upload@1',
     'akira.media.update@1',
+    'akira.media.delete.request@1',
+    'akira.media.delete.cancel@1',
     'akira.media.delete@1',
 ];
 $registry = app()->capabilities();
@@ -169,7 +171,7 @@ try {
     $manifest = kernelReadJsonFile($module . '/module.json');
     $ids = array_column($manifest['capabilities']['exposes'] ?? [], 'id');
     $expectedIds = array_keys(cms_akira_media_capability_handlers());
-    $check($ids === $expectedIds, 'manifest and runtime expose exactly the six native media capabilities');
+    $check($ids === $expectedIds, 'manifest and runtime expose exactly the eight native media capabilities');
     $check(($manifest['depends'] ?? []) === ['cms-akira-core'], 'only the native Akira core module dependency remains');
     $check(
         ($manifest['owns_tables'] ?? []) === ['cms_akira_media']
@@ -214,8 +216,10 @@ try {
         camMediaContributionRoleCsv() === $draftingRoles
         && ($mutationDeclarations['akira.media.upload@1'] ?? '') === $draftingRoles
         && ($mutationDeclarations['akira.media.update@1'] ?? '') === $draftingRoles
+        && ($mutationDeclarations['akira.media.delete.request@1'] ?? '') === $draftingRoles
+        && ($mutationDeclarations['akira.media.delete.cancel@1'] ?? '') === $draftingRoles
         && ($mutationDeclarations['akira.media.delete@1'] ?? '') === 'admin',
-        'fresh mutation declarations use the canonical drafting set while delete stays admin-only'
+        'fresh mutation declarations give request/cancel the drafting set while delete stays admin-only'
     );
     $check(
         ($readDeclarations['akira.media.library@1'] ?? '') === $draftingRoles
@@ -354,20 +358,21 @@ try {
     $library = $call('akira.media.library@1');
     $check(
         ($library['total'] ?? 0) === 1
-        && array_keys($library['rows'][0] ?? []) === ['key', 'filename', 'mime_type', 'size_bytes', 'alt', 'width', 'height', 'url'],
+        && array_keys($library['rows'][0] ?? []) === ['key', 'filename', 'mime_type', 'size_bytes', 'alt', 'width', 'height', 'url', 'delete_requested_at', 'delete_requested_by', 'delete_request_reason'],
         'library is tenant-scoped and explicitly projected'
     );
     $get = $call('akira.media.get@1', ['media_key' => $mediaKey]);
     $check(
         ($get['ok'] ?? false) === true
-        && array_keys($get['data'] ?? []) === ['key', 'filename', 'mime_type', 'size_bytes', 'alt', 'width', 'height', 'url', 'created_at', 'updated_at'],
+        && array_keys($get['data'] ?? []) === ['key', 'filename', 'mime_type', 'size_bytes', 'alt', 'width', 'height', 'url', 'delete_requested_at', 'delete_requested_by', 'delete_request_reason', 'created_at', 'updated_at'],
         'get returns the explicit detail projection'
     );
     $resolved = $call('akira.media.resolve@1', ['media_key' => $mediaKey]);
     $check(
         ($resolved['ok'] ?? false) === true
         && ($resolved['data']['url'] ?? '') === '/api/v1/cms-akira-media/stream/' . $mediaKey
-        && !array_intersect(['id', 'tenant_id', 'storage_path', 'created_at', 'updated_at'], array_keys($resolved['data'] ?? [])),
+        && array_keys($resolved['data'] ?? []) === ['key', 'filename', 'mime_type', 'size_bytes', 'alt', 'width', 'height', 'url']
+        && !array_intersect(['id', 'tenant_id', 'storage_path', 'created_at', 'updated_at', 'delete_requested_at', 'delete_requested_by', 'delete_request_reason'], array_keys($resolved['data'] ?? [])),
         'resolve returns the public render projection and drops every storage/tenant field'
     );
     $missing = $call('akira.media.resolve@1', ['media_key' => str_repeat('ab', 16)]);
@@ -503,7 +508,71 @@ try {
     }
     $check($spoofDenied && ($call('akira.media.library@1', ['tenant_id' => $tenantB])['ok'] ?? true) === false, 'payload tenant identity is rejected on mutation and read paths');
 
-    app()->setUser(['id' => 999502, 'role' => 'editor']);
+    $requester = ['id' => 999502, 'role' => 'author'];
+    app()->setUser($requester);
+    $beforeRequestCount = $db->prepare('SELECT COUNT(*) FROM cms_akira_media WHERE tenant_id = ? AND media_key = ?');
+    $beforeRequestCount->execute([$tenantA, $mediaKey]);
+    $beforeRequestRows = (int) $beforeRequestCount->fetchColumn();
+    $beforeRequestFile = $stored !== null && is_file(camMediaStorageRoot($tenantA) . '/' . $stored);
+    $requested = $call('akira.media.delete.request@1', [
+        'idempotency_key' => $keys[] = $prefix . '-request',
+        'media_key' => $mediaKey,
+        'delete_request_reason' => 'Replaced campaign asset',
+        'expected_updated_at' => $version($mediaKey),
+    ]);
+    $pending = $db->prepare(
+        'SELECT delete_requested_at, delete_requested_by, delete_request_reason FROM cms_akira_media '
+        . 'WHERE tenant_id = ? AND media_key = ?'
+    );
+    $pending->execute([$tenantA, $mediaKey]);
+    $pendingRow = $pending->fetch(PDO::FETCH_ASSOC);
+    $afterRequestCount = $db->prepare('SELECT COUNT(*) FROM cms_akira_media WHERE tenant_id = ? AND media_key = ?');
+    $afterRequestCount->execute([$tenantA, $mediaKey]);
+    $afterRequestFile = $stored !== null && is_file(camMediaStorageRoot($tenantA) . '/' . $stored);
+    $pendingResolve = $call('akira.media.resolve@1', ['media_key' => $mediaKey]);
+    $check(
+        ($requested['operation'] ?? '') === 'media.delete.request'
+        && is_array($pendingRow) && ($pendingRow['delete_requested_at'] ?? null) !== null
+        && (int) ($pendingRow['delete_requested_by'] ?? 0) === $requester['id']
+        && ($pendingRow['delete_request_reason'] ?? '') === 'Replaced campaign asset',
+        'author request records pending state and original requester'
+    );
+    $check(
+        $beforeRequestRows === 1 && (int) $afterRequestCount->fetchColumn() === 1
+        && $beforeRequestFile && $afterRequestFile,
+        'request performs no row delete and no file unlink'
+    );
+    $check(
+        ($pendingResolve['ok'] ?? false) === true
+        && array_keys($pendingResolve['data'] ?? []) === ['key', 'filename', 'mime_type', 'size_bytes', 'alt', 'width', 'height', 'url'],
+        'pending media keeps the unchanged public resolve projection'
+    );
+    $pendingLibrary = $call('akira.media.library@1');
+    $check(
+        ($pendingLibrary['rows'][0]['delete_requested_by'] ?? null) === $requester['id']
+        && ($pendingLibrary['rows'][0]['delete_request_reason'] ?? '') === 'Replaced campaign asset',
+        'library exposes pending request fields'
+    );
+
+    $originalRequestedAt = (string) ($pendingRow['delete_requested_at'] ?? '');
+    app()->setUser(['id' => 999503, 'role' => 'editor']);
+    $secondRequest = $call('akira.media.delete.request@1', [
+        'idempotency_key' => $keys[] = $prefix . '-request-again',
+        'media_key' => $mediaKey,
+        'delete_request_reason' => 'Must not replace the original reason',
+        'expected_updated_at' => $version($mediaKey),
+    ]);
+    $pending->execute([$tenantA, $mediaKey]);
+    $afterSecondRequest = $pending->fetch(PDO::FETCH_ASSOC);
+    $check(
+        ($secondRequest['ok'] ?? false) === true
+        && (string) ($afterSecondRequest['delete_requested_at'] ?? '') === $originalRequestedAt
+        && (int) ($afterSecondRequest['delete_requested_by'] ?? 0) === $requester['id']
+        && ($afterSecondRequest['delete_request_reason'] ?? '') === 'Replaced campaign asset',
+        'second request succeeds without replacing original request state'
+    );
+
+    app()->setUser($requester);
     $roleDenied = false;
     try {
         $call('akira.media.delete@1', [
@@ -514,9 +583,65 @@ try {
     } catch (Throwable $error) {
         $roleDenied = str_contains($error->getMessage(), 'authorization denied');
     }
-    $check($roleDenied, 'governed mutation policy denies a non-admin actor');
-    $setIdentity($tenantA, $admin);
+    $afterDeniedDelete = $db->prepare('SELECT COUNT(*) FROM cms_akira_media WHERE tenant_id = ? AND media_key = ?');
+    $afterDeniedDelete->execute([$tenantA, $mediaKey]);
+    $check(
+        $roleDenied && (int) $afterDeniedDelete->fetchColumn() === 1
+        && $stored !== null && is_file(camMediaStorageRoot($tenantA) . '/' . $stored),
+        'author delete is refused while row and file remain untouched'
+    );
 
+    app()->setUser(['id' => 999503, 'role' => 'editor']);
+    $otherCancelDenied = false;
+    try {
+        $call('akira.media.delete.cancel@1', [
+            'idempotency_key' => $keys[] = $prefix . '-other-cancel',
+            'media_key' => $mediaKey,
+            'expected_updated_at' => $version($mediaKey),
+        ]);
+    } catch (Throwable $error) {
+        $otherCancelDenied = $statusOf($error) === 403;
+    }
+    $pending->execute([$tenantA, $mediaKey]);
+    $check($otherCancelDenied && ($pending->fetch(PDO::FETCH_ASSOC)['delete_requested_at'] ?? null) !== null, 'different non-admin cannot cancel another contributor request');
+
+    app()->setUser($requester);
+    $cancelled = $call('akira.media.delete.cancel@1', [
+        'idempotency_key' => $keys[] = $prefix . '-own-cancel',
+        'media_key' => $mediaKey,
+        'expected_updated_at' => $version($mediaKey),
+    ]);
+    $pending->execute([$tenantA, $mediaKey]);
+    $cancelledRow = $pending->fetch(PDO::FETCH_ASSOC);
+    $check(
+        ($cancelled['operation'] ?? '') === 'media.delete.cancel'
+        && is_array($cancelledRow) && $cancelledRow['delete_requested_at'] === null
+        && $cancelledRow['delete_requested_by'] === null && $cancelledRow['delete_request_reason'] === null,
+        'original requester can cancel and clears all pending fields'
+    );
+
+    $call('akira.media.delete.request@1', [
+        'idempotency_key' => $keys[] = $prefix . '-request-admin-cancel',
+        'media_key' => $mediaKey,
+        'expected_updated_at' => $version($mediaKey),
+    ]);
+    $setIdentity($tenantA, $admin);
+    $call('akira.media.delete.cancel@1', [
+        'idempotency_key' => $keys[] = $prefix . '-admin-cancel',
+        'media_key' => $mediaKey,
+        'expected_updated_at' => $version($mediaKey),
+    ]);
+    $pending->execute([$tenantA, $mediaKey]);
+    $adminCancelledRow = $pending->fetch(PDO::FETCH_ASSOC);
+    $check(is_array($adminCancelledRow) && $adminCancelledRow['delete_requested_at'] === null, 'administrator can cancel a contributor request');
+
+    app()->setUser($requester);
+    $call('akira.media.delete.request@1', [
+        'idempotency_key' => $keys[] = $prefix . '-request-approval',
+        'media_key' => $mediaKey,
+        'expected_updated_at' => $version($mediaKey),
+    ]);
+    $setIdentity($tenantA, $admin);
     $deleted = $call('akira.media.delete@1', [
         'idempotency_key' => $keys[] = $prefix . '-delete',
         'media_key' => $mediaKey,
@@ -525,7 +650,7 @@ try {
     $remaining = $db->prepare('SELECT COUNT(*) FROM cms_akira_media WHERE tenant_id = ? AND media_key = ?');
     $remaining->execute([$tenantA, $mediaKey]);
     $fileRemoved = $stored !== null && !is_file(camMediaStorageRoot($tenantA) . '/' . $stored);
-    $check(($deleted['operation'] ?? '') === 'media.delete' && (int) $remaining->fetchColumn() === 0 && $fileRemoved, 'delete hard-removes the row and its stored file');
+    $check(($deleted['operation'] ?? '') === 'media.delete' && (int) $remaining->fetchColumn() === 0 && $fileRemoved, 'admin approval hard-removes the pending row and its stored file');
     $check(($call('akira.media.resolve@1', ['media_key' => $mediaKey])['ok'] ?? true) === false, 'deleted media reference resolve fails closed');
 
     $pdfUpload = $call('akira.media.upload@1', [
@@ -557,11 +682,22 @@ try {
         'native media table is InnoDB utf8mb4_unicode_ci'
     );
     $migration = (string) file_get_contents($module . '/database/migrations/002_create_native_media.sql');
+    $deleteRequestMigration = (string) file_get_contents($module . '/database/migrations/003_add_delete_requests.sql');
     $check(
         str_contains($migration, 'CHAR(32) CHARACTER SET ascii COLLATE ascii_bin')
         && str_contains($migration, 'UNIQUE KEY uq_media_tenant_key (tenant_id, media_key)')
         && !preg_match('/\b(CHECK|JSON_TABLE|WITH RECURSIVE|GENERATED ALWAYS)\b/i', $migration),
         'migration observes the MySQL-5.7 composite-index byte budget and syntax set'
+    );
+    $check(
+        in_array('database/migrations/003_add_delete_requests.sql', $manifest['migrations'] ?? [], true)
+        && substr_count($deleteRequestMigration, 'information_schema.columns') === 3
+        && substr_count($deleteRequestMigration, 'DEALLOCATE PREPARE') === 3
+        && str_contains($deleteRequestMigration, 'delete_requested_at DATETIME NULL')
+        && str_contains($deleteRequestMigration, 'delete_requested_by INT UNSIGNED NULL')
+        && str_contains($deleteRequestMigration, 'delete_request_reason VARCHAR(255) NULL')
+        && !preg_match('/\b(CHECK|JSON_TABLE|WITH RECURSIVE|GENERATED ALWAYS)\b/i', $deleteRequestMigration),
+        'delete-request migration is registered, independently idempotent, additive, and MySQL-5.7-safe'
     );
     $databaseManager = (string) file_get_contents($root . '/kernel/Services/DatabaseManager.php');
     $check(
