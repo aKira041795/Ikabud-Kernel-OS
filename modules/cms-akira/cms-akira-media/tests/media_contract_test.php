@@ -49,11 +49,6 @@ foreach (cms_akira_media_capability_handlers() as $id => $handler) {
     );
 }
 
-requireWritableCacheDirectory(
-    $root . '/storage/cache/disyl-fragments',
-    'media fragment-cache fixture root'
-);
-
 $tenantIds = [];
 for ($attempt = 0; $attempt < 40 && count($tenantIds) < 2; $attempt++) {
     $candidate = random_int(8000000, 8999999);
@@ -80,9 +75,11 @@ $db = app()->db();
 $prefix = 'media-' . bin2hex(random_bytes(5));
 $keys = [];
 $admin = ['id' => 999501, 'role' => 'admin'];
-$setIdentity = static function (int $tenant, array $user): void {
+$setIdentity = static function (int $tenant, array $user) use ($db): void {
     app()->tenant()->setTenantId($tenant);
     kernel_request_context_set('tenant_id', $tenant);
+    tenantSetModuleActivationState($db, $tenant, ['cms-akira-media'], true, 'media-contract-' . $tenant);
+    invalidateTenantModuleSettingsCache();
     app()->setUser($user);
 };
 $call = static function (string $id, array $payload = []) use ($admin): array {
@@ -150,7 +147,21 @@ try {
         && ($manifest['reads_tables'] ?? []) === ['cms_akira_media'],
         'owned and readable media tables are explicit'
     );
-    $check(($manifest['_enabled'] ?? null) === false && !isset($manifest['entities']), 'tenant activation is explicit and media claims no Kernel Entity Authority');
+    $fixtureActivation = $db->prepare(
+        "SELECT tenant_id, setting_value FROM tenant_module_settings WHERE tenant_id IN (?, ?) "
+        . "AND module_id = 'cms-akira-media' AND setting_key = '_module_enabled' ORDER BY tenant_id"
+    );
+    $fixtureActivation->execute([$tenantA, $tenantB]);
+    $fixtureActivationRows = $fixtureActivation->fetchAll(PDO::FETCH_KEY_PAIR);
+    $check(
+        ($manifest['_enabled'] ?? null) === false
+        && !isset($manifest['entities'])
+        && ($fixtureActivationRows[$tenantA] ?? null) === 'true'
+        && ($fixtureActivationRows[$tenantB] ?? null) === 'true'
+        && moduleIsActive('cms-akira-media', $tenantA)
+        && moduleIsActive('cms-akira-media', $tenantB),
+        'tenant activation is explicit, fixture tenants permit media, and media claims no Kernel Entity Authority'
+    );
     foreach ($mutations as $id) {
         $entry = $manifest['capabilities']['exposes'][array_search($id, $ids, true)] ?? [];
         $check(

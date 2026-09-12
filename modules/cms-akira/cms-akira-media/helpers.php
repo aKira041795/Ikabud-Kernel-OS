@@ -30,8 +30,8 @@ function camMediaContributionRoleCsv(): string
         ? cawPostLifecycleParticipantRoles()
         : $canonical;
     $roles = [];
-    foreach (is_array($derived) ? $derived : [] as $role) {
-        $role = is_string($role) ? trim($role) : '';
+    foreach ($derived as $role) {
+        $role = trim($role);
         if ($role !== '') {
             $roles[$role] = true;
         }
