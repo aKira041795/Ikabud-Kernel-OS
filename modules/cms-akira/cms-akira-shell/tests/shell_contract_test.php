@@ -136,7 +136,7 @@ $check(
     'builder bootstrap JSON is unescaped-for-JSON and cannot break out of the script element'
 );
 $check(($bootstrapDecoded['blocks_endpoint'] ?? '') === '/api/v1/cms-akira-theme/blocks', 'builder bootstrap advertises the active-theme block catalogue endpoint');
-$check(count($manifest['nav'] ?? []) === 8, 'dashboard, editorial, permissions, users and health navigation');
+$check(count($manifest['nav'] ?? []) === 9, 'dashboard, editorial, media, permissions, users and health navigation');
 $check(isset($routes['GET']['/cms-akira-shell/permissions'], $routes['POST']['/cms-akira-shell/permissions'])
     && isset($routes['GET']['/cms-akira-shell/users'], $routes['POST']['/cms-akira-shell/users/{id}/role'], $routes['POST']['/cms-akira-shell/users/{id}/active']), 'permissions and users governance routes mounted');
 foreach (['akira.policy.list@1', 'akira.policy.set_roles@1', 'akira.user.list@1', 'akira.user.update_role@1', 'akira.user.set_active@1'] as $capability) {
@@ -148,7 +148,8 @@ $check(str_contains($handlers, "akiraShellCall('akira.policy.set_roles@1'")
 $check(str_contains($handlers, 'akiraShellAuthorizeAdmin()') && str_contains($handlers, 'app()->csrfEnforce()'), 'governance surfaces retain administrator and Kernel CSRF gates');
 $check(($manifest['nav'][2]['url'] ?? '') === '/cms-akira-shell/categories' && ($manifest['nav'][2]['label'] ?? '') === 'Categories', 'categories nav entry present in shell module.json');
 $check(($manifest['nav'][3]['url'] ?? '') === '/cms-akira-shell/content-types' && ($manifest['nav'][3]['label'] ?? '') === 'Content types', 'content types nav entry present in shell module.json');
-$check(($manifest['nav'][4]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
+$check(($manifest['nav'][4]['url'] ?? '') === '/cms-akira-shell/media' && ($manifest['nav'][4]['roles'] ?? []) === ['admin'], 'media nav entry mirrors the admin-only capability policy');
+$check(($manifest['nav'][5]['url'] ?? '') === '/cms-akira-shell/compositions', 'compositions nav entry present in shell module.json');
 $check(isset($routes['POST']['/cms-akira-shell/posts/{slug}/delete']), 'delete route');
 $check(
     isset($routes['GET']['/cms-akira-shell/categories']) && isset($routes['POST']['/cms-akira-shell/categories'])
@@ -229,6 +230,13 @@ $check(str_contains($renderedForm, 'data-akira-post-revisions') && str_contains(
 $check(str_contains($renderedForm, 'x-data="akiraContentEditor()"') && str_contains($renderedForm, 'function akiraContentEditor()') && !str_contains($renderedForm, 'x-data="{body:'), 'rendered editor uses a named Alpine component safe for DiSyL parsing');
 $check(str_contains($helpers, 'akiraShellCall($capability, $input)') && str_contains($helpers, "'expected_updated_at'") && str_contains($helpers, "'expected_status'"), 'saves and workflow transitions preserve optimistic concurrency');
 $check(str_contains($handlers, "['Published', \$published") && str_contains($handlers, 'akiraShellRecentPosts'), 'dashboard presents governed counts and recent posts');
+$check(isset($routes['GET']['/cms-akira-shell/media'], $routes['POST']['/cms-akira-shell/media'], $routes['POST']['/cms-akira-shell/media/{media_key}/delete']), 'media list, upload and delete routes mounted');
+foreach (['akira.media.library@1', 'akira.media.get@1', 'akira.media.upload@1', 'akira.media.delete@1'] as $capability) {
+    $check(in_array($capability, $manifest['capabilities']['depends'] ?? [], true), "shell declares {$capability} dependency");
+}
+$check(str_contains($handlers, 'function akiraShellMediaList') && str_contains($handlers, 'function akiraShellMediaUpload') && str_contains($handlers, 'function akiraShellMediaDelete') && substr_count($handlers, 'akiraShellAuthorizeAdmin()') >= 3, 'every media route uses the administrator presentation gate');
+$check(str_contains($handlers, "akiraShellCall('akira.media.upload@1'") && str_contains($handlers, "akiraShellCall('akira.media.delete@1'") && !str_contains($handlers, 'file_put_contents'), 'media writes use only governed media capabilities');
+$check(str_contains($handlers, 'enctype="multipart/form-data"') && str_contains($handlers, 'base64_encode($content)') && str_contains($helpers, 'data-akira-media-row'), 'media surface transfers multipart content to the provider and renders entity rows');
 
 echo "shell contract: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);

@@ -23,6 +23,7 @@
             "GET /cms-akira-shell/posts/{slug}/edit": "akira.post.admin.get@1",
             "GET /cms-akira-shell/categories": "akira.taxonomy.list@1",
             "GET /cms-akira-shell/content-types": "akira.content_type.list@1",
+            "GET /cms-akira-shell/media": "akira.media.library@1",
             "GET /cms-akira-shell/permissions": "akira.policy.list@1",
             "GET /cms-akira-shell/users": "akira.user.list@1",
             "POST /cms-akira-shell/posts": "akira.post.create@1",
@@ -36,6 +37,8 @@
             "POST /cms-akira-shell/content-types": "akira.content_type.create@1",
             "POST /cms-akira-shell/content-types/{id}": "akira.content_type.update@1",
             "POST /cms-akira-shell/content-types/{id}/delete": "akira.content_type.delete@1",
+            "POST /cms-akira-shell/media": "akira.media.upload@1",
+            "POST /cms-akira-shell/media/{media_key}/delete": "akira.media.delete@1",
             "POST /cms-akira-shell/permissions": "akira.policy.set_roles@1",
             "POST /cms-akira-shell/users/{id}/role": "akira.user.update_role@1",
             "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1"
@@ -66,6 +69,10 @@
             "akira.content_type.create@1",
             "akira.content_type.update@1",
             "akira.content_type.delete@1",
+            "akira.media.library@1",
+            "akira.media.get@1",
+            "akira.media.upload@1",
+            "akira.media.delete@1",
             "entity.list.post@1",
             "entity.get.post@1",
             "akira.theme.resolve@1",
@@ -127,6 +134,14 @@
                 "admin",
                 "administrator",
                 "superadmin"
+            ]
+        },
+        {
+            "label": "Media",
+            "url": "/cms-akira-shell/media",
+            "icon": "image",
+            "roles": [
+                "admin"
             ]
         },
         {

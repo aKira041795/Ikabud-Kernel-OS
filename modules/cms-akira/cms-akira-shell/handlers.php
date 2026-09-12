@@ -861,6 +861,95 @@ function akiraShellContentTypeRow(array $row, bool $manager): string
 
 
 /** @param array<string,mixed> $params */
+function akiraShellMediaList(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    akiraShellMediaPage();
+}
+
+function akiraShellMediaPage(string $error = '', string $alt = ''): void
+{
+    try {
+        $result = akiraShellCall('akira.media.library@1', ['limit' => 100, 'offset' => 0]);
+        $rows = is_array($result['rows'] ?? null) ? array_values(array_filter($result['rows'], 'is_array')) : [];
+    } catch (Throwable $exception) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($exception), 'authorization denied') ? 403 : 422);
+        $rows = [];
+        $error = $error !== '' ? $error : akiraShellRootErrorMessage($exception);
+    }
+    $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Upload refused:</strong> ' . akiraShellEscape($error) . '</div>';
+    $control = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-akira-500 focus:outline-none focus:ring-2 focus:ring-akira-500/20';
+    $upload = '<form data-akira-media-upload method="post" action="/cms-akira-shell/media" enctype="multipart/form-data" class="mb-6 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Upload media</h2><p class="mt-1 text-sm text-slate-500">Images and PDFs are checked by the governed media capability before storage.</p>'
+        . '<div class="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><label class="text-xs font-semibold text-slate-500">File<input class="' . $control . ' mt-1" type="file" name="media_file" required></label>'
+        . '<label class="text-xs font-semibold text-slate-500">Alt text (optional)<input class="' . $control . ' mt-1" type="text" name="alt" maxlength="255" value="' . akiraShellEscape($alt) . '"></label>'
+        . '<input type="hidden" name="idempotency_key" value="media-upload-' . bin2hex(random_bytes(10)) . '"><button type="submit" class="self-end rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white">Upload</button></div></form>';
+    $body = akiraShellMediaNotice() . $errorHtml . $upload
+        . '<section data-akira-entity-view="media-list">' . akiraShellMediaTable($rows) . '</section>';
+    echo akiraShellPage('Media', $body, ['active' => 'media']);
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellMediaUpload(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $file = $_FILES['media_file'] ?? null;
+    try {
+        if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            throw new RuntimeException('A successfully transferred file is required.');
+        }
+        $temporary = (string) ($file['tmp_name'] ?? '');
+        $content = $temporary !== '' ? file_get_contents($temporary) : false;
+        if ($content === false || $content === '') {
+            throw new RuntimeException('The transferred file could not be read.');
+        }
+        akiraShellCall('akira.media.upload@1', [
+            'idempotency_key' => trim((string) ($input['idempotency_key'] ?? '')),
+            'filename' => (string) ($file['name'] ?? ''),
+            'mime_type' => (string) ($file['type'] ?? ''),
+            'content' => base64_encode($content),
+            'alt' => (string) ($input['alt'] ?? ''),
+        ]);
+        akiraShellRedirect('/cms-akira-shell/media?saved=upload');
+    } catch (Throwable $exception) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($exception), 'authorization denied') ? 403 : 422);
+        akiraShellMediaPage(akiraShellRootErrorMessage($exception), (string) ($input['alt'] ?? ''));
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellMediaDelete(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $key = (string) ($params['media_key'] ?? '');
+    try {
+        $detail = akiraShellCall('akira.media.get@1', ['media_key' => $key]);
+        if (!is_array($detail) || ($detail['ok'] ?? false) !== true || !is_array($detail['data'] ?? null)) {
+            throw new RuntimeException('Media not found.');
+        }
+        akiraShellCall('akira.media.delete@1', [
+            'idempotency_key' => trim((string) ($input['idempotency_key'] ?? '')),
+            'media_key' => $key,
+            'expected_updated_at' => (string) ($detail['data']['updated_at'] ?? ''),
+        ]);
+        akiraShellRedirect('/cms-akira-shell/media?saved=delete');
+    } catch (Throwable $exception) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($exception), 'authorization denied') ? 403 : 422);
+        akiraShellMediaPage(akiraShellRootErrorMessage($exception));
+    }
+}
+
+/** @param array<string,mixed> $params */
 function akiraShellPermissions(array $params = []): void
 {
     if (!akiraShellAuthorizeAdmin()) {

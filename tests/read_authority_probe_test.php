@@ -146,6 +146,7 @@ $expectedReads = [
     'GET /cms-akira-shell/posts/{slug}/edit' => 'akira.post.admin.get@1',
     'GET /cms-akira-shell/categories' => 'akira.taxonomy.list@1',
     'GET /cms-akira-shell/content-types' => 'akira.content_type.list@1',
+    'GET /cms-akira-shell/media' => 'akira.media.library@1',
     'GET /cms-akira-shell/permissions' => 'akira.policy.list@1',
     'GET /cms-akira-shell/users' => 'akira.user.list@1',
 ];
@@ -294,6 +295,26 @@ t(
 t(
     'the declaration alone decides the outcome (load-bearing)',
     $readAllowed === false && $undeclaredRead === true
+);
+
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/cms-akira-shell/media';
+file_put_contents($appLog, '');
+ob_start();
+$mediaAllowed = moduleRouteAuthorityEnforce(
+    'cms-akira-shell',
+    'GET',
+    '/cms-akira-shell/media',
+    '/cms-akira-shell/media',
+    null
+);
+$mediaBody = (string) ob_get_clean();
+$mediaLogs = (string) @file_get_contents($appLog);
+t(
+    'the declared media library refuses a caller with no authority at dispatch',
+    $mediaAllowed === false && str_contains($mediaBody, '403')
+        && str_contains($mediaLogs, 'akira.media.library@1'),
+    substr($mediaBody . $mediaLogs, 0, 400)
 );
 
 $_SERVER = $originalServer;
