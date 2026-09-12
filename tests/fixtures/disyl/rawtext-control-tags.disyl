@@ -1,0 +1,11 @@
+<script>
+const quoted = "{if enabled}enabled{else}disabled{/if}";
+const unquoted = {if enabled}true{else}false{/if};
+const items = [{foreach items as item}"{item}",{/foreach}];
+const objectLiteral = {enabled: true, nested: {value: 1}};
+</script>
+<style>
+*{box-sizing:border-box}
+.panel{color:red;margin:0;}
+{foreach palette as color}.token-{color}::before{content:"{color}";}{/foreach}
+</style>

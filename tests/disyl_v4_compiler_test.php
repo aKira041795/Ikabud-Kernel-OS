@@ -259,6 +259,35 @@ check('script interpolation survives nested object braces',
     "<script>function f(){return{a:1,b:'X'}}</script>",
     $engine->renderString("<script>function f(){return{a:1,b:'{v}'}}</script>", ['v' => 'X']));
 
+// The raw-text control-tag defect only occurred in render()'s file/compiler path;
+// renderString() takes a different path and therefore cannot guard this regression.
+echo "── 16. Raw-text control tags through render(file) ─────\n";
+$fileEngine = new TemplateEngine(__DIR__ . '/fixtures/disyl', '/tmp/disyl_rawtext_file_test', false);
+$fileEngine->enableCompiledMode(true);
+$fileExpected = <<<'HTML'
+<script>
+const quoted = "enabled";
+const unquoted = true;
+const items = ["one","two",];
+const objectLiteral = {enabled: true, nested: {value: 1}};
+</script>
+<style>
+*{box-sizing:border-box}
+.panel{color:red;margin:0;}
+.token-red::before{content:"red";}.token-blue::before{content:"blue";}
+</style>
+HTML;
+$fileActual = $fileEngine->render('rawtext-control-tags.disyl', [
+    'enabled' => true,
+    'items' => ['one', 'two'],
+    'palette' => ['red', 'blue'],
+]);
+check(
+    'file render handles quoted/unquoted if and foreach while preserving CSS/JS braces',
+    $fileExpected,
+    $fileActual
+);
+
 echo "\n╔══════════════════════════════════════════════════════╗\n";
 printf("║  RESULTS:  %2d PASSED  |  %2d FAILED                     ║\n", $pass, $fail);
 echo "╚══════════════════════════════════════════════════════╝\n";
