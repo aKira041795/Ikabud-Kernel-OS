@@ -82,6 +82,54 @@ function cacSeedPostAdminReadPolicies(): void
 cacSeedPostAdminReadPolicies();
 
 /**
+ * Seed route-level read authority for the Akira shell. The active policy may
+ * have been cloned by the permissions UI, so declarations must join the
+ * currently active version rather than silently landing only in version 1.
+ */
+function cacSeedShellReadPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
+    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
+        'actor' => app()->user(),
+    ]);
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+        null,
+        $scope,
+        $resolver,
+        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
+    );
+    $activeRows = $registry->activePolicyRows();
+    $policyVersion = $activeRows === [] ? 1 : (int)($activeRows[0]['policy_version'] ?? 1);
+
+    $rows = [];
+    foreach ([
+        'akira.taxonomy.list@1' => 'contributor,author,editor,admin,administrator,superadmin',
+        'akira.content_type.list@1' => 'contributor,author,editor,admin,administrator,superadmin',
+        'akira.policy.list@1' => 'admin,administrator,superadmin',
+        'akira.user.list@1' => 'admin,administrator,superadmin',
+    ] as $capabilityId => $allowedRoles) {
+        $rows[] = [
+            'policy_version' => $policyVersion,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-core',
+            'caller_module' => 'cms-akira-core,cms-akira-shell',
+            'allowed_roles' => $allowedRoles,
+            'provider_activation_required' => true,
+            'requires_protocol' => 'v1',
+            'is_active' => true,
+        ];
+    }
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+}
+
+cacSeedShellReadPolicies();
+
+/**
  * Activation-time, idempotent seed for the P1 governed taxonomy mutation
  * policy. Mirrors cacSeedPostMutationPolicies(): the CapabilityAuthorizationRegistry
  * is the legal kernel-owned channel and the rows are created per tenant DB.

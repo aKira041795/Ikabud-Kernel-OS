@@ -139,42 +139,43 @@ t(
     ))
 );
 
-// The edit form is the second (and, in this increment, the only other) read
-// whose capability has a tenant policy row — akira.post.admin.get@1. It is
-// seeded by cacSeedPostAdminReadPolicies() alongside the list read.
+$expectedReads = [
+    'GET /cms-akira-shell' => 'akira.post.admin.list@1',
+    'GET /cms-akira-shell/posts' => 'akira.post.admin.list@1',
+    'GET /cms-akira-shell/posts/new' => 'akira.taxonomy.list@1',
+    'GET /cms-akira-shell/posts/{slug}/edit' => 'akira.post.admin.get@1',
+    'GET /cms-akira-shell/categories' => 'akira.taxonomy.list@1',
+    'GET /cms-akira-shell/content-types' => 'akira.content_type.list@1',
+    'GET /cms-akira-shell/permissions' => 'akira.policy.list@1',
+    'GET /cms-akira-shell/users' => 'akira.user.list@1',
+];
+$actualReads = array_filter(
+    (array) $shellDeclared,
+    static fn ($k) => str_starts_with((string) $k, 'GET'),
+    ARRAY_FILTER_USE_KEY
+);
 t(
-    'cms-akira-shell declares authority for the admin post edit form',
-    ($shellDeclared['GET /cms-akira-shell/posts/{slug}/edit'] ?? null) === 'akira.post.admin.get@1',
-    json_encode(array_filter(
-        (array) $shellDeclared,
-        static fn ($k) => str_starts_with((string) $k, 'GET'),
-        ARRAY_FILTER_USE_KEY
-    ))
+    'cms-akira-shell declares exactly the reads backed by matching handler gates and policy rows',
+    $actualReads === $expectedReads,
+    json_encode($actualReads)
 );
 
-// Exclusions are deliberate, not omissions. Every other route in the
-// extension's declare table maps to a read whose capability the repository
-// deliberately leaves ungoverned until increment R5 ("Reads (list/get) remain
-// ungoverned until R5 governs reads"), so it has no policy row. The dispatch
-// guard's authorize() is fail-closed: a declared route with no policy row is
-// refused for every actor, including administrators. Declaring any of them
-// would 403 the page. login and forbidden are excluded for lockout/loop safety,
-// and health is an operational probe with no capability call.
+// EntityViewResolver, not the compositions handler, is the actual capability
+// caller; the composition editor and health handlers call no read capability.
+// Entry, denial, and public surfaces remain undeclared for safety.
 $excludedReads = [
-    'GET /cms-akira-shell/posts/new',
-    'GET /cms-akira-shell/categories',
-    'GET /cms-akira-shell/content-types',
-    'GET /cms-akira-shell/permissions',
-    'GET /cms-akira-shell/users',
     'GET /cms-akira-shell/compositions',
     'GET /cms-akira-shell/compositions/{key}/edit',
     'GET /cms-akira-shell/login',
     'GET /cms-akira-shell/forbidden',
     'GET /cms-akira-shell/health',
+    'GET /',
+    'GET /posts',
+    'GET /posts/{slug}',
 ];
 $declaredExcluded = array_values(array_intersect(array_keys($shellDeclared), $excludedReads));
 t(
-    'the ungoverned reads and the entry/denial/probe surfaces are NOT declared',
+    'non-declarable and protected entry/denial/public surfaces are NOT declared',
     $declaredExcluded === [],
     json_encode($declaredExcluded)
 );
