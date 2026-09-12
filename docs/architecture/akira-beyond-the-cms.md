@@ -241,18 +241,32 @@ is what makes the feature worth shipping.
 > and can prove it stayed inside them.**
 
 The market is currently attaching AI to content systems with plugin-grade power, no bound on what
-the model may do, and no way to prove what it did. Akira already holds every primitive needed to
-answer that: `Grant` (P3), per-tenant policy rows, provenance (P1), segregation of duties and
-idempotency. The resulting product claim is concrete and demonstrable today:
+the model may do, and no way to prove what it did. That is the gap this thesis aims at — but it is a
+**target, not current state**. An independent two-model panel on 2026-09-12 measured the distance
+rather than assuming it (`.ai/akira-direction-synthesis.md`), and the measurement is unflattering:
 
-- an agent may **draft, summarise, suggest and schedule** — it may not publish;
-- a human holding *different* authority approves the transition;
-- the published artifact carries the whole chain — actor, grant, policy version, provenance;
-- and an exported artifact stays verifiable after it leaves the server (P4).
+- **`cms-akira-ai` is not AI.** It ships `_enabled: false` and is a deterministic local summariser
+  with no provider SDK and no remote transport.
+- **The AI seam is an echo.** `kernel/DiSyL/AI/` defaults to `EchoAiProvider`, which returns
+  `[ai:MODEL] <prompt>`. Its `Policy` cost ceiling accumulates **in memory**, with `Policy.php`
+  recording the per-tenant DB-backed ceiling as future work. Scheduling does not exist.
+- **AI governance sits off the capability bus.** `AIGovernance` persists settings, review queue and
+  audit trail as JSON files under `storage/` (`ai-governance.json`, `tenant-ai-settings.json`, JSON
+  queues) and gates its admin surface by role — the same "reimplemented governance locally"
+  anti-pattern that P2 exists to eliminate in `daily-ledger`. **This is a named defect: migrate it
+  onto the bus or delete it. Do not extend it.**
+- **P4 needs a new primitive.** `kernel/Crypto.php` is symmetric only, with no sign/verify path, so
+  "it costs no new substrate" would be false.
 
-*Intelligent* means the system does real work. *Gated* means its limits are enforced properties of
-execution, not settings, prompts or operator convention. Most of the market has the first; almost
-none can demonstrate the second. That is the contender position, and it costs no new substrate.
+The claim that survives the panel's objection is narrower than "an AI that cannot publish". Every CMS
+already prevents that with a role permission, and drafting is commoditised. The defensible claim is:
+
+> **A portable, off-server-verifiable record of who authorised this publication, under which grant.**
+
+That requires delegated authority (P3) and a signed artifact (P4), and neither exists yet.
+*Intelligent* means the system does real work; *gated* means the limits are enforced properties of
+execution rather than settings, prompts or operator convention. Most of the market has the first;
+almost none can demonstrate the second. That is the contender position — and it is **not yet built**.
 
 ### The surface gap (measured 2026-09-12)
 
@@ -284,6 +298,17 @@ Ordered direction — direction, not commitment; every item still passes the dis
 6. **Production floor** — onboarding, backup/export, redirects, sitemap/schema, images, scheduling.
 7. **Workbench as the operator's console** — governance and degradation made visible to operators,
    not only to developers.
+
+**Panel verdict on the ordering (2026-09-12).** An independent two-model debate
+(`.ai/akira-direction-synthesis.md`) converged on the first three items — alone, from different
+lineages, without cross-visibility — and disputed the rest. Both panellists would **cut #4 (ARK Theme
+Studio)** and **#5 (installation profiles as editions)**, the first as competitive with mature theme
+customisers and adding a second JS build to a shared-hosting target, the second as packaging rather
+than value. Sol also cut a customer-facing Workbench console (#7) until customers ask. Flash further
+argued that #1–#3 are not merely ordered but *unvalidated*: the wedge is low-confidence, the AI claim
+is not the purchase reason, and the cheapest next step is five buyer conversations rather than more
+code. **Those cuts are recorded here, not applied** — they change direction and belong to the product
+owner. What is not in dispute is that #1 must precede the others.
 
 **Relationship to the pillar sequence.** The substrate order (**P2 closure → P3 → P4 → P5**) governs
 when a *primitive* may be relied upon; it does not serialise the *product surface*. An admin surface
