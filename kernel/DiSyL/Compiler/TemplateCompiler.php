@@ -40,8 +40,14 @@ class TemplateCompiler
      * Compiler version — bump whenever AST structure or code generation logic
      * changes.  TemplateCache includes this in cache filenames so stale
      * compiled files are automatically bypassed after an upgrade.
+     *
+     * 14 — Parser::looksLikeDisyl() now recognises control TAGS (not only
+     *      expressions) inside HTML raw-text elements. A cached compile from
+     *      version 13 still contains the literal `{if}` text it emitted inside
+     *      <script> blocks, so the cache must be invalidated for the fix to
+     *      reach a warm deployment.
      */
-    public const COMPILER_VERSION = 13;
+    public const COMPILER_VERSION = 14;
 
     /**
      * Maximum iterations for unbounded loops ({while} and C-style {for}).
