@@ -655,6 +655,7 @@ function camMediaMutate(string $operation, array $payload): array
 
 /**
  * @param array<string, mixed> $input
+ * @param array<string, mixed> $actor
  * @return array{key: string, old: mixed, new: array<string, mixed>, projection: array<string, mixed>, written_path?: ?string, storage_path?: string}
  */
 function camMediaMutateChange(string $operation, array $input, int $tenantId, array $actor): array
