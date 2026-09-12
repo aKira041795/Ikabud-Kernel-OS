@@ -2,6 +2,7 @@
 
 status: direction (chair, 2026-09-10) · authority: product owner — *"Akira can now freely take its
 intended shape and form, unbounded by WordPress's shadow and other CMS's. Let's break new ground."*
+revised: 2026-09-12 (chair) — P2 status reconciled with shipped PRs #112–#120.
 
 Depends on: [kernel-substrate-thesis.md](kernel-substrate-thesis.md).
 
@@ -76,8 +77,9 @@ instrument. That is the opposite of a substrate — and it means P3–P5 are **d
 because delegation, third-party verification and consent all presuppose that authority is actually
 enforced. Building them first would be a beautiful facade on an unenforced system.
 
-Also measured: Akira's own ratio has **never been established** with the same method. Calling it
-"the known-good instrumented reference" has been an assumption, not a finding.
+Also measured at the time: Akira's own ratio had **never been established** with the same method, so
+calling it "the known-good instrumented reference" was an assumption, not a finding. C6 below
+established it — 5 of 33.
 
 The primitive: **authority is a property of the request, not a courtesy of the handler.** A module
 declares the authority each route requires; dispatch enforces it; the instrument reports the
@@ -106,29 +108,61 @@ Verified over real HTTP on tenant 54: an `author`-role caller was refused `POST
 execute. An allowed caller created a post (201), and replaying the idempotency key produced one
 domain transition, not two.
 
-Not yet covered, and not claimed: scheduled jobs, event handlers, CLI handlers and other direct
-callables remain outside this inventory.
+**Shipped 2026-09-11/12 — the two remaining P2 steps.**
+
+- **Explicit authority scope (#118, #119).** `AuthorityScopeResolver` carries
+  `AuthorityScope{tenantId, actor, declarationRevision, entryPoint}`, and the non-HTTP entry points
+  declare one: web, cli, cron, queue, service, event, workbench, test. Where a scope is resolvable
+  the entry point establishes it; where it is not, the work still happens and the capability call
+  fails closed on its own — refusing the operation was never the goal. The ambient `app()->db()`
+  fallback is **gone** from `CapabilityAuthorizationRegistry`; an unresolvable store now produces
+  safe reads (`allowed=false`, no policy, no rows) instead of an ambient guess.
+- **Inventory beyond HTTP (#120).** The census no longer sees routes only. It statically reports
+  capability call sites outside HTTP as `transport` (event/workflow/cli/workbench/service/worker)
+  × `scope` (declared/unscoped/unresolved) — reported **separately** from the routed ratio and
+  gated by a second frozen baseline map.
+
+The honest non-HTTP number, measured 2026-09-12: **95 capability call sites — 1 declared, 0
+unscoped, 94 unresolved.** The debt baseline is therefore empty. The gate is armed and proven to
+bite, but static analysis cannot yet prove scope for the 94: they sit in generic helpers whose
+transport is unprovable, and the kernel→module call edge passes through dynamic callables. A site
+counts as debt only when the transport is statically certain *and* no scope reaches it; anything
+else stays `unresolved` — visible, but neither claimed as governed nor manufactured into debt.
+**This is the honest limit of the instrument, and it is not a claim of coverage.**
 
 #### Standing authority architecture findings
 
-These C6 findings are architectural work, not P2 status footnotes:
+These C6 findings were architectural work, not P2 status footnotes. Each is recorded with how it
+closed, because both were invisible until they were measured:
 
-1. **Authority-store resolution is context-dependent.** The registry falls back to `app()->db()`;
-   measurement for one tenant resolved web to the tenant DB and CLI to the kernel DB. Declaration
-   and grant-state ownership, consequences, and chair questions are recorded in the
-   [authority-store ADR](authority-store-adr.md). P3/P5 may not rely on ambient DB selection.
-2. **Declaration must not restore grant state.** Code may declare requirements, but a repeated
-   `seedPolicy()` may not overwrite an operator suspension or revocation. P2 closure adds an
-   explicit `granted | suspended | revoked` lifecycle and audited transitions.
+1. **Authority-store resolution is context-dependent.** *(Write path closed, #115; read path closed,
+   #118.)* The registry used to fall back to `app()->db()`; measurement resolved web to the tenant DB
+   and CLI to the kernel DB, and CLI seeding wrote 46 declaration rows into the **kernel** table (44
+   of them `akira.*`) rather than the tenant's. `seedPolicyForCurrentScope()` no longer falls back on
+   the write path, the read path exposes `authorityStoreIssue()` instead of guessing, and the 46
+   contaminated kernel rows were removed. Declaration and grant-state ownership, consequences, and
+   the chair questions are recorded in the [authority-store ADR](authority-store-adr.md). P3/P5 may
+   not rely on ambient DB selection — this is now enforced rather than merely noted.
+2. **Declaration must not restore grant state.** *(Shipped, #112.)* Code may declare requirements,
+   but a repeated `seedPolicy()` may not overwrite an operator suspension or revocation.
+   `017_capability_policy_grant_lifecycle.sql` adds `grant_state ENUM('granted','suspended','revoked')`;
+   `transitionGrantState()` is the only state mover (authenticated actor, mandatory reason, `FOR UPDATE`,
+   audited), and seeding now applies narrowing while refusing widening.
 
 The sequence is: **P2 closure** (route coverage → authority-store semantics → declaration/revocation →
 inventory beyond HTTP) → **P3** → **P4** → **P5**.
 
-Authority-store semantics are now **decided** (three-model debate, 2026-09-11) — see the
-[authority-store ADR](authority-store-adr.md). What remains is implementation, and it is gated on one
-prerequisite: an explicit authority scope replacing ambient `app()->db()` resolution. The debate also
-verified four defects that were previously invisible, including that CLI contexts currently write
-declaration rows into the kernel authority table rather than the tenant's.
+Of those four P2 steps, **three are done**: authority-store semantics are
+[decided](authority-store-adr.md) (three-model debate, 2026-09-11) and the prerequisite that gated
+them — an explicit authority scope replacing ambient `app()->db()` resolution — has **shipped**
+(#118, #119); declaration/revocation shipped with the grant lifecycle and narrowing-only seeding;
+and the inventory now reaches beyond HTTP.
+
+**Route coverage is the one step still open.** Measured 2026-09-12: **84 write operations remain
+undeclared** — 28 across `cms-akira-*` and `gui-settings`, 56 in `daily-ledger` (52 of which count
+as business operations; the rest are auth infrastructure). Not one exemption has been declared
+anywhere, so the judgment "this route is genuinely public" has never been recorded for a single
+route. Route coverage is the next P2 work, and P3–P5 remain deferred behind it.
 
 
 ### P3 — Delegation: actors can hold bounded authority **(the new ground)**
@@ -180,8 +214,12 @@ The WordPress shadow is shed by refusing its shopping list:
 
 The kernel becomes the product. Akira becomes the reference application — small, honest, complete
 enough to demonstrate what the substrate makes possible, and explicitly a POC. `daily-ledger` is
-the second domain that tests whether the substrate generalises (see the in-flight F1–F4
-measurement). Workbench is the instrument that makes all of it provable rather than asserted.
+the second domain that tests whether the substrate generalises; the F1–F4 measurement (contract
+`.ai/thesis-measurement.contract.md`, run 2026-09-10) fixed the falsification criteria and returned
+the P2 finding above — 0 of 52 business operations through the capability path. Workbench is the
+instrument that makes all of it provable rather than asserted, and the F3 explicability gap that
+measurement exposed — `workbench:explain` requires a run ID, so a policy decision cannot be
+explained — is still open.
 
 ## Discipline
 
@@ -206,3 +244,8 @@ Define the falsifiable two-domain demonstration --> govern implementation
 different domains: publication and financial operations.** The risk of "break new ground" is
 inventing something unfalsifiable; every pillar must therefore be demonstrable in Akira, challenged
 by Daily Ledger, measurable by Workbench, and breakable by a test that fails when the claim is false.
+
+**Where that bar stands (2026-09-12): not yet met.** Route coverage is **5/33** in publication
+(Akira) and **0/52** in financial operations (`daily-ledger`); 84 write operations across both
+remain undeclared. The primitive is real, and enforced where declared — it is not yet *general*,
+and this document claims no more than that.
