@@ -17,6 +17,7 @@
     "capabilities": {
         "exposes": [],
         "routes": {
+            "GET /cms-akira-shell/posts": "akira.post.admin.list@1",
             "POST /cms-akira-shell/posts": "akira.post.create@1",
             "POST /cms-akira-shell/posts/{slug}": "akira.post.update@1",
             "POST /cms-akira-shell/posts/{slug}/taxonomies": "akira.post.set_taxonomies@1",
