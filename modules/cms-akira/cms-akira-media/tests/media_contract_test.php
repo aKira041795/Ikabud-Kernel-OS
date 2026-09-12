@@ -546,10 +546,14 @@ try {
         "SELECT table_name, engine, table_collation FROM information_schema.tables
          WHERE table_schema = DATABASE() AND table_name = 'cms_akira_media'"
     )->fetchAll(PDO::FETCH_ASSOC);
+    // information_schema returns these keys uppercase on MySQL 8 but lowercase on
+    // MySQL 5.7 and MariaDB; normalise instead of reading one fixed case, which
+    // raised "Undefined array key" and also dirtied error.log.
+    $topologyRow = array_change_key_case(is_array($topology[0] ?? null) ? $topology[0] : [], CASE_UPPER);
     $check(
         count($topology) === 1
-        && strtoupper((string) $topology[0]['ENGINE']) === 'INNODB'
-        && (string) $topology[0]['TABLE_COLLATION'] === 'utf8mb4_unicode_ci',
+        && strtoupper((string) ($topologyRow['ENGINE'] ?? '')) === 'INNODB'
+        && (string) ($topologyRow['TABLE_COLLATION'] ?? '') === 'utf8mb4_unicode_ci',
         'native media table is InnoDB utf8mb4_unicode_ci'
     );
     $migration = (string) file_get_contents($module . '/database/migrations/002_create_native_media.sql');
