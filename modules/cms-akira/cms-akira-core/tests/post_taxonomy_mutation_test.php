@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -62,6 +63,11 @@ $tenantA = (int) app()->tenant()->current();
 $tenantB = 992103;
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
+requireCapabilityAuthorizationPolicies($db, [
+    ['capability_id' => 'akira.post.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.taxonomy.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.set_taxonomies@1', 'provider' => 'cms-akira-core'],
+]);
 $prefix = 'ptx-' . bin2hex(random_bytes(6));
 $slug = $prefix . '-post';
 $keys = [];
@@ -136,7 +142,7 @@ try {
         && $policyDb->requiresProtocol('akira.post.set_taxonomies@1', '1', 'cms-akira-core') === 'v2',
         'activation seeds idempotent set_taxonomies policy'
     );
-    $policyRow = $db->query("SELECT caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id = 'akira.post.set_taxonomies@1'")->fetch(PDO::FETCH_ASSOC);
+    $policyRow = $db->query("SELECT caller_module, allowed_roles FROM capability_authorization_policies WHERE provider = 'cms-akira-core' AND capability_id = 'akira.post.set_taxonomies@1' AND policy_version = 1")->fetch(PDO::FETCH_ASSOC);
     $check(
         is_array($policyRow)
         && ($policyRow['allowed_roles'] ?? '') === 'admin,editor,administrator,superadmin'

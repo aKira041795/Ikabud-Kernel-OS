@@ -11,6 +11,7 @@ $_SERVER['HTTP_HOST'] = 'akiracms.test';
 $_SERVER['REQUEST_URI'] = '/';
 require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
+require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
@@ -45,6 +46,9 @@ $originalTenant = app()->tenant()->current();
 $tenantA = (int)$originalTenant;
 $tenantB = 994802;
 $db = app()->db();
+requireCapabilityAuthorizationPolicies($db, [
+    ['capability_id' => 'akira.workflow.transition@1', 'provider' => CAW_WORKFLOW_MODULE_ID],
+]);
 $hasWorkflowRuns = (bool)$db->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'workflow_runs'")->fetchColumn();
 $prefix = 'workflow-' . bin2hex(random_bytes(5));
 $entity = $prefix . '-post';

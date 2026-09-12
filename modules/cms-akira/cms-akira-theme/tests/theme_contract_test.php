@@ -126,12 +126,14 @@ try {
     $check(($manifest['migrations'] ?? []) === ['database/migrations/001_initial.sql'], 'only the table-free 001 ledger marker remains (no 002)');
     $check(($manifest['_enabled'] ?? null) === false && !isset($manifest['entities']), 'tenant activation is explicit and theme claims no Kernel Entity Authority');
     $themeStudio = $manifest['admin_contributions'][0] ?? [];
-    $check(!isset($manifest['nav']) && !isset($manifest['compatibility']) && !isset($manifest['uninstall'])
+    $check(
+        !isset($manifest['nav']) && !isset($manifest['compatibility']) && !isset($manifest['uninstall'])
         && count($manifest['admin_contributions'] ?? []) === 1
         && ($themeStudio['id'] ?? '') === 'cms-akira-theme.theme-studio'
         && ($themeStudio['host'] ?? '') === 'cms-akira-shell'
         && ($themeStudio['route'] ?? '') === '/cms-akira-theme',
-        'theme exposes only the canonical shell Theme Studio contribution');
+        'theme exposes only the canonical shell Theme Studio contribution'
+    );
     $activateEntry = $manifest['capabilities']['exposes'][array_search('akira.theme.activate@1', $ids, true)] ?? [];
     $check(
         ($activateEntry['requires_protocol'] ?? '') === 'v2'

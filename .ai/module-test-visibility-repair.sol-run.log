@@ -1,0 +1,80 @@
+status:        PASS
+task:          module-test-visibility-repair
+
+G1 both_ways:
+  content_type_mutation_test:
+    absent -> `SKIP: required capability authorization policy is absent: akira.content_type.create@1 for cms-akira-core (policy version 1)`; exit 0
+    present -> 42 passed, 0 failed; exit 0
+  taxonomy_mutation_test:
+    absent -> `SKIP: required capability authorization policy is absent: akira.taxonomy.create@1 for cms-akira-core (policy version 1)`; exit 0
+    present -> 35 passed, 0 failed; exit 0
+  post_taxonomy_mutation_test:
+    absent -> `SKIP: required capability authorization policy is absent: akira.post.create@1 for cms-akira-core (policy version 1)`; exit 0
+    present -> 34 passed, 0 failed; exit 0
+  post_revision_mutation_test:
+    absent -> `SKIP: required capability authorization policy is absent: akira.post.create@1 for cms-akira-core (policy version 1)`; exit 0
+    present -> 27 passed, 0 failed; exit 0
+  workflow_contract_test:
+    absent -> `SKIP: required capability authorization policy is absent: akira.workflow.transition@1 for cms-akira-workflow (policy version 1)`; exit 0
+    present -> 42 passed, 0 failed; exit 0
+
+G2 suite:          passed=110 failed=0 skipped=26 total=136  (sums exactly? yes: 110+0+26=136)
+
+G3 five_tests:
+  content_type_mutation_test:
+    guard requires baseline policy-version-1 and active rows for content-type create/update/delete.
+  taxonomy_mutation_test:
+    guard requires baseline policy-version-1 and active rows for taxonomy create/update/delete.
+  post_taxonomy_mutation_test:
+    guard requires baseline policy-version-1 and active rows for post create, taxonomy create, and set-taxonomies.
+  post_revision_mutation_test:
+    guard requires baseline policy-version-1 and active rows for post create/update/delete and revision revert.
+  workflow_contract_test:
+    guard requires baseline policy-version-1 and active rows for workflow transition.
+  The helper skips only when the exact baseline row or active row query returns zero. Present but malformed rows proceed to the unchanged role/caller/protocol assertions and fail normally.
+
+G4 no_local_calibration: Backed up the complete tenant application `capability_authorization_policies` table, deleted all rows, cleared `storage/logs/error.log`, and ran the real `composer test` runner. Result: 110 passed / 0 failed / 26 skipped / 136 total, exit 0. The original policy table was then restored. Content-type and taxonomy assertions now select the exact three baseline mutation rows; ambient R5 read policies no longer alter their count.
+
+G5 lint:
+  `php -l` passed on all 7 touched PHP files.
+  Targeted PHP-CS-Fixer dry-run passed: 0 fixable touched files.
+  The requested `theme_contract_test.php` formatting issue is resolved.
+  Repo-wide dry-run still reports six pre-existing `modules/daily-ledger` files under local PHP 8.5; that directory was explicitly prohibited and untouched.
+
+G6 nothing_lost:
+  No test file deleted. All five files retain exactly the same number of `$check(...)` assertions as HEAD.
+  content type:
+    before: active-family count `=== 4`, including ambient list role; read count `=== 1`
+    after: exact baseline mutation-set count `=== 3`; protocol-v2 read-policy count `=== 0`
+  taxonomy:
+    before: active-family count `=== 4`, including ambient list role; read count `=== 1`
+    after: exact baseline mutation-set count `=== 3`; protocol-v2 read-policy count `=== 0`
+  Existing exact mutation roles, callers, policy protocol, and behavioral assertions remain.
+
+G7 original_109:   100 passed / 0 failed / 9 skipped — yes, confirmed from the real runner manifest.
+
+changed:
+  modules/cms-akira/cms-akira-core/tests/content_type_mutation_test.php
+  modules/cms-akira/cms-akira-core/tests/taxonomy_mutation_test.php
+  modules/cms-akira/cms-akira-core/tests/post_taxonomy_mutation_test.php
+  modules/cms-akira/cms-akira-core/tests/post_revision_mutation_test.php
+  modules/cms-akira/cms-akira-workflow/tests/workflow_contract_test.php
+  modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+  tests/_support/env_guard.php
+
+verification:
+  `composer test` -> exit 0; 110 passed / 0 failed / 26 skipped / 136
+  `php scripts/run-tests.php` -> exit 0; same accounting
+  five tests individually, prerequisite present -> all passed
+  five tests individually, prerequisite removed -> all emitted specific SKIP and exited 0
+  cleared-policy real-suite run -> exit 0
+  `php tests/read_authority_probe_test.php` -> 23 passed / 0 failed
+  `php ikabud workbench:governance --all --gate` -> exit 0
+  touched-file PHP-CS-Fixer dry-run -> exit 0
+  `storage/logs/error.log` -> 0 bytes after final tests
+  `git diff --check` -> clean
+
+scope:         Test-only changes. Discovery remains intact. No prohibited source, governance, template, daily-ledger, gui-settings, permission, commit, branch, or push operation.
+risks:         Full local PHP-CS-Fixer on PHP 8.5 identifies unrelated pre-existing daily-ledger formatting; touched files are clean.
+unresolved:    None within this repair contract.
+recommended_next_state: REVIEW_REQUIRED

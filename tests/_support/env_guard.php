@@ -46,6 +46,39 @@ function requireWritableCacheDirectory(string $cacheDir, string $label): void
     }
 }
 
+/**
+ * Require the baseline seed and a currently active row for every governed capability used by a test.
+ *
+ * @param list<array{capability_id: string, provider: string}> $requirements
+ */
+function requireCapabilityAuthorizationPolicies(PDO $db, array $requirements): void
+{
+    $baseline = $db->prepare(
+        'SELECT COUNT(*) FROM capability_authorization_policies '
+        . 'WHERE capability_id = ? AND capability_version = ? AND provider = ? AND policy_version = 1'
+    );
+    $active = $db->prepare(
+        'SELECT COUNT(*) FROM capability_authorization_policies '
+        . 'WHERE capability_id = ? AND capability_version = ? AND provider = ? AND is_active = 1'
+    );
+
+    foreach ($requirements as $requirement) {
+        $capabilityId = $requirement['capability_id'];
+        $provider = $requirement['provider'];
+        $parameters = [$capabilityId, '1', $provider];
+
+        $baseline->execute($parameters);
+        if ((int) $baseline->fetchColumn() === 0) {
+            testEnvironmentSkip("required capability authorization policy is absent: {$capabilityId} for {$provider} (policy version 1)");
+        }
+
+        $active->execute($parameters);
+        if ((int) $active->fetchColumn() === 0) {
+            testEnvironmentSkip("required active capability authorization policy is absent: {$capabilityId} for {$provider}");
+        }
+    }
+}
+
 /** @param list<string> $moduleIds */
 function requireTenantModulesActive(int $tenantId, array $moduleIds): void
 {
