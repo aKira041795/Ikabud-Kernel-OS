@@ -150,6 +150,14 @@
                 "description": "Govern and audit fail-closed composition validation"
             }
         ],
+        "routes": {
+            "POST /api/v1/cms-akira/builder/validate": "akira.builder.validate@1",
+            "POST /api/v1/cms-akira/builder/compositions": "akira.builder.create@1",
+            "POST /api/v1/cms-akira/builder/compositions/{key}": "akira.builder.update@1",
+            "POST /api/v1/cms-akira/builder/compositions/{key}/publish": "akira.builder.publish@1",
+            "POST /api/v1/cms-akira/builder/compositions/{key}/unpublish": "akira.builder.unpublish@1",
+            "POST /api/v1/cms-akira/builder/compositions/{key}/delete": "akira.builder.delete@1"
+        },
         "depends": [
             "akira.post.get@1",
             "akira.editor.sanitize@1",

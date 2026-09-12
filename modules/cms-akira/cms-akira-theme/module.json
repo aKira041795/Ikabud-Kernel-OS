@@ -94,6 +94,10 @@
                 "description": "Persist validated per-tenant theme customization as an idempotent audited mutation"
             }
         ],
+        "routes": {
+            "POST /api/v1/cms-akira-theme/customize": "akira.theme.customize@1",
+            "POST /cms-akira-theme/customize": "akira.theme.customize@1"
+        },
         "depends": [
             "kernel.idempotency.hash@1",
             "kernel.idempotency.claim@1",

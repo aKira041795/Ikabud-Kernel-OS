@@ -38,6 +38,9 @@
                 "description": "Project Kernel workflow runs for one current-tenant Akira Post"
             }
         ],
+        "routes": {
+            "POST /api/v1/cms-akira-workflow/{entity_type}/{entity_key}/transition": "akira.workflow.transition@1"
+        },
         "depends": [
             "kernel.idempotency.hash@1",
             "kernel.idempotency.claim@1",
