@@ -1,0 +1,22 @@
+status:        PASS
+task:          akira-media-surface
+
+E1 policies:   tenant 54; active version 2: akira.media.library@1 → allowed_roles=admin, is_active=1; akira.media.get@1 → allowed_roles=admin, is_active=1
+E2 declared:   GET /cms-akira-shell/media → akira.media.library@1; POST /cms-akira-shell/media → akira.media.upload@1; POST /cms-akira-shell/media/{media_key}/delete → akira.media.delete@1. Dispatch probe refused an authority-free caller and named akira.media.library@1; authenticated admin GET returned 200.
+E3 browser:    Chromium assertions passed: media list rendered; real PNG uploaded and appeared with filename/alt/thumbnail; delete removed the row. 2 Playwright tests passed.
+E4 validation: text/plain file `disallowed-media.txt` was submitted through the multipart form; `akira.media.upload@1` refused it with HTTP 422 and `mime_type is not allowed.` No row appeared.
+E5 no_lockout: /cms-akira-shell=200; /posts=200; /categories=200; /content-types=200; /permissions=200; /users=200; fresh anonymous /cms-akira-shell/login reached the visible login form.
+E6 suite:      composer test: 109 files, 100 passed, 0 failed, 9 skipped; governance gate exit 0; .governance-baseline.json untouched.
+E7 logs:       storage/logs/error.log empty; fatal scan clean; read-authority probe log assertion passed.
+
+findings:
+  - media_write_roles: confirmed. Active version 2 upload/update/delete rows contain only `allowed_roles=admin`; `administrator` and `superadmin` remain excluded. No policy was widened.
+  - undeclared_media_routes: `/api/v1/cms-akira-media/health` and `/api/v1/cms-akira-media/stream/{media_key}` remain undeclared. The stream route was deliberately left undeclared to avoid breaking rendered images.
+  - anything else you found and did not fix: runtime media storage directories initially denied the web process write access; ownership/group permissions were corrected locally for E3. No tracked configuration was changed for this.
+
+changed:       modules/cms-akira/cms-akira-media/helpers.php; modules/cms-akira/cms-akira-shell/{handlers.php,helpers.php,module.json,routes.php,tests/shell_contract_test.php}; tests/read_authority_probe_test.php; tests/browser/akira-media-admin.spec.ts
+verification:  PHP lint on every touched PHP file: pass; read_authority_probe_test.php: 23 passed, 0 failed; composer test: pass; governance gate: exit 0; Chromium Playwright: 2 passed
+scope:         Only media read-policy seeding, shell dependencies/routes/navigation/UI, and corresponding tests. No prohibited feature or policy widening.
+risks:         Deployment must keep `storage/private/cms-akira-media` writable by the web process.
+unresolved:    Role inconsistency remains by instruction: administrator/superadmin cannot use media mutations.
+recommended_next_state: REVIEW_READY

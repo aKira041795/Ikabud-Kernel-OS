@@ -175,6 +175,7 @@ function akiraShellPage(string $title, string $body, array $data = []): string
     ];
     if (akiraShellIsAdmin()) {
         $links = array_merge($links, [
+            ['id' => 'media', 'route' => '/cms-akira-shell/media', 'label' => 'Media', 'order' => 35],
             ['id' => 'compositions', 'route' => '/cms-akira-shell/compositions', 'label' => 'Compositions', 'order' => 40],
             ['id' => 'permissions', 'route' => '/cms-akira-shell/permissions', 'label' => 'Permissions', 'order' => 50],
             ['id' => 'users', 'route' => '/cms-akira-shell/users', 'label' => 'Users', 'order' => 60],
@@ -1006,4 +1007,48 @@ function akiraShellRevisionPanel(string $slug, string $updatedAt): string
     return '<section class="mt-8 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm" data-akira-post-revisions>'
         . '<div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-xl font-bold text-slate-950">Revisions</h2><p class="mt-1 text-sm text-slate-500">Every governed write snapshots this post\\\'s content in one tenant transaction. Reverting restores content only — status and workflow state stay untouched.</p></div></div>'
         . '<div class="mt-5">' . akiraShellRevisionFlash($slug) . akiraShellRevisionTable($slug, $updatedAt, $rows, $canRevert) . '</div></section>';
+}
+
+function akiraShellMediaNotice(): string
+{
+    $message = match ((string) (akiraShellQuery()['saved'] ?? '')) {
+        'upload' => 'Media uploaded.',
+        'delete' => 'Media deleted.',
+        default => '',
+    };
+    return $message === '' ? '' : '<div role="status" class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">' . $message . '</div>';
+}
+
+/** @param list<array<string,mixed>> $rows */
+function akiraShellMediaTable(array $rows): string
+{
+    if ($rows === []) {
+        return '<div data-akira-media-empty class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No media uploaded yet.</div>';
+    }
+
+    $body = '';
+    foreach ($rows as $row) {
+        $key = (string) ($row['key'] ?? '');
+        if (preg_match('/^[a-f0-9]{32}$/D', $key) !== 1) {
+            continue;
+        }
+        $mime = (string) ($row['mime_type'] ?? '');
+        $filenameRaw = (string) ($row['filename'] ?? '');
+        $filename = akiraShellEscape($filenameRaw);
+        $alt = trim((string) ($row['alt'] ?? ''));
+        $preview = str_starts_with($mime, 'image/')
+            ? '<img class="h-14 w-14 rounded-xl border border-slate-200 object-cover" src="' . akiraShellEscape((string) ($row['url'] ?? '')) . '" alt="' . akiraShellEscape($alt) . '">'
+            : '<span aria-label="File type" class="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-500">' . akiraShellEscape(strtoupper((string) pathinfo($filenameRaw, PATHINFO_EXTENSION))) . '</span>';
+        $width = $row['width'] ?? null;
+        $height = $row['height'] ?? null;
+        $dimensions = is_numeric($width) && is_numeric($height) ? (int) $width . ' × ' . (int) $height : '—';
+        $altLabel = $alt !== '' ? akiraShellEscape($alt) : '<span class="text-slate-300">—</span>';
+        $body .= '<div data-akira-media-row data-media-key="' . $key . '" class="grid grid-cols-[64px_minmax(0,1.4fr)_130px_minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0">'
+            . $preview . '<span><strong class="block text-sm text-slate-900">' . $filename . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($mime) . '</code></span>'
+            . '<span class="text-sm text-slate-500">' . $dimensions . '</span><span class="text-sm text-slate-500">' . $altLabel . '</span>'
+            . '<form method="post" action="/cms-akira-shell/media/' . rawurlencode($key) . '/delete" onsubmit="return confirm(\'Delete this media file? This cannot be undone.\')">' . akiraShellCsrfField()
+            . '<input type="hidden" name="idempotency_key" value="media-delete-' . bin2hex(random_bytes(10)) . '">'
+            . '<button type="submit" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Delete</button></form></div>';
+    }
+    return '<div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="grid grid-cols-[64px_minmax(0,1.4fr)_130px_minmax(0,1fr)_auto] gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Preview</span><span>File</span><span>Dimensions</span><span>Alt text</span><span>Action</span></div>' . $body . '</div>';
 }

@@ -18,7 +18,7 @@ function cms_akira_media_capability_handlers(): array
     ];
 }
 
-/** Seed only the three mutation policies; public reads remain policy-free. */
+/** Seed the three admin-only mutation policies. */
 function camSeedMediaMutationPolicies(): void
 {
     if (!function_exists('app')) {
@@ -46,6 +46,49 @@ function camSeedMediaMutationPolicies(): void
 }
 
 camSeedMediaMutationPolicies();
+
+/**
+ * Seed the admin media reads into the active policy version. The permissions
+ * surface can clone version 1, so a fixed-version seed would leave declared
+ * media routes without authority in an already-running tenant.
+ */
+function camSeedMediaReadPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
+    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
+        'actor' => app()->user(),
+    ]);
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+        null,
+        $scope,
+        $resolver,
+        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
+    );
+    $activeRows = $registry->activePolicyRows();
+    $policyVersion = $activeRows === [] ? 1 : (int) ($activeRows[0]['policy_version'] ?? 1);
+
+    $rows = [];
+    foreach (['akira.media.library@1', 'akira.media.get@1'] as $capabilityId) {
+        $rows[] = [
+            'policy_version' => $policyVersion,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-media',
+            'caller_module' => null,
+            'allowed_roles' => 'admin',
+            'provider_activation_required' => true,
+            'requires_protocol' => 'v1',
+            'is_active' => true,
+        ];
+    }
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+}
+
+camSeedMediaReadPolicies();
 
 function camCtx(): \Ikabud\Kernel\Contracts\ModuleContext
 {
