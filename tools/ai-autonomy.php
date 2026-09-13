@@ -167,11 +167,14 @@ function remoteRows(string $json): array
 {
     $value = json_decode($json, true);
     if (!is_array($value)) { return []; }
-    foreach (['decisions', 'items', 'data'] as $key) {
+    if (isset($value['data']) && is_array($value['data'])) { $value = $value['data']; }
+    foreach (['decisions', 'items'] as $key) {
         if (isset($value[$key]) && is_array($value[$key])) { $value = $value[$key]; break; }
     }
-    if (array_is_list($value)) { return array_values(array_filter($value, 'is_array')); }
-    return isset($value['decision_key']) ? [$value] : [];
+    $isRow = static fn (mixed $row): bool => is_array($row)
+        && (array_key_exists('decision_key', $row) || (isset($row['id']) && is_int($row['id'])));
+    if (array_is_list($value)) { return array_values(array_filter($value, $isRow)); }
+    return $isRow($value) ? [$value] : [];
 }
 
 /** Warn about parser-visible prose masquerading as forbidden paths.
@@ -396,7 +399,8 @@ function deliverDecision(array &$decision, string $jsonPath, string $contractPat
         $transport['suppressed'] = $suppressed;
         $transport['delivered'] = $ok;
         $transport['channel'] = $ok ? 'harpp-cli' : 'local-only';
-        $remoteId = is_array($payload) ? ($payload['id'] ?? $payload['decision_id'] ?? (($payload['decision']['id'] ?? null))) : null;
+        $data = is_array($payload) && is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $remoteId = is_array($payload) ? ($data['id'] ?? $data['decision_id'] ?? $payload['id'] ?? $payload['decision_id'] ?? ($payload['decision']['id'] ?? null)) : null;
         $transport['harpp_decision_id'] = $remoteId === null ? null : (string) $remoteId;
         if (!$ok && !$suppressed) { $transport['error'] = $result['stderr'] !== '' ? $result['stderr'] : ($result['stdout'] !== '' ? $result['stdout'] : "harpp exited {$result['code']}"); }
     }
@@ -471,7 +475,7 @@ function commandResume(string $id, array $options, string $directory, bool $from
         $result = harpp(['decision', 'list', '--remote', '--state=DECIDED']);
         if ($result === null || $result['code'] !== 0) { throw new InvalidArgumentException('HARPP unavailable or DECIDED list failed'); }
         $match = null;
-        foreach (remoteRows($result['stdout']) as $row) { if (($row['decision_key'] ?? null) === $id && strtoupper((string) ($row['state'] ?? '')) === 'DECIDED') { $match = $row; break; } }
+        foreach (remoteRows($result['stdout']) as $row) { if (($row['decision_key'] ?? null) === $id && strtoupper((string) ($row['lifecycle_state'] ?? $row['state'] ?? '')) === 'DECIDED') { $match = $row; break; } }
         if ($match === null) { throw new InvalidArgumentException("no DECIDED HARPP decision matches decision_key '{$id}'"); }
         $choose = (string) ($match['decision'] ?? $match['answer'] ?? $match['decision_text'] ?? '');
         $note = (string) ($match['rationale'] ?? ''); $remoteId = (string) ($match['id'] ?? $match['decision_id'] ?? ''); $source = 'harpp';
@@ -504,10 +508,10 @@ function commandStatus(string $directory, bool $json, bool $remote, ?string $sta
     foreach (decisions($directory) as $item) {
         $resolution = is_array($item['resolution'] ?? null) ? $item['resolution'] : null; $id = (string) $item['decision_id']; $remoteRow = $remoteByKey[$id] ?? null;
         $rows[] = ['decision_id' => $id, 'task_id' => (string) $item['task_id'], 'state' => $resolution === null ? 'PENDING' : 'RESOLVED',
-            'harpp_state' => is_array($remoteRow) ? ($remoteRow['state'] ?? null) : null, 'question' => (string) $item['question'], 'chosen_option_id' => $resolution['chosen_option_id'] ?? null];
+            'harpp_state' => is_array($remoteRow) ? ($remoteRow['lifecycle_state'] ?? $remoteRow['state'] ?? null) : null, 'question' => (string) $item['question'], 'chosen_option_id' => $resolution['chosen_option_id'] ?? null];
         unset($remoteByKey[$id]);
     }
-    foreach ($remoteByKey as $key => $row) { $rows[] = ['decision_id' => $key, 'task_id' => '', 'state' => 'REMOTE', 'harpp_state' => $row['state'] ?? null, 'question' => $row['title'] ?? '', 'chosen_option_id' => null]; }
+    foreach ($remoteByKey as $key => $row) { $rows[] = ['decision_id' => $key, 'task_id' => '', 'state' => 'REMOTE', 'harpp_state' => $row['lifecycle_state'] ?? $row['state'] ?? null, 'question' => $row['title'] ?? '', 'chosen_option_id' => null]; }
     if ($json) { fwrite(STDOUT, encodeJson($rows) . "\n"); }
     else { fwrite(STDOUT, "DECISIONS\n"); if ($rows === []) { fwrite(STDOUT, "no decisions\n"); } foreach ($rows as $row) { $suffix = $remote ? '  HARPP:' . ($row['harpp_state'] ?? 'unknown') : ''; fwrite(STDOUT, "{$row['decision_id']}  {$row['state']}{$suffix}  {$row['question']}\n"); } }
     return EXIT_OK;

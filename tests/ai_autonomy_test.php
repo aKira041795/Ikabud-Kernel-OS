@@ -5,20 +5,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/harness/TestHarness.php';
 
-/** Static-analysis view of the runtime-loaded pure test harness. */
-interface AiAutonomyTestHarness
+/** Instantiate a runtime-loaded test harness without requiring PHPStan to scan the shared harness. */
+function autonomyTestHarness(string $className): mixed
 {
-    public function fingerprint(string $relativePath): void;
-    public function section(string $title): void;
-    public function test(string $label, bool $condition, string $detail = ''): void;
-    public function skip(string $label, string $reason = ''): void;
-    public function basePath(): string;
-    public function done(): void;
+    return new $className('ai-autonomy', 'pure');
 }
 
-// @phpstan-ignore-next-line TestHarness is loaded above.
-$h = new TestHarness('ai-autonomy', TestHarness::MODE_PURE);
-/** @var AiAutonomyTestHarness $h */
+$h = autonomyTestHarness('TestHarness');
 $h->fingerprint('tools/ai-autonomy.php');
 $h->fingerprint('kernel/Workbench/Schemas/development-decision-request.v1.schema.json');
 
@@ -82,10 +75,11 @@ $args = array_slice($argv, 1);
 if ($mode === 'fail') { fwrite(STDERR, "stub failure\n"); exit(1); }
 if ($mode === 'suppressed') { echo '{"ok":true,"suppressed":true}'; exit(0); }
 if (array_slice($args, 0, 2) === ['decision', 'list']) {
-    echo json_encode([['id' => 77, 'decision_key' => 'remote-decision', 'state' => 'DECIDED', 'decision' => 'a', 'rationale' => 'Director selected A']]);
+    $lifecycle = $mode === 'notified' ? 'NOTIFIED' : 'DECIDED';
+    echo json_encode(['ok' => true, 'data' => ['decisions' => [['id' => 77, 'decision_key' => 'remote-decision', 'lifecycle_state' => $lifecycle, 'decision' => 'a', 'rationale' => 'Director selected A']]]]);
     exit(0);
 }
-echo json_encode(['ok' => true, 'id' => 77]);
+echo json_encode(['ok' => true, 'data' => ['id' => 77]]);
 PHP;
 file_put_contents($bin . '/harpp', $stub); chmod($bin . '/harpp', 0755);
 $contract = $fixture . '/contract.md'; $missingRisks = $fixture . '/missing-risks.md';
@@ -154,6 +148,7 @@ $artifacts = $r['code'] === 0 && is_file("{$decisions}/{$id}.md") && is_file("{$
     && array_slice((array) $submit, 0, 2) === ['decision', 'submit'] && str_contains($submitText, '--title=Which bounded route?')
     && str_contains($submitText, '--requested=a') && str_contains($submitText, '--workbench-state=ARCHITECTURE_DECISION_REQUIRED') && str_contains($submitText, "--decision-key={$id}");
 $h->test('12. successful deferral writes artifacts and exact HARPP payload', $artifacts, runDetail($r) . "\ncapture:\n{$submitText}");
+$h->test('12a. real submit envelope records data.id', $r['code'] === 0 && str_contains($r['output'], 'DELIVERY: harpp') && $decision['transport']['harpp_decision_id'] === '77', runDetail($r) . "\ntransport:\n" . encodeForDetail($decision['transport'] ?? null));
 
 $failDir = $fixture . '/failed'; $failArgs = array_merge(array_map(static fn (string $v): string => $v === "--id={$id}" ? '--id=failed-decision' : $v, $valid), ["--contract={$contract}", "--decisions-dir={$failDir}"]);
 $r = $run($failArgs, 'fail'); $failed = json_decode((string) @file_get_contents("{$failDir}/failed-decision.json"), true);
@@ -180,8 +175,20 @@ $created = $run($remoteArgs); $beforeRemote = count(capturedCalls($log)); $remot
 $remoteDecision = json_decode((string) file_get_contents("{$remoteDir}/remote-decision.json"), true); $remoteCalls = array_slice(capturedCalls($log), $beforeRemote);
 $verbs = array_map(static fn (array $call): string => implode(' ', array_slice($call, 0, 2)), $remoteCalls);
 $h->test('18. DECIDED HARPP answer resolves then ack/apply in order', $created['code'] === 0 && $remote['code'] === 0 && $remoteDecision['resolution']['source'] === 'harpp' && $verbs === ['decision list', 'decision ack', 'decision apply'], runDetail($remote) . "\ncapture: " . encodeForDetail($remoteCalls));
+$h->test('18a. real nested decisions envelope resolves lifecycle_state DECIDED', $remote['code'] === 0 && str_contains($remote['output'], 'CHOSEN: a') && $remoteDecision['resolution']['note'] === 'Director selected A' && array_slice($verbs, 1) === ['decision ack', 'decision apply'], runDetail($remote) . "\ncapture: " . encodeForDetail($remoteCalls));
+
+$notifiedDir = $fixture . '/remote-notified';
+$notifiedArgs = array_merge(array_map(static fn (string $v): string => $v === "--id={$id}" ? '--id=remote-decision' : $v, $valid), ["--contract={$contract}", "--decisions-dir={$notifiedDir}"]);
+$createdNotified = $run($notifiedArgs); $beforeNotified = count(capturedCalls($log));
+$notified = $run(['resume', 'remote-decision', '--from-harpp', "--decisions-dir={$notifiedDir}"], 'notified');
+$notifiedDecision = json_decode((string) file_get_contents("{$notifiedDir}/remote-decision.json"), true); $notifiedCalls = array_slice(capturedCalls($log), $beforeNotified);
+$notifiedVerbs = array_map(static fn (array $call): string => implode(' ', array_slice($call, 0, 2)), $notifiedCalls);
+$h->test('18c. lifecycle_state NOTIFIED is refused without ack/apply', $createdNotified['code'] === 0 && $notified['code'] === 2 && str_contains($notified['output'], "decision_key 'remote-decision'") && !isset($notifiedDecision['resolution']) && $notifiedVerbs === ['decision list'], runDetail($notified) . "\ncapture: " . encodeForDetail($notifiedCalls));
+
 $remoteStatus = $run(['status', '--remote', '--json', "--decisions-dir={$remoteDir}"]); $remoteRows = json_decode($remoteStatus['output'], true);
 $h->test('18b. remote status merges HARPP lifecycle by decision key', $remoteStatus['code'] === 0 && $remoteRows[0]['decision_id'] === 'remote-decision' && $remoteRows[0]['harpp_state'] === 'DECIDED', runDetail($remoteStatus));
+$remoteStatusRegression = $run(['status', '--remote', '--json', "--decisions-dir={$remoteDir}"]); $remoteRegressionRows = json_decode($remoteStatusRegression['output'], true);
+$h->test('18d. real nested status envelope reports harpp_state DECIDED', $remoteStatusRegression['code'] === 0 && is_array($remoteRegressionRows) && ($remoteRegressionRows[0]['harpp_state'] ?? null) === 'DECIDED', runDetail($remoteStatusRegression));
 
 $manifest =  $fixture . '/workflow.json'; $r = $run(['plan', "--emit-manifest={$manifest}", "--contract={$contract}"]); $manifestData = json_decode((string) file_get_contents($manifest), true);
 $stageNames = is_array($manifestData) ? array_column($manifestData['stages'], 'name') : [];
