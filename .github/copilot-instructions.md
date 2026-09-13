@@ -33,6 +33,23 @@ Tests that require them are quarantined in `tests/_retired/` (see its README).
   that require activated synthetic tenants, two distinct dedicated tenant databases, or a
   CLI-writable cache report a specific `SKIP:` when that prerequisite is unavailable.
 
+## Development harness — governed autonomy (read first)
+
+Substantial work here runs under a bounded-autonomy harness; the director should not have to restate it.
+
+- **Policy (normative):** `.github/instructions/ai-autonomy-escalation.instructions.md` — the L0–L4
+  authority ladder. L0–L3 proceed unattended; **L4 is the only human stop**.
+- **Standing contract:** `.ai/ai-autonomy-harness.contract.md` — envelope, runbook, simulator rules and
+  the reference block every new task contract copies (`harness: references …`).
+- **Driver:** `tools/ai-autonomy.php` — `plan` / `check` / `defer` / `resume` / `status` / `notify`;
+  exit `0` ok, `2` fail-closed, `3` escalate, `4` filed-but-undelivered. Start a slice with
+  `php tools/ai-autonomy.php plan --contract=<contract>`.
+- **Decisions:** filed under `.ai/decisions/` and delivered via HARPP — the `harpp_submit_decision` MCP
+  tool in VS Code, or `harpp decision …` on the CLI. **Never claim delivery unless HARPP acknowledged it:**
+  an undelivered decision exits `4` and prints `director NOT notified`.
+- **Simulator:** `.ai/harpp-sim/` proves the harness side with zero production impact. Read its README for
+  what it does *not* prove — the network path and real delivery stay unproven until a live decision lands.
+
 ## Big-picture architecture (read first)
 - Runtime entrypoint is [public/index.php](../public/index.php): core routes + dynamic module routes are resolved there, then dispatched (including `module-id:functionName` handlers).
 - Bootstrapping and global infra live in [bootstrap.php](../bootstrap.php): env loading, path constants, exception handler, `write_log()`, request IDs, and log paths.
