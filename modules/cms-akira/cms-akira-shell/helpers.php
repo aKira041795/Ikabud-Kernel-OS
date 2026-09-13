@@ -510,6 +510,31 @@ function akiraShellInvalidatePublicCache(?string $slug = null): void
     }
 }
 
+/**
+ * Derive a post's stable key from its canonical URL.
+ *
+ * Entity view projections expose presentation meaning, so the public list
+ * contract carries `url` but not the domain-internal `slug`. Consumers that need
+ * a key therefore take it from the canonical URL shape the module publishes,
+ * which keeps presentation from reaching into domain internals. Returns '' when
+ * the URL does not resolve to a canonical slug.
+ */
+function akiraShellPostKeyFromUrl(string $url): string
+{
+    $path = (string) parse_url(trim($url), PHP_URL_PATH);
+    if ($path === '') {
+        return '';
+    }
+
+    // Only the canonical post shape yields a key; the archive URL ("/posts/") and
+    // any other path are rejected rather than resolving to a collection segment.
+    if (preg_match('#^/posts/([a-z0-9]+(?:-[a-z0-9]+)*)/?$#', $path, $matches) !== 1) {
+        return '';
+    }
+
+    return $matches[1];
+}
+
 function akiraShellSavePost(?string $existingSlug): void
 {
     if (!akiraShellAuthorize()) {

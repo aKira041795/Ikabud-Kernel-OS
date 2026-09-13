@@ -654,7 +654,10 @@ function akiraShellCompositions(array $params = []): void
     $rows = is_array($resolved['rows'] ?? null) ? $resolved['rows'] : [];
     $posts = array_values(array_filter(array_map(static fn (mixed $row): array => [
         'entity_type' => 'post',
-        'entity_key' => (string) ($row['slug'] ?? ''),
+        // The list projection exposes presentation meaning only — it deliberately
+        // omits the domain-internal `slug`, so identity comes from the canonical
+        // URL the module chose to publish.
+        'entity_key' => akiraShellPostKeyFromUrl((string) ($row['url'] ?? '')),
         'title' => (string) ($row['title'] ?? ''),
     ], $rows), static fn (array $post): bool => $post['entity_key'] !== ''));
     echo akiraShellPage('Compositions', '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">' . akiraShellBuilderAdmin([

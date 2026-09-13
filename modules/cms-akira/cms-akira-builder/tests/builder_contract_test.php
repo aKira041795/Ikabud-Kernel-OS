@@ -47,6 +47,7 @@ $register('cms-akira-theme', cms_akira_theme_capability_handlers());
 $register(CAB_BUILDER_MODULE_ID, cms_akira_builder_capability_handlers(), $governed);
 
 $db = app()->db();
+requireDatabaseTables($db, ['cms_akira_compositions', 'cms_akira_composition_revisions']);
 $tenantA = 994701;
 $tenantB = 994702;
 requireWritableCacheDirectory($root . '/storage/cache/disyl-fragments/' . $tenantA, 'DiSyL fragment cache for tenant ' . $tenantA);
