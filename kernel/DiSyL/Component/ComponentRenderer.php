@@ -1486,6 +1486,7 @@ final class ComponentRenderer
         $fields = [];
         $fieldRenderers = [];
         $visibleFields = [];
+        $hasFieldDeclarations = false;
         if (preg_match_all('/\{field\s+((?:[^{}]|\{[^{}]*\})*)\}/', $children, $fieldMatches)) {
             foreach ($fieldMatches[1] as $fieldStr) {
                 $fieldAttrs = $this->parseSimpleAttrs($fieldStr);
@@ -1495,6 +1496,7 @@ final class ComponentRenderer
                     continue;
                 }
                 $fields[] = $fieldName;
+                $hasFieldDeclarations = true;
 
                 // Track semantic role if present (e.g. role="title", role="subtitle", role="image")
                 $fieldRole = $fieldAttrs['role'] ?? '';
@@ -1604,7 +1606,7 @@ final class ComponentRenderer
         if (!empty($fieldRenderers)) {
             $contract['renderers'] = $fieldRenderers;
         }
-        if (!empty($visibleFields)) {
+        if ($hasFieldDeclarations) {
             $contract['visible_fields'] = $visibleFields;
         }
         if (!empty($filterSchema)) {

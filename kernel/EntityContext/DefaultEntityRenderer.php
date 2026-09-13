@@ -116,7 +116,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             return $this->afterRenderList($result, $attrs);
         }
 
-        $fields = $view['fields'] ?? ['*'];
+        $fields = $this->resolveDisplayFields($view);
         $viewMode = $view['view'] ?? ($attrs['view'] ?? 'compact');
         $actions = $view['actions'] ?? [];
         $actionUrls = $view['action_urls'] ?? [];
@@ -131,44 +131,6 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
         // Field-level contracts (editable, update_capability, allowed_values, etc.)
         $fieldContracts = $view['field_contracts'] ?? [];
-
-        // Visible fields whitelist — declares which fields are safe for public display
-        $visibleFields = $view['visible_fields'] ?? [];
-
-        // Expand '*' safely (fail-closed): never derive display fields from row keys.
-        // When visible_fields is present it is the source of truth (an explicit []
-        // renders no fields). Otherwise '*' resolves only to the centrally governed
-        // safe-fallback allowlist — internal fields (tenant_id, cost, notes, tokens,
-        // provider metadata) are never rendered.
-        if ($fields === ['*'] || $fields === '*') {
-            $allKeys = !empty($rows) ? array_keys($rows[0]) : [];
-            if (array_key_exists('visible_fields', $view)) {
-                $fields = array_values(array_intersect($allKeys, $visibleFields));
-            } else {
-                $fields = array_values(array_intersect($allKeys, self::SAFE_FALLBACK_FIELDS));
-            }
-        }
-
-        // Validate declared fields exist in data
-        $firstRowKeys = !empty($rows) ? array_keys($rows[0]) : [];
-        $validFields = [];
-        foreach ($fields as $field) {
-            if ($field === '*') {
-                continue;
-            }
-            if (in_array($field, $firstRowKeys, true)) {
-                $validFields[] = $field;
-            } elseif (function_exists('write_log')) {
-                \write_log(
-                    "DefaultEntityRenderer: field '{$field}' not found in data for '{$source}'. Available: " . implode(', ', $firstRowKeys),
-                    'warning',
-                    ['source' => $source, 'field' => $field, 'available' => $firstRowKeys]
-                );
-            }
-        }
-        if (!empty($validFields)) {
-            $fields = $validFields;
-        }
 
         $userRole = (string)($attrs['auth-role'] ?? $context['current_user_role'] ?? '');
         $actionRoles = $view['action_roles'] ?? [];
@@ -327,11 +289,14 @@ final class DefaultEntityRenderer implements EntityRendererInterface
     public function renderDetail(array $entity, array $view, array $attrs, array $context = []): string
     {
         $class = (string)($attrs['class'] ?? '');
-        $rawFields = $attrs['fields'] ?? ($view['fields'] ?? '*');
-        $fields = is_array($rawFields) ? $rawFields : array_map('trim', explode(',', (string)$rawFields));
-        if ($fields === ['*'] || $fields === '*') {
-            $safe = $view['visible_fields'] ?? self::SAFE_FALLBACK_FIELDS;
-            $fields = array_values(array_intersect(array_keys($entity), $safe));
+        $fields = $this->resolveDisplayFields($view);
+        if (array_key_exists('fields', $attrs)) {
+            $requested = $this->normalizeFieldList($attrs['fields']);
+            if ($requested !== null) {
+                $fields = $requested === ['*'] ? $fields : array_values(array_intersect($requested, $fields));
+            } else {
+                $fields = [];
+            }
         }
 
         $rows = '';
@@ -363,6 +328,62 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             {$rows}
         </div>
         HTML;
+    }
+
+    /**
+     * Resolve one metadata-driven field list for every rendered row.
+     *
+     * @param array<string, mixed> $view
+     * @return list<string>
+     */
+    private function resolveDisplayFields(array $view): array
+    {
+        $requested = $this->normalizeFieldList($view['fields'] ?? '*');
+        if ($requested === null) {
+            return [];
+        }
+        $wildcard = $requested === ['*'];
+
+        if (!array_key_exists('visible_fields', $view)) {
+            return $wildcard ? self::SAFE_FALLBACK_FIELDS : $requested;
+        }
+
+        $visible = $this->normalizeFieldList($view['visible_fields']);
+        if ($visible === null || $visible === ['*']) {
+            $visible = self::SAFE_FALLBACK_FIELDS;
+        }
+
+        return $wildcard ? $visible : array_values(array_intersect($requested, $visible));
+    }
+
+    /**
+     * Normalize field metadata without consulting entity data.
+     *
+     * @return list<string>|null Null means malformed metadata.
+     */
+    private function normalizeFieldList(mixed $fields): ?array
+    {
+        if (is_string($fields)) {
+            if ($fields === '*') {
+                return ['*'];
+            }
+            $fields = array_map('trim', explode(',', $fields));
+        }
+        if (!is_array($fields)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($fields as $field) {
+            if (!is_string($field)) {
+                return null;
+            }
+            $field = trim($field);
+            if ($field !== '') {
+                $normalized[] = $field;
+            }
+        }
+        return array_values(array_unique($normalized));
     }
 
     // ── Cell rendering ─────────────────────────────────────────────
@@ -514,9 +535,11 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $rowClass = $this->style('row', 'compact', $ctx->use);
         $titleClass = $this->style('title', 'compact', $ctx->use);
         $subClass = $this->style('subtitle', 'compact', $ctx->use);
-        $titleField = $ctx->fields[0] ?? 'id';
+        $titleField = $ctx->fields[0] ?? null;
         $subField = $ctx->fields[1] ?? null;
-        $title = htmlspecialchars((string)($ctx->row[$titleField] ?? $titleField), ENT_QUOTES, 'UTF-8');
+        $title = $titleField !== null
+            ? htmlspecialchars((string)($ctx->row[$titleField] ?? ''), ENT_QUOTES, 'UTF-8')
+            : '';
         $subRaw = $subField ? (string)($ctx->row[$subField] ?? '') : '';
         $viewContract = is_array($this->renderContext['_view'] ?? null) ? $this->renderContext['_view'] : [];
         $excerptLength = (int)($this->renderContext['excerpt-length'] ?? $this->renderContext['excerpt_length'] ?? $viewContract['excerpt_length'] ?? 0);
@@ -548,10 +571,17 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
         // Use semantic role annotations from view contract if available,
         // fall back to positional fields (index 0 = title, index 1 = subtitle).
-        $titleField = $ctx->roleFields['title'] ?? ($ctx->fields[0] ?? 'name');
-        $subField = $ctx->roleFields['subtitle'] ?? ($ctx->fields[1] ?? null);
-        $imageField = $ctx->roleFields['image'] ?? (in_array('image', $ctx->fields, true) ? 'image' : (in_array('thumbnail', $ctx->fields, true) ? 'thumbnail' : null));
-        $title = htmlspecialchars((string)($ctx->row[$titleField] ?? ''), ENT_QUOTES, 'UTF-8');
+        $roleTitle = $ctx->roleFields['title'] ?? null;
+        $roleSubtitle = $ctx->roleFields['subtitle'] ?? null;
+        $roleImage = $ctx->roleFields['image'] ?? null;
+        $titleField = is_string($roleTitle) && in_array($roleTitle, $ctx->fields, true) ? $roleTitle : ($ctx->fields[0] ?? null);
+        $subField = is_string($roleSubtitle) && in_array($roleSubtitle, $ctx->fields, true) ? $roleSubtitle : ($ctx->fields[1] ?? null);
+        $imageField = is_string($roleImage) && in_array($roleImage, $ctx->fields, true)
+            ? $roleImage
+            : (in_array('image', $ctx->fields, true) ? 'image' : (in_array('thumbnail', $ctx->fields, true) ? 'thumbnail' : null));
+        $title = $titleField !== null
+            ? htmlspecialchars((string)($ctx->row[$titleField] ?? ''), ENT_QUOTES, 'UTF-8')
+            : '';
         $subRaw = $subField ? (string)($ctx->row[$subField] ?? '') : '';
         $viewContract = is_array($this->renderContext['_view'] ?? null) ? $this->renderContext['_view'] : [];
         $excerptLength = (int)($this->renderContext['excerptLength'] ?? $this->renderContext['excerpt-length'] ?? $this->renderContext['excerpt_length'] ?? $viewContract['excerpt_length'] ?? 0);
