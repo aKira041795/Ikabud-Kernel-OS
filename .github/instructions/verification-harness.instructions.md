@@ -59,9 +59,16 @@ way were harness faults.
   `vendor/bin/phpstan analyse <file>` reports nothing and looks like a pass — which is how
   a real error reached CI after "targeted PHPStan passed". Use:
   `vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G <file>`.
-- A **repo-wide local** PHPStan run reports ~424 environment-related errors that CI's PHP 8.3
-  does not; local totals are not comparable to CI's. Judge by the config-scoped per-file run,
-  or by CI.
+- A **repo-wide local** PHPStan run reports ~424 errors that CI does not. The cause is **not** the PHP
+  version: PHP 8.3 and 8.5 report identical totals (2766 unbaselined / 424 baselined), so "CI runs 8.3"
+  does not explain it. The cause is **ignored local modules** sitting under the config's `paths:` —
+  `modules/*` is git-ignored (`.gitignore:10`), so `modules/daily-ledger` (0 tracked files) is analysed
+  locally and absent from CI's checkout. All 424 are in that module, which is why CI is green.
+- Hence: reproduce the gate by restricting the config's path set to tracked files —
+  `php8.3 vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G kernel src $(git ls-files 'modules/*.php')`.
+  Do **not** widen it to `$(git ls-files '*.php')`: that adds `tests/`, `scripts/` and `tools/`, which the
+  gate never analyses, and inflates the total (590 vs 424) — a different file set is not a comparable
+  measurement. Never regenerate the baseline from a run whose path set differs from CI's.
 - **Inserting lines shifts line numbers and can surface a baseline-suppressed error.**
   When a pre-existing error appears right after an insert, that is why — fix the underlying
   omission rather than editing `phpstan-baseline.neon`. `reportUnmatchedIgnoredErrors: false`

@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ikabud:workbench:development-decision-request:v1",
+  "title": "Workbench Development Decision Request",
+  "description": "A fail-closed, resumable HARPP request for a director decision raised by the bounded development harness.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "decision_id",
+    "task_id",
+    "contract_revision",
+    "raised_at",
+    "raised_by",
+    "authority_level",
+    "question",
+    "why_now",
+    "options",
+    "recommendation",
+    "default_if_no_response",
+    "impact_of_no_decision",
+    "already_done",
+    "checkpoint",
+    "evidence_refs",
+    "transport"
+  ],
+  "properties": {
+    "schema": { "const": "ark.workbench-development-decision-request.v1" },
+    "schema_version": { "const": "1.0" },
+    "decision_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "task_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "contract_revision": { "type": "string", "pattern": "^[a-f0-9]{8,64}$" },
+    "raised_at": { "type": "string" },
+    "raised_by": {
+      "type": "object",
+      "required": ["role", "model", "harness"],
+      "properties": {
+        "role": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "harness": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "authority_level": { "const": "L4" },
+    "question": { "type": "string" },
+    "why_now": { "type": "string" },
+    "options": {
+      "description": "The director must receive two to four mutually exclusive options.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "effect", "cost", "blast_radius", "reversibility"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "label": { "type": "string" },
+          "effect": { "type": "string" },
+          "cost": { "type": "string" },
+          "blast_radius": { "type": "string" },
+          "reversibility": { "enum": ["reversible", "partially_reversible", "irreversible"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recommendation": {
+      "description": "The recommendation must name one offered option and explain why it is preferred.",
+      "type": "object",
+      "required": ["option_id", "rationale"],
+      "properties": {
+        "option_id": { "type": "string" },
+        "rationale": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "default_if_no_response": {
+      "description": "No option is implicit: an unanswered request always stops the run.",
+      "const": "stop"
+    },
+    "impact_of_no_decision": { "type": "string" },
+    "already_done": { "type": "array", "items": { "type": "string" } },
+    "checkpoint": {
+      "type": "object",
+      "required": ["state", "git_head", "resume_command"],
+      "properties": {
+        "state": { "type": "string" },
+        "git_head": { "type": ["string", "null"] },
+        "resume_command": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "transport": {
+      "type": "object",
+      "required": ["channel", "attempted", "delivered", "suppressed", "harpp_decision_id", "error"],
+      "properties": {
+        "channel": { "enum": ["harpp-cli", "harpp-mcp", "local-only"] },
+        "attempted": { "type": "boolean" },
+        "delivered": { "type": "boolean" },
+        "suppressed": { "type": "boolean" },
+        "harpp_decision_id": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "notification": {
+      "type": "object",
+      "required": ["message_type", "conversation_id", "sent"],
+      "properties": {
+        "message_type": { "enum": ["PROGRESS", "DECISION_REQUIRED", "BLOCKED", "RELEASE_READY", "FAILED"] },
+        "conversation_id": { "type": ["string", "null"] },
+        "sent": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "resolution": {
+      "description": "Resolution is written only from the director's explicit answer.",
+      "type": "object",
+      "required": ["chosen_option_id", "decided_by", "decided_at", "note"],
+      "properties": {
+        "chosen_option_id": { "type": "string" },
+        "decided_by": { "type": "string" },
+        "decided_at": { "type": "string" },
+        "note": { "type": "string" },
+        "source": { "enum": ["local", "harpp"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

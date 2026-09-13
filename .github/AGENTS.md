@@ -57,6 +57,18 @@ interactive TUI. Configure providers/credentials with `pi auth` and `pi config`.
   artifacts land in `.ai/debate/`. This is the two-model "discuss -> agree ->
   create current-task" workflow.
 
+**Autonomy and decision deferral**
+
+The normative policy is `.github/instructions/ai-autonomy-escalation.instructions.md`;
+`tools/ai-autonomy.php` enforces its contract-bounded scope. HARPP is the external
+director channel, found on `PATH` (or exposed through its MCP tools in VS Code).
+The repository-wide ladder is L0–L4: L0/L1 proceed, L2 (default)/L3 record, and
+only L4 stops for human approval.
+- `php tools/ai-autonomy.php plan --emit-manifest=/tmp/wf.json --contract=.ai/current-task.md`
+- `php tools/ai-autonomy.php check "edit files" --level=L2 --path=tools/example.php --contract=.ai/current-task.md`
+- `php tools/ai-autonomy.php defer --task=task-id --question="..." --why="..." --option="a|Label|Effect|Cost|Radius|reversible" --option="b|Label|Effect|Cost|Radius|reversible" --recommend=a`
+- `php tools/ai-autonomy.php notify --type=PROGRESS --body="Implementation started"`
+
 ## Agent Roster
 
 | Agent | Model | Context | Tools | Token strategy |

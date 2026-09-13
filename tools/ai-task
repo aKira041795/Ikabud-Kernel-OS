@@ -32,3 +32,6 @@ echo "  Harness:  python3 tools/pi-arch-debate.py \"$TASK\"          # DS Pro dr
 echo "  DeepSeek: /implement"
 echo "  DeepSeek: /review"
 echo "  Codex:    /release-gate"
+echo "  Autonomy: php tools/ai-autonomy.php plan --emit-manifest=/tmp/wf.json"
+echo "  Workflow: harpp workflow start --manifest=/tmp/wf.json --conversation=<id> --authority-level=L2"
+echo "  Defer:    php tools/ai-autonomy.php defer --task=TASK_ID --question='...' --why='...' --option='a|Label|Effect|Cost|Blast radius|reversible' --option='b|Label|Effect|Cost|Blast radius|reversible' --recommend=a"
