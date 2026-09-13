@@ -8,7 +8,9 @@ parameters:
         - src
         - modules
     excludePaths:
-        - analyse
+        # Local-only scratch directory; not present in every checkout. PHPStan 2.x
+        # requires the "(?)" marker for optional paths (see UPGRADING.md).
+        - analyse (?)
         - '**/*Test.php'
         - modules/*/builder-ui
         - modules/*/node_modules
