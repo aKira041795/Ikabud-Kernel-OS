@@ -49,7 +49,7 @@ final class GovernanceCensus
         $summary = array_map(static fn ($m) => $m['summary'], $routedModules);
         $nonHttpSummary = array_map(static fn ($m) => $m['non_http_summary'], $modules);
         return [
-            'rule' => 'Ratio denominator: routed business operations (POST/PUT/PATCH/DELETE); auth/session infrastructure is excluded. GET/HEAD/OPTIONS presentation and query routes are evidenced but excluded.',
+            'rule' => 'Three separate coverage measures, never merged. WRITE authority coverage = declared-and-enforced / routed business operations (POST/PUT/PATCH/DELETE). READ authority coverage = declared-and-enforced / routed read operations (GET/HEAD/OPTIONS). NON-HTTP authority coverage = declared / non-HTTP capability call sites. auth/session infrastructure is excluded from both routed denominators. The measures have different scales and semantics, so no merged percentage is published: a single figure would read as total authority coverage when it is only the write figure.',
             'detection' => 'PHP token analysis follows calls between named functions. A bus call requires executable app()->cap()->call(...) tokens; comments, strings and docblocks are ignored.',
             'metric' => 'dispatch_enforced counts operations whose authority is declared in capabilities.routes and established before the handler body. bus_reachable counts handlers that themselves reach the bus and is reported separately: a bus call inside a handler is not request authority, so it does not make the route governed.',
             'non_http_rule' => 'Non-HTTP authority is a separate measure and is never added to the routed denominator. Declared means a statically traceable non-HTTP entry path establishes AuthorityScopeResolver::withScope before reaching the capability call.',
@@ -150,10 +150,23 @@ final class GovernanceCensus
         $total = count($business);
         $enforced = $dispatchCounts['enforced'] ?? 0;
         $reachable = $reachCounts['bus-reachable'] ?? 0;
+
+        // Reads are classified exactly like writes and were previously dropped before
+        // summarising, so read authority was invisible and a read declaration could not
+        // move any published number. They are summarised here under their own denominator
+        // and never added to the write total: the scales are not comparable.
+        $reads = array_values(array_filter($operations, fn ($o) => $this->isRead($o)));
+        $readDispatchCounts = array_count_values(array_column($reads, 'dispatch'));
+        $readTotal = count($reads);
+        $readEnforced = $readDispatchCounts['enforced'] ?? 0;
+
         $routeHandlers = array_map(static fn (array $route): string => str_contains($route['handler'], ':') ? explode(':', $route['handler'], 2)[1] : $route['handler'], $routes);
         $nonHttp = $this->scanNonHttpFiles($this->phpFiles($dir), $routeHandlers);
         return ['module' => $id, 'operations' => $operations, 'non_http' => $nonHttp, 'summary' => [
             'module' => $id,
+            // Write authority coverage. `dispatch_enforced`/`total`/`ratio` are retained as
+            // the write-scoped figures for baseline and consumer compatibility. They are NOT
+            // total authority coverage and must never be labelled as such.
             'dispatch_enforced' => $enforced,
             'bus_reachable' => $reachable,
             'exempt' => $dispatchCounts['exempt'] ?? 0,
@@ -161,6 +174,14 @@ final class GovernanceCensus
             'total' => $total,
             'ratio' => $total ? round(100 * $enforced / $total, 1) : 0.0,
             'bus_ratio' => $total ? round(100 * $reachable / $total, 1) : 0.0,
+            'write_dispatch_enforced' => $enforced,
+            'write_total' => $total,
+            'write_ratio' => $total ? round(100 * $enforced / $total, 1) : 0.0,
+            'read_dispatch_enforced' => $readEnforced,
+            'read_exempt' => $readDispatchCounts['exempt'] ?? 0,
+            'read_undeclared' => $readDispatchCounts['undeclared'] ?? 0,
+            'read_total' => $readTotal,
+            'read_ratio' => $readTotal ? round(100 * $readEnforced / $readTotal, 1) : 0.0,
         ], 'non_http_summary' => $this->nonHttpSummary($id, $nonHttp)];
     }
 
@@ -186,6 +207,9 @@ final class GovernanceCensus
             'summary' => [
                 'module' => 'kernel', 'dispatch_enforced' => 0, 'bus_reachable' => 0,
                 'exempt' => 0, 'undeclared' => 0, 'total' => 0, 'ratio' => 0.0, 'bus_ratio' => 0.0,
+                'write_dispatch_enforced' => 0, 'write_total' => 0, 'write_ratio' => 0.0,
+                'read_dispatch_enforced' => 0, 'read_exempt' => 0, 'read_undeclared' => 0,
+                'read_total' => 0, 'read_ratio' => 0.0,
             ],
             'non_http_summary' => $this->nonHttpSummary('kernel', $nonHttp),
         ];
@@ -549,6 +573,21 @@ final class GovernanceCensus
             return false;
         }
         // Infrastructure exclusion affects only the ratio, never classification.
+        return preg_match('~(?:^|[/_-])(login|logout|refresh|forgot-password|reset-password|session)(?:$|[/_-])~i', $o['route']) !== 1;
+    }
+
+    /**
+     * A read operation carrying business meaning (GET/HEAD/OPTIONS). Reads are summarised
+     * under their own denominator and are never added to the write total. The same
+     * infrastructure exclusion applies, so the two routed measures stay comparable in kind.
+     *
+     * @param array<string, mixed> $o
+     */
+    private function isRead(array $o): bool
+    {
+        if (!in_array($o['method'], ['GET', 'HEAD', 'OPTIONS'], true)) {
+            return false;
+        }
         return preg_match('~(?:^|[/_-])(login|logout|refresh|forgot-password|reset-password|session)(?:$|[/_-])~i', $o['route']) !== 1;
     }
 
