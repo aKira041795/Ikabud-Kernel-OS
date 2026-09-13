@@ -1,0 +1,50 @@
+status: PASS
+
+changed:
+- `docs/kernel/disyl-block-engine-gaps.md`
+- `kernel/DiSyL/Component/IncludeResolver.php`
+- `kernel/DiSyL/Compiler/CompiledTemplate.php`
+- `kernel/DiSyL/Compiler/TemplateCompiler.php`
+- `kernel/DiSyL/v4/AST/IncludeNode.php`
+- `kernel/DiSyL/v4/Parser.php`
+- `tests/disyl_block_engine_readiness_test.php`
+
+gap_list:
+- supported: 6
+- partial: 1
+- missing: 0
+
+engine_changes:
+- Added dynamic `{include section.template ...}` resolution.
+- Added compiled AST/compiler support for dynamic include expressions.
+- Preserved static quoted include behavior.
+- Confirmed whole array/map passing through include parameters.
+- Added bounded recursive include stacks with legacy parameterless-cycle rejection.
+- Bumped compiler version to 13.
+
+verification:
+- proof_render: PASS
+  - `<h1>&lt;Ready&gt;</h1>`
+  - `<blockquote>“Nested”</blockquote>`
+  - `<h2>Cards</h2>`
+  - `<h3>One</h3><p>First</p><a href="/one">Learn more →</a>`
+  - `<h3>Two</h3><p>Second</p>`
+- disyl_suite: PASS — all 25 `tests/disyl*_test.php` files passed; comprehensive engine suite 312/312.
+- compiled_parity: PASS — full composition passed interpreted and compiled modes.
+- php_lint: PASS
+- cs_fixer: PASS — 0 files required fixing.
+- phpstan: PASS — 0 errors.
+- APCu: cleared successfully from web context.
+
+scope:
+  unexpected_files:
+  - Pre-existing/concurrent unrelated changes remain in `.github/AGENTS.md`, `tools/pi-arch-debate.py`, `tools/pi-arch-review.sh`, `.ai/**`, and `storage/cms-themes/akira-ark-demo/`.
+  - None were modified by this work.
+  - No persistent temporary APCu reset file remains.
+
+risks:
+- Parameterized recursion is bounded at 20 active includes.
+- Component/slot dispatch remains separate from theme-template lookup by design.
+
+unresolved:
+- none

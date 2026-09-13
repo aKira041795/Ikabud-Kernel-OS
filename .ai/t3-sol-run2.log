@@ -1,0 +1,41 @@
+status: changed
+
+changed:
+- `cms-akira-core`
+- `cms-akira-shell`
+- `cms-akira-seo`
+- `cms-akira-theme/module.json`
+- Focused registry/widget test added
+
+implementation_summary:
+- registry: Added validated raw dashboard-widget registry through `akira.extension.widgets@1`.
+- shell_wiring: Sidebar now merges ordered built-ins with `cms-akira-shell` registry contributions. Dashboard renders widgets fail-closed through their individual capabilities.
+- theme_contribution: Theme Studio is declared by `cms-akira-theme`; hardcoded shell entry removed.
+- seo_widget: Added Content health contribution and `akira.seo.content_health@1`, counting posts through Core capabilities and metadata through SEO-owned storage.
+
+verification:
+- php_lint: pass, all touched PHP files
+- cs_fixer: pass, 0 files requiring fixes
+- phpstan: pass on core, shell, SEO, and theme
+- registry_test: pass, 3/3
+- shell_test: pass, 97/97
+- seo_tests: blocked by existing real-environment provider activation state; 8/9 passed
+- http_dashboard: failed, tenant-54 host returned 404
+- http_nav: not verifiable without a working authenticated tenant-54 shell route
+- public: tenant-54 host returned 503
+- logs: no new output observed in `app.log` or `error.log`
+
+scope:
+- No `kernel/` edits
+- No new database tables
+- No shell foreign SQL
+- Existing unrelated untracked `.ai/` and theme-storage files untouched
+
+unexpected_files: none
+
+risks:
+- Tenant 54 currently has no CMS Akira rows in `tenant_module_settings`; runtime module/provider activation prevents real-environment acceptance.
+- Existing theme contract scenario also fails capability-provider activation in this environment.
+
+unresolved:
+- Tenant-54 module activation/routing must be restored before authenticated HTTP nav/dashboard and SEO capability-denial acceptance can be completed.

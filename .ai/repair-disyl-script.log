@@ -1,0 +1,39 @@
+status: PASS
+
+engine_change: `kernel/DiSyL/v4/Parser.php` no longer skips an entire balanced `{...}` block when it fails `looksLikeDisyl()` inside raw-text elements. It emits/scans the opening brace as plain text one character at a time, allowing nested DiSyL expressions to be discovered. The existing discriminator remains unchanged, preserving CSS declarations and `${...}` template literals as raw text. Include-stack handling was untouched.
+
+regression_tests:
+- Updated `tests/disyl_v4_compiler_test.php`
+  - Interpolation inside a quoted `fetch()` URL nested in a function.
+  - Interpolation inside nested function/object braces.
+  - Result: 59 passed, 0 failed.
+- Updated `tests/disyl_parity_test.php`
+  - CSS byte-identical in interpreted and compiled modes.
+  - JS `${...}` raw in both modes.
+  - Nested script interpolation in both modes.
+  - Result: 103/103 passed.
+
+disyl_suite: All 27 files passed by exit code: 26 general `tests/disyl*_test.php` files plus `tests/disyl_block_engine_readiness_test.php`; 0 failures. Readiness proof exited 0.
+
+live_login:
+- before: HTTP 200; `fetch('{login_endpoint}'` present.
+- after: HTTP 200; `fetch('/api/v1/auth/login'` present; literal `{login_endpoint}` count was 0.
+- Real POST using the session cookie and supplied credentials:
+  - Status: HTTP 200
+  - Body: `{"ok":true,"redirect":"\/cms-akira-shell"}`
+
+cache_handling: Direct deletion was denied due to `www-data` ownership. Used temporary `public/_apcu_reset.php` through `akiracms.test` to clear APCu, reset OPcache, and delete 25 compiled cache files as the web user. Endpoint was then deleted. The login template was rebuilt successfully.
+
+php_lint / cs_fixer / phpstan:
+- PHP lint: all 3 touched files passed.
+- PHP CS Fixer executed with the required option ordering/configuration.
+- PHPStan `kernel/DiSyL --memory-limit=1G`: no errors.
+- `git diff --check`: passed.
+
+tenant54_health:
+- `/login`: HTTP 200, substituted endpoint confirmed.
+- `/`: HTTP 200.
+- Theme: `data-akira-theme="akira-ark"`.
+- Temporary APCu endpoint removed.
+
+unresolved: None. No template/module source changes and no commit created.

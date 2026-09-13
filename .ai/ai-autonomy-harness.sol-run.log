@@ -1,0 +1,132 @@
+## Status
+
+**PASS** — contract implemented within the seven-file scope. No blocked items.
+
+## Files changed
+
+Created:
+
+- `.github/instructions/ai-autonomy-escalation.instructions.md`
+- `kernel/Workbench/Schemas/development-decision-request.v1.schema.json`
+- `tools/ai-autonomy.php`
+- `tests/ai_autonomy_test.php`
+
+Modified:
+
+- `tools/ai-task`
+- `.github/AGENTS.md`
+- `.github/instructions/ai-development-execution-handoff.instructions.md`
+
+No other task files were modified.
+
+## Required test results
+
+### `php tests/ai_autonomy_test.php`
+
+```text
+14/14 passed
+Assertions: 14
+Suite: ai-autonomy
+EXIT_CODE=0
+```
+
+All scope tripwire cases 4–8 passed.
+
+### `php -l tools/ai-autonomy.php`
+
+```text
+No syntax errors detected in tools/ai-autonomy.php
+EXIT_CODE=0
+```
+
+### PHPStan
+
+```text
+[OK] No errors
+EXIT_CODE=0
+```
+
+Command:
+
+```text
+vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G tools/ai-autonomy.php tests/ai_autonomy_test.php
+```
+
+PHPStan analyzed the explicitly supplied test file successfully.
+
+### In-scope check probe
+
+```text
+VERDICT: PROCEED
+class: D0
+action: edit the driver
+paths:
+  - tools/ai-autonomy.php
+reasons:
+EXIT_CODE=0
+```
+
+### Kernel scope check probe
+
+```text
+VERDICT: ESCALATE
+class: D2
+action: touch the kernel
+paths:
+  - kernel/App.php
+reasons:
+  - path 'kernel/App.php' matches forbidden entry 'kernel/App.php'
+next: file a deferred decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT_CODE=3
+```
+
+### One-option defer probe
+
+The pipe-delimited option was shell-quoted so it reached the driver as one argument.
+
+```text
+ERROR: offending field --option count: 1 (expected 2-4)
+EXIT_CODE=2
+NO_ARTIFACT_DIRECTORY
+```
+
+## Acceptance criteria
+
+1. **PASS** — plan exits `0` and prints all required sections.  
+   Evidence: `AUTONOMY ENVELOPE`, `allowed scope (7)`, phase chain, `automatic escalation (D2)` with 13 triggers, and `pending decisions: 0`.
+
+2. **PASS** — in-scope proceeds; forbidden/out-of-scope escalates.  
+   Evidence: probes returned `PROCEED/0` and `ESCALATE/3`.
+
+3. **PASS** — sensitive in-scope DDL requires grounded justification.  
+   Evidence: test cases 6–8 passed.
+
+4. **PASS** — malformed defer writes nothing; valid defer writes all three schema-shaped artifacts.  
+   Evidence: one-option probe returned `2` with `NO_ARTIFACT_DIRECTORY`; test case 11 passed.
+
+5. **PASS** — unanswered decisions always stop.  
+   Evidence: generated JSON asserts `default_if_no_response === 'stop'`; resume requires an explicit valid choice.
+
+6. **PASS** — complete test suite.  
+   Evidence: `14/14 passed`, exit `0`.
+
+7. **PASS** — policy includes all required sections.  
+   Evidence: D0 at line 23, D1 at 32, D2 at 38, phase progression at 54, deferred-decision contract at 58, and prohibited behaviours at 66.
+
+## Additional evidence
+
+Missing-tool development probe:
+
+```text
+Could not open input file: /definitely/missing/ai-autonomy.php
+EXIT_CODE=1
+```
+
+Schema JSON validation:
+
+```text
+SCHEMA_JSON_VALID
+EXIT_CODE=0
+```
+
+No `git add`, commit, push, branch creation, dependency change, baseline edit, kernel PHP edit, or workflow edit was performed.

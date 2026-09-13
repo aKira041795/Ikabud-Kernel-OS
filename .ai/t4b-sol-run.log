@@ -1,0 +1,51 @@
+status: PARTIAL_SUCCESS
+
+task: T4b — Schema-driven Akira builder admin editor
+
+changed:
+- Canonicalized editor trees to `{block, props, children?}` and rejected legacy/noncanonical raw JSON.
+- Added runtime theme block catalogue loading via `blocks_endpoint`.
+- Added schema-driven block picker and property forms, including repeatable object-array rows.
+- Applied catalogue defaults when adding blocks.
+- Added fail-closed catalogue error handling.
+- Injected `/api/v1/cms-akira-theme/blocks` from the shell bootstrap.
+- Added builder contract assertions for canonical shape and catalogue defaults.
+- Updated builder documentation.
+- Regenerated committed JS/CSS artifacts.
+
+verification:
+- `npm run type-check`: passed.
+- `npm run build`: passed; Vite built 32 modules.
+- PHP syntax checks: passed.
+- PHP CS Fixer: `Fixed 0 of 2 files`.
+- PHPStan: `[OK] No errors`.
+- `php ikabud architecture:check`: all 6 checks passed.
+- Shell tests: `97 passed, 0 failed`.
+- Live login and catalogue request succeeded.
+- Live bootstrap contains:
+  `blocks_endpoint="/api/v1/cms-akira-theme/blocks"`.
+- All five live catalogue blocks validated successfully:
+  - hero: `data.valid:true`
+  - richtext: `data.valid:true`
+  - card-grid: `data.valid:true`
+  - quote: `data.valid:true`
+  - cta: `data.valid:true`
+- Live `t4a-page` update, preview render, publish, published render, unpublish, restore, and republish all returned `ok:true`.
+- Original `t4a-page` tree was restored and republished at revision 5.
+
+scope:
+- Only approved builder sources/tests/docs, shell handler bootstrap, and generated assets were modified.
+- `.ai/**` and `storage/cms-themes/akira-ark-demo/**` remain untouched and untracked.
+- No commit, push, branch creation, or tenant schema changes performed.
+
+risks:
+- The literal requested grep also matches JSX `<section>` and `<button type="button">`; no legacy block-name string literals remain.
+- Render endpoints returned `ok:true`, although the verification substring probe reported `has_quote:false`.
+
+unresolved:
+- Existing builder integration tests could not complete because the test environment denied the registered builder provider:
+  `CapabilityNotFoundException: No permitted capability providers for: akira.builder.validate@1`
+- Builder HTTP bridge result: `4 passed, 16 failed`, with downstream failures caused by the same capability/provider authorization state.
+- Therefore, full test-suite success cannot be claimed.
+
+recommended_next_state: READY_FOR_CHAIR_REVIEW_WITH_ENVIRONMENT_BLOCKER
