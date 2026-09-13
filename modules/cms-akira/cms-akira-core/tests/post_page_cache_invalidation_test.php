@@ -51,6 +51,15 @@ app()->entityAuthority()->registerAuthority('post', 'cms-akira-core', ['authorit
 
 $tenantId = (int) app()->tenant()->current();
 $db = app()->db();
+// Same prerequisite guard as the sibling cms-akira-core mutation tests: without the
+// seeded capability authorization policies a governed call fails closed in CLI (missing
+// tenant authority scope), which raised an uncaught error and rendered the 500 page in CI.
+// Skips only when the policy is genuinely absent; any other failure still fails the test.
+requireCapabilityAuthorizationPolicies($db, [
+    ['capability_id' => 'akira.post.create@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.update@1', 'provider' => 'cms-akira-core'],
+    ['capability_id' => 'akira.post.publish@1', 'provider' => 'cms-akira-core'],
+]);
 $slug = 'cache-contract-' . bin2hex(random_bytes(5));
 $keyPrefix = 'cache-contract-' . bin2hex(random_bytes(6));
 app()->setUser(['id' => 999031, 'role' => 'admin']);
