@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "sections": {
+    "header": {
+      "label": "Header",
+      "controls": {
+        "brand": {"type": "text", "label": "Brand", "default": "CMS Akira"}
+      }
+    },
+    "footer": {
+      "label": "Footer",
+      "controls": {
+        "message": {"type": "text", "label": "Message", "default": "Governed publishing on Ikabud"}
+      }
+    }
+  }
+}

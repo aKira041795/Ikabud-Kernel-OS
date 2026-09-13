@@ -1,0 +1,14 @@
+{# Region: header.main — brand + primary nav. Static by design: no auth or
+   session access is permitted in themes, so no admin affordances here. #}
+<header class="site-header">
+  <div class="site-header__inner container">
+    <a class="site-brand" href="/">
+      <span class="site-brand__mark" aria-hidden="true">A</span>
+      <span class="site-brand__name">Akira</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a class="site-nav__link site-nav__link--active" href="/">Home</a>
+      <a class="site-nav__link" href="/posts">Posts</a>
+    </nav>
+  </div>
+</header>

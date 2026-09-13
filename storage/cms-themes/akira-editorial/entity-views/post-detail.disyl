@@ -1,0 +1,12 @@
+{# Context: post #}
+<article class="post-detail" data-ark-renderer="post-detail">
+  <a class="post-detail__back" href="/posts">← All posts</a>
+  <header class="post-detail__header">
+    {if post.metadata}<p class="t-kicker post-detail__kicker">{post.metadata | esc_html}</p>{/if}
+    <h1 class="t-headline-lg post-detail__title">{post.title | esc_html}</h1>
+    {if post.subtitle}<p class="t-lead post-detail__subtitle">{post.subtitle | esc_html}</p>{/if}
+  </header>
+  {if post.image}<figure class="post-detail__figure"><img src="{post.image | esc_url | esc_attr}" alt="{post.title | esc_attr}"></figure>{/if}
+  <div class="post-body">{post.body | raw}</div>
+  {if post.categories}<footer class="post-detail__tags">{foreach post.categories as category}<span class="tag">{category.name | esc_html}</span>{/foreach}</footer>{/if}
+</article>

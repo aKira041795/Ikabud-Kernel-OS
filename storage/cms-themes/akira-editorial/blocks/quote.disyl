@@ -1,0 +1,7 @@
+{# Block: quote — context: props #}
+{if props.quote}
+<figure class="editorial-quote" data-ark-block="quote">
+  <blockquote>“{props.quote | esc_html}”</blockquote>
+  {if props.cite}<figcaption>— {props.cite | esc_html}</figcaption>{/if}
+</figure>
+{/if}

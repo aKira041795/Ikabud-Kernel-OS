@@ -1,0 +1,4 @@
+{# Context: composition #}
+<article data-ark-renderer="composition-detail">
+  {foreach composition.sections as section}{include section.template props=section.props}{/foreach}
+</article>

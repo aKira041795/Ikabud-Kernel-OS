@@ -1,0 +1,11 @@
+{# Region: footer.main. Only routes that actually exist are linked — Archive
+   resolves to /posts. The mock's Feeds / Colophon / Privacy have no routes yet. #}
+<footer class="site-footer">
+  <div class="site-footer__inner container">
+    <p class="site-footer__note">&copy; 2025 Akira Publishing CMS. Independent stories &amp; essays.</p>
+    <nav class="site-footer__nav" aria-label="Footer">
+      <a href="/posts">Archive</a>
+      <a href="/">Latest</a>
+    </nav>
+  </div>
+</footer>
