@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Simulate the director viewing and deciding a HARPP decision."""
+
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+
+def fail(message):
+    print(f"director-answer: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def save(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".store-", suffix=".json", dir=str(path.parent))
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        fail("usage: director-answer <id> --decision <option-id> [--rationale TEXT]")
+    try:
+        decision_id = int(args.pop(0))
+    except ValueError:
+        fail("id must be an integer")
+    options = {}
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if not token.startswith("--"):
+            fail(f"unexpected argument: {token}")
+        pair = token[2:].split("=", 1)
+        if pair[0] not in {"decision", "rationale"}:
+            fail(f"unsupported option --{pair[0]}")
+        if len(pair) == 2:
+            options[pair[0]] = pair[1]
+        else:
+            index += 1
+            if index >= len(args) or args[index].startswith("--"):
+                fail(f"option --{pair[0]} requires a value")
+            options[pair[0]] = args[index]
+        index += 1
+    if not options.get("decision"):
+        fail("--decision is required")
+    path = Path(os.environ.get("HARPP_SIM_STORE", ".ai/harpp-sim/store.json"))
+    if not path.exists():
+        fail(f"store does not exist: {path}")
+    try:
+        store = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read store {path}: {exc}")
+    row = next((item for item in store.get("decisions", []) if item.get("id") == decision_id), None)
+    if row is None:
+        fail(f"decision {decision_id} does not exist")
+    state = row.get("lifecycle_state")
+    if state not in {"NOTIFIED", "VIEWED"}:
+        fail(f"illegal decide transition: decision {decision_id} is {state}")
+    if state == "NOTIFIED":
+        row["lifecycle_state"] = "VIEWED"
+        store.setdefault("events", []).append({"kind": "decision", "id": decision_id, "transition": "VIEWED"})
+    row["decision"] = options["decision"]
+    row["rationale"] = options.get("rationale", "")
+    row["lifecycle_state"] = "DECIDED"
+    store.setdefault("events", []).append({"kind": "decision", "id": decision_id, "transition": "DECIDED"})
+    save(path, store)
+    print(json.dumps(row, separators=(",", ":"), sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

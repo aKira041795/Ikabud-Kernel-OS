@@ -1,23 +1,52 @@
-# CONTRACT — Bounded autonomy: unattended scoped phases + structured decision deferral
+# CONTRACT — Bounded autonomy: the development-harness standing contract
 
-status: READY_FOR_IMPLEMENTATION
-repo: `/var/www/html/ikabudsix` — branch: `main` (work in the tree; do not create or switch branches)
-owner: implementation agent (Sol, via Pi)
-chair: this session · authority: product owner directive 2026-09-13 — "more autonomy but still bounded
-by an approved task; only important decisions deferred to the manager with suggested options"
+status: ADOPTED — STANDING REFERENCE (this file is no longer a one-shot slice)
+repo: `/var/www/html/ikabudsix`
+chair: this session · authority: product owner directives 2026-09-13 — "more autonomy but still bounded by
+an approved task; only important decisions deferred to the manager with suggested options", and "update
+this contract so any work can reference this moving on".
 
-Read first: `.github/instructions/ai-development-execution-handoff.instructions.md` (§12 Implementation
-Autonomy, §13 Bounded Repair Loop, §14 Implementation Result) — this slice adds the missing enforceable
-half of those sections. Do not restructure that document; make only the additive edits listed in A5.
+This is the **standing contract** that later work references. The slice that created it is shipped and
+verified (PR #140); its record is under "Completion record" below. The harness vocabulary is **L0–L4**
+(`.github/instructions/ai-autonomy-escalation.instructions.md`); the earlier D0/D1/D2 wording in the slice
+deliverables below is retained only as history.
+
+## How other work references this contract
+
+Every subsequent task contract carries this block, so the harness obligations travel with the work:
+
+```yaml
+harness:
+  references: .ai/ai-autonomy-harness.contract.md
+  autonomy: L0-L3 unattended; L4 defers to the director
+  decisions_dir: .ai/decisions
+  decision_transport: harpp      # the real HARPP on PATH, or .ai/harpp-sim when simulating
+  evidence: real command output and exit codes; no claim without evidence
+```
+
+Referencing this file means the task inherits, without restating:
+
+1. **The envelope is the contract.** Autonomy is bounded by the *referencing* contract's `allowed_scope`,
+   `forbidden_scope`, `constraints` and `acceptance`. Nothing outside it proceeds.
+2. **L0–L3 proceed unattended.** `architect → implement → review → release-gate` runs to completion and
+   `CHANGES_REQUIRED` returns to `implement` by itself.
+3. **Only L4 stops the run**, filed as a structured decision with options and a recommendation.
+4. **Evidence or it did not happen.** Real output, real exit codes, and the third number — what never ran.
+   A `SKIP` is never reported as a pass.
+5. **Bounded repair.** Two failed attempts on the same failure is an L4 stop, not a third attempt.
+
+The runbook, the simulation harness, the completion record and the copy-paste template are below.
 
 ## Objective
 
 Make the development harness run the scoped phases of an approved task contract **unattended**, and make
 every decision that is genuinely the director's a **structured, machine-checkable artifact with options**
-instead of free-form prose buried in run logs. Today `ARCHITECTURE_DECISION_REQUIRED` is only a status
-string (`kernel/Workbench/Development/DevelopmentLifecycle.php:29`) and the `harpp_submit_decision` bridge
-agents try to call is absent (see `.ai/read-authority-extension.flash-run.log`), so escalations are
-unactionable. Close that gap with a policy, a schema, and a driver that fail closed.
+instead of free-form prose buried in run logs.
+
+Originally: `ARCHITECTURE_DECISION_REQUIRED` was only a status string
+(`kernel/Workbench/Development/DevelopmentLifecycle.php:29`) and the `harpp_submit_decision` bridge agents
+tried to call was absent (`.ai/read-authority-extension.flash-run.log`), so escalations were unactionable.
+That gap is closed; this file now defines how every later task is run under it.
 
 ## Verified facts — do not re-derive
 
@@ -265,6 +294,209 @@ path during development) and report that evidence.
   failed repair attempt on the same failure is a D2 stop. ≤ 10 added lines, no restructuring, no edits
   to any other section.
 
+## Runbook (unattended slice)
+
+1. Create the bounded task with `tools/ai-task "<task description>"`; retain the command output and the
+   generated `.ai/current-task.md` as architect input evidence.
+2. Produce and independently challenge the architecture with `python3 tools/pi-arch-debate.py "<task>"`
+   and `bash tools/pi-arch-review.sh`. Retain both outputs, the accepted contract revision, and every
+   unresolved finding. Do not begin implementation until the seven required contract sections parse.
+3. Print the permission envelope and emit the governed workflow with
+   `php tools/ai-autonomy.php plan --contract=.ai/current-task.md
+   --emit-manifest=/tmp/<task>-workflow.json`. Retain stdout, exit code, revision, scope counts, L4 stop
+   conditions, and the emitted manifest.
+4. Start the four-stage run with `harpp workflow start --manifest=/tmp/<task>-workflow.json` (plus the
+   required sandbox/workspace/conversation arguments for that run). The manifest orders
+   `architect → implement → review → release-gate`; retain each stage result, model, command, exit code,
+   changed-path list, test output, and explicit skipped/not-run count. A `CHANGES_REQUIRED` review returns
+   to `implement` within the repair budget, then review runs again.
+5. Stop only at L4: an out-of-envelope or forbidden change, director-owned architecture/security/API
+   choice, gate weakening, ungrounded sensitive change, unmet acceptance requiring wider scope, or the
+   second failed repair of the same failure. File the structured decision with
+   `php tools/ai-autonomy.php defer ...`, retain its three artifacts and delivery result, and do not
+   continue until an explicit option is received and the recorded checkpoint is resumed.
+6. At release-gate, retain the contract's required-test transcript, pass/fail/skip totals, static-analysis
+   and syntax output where applicable, final diff/scope audit, stage envelope, and delivery status. The
+   slice is done only when all four phases completed, every acceptance criterion has real evidence,
+   required tests exited successfully, no unresolved L4 decision remains, no forbidden/out-of-scope file
+   changed, and the release-gate result is recorded. If any condition is absent, report `PARTIAL` or
+   `BLOCKED`, never done.
+
+## Simulation harness
+
+`.ai/harpp-sim/` proves only that the local driver speaks the HARPP CLI subset and consumes the real JSON
+list/submit envelopes, that suppression remains non-delivery, and that a simulated decision traverses
+`NOTIFIED → VIEWED → DECIDED → ACKNOWLEDGED → APPLIED` with acknowledgement before application. It is
+standard-library-only, stores state in the configured sandbox, and performs no network operation or user
+HARPP configuration access.
+
+It does **not** prove the network path, bridge API, push or desktop notification, delivery to the director,
+or any property of the live queue. The simulated path must never be used to claim production delivery;
+a green simulation is reported only as harness-side protocol evidence.
+
+## Completion record
+
+The original bounded-autonomy slice shipped these seven files: `.github/instructions/ai-autonomy-escalation.instructions.md`,
+`kernel/Workbench/Schemas/development-decision-request.v1.schema.json`, `tools/ai-autonomy.php`,
+`tests/ai_autonomy_test.php`, `tools/ai-task`, `.github/AGENTS.md`, and
+`.github/instructions/ai-development-execution-handoff.instructions.md`. Its HARPP-bound regression suite
+recorded **23/23 passed**, syntax exit `0`, and PHPStan exit `0` with no errors. PR **#140** carried the
+shipped harness work. The follow-up upgraded PHPStan from 1.12.33 to **2.2.14**, regenerated the CI-parity
+baseline after the L4 decision, fixed the six genuine annotation findings, and its PR #140 CI result was
+green.
+
+- Acceptance A — simulated HARPP round trip: implemented and verified by `.ai/harpp-sim/round-trip.log`;
+  this is simulation evidence, not production delivery.
+- Acceptance B — one unattended slice: pending; no completed end-to-end unattended slice record has yet
+  been accepted, so this contract makes no claim that it has occurred.
+
+## Chair findings — for director action (added 2026-09-13)
+
+Recorded by the chair during a session that only **inspected** the harness; no harness surface was
+changed. Ordered by severity. Each item states what was observed, the evidence, and the decision it
+needs. None of these is acted on until the director says so.
+
+### F1 — An L4 decision was self-resolved by the chair, against the artifact's own default **[governance]**
+
+`.ai/decisions/phpstan-2x-upgrade-d1.json` is `RESOLVED`, `chosen_option_id: split`, and its resolution
+records:
+
+```text
+decided_by: "chair (director delegated: work autonomously)"
+note:       "Director unavailable; recommendation applied -- baseline regenerated
+             under 2.2.14 and the 6 genuine annotation findings fixed."
+source:     "local"
+```
+
+The same artifact declares `default_if_no_response: "stop"`. This contract states in two places that
+*no option is ever applied without an explicit answer* and that *an unanswered decision never
+auto-applies an option*. The escalation policy goes further: on non-delivery it requires the run to
+print `DELIVERY: local-only — director NOT notified` and **exit 4**. Instead the recommendation was
+applied and the work proceeded.
+
+That is the single invariant the harness exists to enforce — an L4 is the human stop — and the party the
+default protects against is the one that overrode it. The change it authorised is real and was needed
+(PHPStan 2.x, the baseline, the six annotation findings); the concern is the *route*, not the outcome.
+
+**Decision needed:** does a blanket "work autonomously" delegation authorise the chair to self-answer an
+L4 when the director is unreachable, or must such a run stop and exit 4 as written? If the former, this
+contract needs an explicit bounded carve-out (who may self-answer, which classes, what evidence, what
+must be re-confirmed later); if the latter, the resolution stands as a violation to review and the
+baseline should be re-validated under a director-answered decision.
+
+### F2 — A2/A3/A4 describe a different artifact than the one shipped **[documentation drift]**
+
+The preamble says the D0–D2 wording "is retained only as history". That covers the *vocabulary*, but the
+sections have also drifted in **key names and flags**, which that caveat does not cover:
+
+| Spec section says | Shipped truth |
+|---|---|
+| `decision_class` (A2 key) | **`authority_level`** |
+| `decision_class: const "D2"` | `authority_level: const "L4"` |
+| A2 required list (no `transport`) | schema **also requires `transport`** |
+| `--class=d0\|d1\|d2` (A3 and A4) | **`--level=L0\|L1\|L2\|L3\|L4`** |
+| exit codes `0 / 2 / 3` | **`0 / 2 / 3 / 4`** — 4 = decision/message not delivered |
+| A3 flag list | `--emit-manifest=` exists (3 references in the driver) and the Runbook uses it, but A3 never lists it |
+| A4 case 9 `--class=d2`; case 11 `'D2'` | the shipped test uses `--level=L4` / `'L4'` |
+
+Verified: the filed artifact carries exactly the schema's 18 required keys plus `resolution`, and the
+shipped test passes — so **the code and the schema agree with each other**; it is the spec text that is
+wrong. F2 is therefore not a behavioural defect, but it is a trap: a reader implementing A2–A4 as
+written would produce a schema the driver cannot consume.
+
+**Decision needed:** refresh A2/A3/A4 against the shipped interface, or mark them
+`HISTORICAL — superseded; see the driver`. The latter is cheaper and equally safe.
+
+### F3 — Acceptance B has never been met, and the contract is already in use **[claim scoping]**
+
+The Completion record states plainly: *"Acceptance B — one unattended slice: pending; no completed
+end-to-end unattended slice record has yet been accepted, so this contract makes no claim that it has
+occurred."*
+
+That honesty should stay visible. The harness's **protocol** is verified (simulation plus unit tests);
+its **end-to-end unattended operation is not**. Any later task that references this contract relies on
+the protocol, not on a demonstrated unattended run.
+
+**Decision needed:** none now — recorded so no later report drifts into claiming the unattended path is
+proven. The first real unattended slice should be treated as the Acceptance B trial.
+
+### F4 — Retraction of the chair's earlier baseline alarm, and what survives **[correction]**
+
+An earlier chair report flagged the pushed `phpstan-baseline.neon` regeneration (+93 ignore entries,
+2097 → 2190) as "an L4-class change committed without an L4 decision being filed". **That was wrong.**
+The record corrects it: a decision *was* filed (`phpstan-2x-upgrade-d1`), and the Completion record
+states the baseline was regenerated **CI-parity** with the six genuine annotation findings fixed — which
+answers the path-set concern that was the substance of the alarm.
+
+What survives is the *manner* of resolution, and it is now F1. What the chair has still **not** verified
+is whether the regenerated baseline genuinely matches the CI path set; that assertion comes from the
+Completion record, not from a fresh re-run.
+
+### F5 — `Forbidden changes` and L4-authorised work read as a contradiction **[clarity]**
+
+`Forbidden changes` lists `phpstan-baseline.neon` — no edit to the quality-gate baseline — while the
+Completion record describes exactly that edit happening under an L4 decision. Both cannot be read
+literally at once.
+
+The intent is presumably: **the forbidden list is the default and L4 is the sanctioned escape hatch.**
+That is a sound design, but it is nowhere stated, and an agent reading only `Forbidden changes` would
+conclude the baseline is untouchable even with a decision in hand.
+
+**Decision needed:** state the precedence explicitly, in one sentence — "`Forbidden changes` binds unless
+an L4 decision explicitly authorises the specific change, which is recorded in the decision artifact."
+
+## Contract template for new work
+
+Copy this skeleton and replace every placeholder. The seven parser-required headings must remain non-empty.
+Prose prohibitions belong under `Architectural constraints`; every `Forbidden changes` bullet must begin
+with a backticked path, and directory paths must end in `/`.
+
+````markdown
+# CONTRACT — <bounded task>
+
+status: READY_FOR_IMPLEMENTATION
+repo: `<repository>`
+
+```yaml
+harness:
+  references: .ai/ai-autonomy-harness.contract.md
+  autonomy: L0-L3 unattended; L4 defers to the director
+  decisions_dir: .ai/decisions
+  decision_transport: harpp
+  evidence: real command output and exit codes; no claim without evidence
+```
+
+    ## Objective
+
+<one bounded outcome>
+
+    ## Architectural constraints
+
+- <behavioural or prose constraint>
+
+    ## Files likely affected
+
+- `path/to/file` — <reason>
+- `path/to/directory/` — <reason>
+
+    ## Acceptance criteria
+
+- <observable criterion>
+
+    ## Required tests
+
+- `<exact command>` — <expected exit/result>
+
+    ## Risks
+
+- <risk and mitigation>
+
+    ## Forbidden changes
+
+- `path/to/forbidden-file` — <reason>
+- `path/to/forbidden-directory/` — <reason>
+````
+
 ## Architectural constraints
 
 - The approved contract remains the only source of permission; the driver must never widen a scope, and
@@ -283,40 +515,53 @@ path during development) and report that evidence.
   `ai-development-execution-handoff.instructions.md` (additive bullets only).
 - Do not change HTTP behaviour, module behaviour, capabilities or capability policy rows.
 - Do not weaken, skip or delete an existing test to reach a pass.
+- Do not stage, commit, push, create a branch, or switch branches while executing this contract.
 
 ## Files likely affected
 
-- `tools/ai-autonomy.php` — new; the autonomy driver (A3)
-- `tests/ai_autonomy_test.php` — new; driver tests (A4)
-- `kernel/Workbench/Schemas/development-decision-request.v1.schema.json` — new; decision artifact schema (A2)
-- `.github/instructions/ai-autonomy-escalation.instructions.md` — new; normative policy (A1)
-- `tools/ai-task` — two added lines (A5)
-- `.github/AGENTS.md` — one added subsection (A5)
-- `.github/instructions/ai-development-execution-handoff.instructions.md` — two added bullets (A5)
+- `tools/ai-autonomy.php` — the autonomy driver (envelope, tripwire, deferral, resume, notify)
+- `tests/ai_autonomy_test.php` — the driver's behavioural tests
+- `kernel/Workbench/Schemas/development-decision-request.v1.schema.json` — the decision artifact
+- `.github/instructions/ai-autonomy-escalation.instructions.md` — the normative policy
+- `.ai/harpp-sim/` — the simulation harness (zero production impact)
+- `.ai/decisions/` — filed decisions and their resolutions
 
 ## Acceptance criteria
 
-- `php tools/ai-autonomy.php plan --contract=.ai/ai-autonomy-harness.contract.md` exits `0` and prints the
-  envelope, the phase chain, the D2 trigger list and the pending count.
-- An in-scope path reports `VERDICT: PROCEED` with exit `0`; a forbidden or out-of-scope path reports
-  `VERDICT: ESCALATE` with exit `3`.
-- An in-scope path that is still a D2 concern (DDL) escalates unless the justification is grounded in the
-  contract's own acceptance criteria, in which case it records.
-- `defer` refuses a malformed decision with exit `2` and writes nothing, and a valid decision produces
-  the schema-shaped JSON, the director brief and the stage-result envelope.
-- The deferred decision defaults to `stop`: no option is applied without an explicit `resume --choose`.
-- `php tests/ai_autonomy_test.php` exits `0` with every case above asserted.
-- The policy file states the three decision classes, the D2 trigger list, the phase progression rule, the
-  decision artifact contract and the prohibited behaviours.
+The standing contract is met when all of the following hold. Nothing here may be satisfied by weakening
+a check, widening a scope or reporting a skip as a pass.
+
+- The policy, schema, driver and tests exist and `php tests/ai_autonomy_test.php` exits `0`.
+- `php tools/ai-autonomy.php plan --contract=<a referencing contract>` exits `0` and prints the envelope,
+  the phase chain, the L4 trigger list and the pending-decision count.
+- An in-scope path reports `VERDICT: PROCEED` (exit `0`); a forbidden or out-of-scope path reports
+  `VERDICT: ESCALATE` (exit `3`); an in-scope path that is still an L4 concern escalates unless the
+  justification is grounded in the contract's own `acceptance`/`constraints` text.
+- `defer` refuses a malformed decision with exit `2` and writes nothing; a valid decision produces the
+  schema-shaped JSON, the director brief and the stage-result envelope.
+- No option is ever applied without an explicit answer: the default is `stop`.
+- **Acceptance A — simulated HARPP round trip**: with `PATH=.ai/harpp-sim:$PATH` and a sandbox config, a
+  filed decision is delivered, a simulated director answer resolves it, and the harness closes it with
+  `ack` then `apply`. No live row is created on the director's queue.
+- **Acceptance B — one unattended slice**: a scoped contract that references this file runs through
+  `architect → implement → review → release-gate` to completion without human input, stopping only at L4,
+  with its evidence recorded.
+- A local file is never the only copy of a decision that claims to have been delivered.
 
 ## Required tests
 
-- `php tests/ai_autonomy_test.php` — exit `0`, all cases asserted.
+For the standing contract itself (re-run when any surface above changes):
+
+- `php tests/ai_autonomy_test.php` — exit `0`; report passed / failed / **skipped** explicitly.
 - `php -l tools/ai-autonomy.php` — no syntax errors.
-- `vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G tools/ai-autonomy.php tests/ai_autonomy_test.php` — no new errors (report the real output; if `phpstan.neon` excludes `tests/`, say so instead of claiming a pass).
-- `php tools/ai-autonomy.php check "edit the driver" --path=tools/ai-autonomy.php --contract=.ai/ai-autonomy-harness.contract.md; echo $?` → `0`.
-- `php tools/ai-autonomy.php check "touch the kernel" --path=kernel/App.php --contract=.ai/ai-autonomy-harness.contract.md; echo $?` → `3`.
-- `php tools/ai-autonomy.php defer --task=probe --question=Q --why=W --option=a|A|e|c|r|reversible --contract=.ai/ai-autonomy-harness.contract.md --decisions-dir=/tmp/ai-autonomy-probe; echo $?` → `2` (one option is not a decision).
+- `vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G tools/ai-autonomy.php tests/ai_autonomy_test.php`
+  — report the real output. Judge this against the CI-parity path set, not a bare file path.
+- The **simulated HARPP round trip** (Acceptance A) — submit, simulate the director's answer, resume, `ack`, `apply`.
+- The **unattended slice** (Acceptance B) — its own record must carry the phase chain, the stop condition
+  (or `no L4 encountered`), and the evidence for each phase.
+
+For a referencing task: the `Required tests` of that contract, plus the two acceptances above when it is
+the first task to use the harness end to end.
 
 ## Risks
 
@@ -336,4 +581,3 @@ path during development) and report that evidence.
 - `package.json` — no new Node dependency.
 - `.github/workflows/` — no edit to CI workflow definitions.
 - `kernel/App.php` — no edit to kernel runtime classes.
-- `git add` — no staging, commit, push, branch creation or switching (not a path; retained as a rule).

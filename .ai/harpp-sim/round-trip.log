@@ -1,0 +1,173 @@
+HARPP SIMULATED ROUND TRIP — harness-side protocol evidence only; NOT production delivery
+ROOT=/var/www/html/ikabudsix
+HARPP_SIM_STORE=/tmp/ikabudsix-harpp-sim/store.json
+HARPP_CONFIG=/var/www/html/ikabudsix/.ai/harpp-sim/config.json
+
+BEFORE ~/.config/harpp metadata+hash (comparison only; simulator is not given these paths)
+/home/kajagogoo/.config/harpp/config.json|mtime=1789052200|size=560|sha256=6888412aa021d5a2b66896e5d522c2f6191c5a3c1891eabfdd2243a2bfc786f8
+/home/kajagogoo/.config/harpp/decisions.json|mtime=1788235632|size=14114|sha256=0d5f597613430f1077060a8dd6c9b3c2615a6db2b9ef7f67ea28dd8ff3e59ffd
+
+$ php tools/ai-autonomy.php plan --contract=.ai/ai-autonomy-harness.contract.md --decisions-dir=/tmp/ikabudsix-harpp-sim/decisions 
+AUTONOMY ENVELOPE — .ai/ai-autonomy-harness.contract.md
+objective: Make the development harness run the scoped phases of an approved task contract **unattended**, and make
+every decision that is genuinely the director's a **structured, machine-checkable artifact with options**
+instead of free-form prose buried in run logs.
+
+Originally: `ARCHITECTURE_DECISION_REQUIRED` was only a status string
+(`kernel/Workbench/Development/DevelopmentLifecycle.php:29`) and the `harpp_submit_decision` bridge agents
+tried to call was absent (`.ai/read-authority-extension.flash-run.log`), so escalations were unactionable.
+That gap is closed; this file now defines how every later task is run under it.
+contract revision: ab95ea1a8af7f68e
+allowed scope (6):
+  - tools/ai-autonomy.php (file)
+  - tests/ai_autonomy_test.php (file)
+  - kernel/Workbench/Schemas/development-decision-request.v1.schema.json (file)
+  - .github/instructions/ai-autonomy-escalation.instructions.md (file)
+  - .ai/harpp-sim (directory)
+  - .ai/decisions (directory)
+forbidden scope (6):
+  - kernel/Workbench/Development (directory)
+  - phpstan-baseline.neon (file)
+  - composer.json (file)
+  - package.json (file)
+  - .github/workflows (directory)
+  - kernel/App.php (file)
+phases (run unattended; only L4 stops the run):
+  architect     tools/ai-task "<task>" -> tools/pi-arch-debate.py | tools/pi-arch-review.sh -> .ai/current-task.md
+  implement     pi --print --approve '<contract>'
+  review        pi-arch-review.sh / Code Reviewer lane; CHANGES_REQUIRED returns to implement
+  release-gate  php ikabud workbench:task:record --stage=release-gate --result=... --envelope=...
+automatic escalation (L4):
+  - any path outside allowed_scope
+  - anything in forbidden_scope
+  - schema/DDL/migration change
+  - auth, authorisation, policy or security weakening
+  - new runtime dependency
+  - public API/capability contract change
+  - cross-module coupling or ownership change
+  - data deletion or irreversible migration
+  - disabling, skipping, deleting or weakening an existing test or gate to get a pass
+  - editing a quality-gate baseline
+  - a second failed repair attempt on the same failure
+  - any acceptance criterion that cannot be met without widening scope
+  - attempt/budget exhaustion
+decisions dir: /tmp/ikabudsix-harpp-sim/decisions
+pending decisions: 0
+[exit 0]
+
+$ php tools/ai-autonomy.php defer --task=harpp-sim --id=harpp-sim-d1 --question=Choose\ the\ bounded\ route\? --why=The\ simulated\ round\ trip\ needs\ a\ director\ choice. --option=stay\|Stay\ bounded\|Continue\ inside\ scope\|low\|simulation\ only\|reversible --option=stop\|Stop\|Leave\ the\ checkpoint\ unchanged\|low\|simulation\ only\|reversible --recommend=stay --contract=.ai/ai-autonomy-harness.contract.md --decisions-dir=/tmp/ikabudsix-harpp-sim/decisions 
+DECISION FILED LOCALLY
+/tmp/ikabudsix-harpp-sim/decisions/harpp-sim-d1.json
+/tmp/ikabudsix-harpp-sim/decisions/harpp-sim-d1.md
+/tmp/ikabudsix-harpp-sim/decisions/harpp-sim-d1.stage.json
+php ikabud workbench:task:record harpp-sim --stage=architect --result=architecture_decision_required --envelope=/tmp/ikabudsix-harpp-sim/decisions/harpp-sim-d1.stage.json
+DELIVERY: harpp
+[exit 0]
+
+$ .ai/harpp-sim/director-answer 1 --decision stay --rationale=Simulation\ selected\ the\ bounded\ option. 
+{"body":"Options:\nstay: Stay bounded \u2014 Continue inside scope (cost low; blast radius simulation only; reversible)\nstop: Stop \u2014 Leave the checkpoint unchanged (cost low; blast radius simulation only; reversible)\nRecommendation: stay\nDefault if no response: stop","context":"The simulated round trip needs a director choice.","decision":"stay","decision_key":"harpp-sim-d1","id":1,"lifecycle_state":"DECIDED","priority":"normal","rationale":"Simulation selected the bounded option.","requested_decision":"stay","source":"ikabudsix","title":"Choose the bounded route?","workbench_state":"ARCHITECTURE_DECISION_REQUIRED"}
+[exit 0]
+
+$ php tools/ai-autonomy.php status --remote --decisions-dir=/tmp/ikabudsix-harpp-sim/decisions 
+DECISIONS
+harpp-sim-d1  PENDING  HARPP:DECIDED  Choose the bounded route?
+[exit 0]
+
+$ php tools/ai-autonomy.php resume harpp-sim-d1 --from-harpp --decisions-dir=/tmp/ikabudsix-harpp-sim/decisions 
+CHOSEN: stay — Stay bounded
+php tools/ai-autonomy.php resume harpp-sim-d1 --choose=stay --decisions-dir=/tmp/ikabudsix-harpp-sim/decisions
+[exit 0]
+
+$ php tools/ai-autonomy.php status --decisions-dir=/tmp/ikabudsix-harpp-sim/decisions 
+DECISIONS
+harpp-sim-d1  RESOLVED  Choose the bounded route?
+[exit 0]
+
+$ python3 -m json.tool /tmp/ikabudsix-harpp-sim/store.json 
+{
+    "decisions": [
+        {
+            "body": "Options:\nstay: Stay bounded \u2014 Continue inside scope (cost low; blast radius simulation only; reversible)\nstop: Stop \u2014 Leave the checkpoint unchanged (cost low; blast radius simulation only; reversible)\nRecommendation: stay\nDefault if no response: stop",
+            "context": "The simulated round trip needs a director choice.",
+            "decision": "stay",
+            "decision_key": "harpp-sim-d1",
+            "id": 1,
+            "lifecycle_state": "APPLIED",
+            "priority": "normal",
+            "rationale": "Simulation selected the bounded option.",
+            "requested_decision": "stay",
+            "source": "ikabudsix",
+            "title": "Choose the bounded route?",
+            "workbench_state": "ARCHITECTURE_DECISION_REQUIRED"
+        }
+    ],
+    "events": [
+        {
+            "id": 1,
+            "kind": "decision",
+            "transition": "NOTIFIED"
+        },
+        {
+            "id": 1,
+            "kind": "decision",
+            "transition": "VIEWED"
+        },
+        {
+            "id": 1,
+            "kind": "decision",
+            "transition": "DECIDED"
+        },
+        {
+            "id": 1,
+            "kind": "decision",
+            "rationale": null,
+            "transition": "ACKNOWLEDGED"
+        },
+        {
+            "id": 1,
+            "kind": "decision",
+            "rationale": null,
+            "transition": "APPLIED"
+        }
+    ],
+    "messages": [],
+    "next_id": 2
+}
+[exit 0]
+
+SUPPRESSED DELIVERY PROOF
+
+$ php tools/ai-autonomy.php defer --task=harpp-suppressed --id=harpp-suppressed-d1 --question=Suppressed\ delivery\? --why=Prove\ suppression\ is\ not\ delivery. --option=stay\|Stay\ bounded\|No\ remote\ delivery\|low\|simulation\ only\|reversible --option=stop\|Stop\|Leave\ the\ checkpoint\ unchanged\|low\|simulation\ only\|reversible --recommend=stay --contract=.ai/ai-autonomy-harness.contract.md --decisions-dir=/tmp/ikabudsix-harpp-sim/suppressed-decisions 
+DECISION FILED LOCALLY
+/tmp/ikabudsix-harpp-sim/suppressed-decisions/harpp-suppressed-d1.json
+/tmp/ikabudsix-harpp-sim/suppressed-decisions/harpp-suppressed-d1.md
+/tmp/ikabudsix-harpp-sim/suppressed-decisions/harpp-suppressed-d1.stage.json
+php ikabud workbench:task:record harpp-suppressed --stage=architect --result=architecture_decision_required --envelope=/tmp/ikabudsix-harpp-sim/suppressed-decisions/harpp-suppressed-d1.stage.json
+DELIVERY: local-only — director NOT notified
+php tools/ai-autonomy.php defer --retry=harpp-suppressed-d1 --contract=.ai/ai-autonomy-harness.contract.md --decisions-dir=/tmp/ikabudsix-harpp-sim/suppressed-decisions
+[exit 4]
+
+$ test -f /tmp/ikabudsix-harpp-sim/suppressed-decisions/harpp-suppressed-d1.json 
+[exit 0]
+
+$ python3 -c import\ json\;\ d=json.load\(open\(\"/tmp/ikabudsix-harpp-sim/store.json\"\)\)\;\ print\(\"decisions_recorded=\"+str\(len\(d\[\"decisions\"\]\)\)\) 
+decisions_recorded=1
+[exit 0]
+
+IDEMPOTENCY AND ILLEGAL-TRANSITION PROOFS
+
+$ harpp msg send --body=probe --title=simulation --idempotency-key=duplicate-proof 
+{"ok":true}
+[exit 0]
+
+$ harpp msg send --body=probe --title=simulation --idempotency-key=duplicate-proof 
+harpp-sim: duplicate idempotency key: duplicate-proof
+[exit 1]
+
+$ harpp decision apply 1 
+harpp-sim: illegal transition apply: decision 1 is APPLIED, expected ACKNOWLEDGED
+[exit 1]
+
+AFTER ~/.config/harpp metadata+hash
+/home/kajagogoo/.config/harpp/config.json|mtime=1789052200|size=560|sha256=6888412aa021d5a2b66896e5d522c2f6191c5a3c1891eabfdd2243a2bfc786f8
+/home/kajagogoo/.config/harpp/decisions.json|mtime=1788235632|size=14114|sha256=0d5f597613430f1077060a8dd6c9b3c2615a6db2b9ef7f67ea28dd8ff3e59ffd
