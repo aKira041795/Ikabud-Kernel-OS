@@ -17,23 +17,37 @@ function catThemeHealth(array $params = []): void
 }
 
 /** @param Throwable $error */
-function catThemeJsonError(Throwable $error): void
+/**
+ * Unwrap a capability failure down to the theme exception that actually explains it.
+ *
+ * The capability bus wraps anything a handler throws in a generic
+ * CapabilityCallException ("Capability call failed"), which hides the cause. Every
+ * admin surface must report the inner reason: the theme studio previously showed only
+ * the wrapper, so a rejected theme looked like an unexplained failure.
+ *
+ * @return array{status: int, message: string, retryAfter: int|null}
+ */
+function catThemeFailureDetail(Throwable $error): array
 {
-    $status = 500;
-    $message = 'Theme operation failed.';
-    $retryAfter = null;
     for ($cursor = $error; $cursor instanceof Throwable; $cursor = $cursor->getPrevious()) {
         if ($cursor instanceof CatThemeException) {
-            $status = $cursor->httpStatus;
-            $message = $cursor->getMessage();
-            $retryAfter = $cursor->retryAfter;
-            break;
+            return [
+                'status' => $cursor->httpStatus,
+                'message' => $cursor->getMessage(),
+                'retryAfter' => $cursor->retryAfter,
+            ];
         }
     }
-    if ($retryAfter !== null) {
-        header('Retry-After: ' . $retryAfter);
+    return ['status' => 500, 'message' => 'Theme operation failed.', 'retryAfter' => null];
+}
+
+function catThemeJsonError(Throwable $error): void
+{
+    $detail = catThemeFailureDetail($error);
+    if ($detail['retryAfter'] !== null) {
+        header('Retry-After: ' . $detail['retryAfter']);
     }
-    app()->json(['ok' => false, 'error' => $message], $status);
+    app()->json(['ok' => false, 'error' => $detail['message']], $detail['status']);
 }
 
 /** @param array<string, string> $params */
@@ -274,7 +288,8 @@ function catThemeActivateForm(array $params = []): void
         ]);
         header('Location: /cms-akira-theme', true, 303);
     } catch (Throwable $error) {
-        http_response_code(422);
-        echo catThemePage('Theme activation failed', '<p>' . catThemeEscape($error->getMessage()) . '</p>');
+        $detail = catThemeFailureDetail($error);
+        http_response_code($detail['status']);
+        echo catThemePage('Theme activation failed', '<p>' . catThemeEscape($detail['message']) . '</p>');
     }
 }
