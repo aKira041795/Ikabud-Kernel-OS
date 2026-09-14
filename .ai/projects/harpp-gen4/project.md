@@ -65,6 +65,11 @@ copied to the subject.
 .ai/projects/<project-id>/metrics.json    derived metrics, written by tooling, never hand-edited
 ```
 
+**Slice ids must be `S<digits>`.** The loader scans a slice file's **first 12 lines** for `\bS\d+\b` and falls
+back to the filename with `/s(\d+)/i`, so a filename such as `s3b-claim-commands.md` silently resolves to `S3`
+and collides with an existing slice (`ERROR: slice S3 is declared by more than one contract`). Observed on
+2026-09-14; the slice was renamed rather than the loader relaxed.
+
 ## Slices
 
 Ordered; each slice is dispatched, gated on evidence, and recorded in the ledger.
@@ -74,7 +79,7 @@ Ordered; each slice is dispatched, gated on evidence, and recorded in the ledger
 | **~~S1~~** | ~~**Repo parameterisation**~~ — **WITHDRAWN** (CD-16): the subject is now in-tree, so no cross-repo transport is needed. Deferred until a project legitimately lives elsewhere | — | — |
 | **S2 — DELIVERED** | **Project object** — `tools/ai-project.php` (`status`, `next`, `obligations`); the project format above; obligations computed across slices, so the **stop invariant works at project level** | measurable · provable | S3 |
 | **S3 — DELIVERED** | **Evidence-gated loop** — `tools/ai-loop.php --project=<id>`: dispatch by lane policy → ledger `start`/`finish` → **verify (must be `RE_DERIVED`)** → next. `commit-check` runs before every dispatch. Stops on the first failed gate. **No marker trust.** | provable · stable · seamless | S5 |
-| **S3b** | **Claim-command convention** — a claim declares its command; the extractor prefers command-bearing evidence; exact-match derivation only where the file exists and is pure, recorded as *derived* | provable · stable | unblocks S4 |
+| **S6** | **Claim-command convention** — a claim declares its command; the extractor prefers command-bearing evidence; exact-match derivation only where the file exists and is pure, recorded as *derived*; plus a recorded re-queue path out of `blocked` | provable · stable | unblocks S4 |
 | **S4** | **Metrics capture** — derive the metric table from artefacts; capture cost/tokens where the runner exposes them, otherwise record `unavailable` **explicitly**; accept director-minutes as a logged input | measurable | S5 |
 | **S5** | **First real run** — bind the harness to the HARPP tree and run a small real HARPP task end-to-end through the loop, unattended, ≥2 slices, and produce the metric table from artefacts | the Gen 4 proof | — |
 

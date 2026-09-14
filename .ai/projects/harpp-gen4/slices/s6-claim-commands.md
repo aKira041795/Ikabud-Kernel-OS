@@ -1,4 +1,4 @@
-# SLICE — harpp-gen4 S3b: make the loop usable — claims declare commands, blocked slices can be re-queued
+# SLICE — harpp-gen4 S6: make the loop usable — claims declare commands, blocked slices can be re-queued
 
 project: harpp-gen4 · status: READY_FOR_IMPLEMENTATION · revision: 1
 repo: `/var/www/html/ikabudsix`
