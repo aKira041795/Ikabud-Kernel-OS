@@ -14,17 +14,216 @@ const EXIT_NOT_DELIVERED = 4;
 const DEFAULT_CONTRACT = '.ai/current-task.md';
 const DEFAULT_DECISIONS_DIR = '.ai/decisions';
 
-/** @return list<string> */
-function l4Triggers(): array
+/**
+ * The single source of truth for L4 policy. Each entry is either a contract-relative trigger
+ * (groundable in the contract) or an absolute prohibition (unauthorisable by any contract; no
+ * escalation can obtain permission). Path-decidable entries carry matcher keys that enforcement
+ * derives from; judgement-based entries are listed too, so the printed policy and the enforced
+ * policy cannot drift apart — the gap is visible here rather than discovered by probe.
+ *
+ * @return list<array{reason:string,class:string,decidable:bool,matchers:list<string>}>
+ */
+function l4Taxonomy(): array
 {
     return [
-        'any path outside allowed_scope', 'anything in forbidden_scope', 'schema/DDL/migration change',
-        'auth, authorisation, policy or security weakening', 'new runtime dependency',
-        'public API/capability contract change', 'cross-module coupling or ownership change',
-        'data deletion or irreversible migration',
-        'disabling, skipping, deleting or weakening an existing test or gate to get a pass',
-        'editing a quality-gate baseline', 'a second failed repair attempt on the same failure',
-        'any acceptance criterion that cannot be met without widening scope', 'attempt/budget exhaustion',
+        ['reason' => 'any path outside allowed_scope', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'anything in forbidden_scope', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'schema or DDL change', 'class' => 'contract_relative', 'decidable' => true, 'matchers' => ['ddl']],
+        ['reason' => 'new runtime dependency', 'class' => 'contract_relative', 'decidable' => true, 'matchers' => ['dependency']],
+        ['reason' => 'public API/capability contract change', 'class' => 'contract_relative', 'decidable' => true, 'matchers' => ['module_manifest']],
+        ['reason' => 'cross-module coupling or ownership change', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'data deletion or irreversible migration', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'any acceptance criterion that cannot be met without widening scope', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'evidence that falsifies a foundational contract assumption', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'a required external dependency that no longer exists', 'class' => 'contract_relative', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'auth, authorisation, policy or security weakening', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['authority']],
+        ['reason' => 'disabling, skipping, deleting or weakening an existing test or gate to get a pass', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['existing_test', 'gate_config']],
+        ['reason' => 'editing a quality-gate baseline', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['gate_baseline']],
+        ['reason' => 'deleting audit data or falsifying provenance', 'class' => 'absolute', 'decidable' => false, 'matchers' => []],
+        ['reason' => 'silent non-delivery to the director', 'class' => 'absolute', 'decidable' => false, 'matchers' => []],
+    ];
+}
+
+/**
+ * Project the taxonomy for one class, preserving order.
+ *
+ * @return list<string>
+ */
+function taxonomyReasons(string $class): array
+{
+    $reasons = [];
+    foreach (l4Taxonomy() as $entry) {
+        if ($entry['class'] === $class) { $reasons[] = $entry['reason']; }
+    }
+    return $reasons;
+}
+
+/**
+ * Absolute prohibitions: no contract can authorise these, and no escalation can obtain permission.
+ *
+ * @return list<string>
+ */
+function absoluteProhibitions(): array { return taxonomyReasons('absolute'); }
+
+/**
+ * Contract-relative L4 triggers: escalate only when the approved contract does NOT authorise the
+ * action. A sensitive change grounded in contract acceptance/constraints is L3 (record and proceed).
+ *
+ * @return list<string>
+ */
+function contractRelativeTriggers(): array { return taxonomyReasons('contract_relative'); }
+
+/**
+ * Chair decisions: resolve, record the rationale, and continue. These are NEVER a stop.
+ *
+ * @return list<string>
+ */
+function chairDecisions(): array
+{
+    return [
+        'choosing among multiple valid in-scope implementations',
+        'a failed tactic, a red phase requiring replanning, or a discarded implementation',
+        'what to work on next, ordering, decomposition, or agent/model assignment',
+        'a second failed repair attempt on the same failure (promote to the next repair level)',
+        "one executor's repair or budget exhaustion (reallocate the executor)",
+        'ambiguity resolvable from the contract, ADRs and prior decisions',
+    ];
+}
+
+/**
+ * The full trigger list, in the order the three conditions apply.
+ *
+ * @return list<string>
+ */
+function l4Triggers(): array
+{
+    return array_merge(contractRelativeTriggers(), absoluteProhibitions());
+}
+
+/**
+ * Model-cost tiers.
+ *
+ * NOT the same axis as L0–L4. **L is authority** — may this action proceed without the owner?
+ * **T is intelligence cost** — what is the cheapest adequate model for this work? They are
+ * independent: a T0 check can gate an L4 escalation, and an L2 action may be T1 work.
+ *
+ * @return array<string,string>
+ */
+function modelTiers(): array
+{
+    return [
+        'T0' => 'No AI. Deterministic tools: tests, lint, static analysis, grep/AST, Playwright, contracts, Workbench. Prefer whenever software can determine the answer.',
+        'T1' => 'Low-cost model. Classification, extraction, summarisation, routine bounded decisions, high-frequency latency-sensitive work.',
+        'T2' => 'Primary executor. The affordable coding model that does most implementation, repair and bounded debugging.',
+        'T3' => 'Strong architect/reviewer. Architecture, adjudication, review of high-consequence changes.',
+        'T4' => 'Premium exceptional escalation. Only when expected value justifies the cost.',
+    ];
+}
+
+/**
+ * Questions software answers. These MUST NOT be routed to a model — asking one wastes money and
+ * introduces a source of error where a deterministic check already exists.
+ *
+ * @return list<string>
+ */
+function deterministicFirst(): array
+{
+    return [
+        'did the tests pass',
+        'did lint / static analysis pass',
+        'did the change exceed allowed_scope or touch forbidden_scope',
+        'which files changed',
+        'is a route declared for every write handler',
+        'does a declared capability have an active policy row',
+        'is the shell still table-free',
+        'which contract revision / ADR is current',
+        'did the release gate pass',
+        'what is in the logs or cache',
+    ];
+}
+
+/**
+ * The Chair's cost policy: spend on the cheapest adequate intelligence for this decision.
+ *
+ * A premium model is a specialist hired temporarily, not the platform.
+ *
+ * @return array<string,mixed>
+ */
+function modelPolicy(): array
+{
+    return [
+        'prefer' => ['deterministic_first' => true],
+        // Guiding principle. A ceiling halts a slice mid-way: the tokens already spent become
+        // waste and are paid for again on resume. Efficiency finishes the same work for less.
+        // Design the workflow so the cheapest adequate lane is the NATURAL path, and reserve
+        // numeric caps for the rare case where nothing else prevents catastrophic spend.
+        'guiding_principle' => 'efficiency produces savings; cost ceilings do not',
+        // Lanes differ in cost SHAPE, not merely price, and the shape decides the workflow.
+        //   variable      every token is charged   -> minimise context; Lean-CTX pays for itself
+        //   fixed         spend already committed  -> the marginal token is free; the scarce
+        //                 resource is the rate limit, so spend it where judgement matters
+        //   metered_burst free but capped          -> capacity is scarce; fill it with bounded
+        //                 work and keep headroom for the slice that still needs it
+        'cost_shape' => [
+            'deepseek-v4-flash' => 'variable',
+            'openai-codex/gpt-5.6-sol' => 'fixed',
+            'groq/openai/gpt-oss-120b' => 'metered_burst',
+            'groq/qwen/qwen3.8-27b' => 'metered_burst',
+        ],
+        'lane_notes' => [
+            'deepseek-v4-flash' => 'primary implementation lane; metered, so context is the bill',
+            'openai-codex/gpt-5.6-sol' => 'fixed monthly cost, rate-limited with a 5h reset: do NOT waste the cap on mechanical edits, and do not hoard it to "save" spend already committed',
+            'groq/openai/gpt-oss-120b' => 'free burst capacity, 5M tokens/day (~618 turns at the measured 8.1K tok/turn): reserve headroom for slices rather than spending a day of it on questions a test answers',
+            'groq/qwen/qwen3.8-27b' => '750K tokens/day and the ONLY vision-capable lane: keep its capacity for screenshot triage',
+        ],
+        'routine_reasoning' => ['max_cost_usd' => 0.02],
+        // Groq lanes, measured from this workspace on 2026-09-14.
+        // gpt-oss-120b is the CHEAPEST usable lane: $0.15/M in, $0.60/M out — 3x cheaper on input and
+        // 5.3x cheaper on output than qwen3.8-27b ($0.45/$3.20), AND more accurate (3/3 vs 2/3 on an
+        // independently verified 3-fact probe). Prefer gpt-oss for ALL text work; qwen is for vision only.
+        // Rate limits are 250K tokens/min and 5M tokens/day => ~400-600 turns/day at the measured
+        // ~8.1K tokens/turn, i.e. roughly 7 slices/day. Groq is a viable T2 fallback, not a curiosity.
+        // Measured monthly cost if gpt-oss absorbed this repo's whole observed workload: ~$10.32
+        // (35.1M in / 8.4M out over 15.6 days); for the implementation lane alone, ~$3.94.
+        // REQUIRES a local providers.groq entry in ~/.pi/agent/models.json. Without it pi sends no tool
+        // schemas and the model dies with `attempted to call tool 'grep' which was not in request.tools`.
+        // Per-model maxTokens MUST respect the provider cap: qwen rejects anything above 16384 with
+        // `400 max_completion_tokens must be <= 16384` (a wrong value makes every qwen call fail);
+        // gpt-oss accepts 32768. contextWindow must exceed 16384 or large reads die with stopReason=length.
+        'lanes' => [
+            'T1' => ['groq/openai/gpt-oss-120b', 'groq/qwen/qwen3.8-27b', 'deepseek-v4-flash'],
+            'T2' => ['deepseek-v4-flash', 'groq/openai/gpt-oss-120b'],
+            'T3' => ['openai-codex/gpt-5.6-sol'],
+        ],
+        'implementation' => [
+            'preferred' => 'deepseek-v4-flash',
+            'fallback' => ['groq/openai/gpt-oss-120b', 'groq/qwen/qwen3.8-27b'],
+        ],
+        'architecture' => ['preferred' => 'openai-codex/gpt-5.6-sol'],
+        // Playwright is a first-class verification tool, but only one lane among them can LOOK at a
+        // screenshot. gpt-oss-120b declares input: [text] and cannot see images at all; qwen3.8-27b
+        // declares input: [text, image] and was verified reading a controlled image correctly (text,
+        // background colour and shapes all right). So visual triage is qwen's one genuine advantage.
+        // Tiers follow the directive's PW-1/PW-2/PW-3 split: running the specs is deterministic (T0);
+        // reading a screenshot or trace needs vision (qwen); diagnosing from DOM/console/network text
+        // is ordinary bounded reasoning and belongs on the cheaper gpt-oss lane.
+        'playwright' => [
+            'pw0_run_specs' => 'T0 — deterministic, no model. Run the specs and read the exit code.',
+            'pw1_visual_triage' => 'groq/qwen/qwen3.8-27b — the ONLY vision-capable lane in this repo',
+            'pw2_failure_diagnosis' => 'groq/openai/gpt-oss-120b — DOM/console/network text evidence',
+            'pw3_release_journeys' => 'T0 — deterministic gate, no model discretion',
+        ],
+        'premium_escalation' => [
+            'allowed' => true,
+            'conditions' => [
+                'repeated_strategy_failure',
+                'unresolved_architecture_contradiction',
+                'high_risk_review',
+                'contract_blocker',
+            ],
+        ],
+        'executor_exhaustion' => 'reallocate to another lane; only a hard owner-defined project budget forces a stop',
+        'project_budget_usd' => null,
     ];
 }
 
@@ -45,7 +244,15 @@ Usage:
   php tools/ai-autonomy.php status [--decisions-dir=DIR] [--remote] [--state=STATE] [--json]
   php tools/ai-autonomy.php notify --type=PROGRESS|DECISION_REQUIRED|BLOCKED|RELEASE_READY|FAILED --body=TEXT
                                   [--conversation=N] [--title=TEXT]
-Exit codes: 0 ok; 2 malformed input or contract; 3 L4 escalation; 4 local decision/message not delivered.
+  php tools/ai-autonomy.php models [--json]
+                                  Deterministic-first list, T0-T4 intelligence-cost tiers, and the
+                                  Chair cost policy. T (intelligence cost) is independent of L (authority).
+  php tools/ai-autonomy.php stop-report --remaining=N [--stop-reason=TYPE] [--json]
+                                  Check the stop invariant. Exit 0 when the stop is legitimate
+                                  (remaining=0 with any reason, or remaining>0 with CONTRACT_BLOCKED,
+                                  RESOURCE_EXHAUSTED, EXTERNAL_DEPENDENCY_BLOCKED or SAFETY_BLOCKED);
+                                  exit 3 when obligations remain under any other reason.
+Exit codes: 0 ok; 2 malformed input or contract; 3 L4 escalation or illegitimate stop; 4 local decision/message not delivered.
 TXT
     . "\n");
 }
@@ -177,17 +384,81 @@ function remoteRows(string $json): array
     return $isRow($value) ? [$value] : [];
 }
 
-/** Warn about parser-visible prose masquerading as forbidden paths.
- * @param array<string,mixed> $contract
- */
-function scopeWarnings(array $contract): void
+/** The standing-contract reference that makes a slice inherit the autonomy envelope. */
+function contractHasHarnessReference(string $markdown): bool
 {
+    if (preg_match('/^harness[ \t]*:[ \t]*\n(.*?)(?=^\S|\z)/ms', $markdown, $block) === 1) {
+        return str_contains($block[1], 'ai-autonomy-harness.contract.md');
+    }
+    return preg_match('/^harness[ \t]*:.*ai-autonomy-harness\.contract\.md/m', $markdown) === 1;
+}
+
+/**
+ * Forbidden bullets the parser could not bind to a path (its prose rules are retained but not
+ * enforced as scope). Detect driver-side; the kernel parser is never changed here.
+ *
+ * @param array<string,mixed> $contract
+ * @return list<string>
+ */
+function droppedForbiddenRules(array $contract): array
+{
+    $rules = (array) ($contract['forbidden_rules'] ?? []);
+    if (count((array) ($contract['forbidden_scope'] ?? [])) >= count($rules)) { return []; }
+    $dropped = [];
+    foreach ($rules as $rule) {
+        $parsed = DevelopmentTaskContract::parseScopeEntry((string) $rule, 'forbidden');
+        if (!$parsed['ok']) { $dropped[] = (string) $rule; }
+    }
+    return $dropped;
+}
+
+/**
+ * Allowed and forbidden scope that overlap. Fail-closed precedence is unchanged; this only makes
+ * the overlap visible at plan time.
+ *
+ * @param array<string,mixed> $contract
+ * @return list<string>
+ */
+function scopeIntersections(array $contract): array
+{
+    $warnings = [];
+    foreach ((array) ($contract['allowed_scope'] ?? []) as $allowed) {
+        foreach ((array) ($contract['forbidden_scope'] ?? []) as $forbidden) {
+            if (!is_array($allowed) || !is_array($forbidden)) { continue; }
+            if (pathMatches((string) ($allowed['path'] ?? ''), $forbidden) || pathMatches((string) ($forbidden['path'] ?? ''), $allowed)) {
+                $warnings[] = "allowed '{$allowed['path']}' ({$allowed['kind']}) intersects forbidden '{$forbidden['path']}' ({$forbidden['kind']}); check applies fail-closed precedence to the forbidden entry";
+            }
+        }
+    }
+    return $warnings;
+}
+
+/**
+ * Envelope defects that must be visible without changing the exit code: a present-but-defective
+ * envelope is still a runnable envelope, but a silently unenforceable prohibition is not.
+ *
+ * @param array<string,mixed> $contract
+ * @return list<string>
+ */
+function planWarnings(array $contract, string $markdown): array
+{
+    $warnings = [];
     foreach ((array) ($contract['forbidden_scope'] ?? []) as $entry) {
         $path = (string) ($entry['path'] ?? '');
         if (preg_match('/^[A-Za-z0-9_-]+$/', $path) === 1 && !file_exists($path)) {
-            fwrite(STDOUT, "WARN suspicious scope entry (prose?): {$path}\n");
+            $warnings[] = "suspicious scope entry (prose?): {$path}";
         }
     }
+    if (!contractHasHarnessReference($markdown)) {
+        $warnings[] = 'no harness: block references the standing contract (.ai/ai-autonomy-harness.contract.md); the slice adopts the syntax but inherits no autonomy envelope';
+    }
+    foreach (droppedForbiddenRules($contract) as $dropped) {
+        $warnings[] = "forbidden bullet is not a path and is not enforced as scope (restate it in Architectural constraints to bind): {$dropped}";
+    }
+    foreach (scopeIntersections($contract) as $intersection) {
+        $warnings[] = $intersection;
+    }
+    return $warnings;
 }
 
 /** Create the governed-loop manifest.
@@ -233,17 +504,23 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
         fwrite($manifestStdout ? STDERR : STDOUT, $line);
         return EXIT_OK;
     }
+    $markdown = @file_get_contents($contractPath);
+    $warnings = planWarnings($contract, $markdown === false ? '' : $markdown);
     if ($json) {
-        fwrite(STDOUT, encodeJson(['envelope' => ['objective' => $contract['objective'], 'contract_revision' => DevelopmentTaskContract::revisionId($contract), 'allowed_scope' => $allowed, 'forbidden_scope' => $forbidden], 'phases' => $phases, 'l4_triggers' => l4Triggers(), 'decisions_dir' => $directory, 'pending' => $pending]) . "\n");
+        fwrite(STDOUT, encodeJson(['envelope' => ['objective' => $contract['objective'], 'contract_revision' => DevelopmentTaskContract::revisionId($contract), 'allowed_scope' => $allowed, 'forbidden_scope' => $forbidden], 'phases' => $phases, 'absolute_prohibitions' => absoluteProhibitions(), 'contract_relative_l4' => contractRelativeTriggers(), 'chair_decisions' => chairDecisions(), 'deterministic_first' => deterministicFirst(), 'model_policy' => modelPolicy(), 'model_tiers' => modelTiers(), 'decisions_dir' => $directory, 'pending' => $pending, 'warnings' => $warnings, 'l4_taxonomy' => l4Taxonomy()]) . "\n");
         return EXIT_OK;
     }
-    scopeWarnings($contract);
+    foreach ($warnings as $warning) { fwrite(STDOUT, "WARN {$warning}\n"); }
     fwrite(STDOUT, "AUTONOMY ENVELOPE — {$contractPath}\nobjective: {$contract['objective']}\ncontract revision: " . DevelopmentTaskContract::revisionId($contract) . "\nallowed scope (" . count($allowed) . "):\n");
     foreach ($allowed as $entry) { fwrite(STDOUT, "  - {$entry['path']} ({$entry['kind']})\n"); }
     fwrite(STDOUT, 'forbidden scope (' . count($forbidden) . "):\n");
     foreach ($forbidden as $entry) { fwrite(STDOUT, "  - {$entry['path']} ({$entry['kind']})\n"); }
-    fwrite(STDOUT, "phases (run unattended; only L4 stops the run):\n"); foreach ($phases as $phase) { fwrite(STDOUT, "  {$phase}\n"); }
-    fwrite(STDOUT, "automatic escalation (L4):\n"); foreach (l4Triggers() as $trigger) { fwrite(STDOUT, "  - {$trigger}\n"); }
+    fwrite(STDOUT, "phases (run unattended; only a contract-relative L4 stops the run):\n"); foreach ($phases as $phase) { fwrite(STDOUT, "  {$phase}\n"); }
+    fwrite(STDOUT, "ABSOLUTE prohibitions (no contract can authorise; no escalation can obtain permission):\n"); foreach (absoluteProhibitions() as $trigger) { fwrite(STDOUT, "  - {$trigger}\n"); }
+    fwrite(STDOUT, "contract-relative L4 (escalate ONLY if the contract does not authorise it):\n"); foreach (contractRelativeTriggers() as $trigger) { fwrite(STDOUT, "  - {$trigger}\n"); }
+    fwrite(STDOUT, "chair decisions — resolve, record, continue; NEVER a stop:\n"); foreach (chairDecisions() as $decision) { fwrite(STDOUT, "  - {$decision}\n"); }
+    fwrite(STDOUT, "\nDETERMINISTIC FIRST — software decides these; never pay a model:\n"); foreach (deterministicFirst() as $question) { fwrite(STDOUT, "  - {$question}\n"); }
+    fwrite(STDOUT, "\nMODEL TIERS (T = intelligence cost; independent of L = authority):\n"); foreach (modelTiers() as $tier => $meaning) { fwrite(STDOUT, "  {$tier}  {$meaning}\n"); }
     fwrite(STDOUT, "decisions dir: {$directory}\npending decisions: {$pending}\n");
     return EXIT_OK;
 }
@@ -254,22 +531,74 @@ function pathMatches(string $path, array $entry): bool
     return $entry['kind'] === 'file' ? $path === $entry['path'] : $path === $entry['path'] || str_starts_with($path, $entry['path'] . '/');
 }
 
+/** A test path that already exists is a verification artefact whose edit weakens verification. */
+function isExistingTestPath(string $path): bool
+{
+    $isTest = preg_match('#^tests/.*_test\.php$#', $path) === 1
+        || preg_match('#^modules/[^/]+/tests/.*\.php$#', $path) === 1;
+    return $isTest && file_exists($path);
+}
+
 /**
+ * Gate and verification configuration. Editing any of these weakens a gate. A new test file is an
+ * addition, not a weakening, and is handled by isExistingTestPath()'s existence check.
+ */
+function isGateConfigPath(string $path): bool
+{
+    if (str_starts_with($path, '.github/workflows/')) { return true; }
+    return preg_match('#(^|/)(phpstan\.neon|phpunit\.xml(?:\.dist)?|phpcs\.xml(?:\.dist)?|playwright\.config\.[jt]s|infection\.json5?|rector\.php|\.php-cs-fixer(?:\.dist)?\.php)$#', $path) === 1;
+}
+
+/** Decide one taxonomy matcher for one normalized path. */
+function taxonomyMatcherMatches(string $matcher, string $path): bool
+{
+    return match ($matcher) {
+        'ddl' => preg_match('#(^|/)migrations(/|$)#i', $path) === 1 || str_ends_with(strtolower($path), '.sql'),
+        'dependency' => preg_match('#(^|/)(composer\.json|composer\.lock|package\.json|package-lock\.json)$#', $path) === 1,
+        'module_manifest' => preg_match('#(^|/)module\.json$#', $path) === 1,
+        'authority' => preg_match('#kernel/Capabilities|CapabilityAuthorization|SecurityHeaders|auth|JWT|policy#i', $path) === 1,
+        'existing_test' => isExistingTestPath($path),
+        'gate_config' => isGateConfigPath($path),
+        'gate_baseline' => preg_match('#(^|/)phpstan-baseline\.neon$#', $path) === 1,
+        default => false,
+    };
+}
+
+/**
+ * Every path-decidable taxonomy entry that matches the supplied paths, with the class needed to
+ * enforce absolute prohibitions before any justification can ground them.
+ *
+ * @param list<string> $paths
+ * @return list<array{reason:string,class:string,path:string,matcher:string}>
+ */
+function sensitiveMatches(array $paths): array
+{
+    $matches = [];
+    foreach (l4Taxonomy() as $entry) {
+        if (!$entry['decidable']) { continue; }
+        foreach ($paths as $path) {
+            foreach ($entry['matchers'] as $matcher) {
+                if (taxonomyMatcherMatches($matcher, $path)) {
+                    $matches[] = ['reason' => $entry['reason'], 'class' => $entry['class'], 'path' => $path, 'matcher' => $matcher];
+                }
+            }
+        }
+    }
+    return $matches;
+}
+
+/**
+ * The sensitive reasons for these paths, derived from l4Taxonomy(); there is no second list.
+ *
  * @param list<string> $paths
  * @return list<string>
  */
 function sensitiveReasons(array $paths): array
 {
-    $reasons = [];
-    foreach ($paths as $path) {
-        if (preg_match('#(^|/)migrations(/|$)#i', $path) === 1 || str_ends_with(strtolower($path), '.sql')) { $reasons[] = 'schema or DDL change'; }
-        if (str_starts_with($path, '.github/workflows/')) { $reasons[] = 'CI gate change'; }
-        if (preg_match('#(^|/)(composer\.json|composer\.lock|package\.json|package-lock\.json)$#', $path) === 1) { $reasons[] = 'dependency change'; }
-        if (preg_match('#(^|/)phpstan-baseline\.neon$#', $path) === 1) { $reasons[] = 'quality-gate baseline change'; }
-        if (preg_match('#(^|/)module\.json$#', $path) === 1) { $reasons[] = 'module manifest/contract change'; }
-        if (preg_match('#kernel/Capabilities|CapabilityAuthorization|SecurityHeaders|auth|JWT|policy#i', $path) === 1) { $reasons[] = 'authority or security path'; }
-    }
-    return array_values(array_unique($reasons));
+    return array_values(array_unique(array_map(
+        static fn (array $match): string => $match['reason'],
+        sensitiveMatches($paths)
+    )));
 }
 
 /** Normalize whitespace and case. */
@@ -315,9 +644,15 @@ function commandCheck(array $contract, string $action, array $paths, string $lev
         }
     }
     if ($resolved !== 'L4') {
-        $sensitive = sensitiveReasons($paths);
-        if ($sensitive !== []) {
-            $reasons = array_merge($reasons, $sensitive);
+        $matches = sensitiveMatches($paths);
+        $absolute = array_values(array_filter($matches, static fn (array $match): bool => $match['class'] === 'absolute'));
+        if ($absolute !== []) {
+            $resolved = 'L4';
+            foreach ($absolute as $match) {
+                $reasons[] = "path '{$match['path']}' trips an absolute prohibition: {$match['reason']} (no justification can authorise it)";
+            }
+        } elseif ($matches !== []) {
+            $reasons = array_merge($reasons, sensitiveReasons($paths));
             if (isGrounded($justification, $contract)) { $resolved = 'L3'; $reasons[] = 'sensitive change is explicitly grounded in contract acceptance/constraints'; }
             else { $resolved = 'L4'; $reasons[] = 'justification is absent or not grounded in contract acceptance/constraints'; }
         }
@@ -532,13 +867,60 @@ function commandNotify(array $options): int
     fwrite(STDOUT, "DELIVERY: local-only — director NOT notified\n"); return EXIT_NOT_DELIVERED;
 }
 
+/**
+ * The doctrine's stop invariant, made checkable: an approved contract with unsatisfied obligations
+ * and no contract blocker means the harness is not idle. This makes the invariant checkable, not
+ * unfalsifiable — the honest input is the Chair's own obligation count.
+ */
+function commandStopReport(string $remainingRaw, string $stopReasonRaw, bool $json): int
+{
+    if (preg_match('/^\d+$/', $remainingRaw) !== 1) {
+        throw new InvalidArgumentException("offending field --remaining: '{$remainingRaw}' (expected a non-negative integer)");
+    }
+    $remaining = (int) $remainingRaw;
+    $reason = strtoupper(trim($stopReasonRaw));
+    $contractLevel = ['CONTRACT_BLOCKED', 'RESOURCE_EXHAUSTED', 'EXTERNAL_DEPENDENCY_BLOCKED', 'SAFETY_BLOCKED'];
+    $legitimate = $remaining === 0 || in_array($reason, $contractLevel, true);
+    $invariant = 'IF an approved contract has unsatisfied obligations AND no contract blocker THEN the harness is not idle';
+    $basis = $remaining === 0
+        ? 'no unsatisfied obligations remain'
+        : ($legitimate
+            ? "{$remaining} obligation(s) remain with contract-level reason {$reason}"
+            : "{$remaining} obligation(s) remain with non-contract reason '" . ($reason === '' ? 'NONE' : $reason) . "'; no contract blocker is named, so the stop is illegitimate");
+    $payload = ['remaining_obligations' => $remaining, 'stop_reason' => $reason, 'legitimate' => $legitimate,
+        'verdict' => $legitimate ? 'LEGITIMATE_STOP' : 'ILLEGITIMATE_STOP', 'invariant' => $invariant, 'basis' => $basis];
+    if ($json) { fwrite(STDOUT, encodeJson($payload) . "\n"); }
+    else {
+        fwrite(STDOUT, "STOP REPORT\nunsatisfied obligations: {$remaining}\nstop reason: " . ($reason === '' ? 'NONE' : $reason) . "\ninvariant: {$invariant}\nbasis: {$basis}\nverdict: " . $payload['verdict'] . "\n");
+        if (!$legitimate) { fwrite(STDOUT, "system defect: a stop with obligations outstanding is only legitimate under a contract blocker — name one or continue\n"); }
+    }
+    return $legitimate ? EXIT_OK : EXIT_ESCALATE;
+}
+
 /** Dispatch and return a contractual exit status. */
 function main(): int
 {
     $args = $_SERVER['argv']; array_shift($args);
     if ($args === [] || in_array('--help', $args, true)) { usage(); return EXIT_OK; }
-    $command = array_shift($args); if (!in_array($command, ['plan', 'check', 'defer', 'resume', 'status', 'notify'], true)) { throw new InvalidArgumentException("unknown command '{$command}'"); }
+    $command = array_shift($args); if (!in_array($command, ['plan', 'check', 'defer', 'resume', 'status', 'notify', 'models', 'stop-report'], true)) { throw new InvalidArgumentException("unknown command '{$command}'"); }
     $p = parseArguments($args);
+    if ($command === 'stop-report') {
+        validateArgumentNames($p, ['remaining', 'stop-reason'], ['json']);
+        if ($p['positionals'] !== []) { throw new InvalidArgumentException("offending argument: '{$p['positionals'][0]}'"); }
+        return commandStopReport(requiredValue(option($p['options'], 'remaining'), 'remaining'), option($p['options'], 'stop-reason', '') ?? '', isset($p['flags']['json']));
+    }
+    if ($command === 'models') {
+        validateArgumentNames($p, [], ['json']);
+        if ($p['positionals'] !== []) { throw new InvalidArgumentException("offending argument: '{$p['positionals'][0]}'"); }
+        $payload = ['model_policy' => modelPolicy(), 'model_tiers' => modelTiers(), 'deterministic_first' => deterministicFirst()];
+        if (isset($p['flags']['json'])) { fwrite(STDOUT, encodeJson($payload) . "\n"); return EXIT_OK; }
+        fwrite(STDOUT, "DETERMINISTIC FIRST — software decides these; never pay a model:\n");
+        foreach (deterministicFirst() as $question) { fwrite(STDOUT, "  - {$question}\n"); }
+        fwrite(STDOUT, "\nMODEL TIERS (T = intelligence cost; independent of L = authority):\n");
+        foreach (modelTiers() as $tier => $meaning) { fwrite(STDOUT, "  {$tier}  {$meaning}\n"); }
+        fwrite(STDOUT, "\nCHAIR COST POLICY:\n"); fwrite(STDOUT, encodeJson(modelPolicy(), true) . "\n");
+        return EXIT_OK;
+    }
     if ($command === 'plan') {
         validateArgumentNames($p, ['contract', 'decisions-dir', 'emit-manifest'], ['json', 'manifest']); if ($p['positionals'] !== []) { throw new InvalidArgumentException("offending argument: '{$p['positionals'][0]}'"); }
         $path = option($p['options'], 'contract', DEFAULT_CONTRACT) ?? DEFAULT_CONTRACT;

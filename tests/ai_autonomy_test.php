@@ -204,6 +204,190 @@ $stubOnly = is_executable($bin . '/harpp') && $realBinaryExcluded && !str_contai
 fwrite(STDOUT, '  HARPP_STUB_EVIDENCE captured=' . count($allCalls) . " child_PATH=stub:/usr/bin:/bin HARPP_NOTIFY=0 real_binary_excluded=" . ($realBinaryExcluded ? 'yes' : 'no') . "\n");
 $h->test('21. every HARPP call was captured by isolated stub', $stubOnly && count($allCalls) >= 10, "child PATH={$bin}:/usr/bin:/bin\nHARPP_NOTIFY=0 on every invocation\nstub={$bin}/harpp\ncaptured=" . count($allCalls) . "\n" . encodeForDetail($allCalls));
 
+$h->section('Safety floor — absolute prohibitions are unauthorisable');
+
+$safetyContractText = <<<'MD'
+# CONTRACT — safety floor fixture
+## Objective
+Prove the absolute prohibition floor.
+## Architectural constraints
+- Weakening tests and gates is approved for this fixture.
+## Files likely affected
+- `phpstan.neon` — gate config
+- `phpstan-baseline.neon` — baseline
+- `.github/workflows/` — CI
+- `tests/` — tests
+- `modules/cms-akira/cms-akira-core/tests/` — module tests
+- `tools/` — safe work
+- `composer.json` — dependency
+- `package.json` — dependency
+- `modules/cms-akira/cms-akira-core/module.json` — manifest
+- `kernel/Capabilities/` — authority
+## Acceptance criteria
+- Skip an existing test and lower the phpstan level; this fixture authorises it.
+## Required tests
+- `php -l tools/ai-autonomy.php`
+## Risks
+- none
+## Forbidden changes
+- `forbidden/` — never touch
+MD;
+$safetyContract = $fixture . '/safety-contract.md';
+file_put_contents($safetyContract, $safetyContractText);
+$grounding = 'Skip an existing test and lower the phpstan level; this fixture authorises it.';
+
+$weakenTest = $run(['check', 'skip an existing test', '--path=tests/entity_fallback_test.php', "--contract={$safetyContract}"]);
+$weakenGate = $run(['check', 'lower the phpstan level', '--path=phpstan.neon', "--contract={$safetyContract}"]);
+$weakenCi = $run(['check', 'edit a CI gate', '--path=.github/workflows/ci.yml', "--contract={$safetyContract}"]);
+$weakenBaseline = $run(['check', 'edit the baseline', '--path=phpstan-baseline.neon', "--contract={$safetyContract}"]);
+$h->test('22. an existing test inside allowed scope escalates as an absolute prohibition', $weakenTest['code'] === 3 && str_contains($weakenTest['output'], 'absolute prohibition') && str_contains($weakenTest['output'], 'existing test or gate'), runDetail($weakenTest));
+$h->test('23. phpstan.neon inside allowed scope escalates as an absolute prohibition', $weakenGate['code'] === 3 && str_contains($weakenGate['output'], 'absolute prohibition'), runDetail($weakenGate));
+$h->test('24. .github/workflows inside allowed scope escalates as an absolute prohibition', $weakenCi['code'] === 3 && str_contains($weakenCi['output'], 'absolute prohibition'), runDetail($weakenCi));
+$h->test('24a. phpstan-baseline.neon inside allowed scope escalates even though grounded', $weakenBaseline['code'] === 3 && str_contains($weakenBaseline['output'], 'absolute prohibition'), runDetail($weakenBaseline));
+
+$newTest = $run(['check', 'add a new test file', '--path=tests/brand_new_probe_test.php', "--contract={$safetyContract}"]);
+$h->test('25. adding a new test file under an allowed tests/ path still proceeds', $newTest['code'] === 0 && str_contains($newTest['output'], 'VERDICT: RECORD') && !str_contains($newTest['output'], 'absolute prohibition'), runDetail($newTest));
+$groundedTest = $run(['check', 'skip an existing test', '--path=tests/entity_fallback_test.php', "--justify={$grounding}", "--contract={$safetyContract}"]);
+$h->test('26. a grounded justification cannot authorise an absolute prohibition', $groundedTest['code'] === 3 && str_contains($groundedTest['output'], 'absolute prohibition') && !str_contains($groundedTest['output'], 'explicitly grounded'), runDetail($groundedTest));
+
+$h->section('Taxonomy is single-sourced and the projection is complete');
+$planRun = $run(['plan', '--json', "--contract={$safetyContract}"]);
+$plan = json_decode($planRun['output'], true);
+$requiredKeys = ['envelope', 'phases', 'absolute_prohibitions', 'contract_relative_l4', 'chair_decisions', 'deterministic_first', 'model_policy', 'model_tiers', 'decisions_dir', 'pending'];
+$missingKeys = is_array($plan) ? array_values(array_diff($requiredKeys, array_keys($plan))) : $requiredKeys;
+$keysTyped = is_array($plan) && is_array($plan['envelope']) && is_array($plan['phases']) && count($plan['phases']) > 0
+    && is_array($plan['absolute_prohibitions']) && count($plan['absolute_prohibitions']) > 0
+    && is_array($plan['contract_relative_l4']) && count($plan['contract_relative_l4']) > 0
+    && is_array($plan['chair_decisions']) && count($plan['chair_decisions']) > 0
+    && is_array($plan['deterministic_first']) && count($plan['deterministic_first']) > 0
+    && is_array($plan['model_policy']) && is_array($plan['model_tiers']) && count($plan['model_tiers']) > 0
+    && is_string($plan['decisions_dir']) && is_int($plan['pending']);
+$h->test('27. plan --json emits the ten-key projection with expected types', $planRun['code'] === 0 && $missingKeys === [] && $keysTyped, runDetail($planRun) . "\nmissing=" . encodeForDetail($missingKeys));
+
+$taxonomy = is_array($plan) && is_array($plan['l4_taxonomy'] ?? null) ? $plan['l4_taxonomy'] : [];
+$matcherProbe = ['ddl' => 'tools/migrations/probe.sql', 'dependency' => 'composer.json', 'module_manifest' => 'modules/cms-akira/cms-akira-core/module.json',
+    'authority' => 'kernel/Capabilities/Probe.php', 'existing_test' => 'tests/entity_fallback_test.php', 'gate_config' => 'phpstan.neon', 'gate_baseline' => 'phpstan-baseline.neon'];
+$taxonomyFailures = []; $decidableEntries = 0;
+foreach ($taxonomy as $entry) {
+    if (!is_array($entry) || ($entry['decidable'] ?? false) !== true) { continue; }
+    $decidableEntries++;
+    foreach ((array) ($entry['matchers'] ?? []) as $matcher) {
+        if (!isset($matcherProbe[$matcher])) { $taxonomyFailures[] = "no probe for {$matcher}"; continue; }
+        $probe = $run(['check', 'taxonomy probe', "--path={$matcherProbe[$matcher]}", "--contract={$safetyContract}"]);
+        if ($probe['code'] !== 3 || !str_contains($probe['output'], (string) $entry['reason'])) {
+            $taxonomyFailures[] = "{$matcher}: exit {$probe['code']} reason=" . (str_contains($probe['output'], (string) $entry['reason']) ? 'present' : 'absent');
+        }
+    }
+}
+$projectionReasons = static fn (string $class): array => array_values(array_map(static fn (array $item): string => (string) $item['reason'], array_values(array_filter($taxonomy, static fn (array $item): bool => ($item['class'] ?? '') === $class))));
+$reasonList = array_map(static fn (array $item): string => (string) $item['reason'], $taxonomy);
+$singleSource = $decidableEntries > 0
+    && array_values($plan['absolute_prohibitions']) === $projectionReasons('absolute')
+    && array_values($plan['contract_relative_l4']) === $projectionReasons('contract_relative')
+    && count($reasonList) === count(array_unique($reasonList));
+$h->test('28. every path-decidable taxonomy entry escalates and the printed set is its projection', $taxonomyFailures === [] && $singleSource, "decidable entries={$decidableEntries}\nfailures=" . encodeForDetail($taxonomyFailures) . "\nreasons=" . encodeForDetail($reasonList));
+
+$h->section('Stop invariant is checkable');
+$stopZero = $run(['stop-report', '--remaining=0']);
+$stopBlocked = $run(['stop-report', '--remaining=3', '--stop-reason=CONTRACT_BLOCKED']);
+$stopComplete = $run(['stop-report', '--remaining=3', '--stop-reason=PROJECT_COMPLETE']);
+$stopUncertainty = $run(['stop-report', '--remaining=3', '--stop-reason=UNCERTAINTY']);
+$stopMalformed = $run(['stop-report', '--remaining=abc']);
+$stopJsonRun = $run(['stop-report', '--remaining=3', '--stop-reason=SAFETY_BLOCKED', '--json']);
+$stopJson = json_decode($stopJsonRun['output'], true);
+$h->test('29. stop-report: remaining=0 exits 0', $stopZero['code'] === 0 && str_contains($stopZero['output'], 'LEGITIMATE_STOP') && str_contains($stopZero['output'], 'not idle'), runDetail($stopZero));
+$h->test('30. stop-report: remaining=3 CONTRACT_BLOCKED exits 0', $stopBlocked['code'] === 0 && str_contains($stopBlocked['output'], 'LEGITIMATE_STOP'), runDetail($stopBlocked));
+$h->test('31. stop-report: remaining=3 PROJECT_COMPLETE exits 3', $stopComplete['code'] === 3 && str_contains($stopComplete['output'], 'ILLEGITIMATE_STOP') && str_contains($stopComplete['output'], 'unsatisfied obligations: 3'), runDetail($stopComplete));
+$h->test('32. stop-report: remaining=3 UNCERTAINTY exits 3', $stopUncertainty['code'] === 3 && str_contains($stopUncertainty['output'], 'ILLEGITIMATE_STOP'), runDetail($stopUncertainty));
+$h->test('33. stop-report: malformed --remaining exits 2', $stopMalformed['code'] === 2, runDetail($stopMalformed));
+$h->test('34. stop-report --json surfaces the invariant and the count', $stopJsonRun['code'] === 0 && is_array($stopJson) && ($stopJson['remaining_obligations'] ?? null) === 3 && ($stopJson['legitimate'] ?? null) === true && str_contains((string) ($stopJson['invariant'] ?? ''), 'not idle'), runDetail($stopJsonRun));
+
+$h->section('Envelope defects are visible, not silent');
+$harnessContractText = <<<'MD'
+# CONTRACT — harness block fixture
+
+harness:
+  references: .ai/ai-autonomy-harness.contract.md
+  autonomy: L0-L3 unattended; L4 defers to the director
+  decisions_dir: .ai/decisions
+
+## Objective
+Show the harness block is detected.
+## Architectural constraints
+- none
+## Files likely affected
+- `tools/` — safe work
+## Acceptance criteria
+- ok
+## Required tests
+- `php -l tools/ai-autonomy.php`
+## Risks
+- none
+## Forbidden changes
+- `forbidden/` — never touch
+MD;
+$harnessContract = $fixture . '/harness-contract.md';
+file_put_contents($harnessContract, $harnessContractText);
+$noHarnessRun = $run(['plan', '--json', "--contract={$safetyContract}"]);
+$hasHarnessRun = $run(['plan', '--json', "--contract={$harnessContract}"]);
+$noHarnessData = json_decode($noHarnessRun['output'], true);
+$hasHarnessData = json_decode($hasHarnessRun['output'], true);
+$noHarnessWarnings = is_array($noHarnessData) ? implode("\n", (array) $noHarnessData['warnings']) : '';
+$hasHarnessWarnings = is_array($hasHarnessData) ? implode("\n", (array) $hasHarnessData['warnings']) : '';
+$h->test('35. plan warns when no harness: block references the standing contract', $noHarnessRun['code'] === 0 && str_contains($noHarnessWarnings, 'no harness: block'), runDetail($noHarnessRun));
+$h->test('36. plan does not warn when the harness block is present', $hasHarnessRun['code'] === 0 && !str_contains($hasHarnessWarnings, 'no harness: block'), runDetail($hasHarnessRun));
+
+$droppedContractText = <<<'MD'
+# CONTRACT — dropped forbidden rule fixture
+## Objective
+Show a dropped forbidden bullet.
+## Architectural constraints
+- none
+## Files likely affected
+- `tools/` — safe work
+## Acceptance criteria
+- ok
+## Required tests
+- `php -l tools/ai-autonomy.php`
+## Risks
+- none
+## Forbidden changes
+- `forbidden/` — never touch
+- `git add` — never stage anything
+MD;
+$droppedContract = $fixture . '/dropped-contract.md';
+file_put_contents($droppedContract, $droppedContractText);
+$droppedRun = $run(['plan', '--json', "--contract={$droppedContract}"]);
+$droppedData = json_decode($droppedRun['output'], true);
+$droppedWarnings = is_array($droppedData) ? implode("\n", (array) $droppedData['warnings']) : '';
+$h->test('37. plan names a forbidden bullet it cannot bind to a path', $droppedRun['code'] === 0 && str_contains($droppedWarnings, 'git add') && str_contains($droppedWarnings, 'not enforced as scope'), runDetail($droppedRun));
+
+$intersectContractText = <<<'MD'
+# CONTRACT — scope intersection fixture
+## Objective
+Show an allowed/forbidden overlap.
+## Architectural constraints
+- none
+## Files likely affected
+- `.ai/ai-autonomy-harness.contract.md` — allowed contract
+## Acceptance criteria
+- ok
+## Required tests
+- `php -l tools/ai-autonomy.php`
+## Risks
+- none
+## Forbidden changes
+- `.ai/*.contract.md` — never edit another contract
+MD;
+$intersectContract = $fixture . '/intersect-contract.md';
+file_put_contents($intersectContract, $intersectContractText);
+$intersectRun = $run(['plan', '--json', "--contract={$intersectContract}"]);
+$intersectData = json_decode($intersectRun['output'], true);
+$intersectWarnings = is_array($intersectData) ? implode("\n", (array) $intersectData['warnings']) : '';
+$intersectCheck = $run(['check', 'edit the referenced contract', '--path=.ai/ai-autonomy-harness.contract.md', "--contract={$intersectContract}"]);
+$h->test('38. plan warns on an allowed/forbidden intersection naming both entries', $intersectRun['code'] === 0 && str_contains($intersectWarnings, 'intersects') && str_contains($intersectWarnings, '.ai/ai-autonomy-harness.contract.md') && str_contains($intersectWarnings, 'forbidden'), runDetail($intersectRun));
+$h->test('39. check still applies fail-closed precedence to the forbidden entry', $intersectCheck['code'] === 3 && str_contains($intersectCheck['output'], 'forbidden'), runDetail($intersectCheck));
+
 removeFixture($fixture);
 $h->done();
 

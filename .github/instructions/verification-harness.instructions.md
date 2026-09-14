@@ -39,9 +39,16 @@ way were harness faults.
 ## Database and schema
 
 - **Probe the schema; never guess a column.** `SHOW COLUMNS FROM <table>` first.
-  A guessed `users.tenant_id` (which does not exist — tenant DBs are separate) produced an
-  empty id, a silently wrong URL (`/users//role`) and a meaningless `301`.
-- Tenant tables have **no `tenant_id`**; the tenant is the database.
+  A guessed `users.tenant_id` produced an empty id, a silently wrong URL (`/users//role`) and a
+  meaningless `301` — the kernel/auth-owned `users` table has no such column.
+- **Do not generalise from that one table.** Tenant-scoped tables broadly **do** carry `tenant_id`:
+  measured on tenant 54, **12 of 12** `cms_akira_*` tables have it, `NOT NULL`, inside their composite
+  unique keys (`UNIQUE (tenant_id, slug)`, `UNIQUE (tenant_id, media_key)`, …). The dedicated
+  per-tenant database is the isolation boundary; `tenant_id` is defence-in-depth on top of it. Both are
+  true at once, and treating them as mutually exclusive produced a false architectural invariant that
+  propagated into a research brief and two independent model answers before anyone measured the schema.
+  **Authoritative rule: `docs/architecture/adr-002-tenancy-invariant.md`.**
+- To know which applies to a given table, run `SHOW COLUMNS`. Never infer it from the owning module.
 
 ## Capability context
 

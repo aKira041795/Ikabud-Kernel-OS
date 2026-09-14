@@ -24,16 +24,70 @@ harness:
   evidence: real command output and exit codes; no claim without evidence
 ```
 
+Every referencing contract also carries a top-level `status:` line, and it must be **honest**. A status
+chosen to satisfy a tooling requirement is worse than no status at all: `READY_FOR_IMPLEMENTATION` on work
+already delivered advertises the slice as dispatchable and invites an executor to re-implement delivered
+code *inside an authorised scope*. When a contract's premise no longer matches the filesystem, the status
+must say so — measure first, then label (CD-6, `.ai/chair-decisions.md`).
+
 Referencing this file means the task inherits, without restating:
 
 1. **The envelope is the contract.** Autonomy is bounded by the *referencing* contract's `allowed_scope`,
    `forbidden_scope`, `constraints` and `acceptance`. Nothing outside it proceeds.
+   **A required path that the contract does not list must be REPORTED, not silently added.** Chair scope
+   lists are authored by hand and will sometimes omit the correct home for a necessary component —
+   implementers must say so and let the Chair ratify, rather than expanding scope quietly. A sound change
+   made without disclosure is still a process defect, because it removes the Chair's ability to detect
+   the unsound one.
 2. **L0–L3 proceed unattended.** `architect → implement → review → release-gate` runs to completion and
    `CHANGES_REQUIRED` returns to `implement` by itself.
-3. **Only L4 stops the run**, filed as a structured decision with options and a recommendation.
+3. **Only a contract-relative L4 stops the run**, filed as a structured decision with options and a
+   recommendation. An L4 is triggered only when satisfying the contract requires changing or violating
+   it — not by ambiguity, multiple valid options, a failed tactic, or one executor's exhaustion.
 4. **Evidence or it did not happen.** Real output, real exit codes, and the third number — what never ran.
    A `SKIP` is never reported as a pass.
-5. **Bounded repair.** Two failed attempts on the same failure is an L4 stop, not a third attempt.
+5. **Bounded repair promotes reasoning, not escalation.** `max_repairs` is a trigger for higher-level
+   reasoning: L1 implementation repair → L2 implementation-strategy change → L3 task decomposition /
+   replan → L4 phase-level reassessment. Only when the phase is no longer achievable within the contract
+   does it become `CONTRACT_BLOCKED` and reach the director. A second failed attempt is never, by itself,
+   a reason to interrupt the director.
+6. **Continuation is the default.** An approved contract delegates **completion**. The absence of an
+   explicit next instruction is not permission to stop. While `remaining_contract_obligations` is
+   non-empty and no contract blocker exists, the Chair determines and initiates the next bounded action.
+   Every stop names a `stop_reason` and shows that no obligation remains actionable.
+7. **Cheapest adequate intelligence.** The Chair decides *what is the cheapest adequate intelligence
+   for this decision*, not merely *what is next*. Deterministic tools first — never spend a model on a
+   question software already answers (`php tools/ai-autonomy.php models` lists them). Intelligence-cost
+   tiers **T0–T4** are a **different axis** from authority levels **L0–L4**: `L` = may this proceed
+   without the owner; `T` = the cheapest adequate model. A premium model is a specialist hired
+   temporarily for one justified adjudication, never the platform inside an edit→test→fix loop.
+   Justified premium escalation: repeated strategy failure, an unresolved architecture contradiction,
+   a high-risk review, a contract blocker. **Executor exhaustion is reallocation, not a stop** — switch
+   lane, switch model, or change the verification approach; only a hard owner-defined project budget
+   forces a halt. Never trade verification away to save tokens: evidence is the product.
+8. **Route by cost shape, not by headline price.** *Efficiency produces savings; cost ceilings do not.*
+   A cap halts a slice mid-way — the tokens already spent become waste, and are paid for again on
+   resume. Design the workflow so the cheapest adequate lane is the **natural** path, and reserve
+   numeric caps for the rare case where nothing else protects against catastrophic spend.
+
+   Lanes differ in **cost shape**, and the shape — not the price — decides the workflow:
+
+   | Shape | Behaviour | Correct use |
+   |---|---|---|
+   | **Variable** | every token is charged | minimise context; keep the contract tight; this is where Lean-CTX pays for itself |
+   | **Fixed** | the spend is already committed | the marginal token is free — the scarce resource is the rate limit, so spend it where judgement matters |
+   | **Metered burst** | free or near-free, but capped | capacity is the scarce resource — fill it with bounded work and keep headroom for the slice that still needs it |
+
+   Two errors follow from confusing these shapes: **under-using a fixed-cost lane to "save" money**
+   (the spend is already committed; an idle lane loses capability and saves nothing) and **draining a
+   burst lane on trivial work** (spending a day's capacity on questions a test answers leaves nothing
+   for the slice that follows).
+
+   Measured here: one lane's free daily capacity covered approximately the entire observed multi-lane
+   workload. The saving came not from a lower price but from routing bounded work to capacity already
+   paid for and otherwise idle. The competitive position is therefore **not** a cheaper model — it is
+   not paying for reasoning that was never needed. `php tools/ai-autonomy.php models` carries the
+   authoritative `cost_shape` map.
 
 The runbook, the simulation harness, the completion record and the copy-paste template are below.
 
@@ -82,20 +136,53 @@ Frontmatter: `description` (one line, states it is the normative autonomy/escala
 2. **Autonomy envelope** — what the sections of the approved contract authorise, mapped 1:1 to
    `DevelopmentTaskContract` field names (`allowed_scope`, `forbidden_scope`, `constraints`,
    `acceptance`, `required_tests`, `forbidden_rules`, `baseline_scope`).
-3. **Decision classes** — exactly three, with the trigger lists below, no others:
-   - **D0 autonomous** (never ask, never stop): choosing among equivalent in-scope implementations;
-     writing/extending tests for changed behaviour; the edit→test→fix cycle inside scope; formatting;
-     doc updates inside scope; restoring a self-inflicted in-scope breakage.
-   - **D1 notify-and-proceed** (do it, record it, surface it at phase end): in-scope decisions that are
-     reversible and contained to the task's own files; adding a missing test that the contract implies;
-     choosing a default where the contract is silent and the blast radius is one file.
-   - **D2 defer to the director** (stop, file a decision, do not proceed): any path outside
-     `allowed_scope`; anything in `forbidden_scope`; schema/DDL/migration change; auth, authorisation,
-     policy or security weakening; new runtime dependency; public API/capability contract change;
-     cross-module coupling or ownership change; data deletion or irreversible migration; disabling,
-     skipping, deleting or weakening an existing test or gate to get a pass; editing a quality-gate
-     baseline; a second failed repair attempt on the same failure; any acceptance criterion that cannot
-     be met without widening scope; attempt/budget exhaustion.
+3. **Decision conditions** — exactly three, no others. The governing rule is:
+   **ambiguity is not an escalation condition; contract invalidation is.**
+   - **IN-CONTRACT — the Chair decides and continues** (even when the decision is substantial):
+     choosing among multiple valid in-scope implementations; a failed tactic, a red phase requiring
+     replanning, or a discarded implementation; what to work on next, ordering, decomposition, or
+     agent/model assignment; a second failed repair attempt on the same failure (promote to the next
+     repair level); one executor's repair or budget exhaustion (reallocate the executor); ambiguity
+     resolvable from the contract, ADRs and prior decisions. Record as `CHAIR DECISION CD-<n>` with
+     issue / options / chosen / reason / authority / `owner intervention: not required`.
+   - **CONTRACT-TENSION — the Chair replans and continues.** The current plan stops working but the
+     contract remains achievable. **Plans may change autonomously; contracts may not.** The contract
+     defines the destination; the plan is disposable.
+   - **CONTRACT-BREACH — the owner decides** (`CONTRACT_BLOCKED`). Escalate only when satisfying the
+     contract requires changing or violating it: any path outside `allowed_scope`; anything in
+     `forbidden_scope`; schema/DDL/migration change; new runtime dependency; public API/capability
+     contract change; cross-module coupling or ownership change; data deletion or irreversible migration;
+     an acceptance criterion that cannot be met without widening scope; evidence that falsifies a
+     foundational assumption of the contract; a required external dependency that no longer exists.
+
+   Two of the former D2 triggers are **removed**: *a second failed repair attempt* is now IN-CONTRACT
+   (promote the repair level, do not interrupt the owner), and *attempt/budget exhaustion* is now a
+   Chair reallocation decision unless a hard owner-defined project budget is exhausted.
+
+   **Absolute prohibitions** (no contract can authorise, no escalation can obtain permission):
+   weakening auth/authorisation/policy/security; disabling, skipping, deleting or weakening a test or
+   gate to get a pass; editing a quality-gate baseline; deleting audit data or falsifying provenance;
+   silent non-delivery to the director.
+
+4. **Drift is defined against the contract.** Drift is *not* "the harness made a decision the owner did
+   not personally specify" — that is delegation. Drift is changing the objective or constraints the
+   harness was told to honour: adding unrelated features, changing authority semantics the contract
+   fixed, quietly weakening acceptance criteria to obtain a PASS, skipping a phase and declaring
+   completion, or editing a baseline or gate. Choosing another algorithm, reorganising code, rewriting a
+   phase internally, adding tests, and discarding a bad implementation are all **not** drift.
+
+5. **Stop invariant.** Every stop names a `stop_reason`
+   (`PROJECT_COMPLETE | CONTRACT_BLOCKED | RESOURCE_EXHAUSTED | EXTERNAL_DEPENDENCY_BLOCKED |
+   SAFETY_BLOCKED`) and shows `remaining_contract_obligations: []`.
+
+   ```
+   IF   contract.status == APPROVED
+   AND  unsatisfied_obligations > 0
+   AND  no_contract_blocker
+   THEN state != IDLE
+   ```
+
+   "Stopped even though approved work obviously remains" is a **system defect**, not normal behaviour.
 4. **Phase progression** — the harness runs `architect → implement → review → release-gate` unattended
    and returns from `CHANGES_REQUIRED` to `implement` by itself. Human input is required *only* for D2.
    State that asking for permission for an in-scope D0/D1 step is a defect, not diligence.
@@ -315,6 +402,13 @@ path during development) and report that evidence.
    second failed repair of the same failure. File the structured decision with
    `php tools/ai-autonomy.php defer ...`, retain its three artifacts and delivery result, and do not
    continue until an explicit option is received and the recorded checkpoint is resumed.
+   Before any stop, check it with `php tools/ai-autonomy.php stop-report --remaining=<n>
+   --stop-reason=<TYPE>`: it exits `0` only when `remaining=0` or the reason is one of
+   `CONTRACT_BLOCKED`, `RESOURCE_EXHAUSTED`, `EXTERNAL_DEPENDENCY_BLOCKED`, `SAFETY_BLOCKED`; it exits
+   `3` and prints `ILLEGITIMATE_STOP` when obligations remain under any other reason (for example
+   `PROJECT_COMPLETE` or an uncertainty). Exit `2` is a malformed `--remaining`. The report names the
+   unsatisfied obligation count and the invariant it applied; it makes the invariant checkable, not
+   unfalsifiable — the honest input is the Chair's own obligation count.
 6. At release-gate, retain the contract's required-test transcript, pass/fail/skip totals, static-analysis
    and syntax output where applicable, final diff/scope audit, stage envelope, and delivery status. The
    slice is done only when all four phases completed, every acceptance criterion has real evidence,

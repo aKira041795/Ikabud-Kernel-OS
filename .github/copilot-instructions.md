@@ -39,6 +39,18 @@ Substantial work here runs under a bounded-autonomy harness; the director should
 
 - **Policy (normative):** `.github/instructions/ai-autonomy-escalation.instructions.md` — the L0–L4
   authority ladder. L0–L3 proceed unattended; **L4 is the only human stop**.
+- **Continuation mandate:** an approved contract delegates **completion**, not a script. While
+  obligations remain and no contract blocker exists, determine and start the next bounded action —
+  do **not** stop for lack of an explicit next instruction. **Ambiguity is not an escalation
+  condition; contract invalidation is.** Decide, record the rationale, continue. Plans may change
+  autonomously; contracts may not. A stop without a `stop_reason` and a demonstrated contract blocker
+  is a system defect.
+- **Cheapest adequate intelligence:** the Chair also decides *which model should be paid for this
+  decision*. Deterministic tools (tests, lint, static analysis, grep/AST, Playwright, contracts) first —
+  never spend a model on a question software answers. Intelligence-cost tiers **T0–T4** are a different
+  axis from authority levels **L0–L4**: `L` = may this proceed without the owner, `T` = cheapest
+  adequate model. A premium model is a specialist hired temporarily, not the platform. Inspect with
+  `php tools/ai-autonomy.php models`. **Executor exhaustion is reallocation, not a stop.**
 - **Standing contract:** `.ai/ai-autonomy-harness.contract.md` — envelope, runbook, simulator rules and
   the reference block every new task contract copies (`harness: references …`).
 - **Driver:** `tools/ai-autonomy.php` — `plan` / `check` / `defer` / `resume` / `status` / `notify`;
