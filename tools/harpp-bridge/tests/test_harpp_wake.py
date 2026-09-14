@@ -448,7 +448,7 @@ class HarppWakeTest(unittest.TestCase):
         Path(logp).write_text("work in progress\n", encoding="utf-8")
         jid = harpp_wake.track_job(pid=self._dead_pid(), model="deepseek/deepseek-v4-flash",
                                    task="run the suite", conversation_id=9, log_path=logp,
-                                   marker="ALL HARPP CHECKS PASS")
+                                   marker="ALL HARPP CHECKS PASS", verify="true")
         with Path(logp).open("a", encoding="utf-8") as stream:
             stream.write("all harpp checks pass\n")  # matching is case-insensitive
         sent, original = self._patch_send()
@@ -457,6 +457,7 @@ class HarppWakeTest(unittest.TestCase):
             self.assertEqual(len(sent), 1)
             self.assertIn("VERIFIED", sent[0]["body"])
             self.assertIn("ALL HARPP CHECKS PASS", sent[0]["body"])
+            self.assertIn("produced claim status: RE_DERIVED", sent[0]["body"])
             self.assertEqual(sent[0]["conversation_id"], 9)
             # idempotent: second pass does not re-report
             self.assertEqual(harpp_wake.monitor_jobs(), 0)
@@ -476,8 +477,43 @@ class HarppWakeTest(unittest.TestCase):
             self.assertEqual(harpp_wake.monitor_jobs(), 1)
             self.assertEqual(len(sent), 1)
             self.assertIn("FAILED", sent[0]["body"])
-            self.assertIn("did not include its required completion marker", sent[0]["body"])
+            self.assertIn("no verification command configured", sent[0]["body"])
             self.assertIn("Details:", sent[0]["body"])
+        finally:
+            harpp_wake.harpp_client.send_message = original
+
+    def test_passing_verify_succeeds_when_informational_marker_is_missing(self):
+        logp = str(Path(self.tmp.name) / "verified-without-marker.log")
+        Path(logp).write_text("work completed without final marker\n", encoding="utf-8")
+        harpp_wake.track_job(pid=self._dead_pid(), model="openai-codex/gpt-5.6-sol",
+                             task="verified stage", conversation_id=3, log_path=logp,
+                             marker="SOL_IMPL status=PASS", verify="true")
+        sent, original = self._patch_send()
+        try:
+            self.assertEqual(harpp_wake.monitor_jobs(), 1)
+            job = harpp_wake.list_jobs()[0]
+            self.assertEqual(job["outcome"], "DONE")
+            self.assertEqual(job["claim_status"], "RE_DERIVED")
+            self.assertIn("marker 'SOL_IMPL status=PASS' was not found", sent[0]["body"])
+        finally:
+            harpp_wake.harpp_client.send_message = original
+
+    def test_monitor_rejects_marker_only_without_rederived_verification(self):
+        logp = str(Path(self.tmp.name) / "marker-only.log")
+        Path(logp).write_text("before tracking\n", encoding="utf-8")
+        harpp_wake.track_job(pid=self._dead_pid(), model="openai-codex/gpt-5.6-sol",
+                             task="marker-only stage", conversation_id=3, log_path=logp,
+                             marker="SOL_IMPL status=PASS")
+        with Path(logp).open("a", encoding="utf-8") as stream:
+            stream.write("SOL_IMPL status=PASS\n")
+        sent, original = self._patch_send()
+        try:
+            self.assertEqual(harpp_wake.monitor_jobs(), 1)
+            job = harpp_wake.list_jobs()[0]
+            self.assertEqual(job["outcome"], "FAILED")
+            self.assertEqual(job["claim_status"], "UNVERIFIED")
+            self.assertIn("marker is informational", sent[0]["body"])
+            self.assertIn("no verification command configured", sent[0]["body"])
         finally:
             harpp_wake.harpp_client.send_message = original
 
@@ -822,6 +858,11 @@ class HarppWakeTest(unittest.TestCase):
                                 for stage in candidate["stages"]), manifest_path.name)
 
     def _write_jobs(self, jobs):
+        for job in jobs.values():
+            if job.get("outcome") == "DONE":
+                job.setdefault("verify", "true")
+                job.setdefault("verify_passed", True)
+                job.setdefault("claim_status", "RE_DERIVED")
         with harpp_wake._jobs_lock():
             jstate = harpp_wake._jobs_state_unlocked()
             jstate["jobs"] = jobs
@@ -829,8 +870,8 @@ class HarppWakeTest(unittest.TestCase):
 
     def _stage(self, name, job_id=None, status="pending"):
         return {"name": name, "model": "m", "job_id": job_id, "status": status,
-                "timeout": 10, "marker": None, "verify": None, "commit": False,
-                "prompt_file": None, "prompt": "p"}
+                "timeout": 10, "marker": None, "verify": "true", "evidence": "required",
+                "commit": False, "prompt_file": None, "prompt": "p"}
 
     def _seed_workflow(self, wid, stages, index=0, max_repairs=0, **extra):
         wf = {"id": wid, "title": "t", "conversation_id": 7, "workspace": None,
@@ -1452,7 +1493,8 @@ class HarppWakeTest(unittest.TestCase):
         try:
             self.assertEqual(harpp_wake.monitor_jobs(), 1)
             self.assertIn("FAILED", sent[0]["body"])
-            self.assertIn("did not finish with its required success marker", sent[0]["body"])
+            self.assertIn("marker is informational", sent[0]["body"])
+            self.assertIn("no verification command configured", sent[0]["body"])
         finally:
             harpp_wake.harpp_client.send_message = original
 
@@ -1466,7 +1508,8 @@ class HarppWakeTest(unittest.TestCase):
         try:
             self.assertEqual(harpp_wake.monitor_jobs(), 1)
             self.assertIn("FAILED", sent[0]["body"])
-            self.assertIn("did not finish with its required success marker", sent[0]["body"])
+            self.assertIn("marker is informational", sent[0]["body"])
+            self.assertIn("no verification command configured", sent[0]["body"])
         finally:
             harpp_wake.harpp_client.send_message = original
 
@@ -2375,6 +2418,20 @@ class WorkflowManifestValidationTest(unittest.TestCase):
         errors = harpp_wake.validate_workflow_manifest(m)
         self.assertTrue(any("verify" in e and "destructive" in e for e in errors), errors)
 
+    def test_marker_without_verify_must_be_visibly_unevidenced(self):
+        m = self._valid_manifest()
+        m["stages"][0].pop("verify")
+        errors = harpp_wake.validate_workflow_manifest(m)
+        self.assertTrue(any("verify" in e and "evidence" in e for e in errors), errors)
+        m["stages"][0]["evidence"] = "none"
+        self.assertEqual(harpp_wake.validate_workflow_manifest(m), [])
+
+    def test_evidence_none_cannot_hide_a_configured_verify(self):
+        m = self._valid_manifest()
+        m["stages"][0]["evidence"] = "none"
+        errors = harpp_wake.validate_workflow_manifest(m)
+        self.assertTrue(any("cannot be combined" in e for e in errors), errors)
+
     def test_admin_shell_substitution_verify_is_allowed(self):
         # Legitimate admin-authored `$(...)` in a manifest verify is not flagged.
         m = self._valid_manifest()
@@ -2394,22 +2451,25 @@ class WorkflowManifestValidationTest(unittest.TestCase):
 
     def test_structured_stage_result_identity(self):
         wf = {"id": "wf1", "run_id": "run-1"}
-        stage = {"name": "architect"}
-        job = {"id": "job1", "marker": None, "verify": None, "model": "m"}
+        stage = {"name": "architect", "verify": "true", "evidence": "required"}
+        job = {"id": "job1", "marker": None, "verify": "true", "verify_passed": True,
+               "claim_status": "RE_DERIVED", "model": "m"}
         result = harpp_wake._build_stage_result(wf, stage, job, "DONE")
         self.assertEqual(result["schema_version"], harpp_wake.WORKFLOW_MANIFEST_SCHEMA_VERSION)
         self.assertEqual(result["workflow_id"], "wf1")
         self.assertEqual(result["run_id"], "run-1")
         self.assertEqual(result["stage_name"], "architect")
         self.assertEqual(result["outcome"], "DONE")
+        self.assertEqual(result["claim_status"], "RE_DERIVED")
+        self.assertIn("verify:PASSED", result["evidence"])
         self.assertTrue(harpp_wake._stage_result_matches(wf, stage, result))
 
     def test_structured_result_identity_mismatch_rejected(self):
         wf = {"id": "wf1", "run_id": "run-1"}
-        stage = {"name": "architect"}
+        stage = {"name": "architect", "verify": "true", "evidence": "required"}
         result = {"schema_version": harpp_wake.WORKFLOW_MANIFEST_SCHEMA_VERSION,
                   "workflow_id": "wf-OTHER", "run_id": "run-9", "stage_name": "architect",
-                  "outcome": "DONE", "evidence": ["marker:FOUND"]}
+                  "outcome": "DONE", "claim_status": "RE_DERIVED", "evidence": ["verify:PASSED"]}
         self.assertFalse(harpp_wake._stage_result_matches(wf, stage, result))
         # wrong stage
         wrong_stage = dict(result, workflow_id="wf1", run_id="run-1", stage_name="review")
@@ -2417,9 +2477,12 @@ class WorkflowManifestValidationTest(unittest.TestCase):
         # non-DONE outcome
         failed = dict(result, workflow_id="wf1", run_id="run-1", outcome="FAILED")
         self.assertFalse(harpp_wake._stage_result_matches(wf, stage, failed))
-        # DONE without evidence (marker-only with no verification evidence) rejected
+        # DONE without re-derived verification evidence is rejected.
         no_evidence = dict(result, workflow_id="wf1", run_id="run-1", evidence=[])
         self.assertFalse(harpp_wake._stage_result_matches(wf, stage, no_evidence))
+        unverified = dict(result, workflow_id="wf1", run_id="run-1",
+                          claim_status="UNVERIFIED", evidence=["marker:INFORMATIONAL:FOUND"])
+        self.assertFalse(harpp_wake._stage_result_matches(wf, stage, unverified))
 
 
 class WakeAdapterTest(unittest.TestCase):

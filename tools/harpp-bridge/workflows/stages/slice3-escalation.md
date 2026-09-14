@@ -1,4 +1,4 @@
-You are gpt-5.4, executing SLICE 3 of the HARPP hardening roadmap: **message-type escalation**.
+You are gpt-5.6-sol, executing SLICE 3 of the HARPP hardening roadmap: **message-type escalation**.
 
 Repo root (workspace): {{WORKSPACE}}  (= /var/www/html/applicationostest)
 Previous stage output: {{PREV_OUTPUT}}  (slice 2 added authority levels + ESCALATED)

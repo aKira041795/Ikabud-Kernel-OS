@@ -1,4 +1,4 @@
-You are gpt-5.4, executing SLICE 5 (final) of the HARPP hardening roadmap: **phone-first summaries**.
+You are gpt-5.6-sol, executing SLICE 5 (final) of the HARPP hardening roadmap: **phone-first summaries**.
 
 Repo root (workspace): {{WORKSPACE}}  (= /var/www/html/applicationostest)
 Previous stage output: {{PREV_OUTPUT}}  (slice 4 added the DEC-xxxx decision recorder)

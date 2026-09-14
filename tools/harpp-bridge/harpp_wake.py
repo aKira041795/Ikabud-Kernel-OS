@@ -955,7 +955,7 @@ def release_routing_claim(record: dict) -> None:
 # Job monitor — close the "did the model finish?" loop so the owner never has
 # to remind the harness. Delegated model processes (e.g. a long GPT-Sol run)
 # are registered via `harpp job track`; the watch daemon then detects when the
-# pid exits, verifies the outcome (marker in log and/or a verify command),
+# pid exits, verifies the outcome (the verify command is authoritative; markers are informational),
 # optionally commits the repo, and auto-reports the result back to the owner
 # conversation through the bridge — no reminder required.
 # ---------------------------------------------------------------------------
@@ -1204,6 +1204,8 @@ def _normalize_job(job: dict) -> dict:
     rec.setdefault("base_sha", _git_sha(rec.get("repo")))
     rec.setdefault("current_sha", _git_sha(rec.get("repo")))
     rec.setdefault("human_decisions", [])
+    rec.setdefault("verify_passed", None)
+    rec.setdefault("claim_status", "UNVERIFIED")
     return rec
 
 
@@ -1221,6 +1223,9 @@ def _normalize_stage(stage: dict, index: int) -> dict:
     rec.setdefault("timeout", 1800)
     rec.setdefault("marker", None)
     rec.setdefault("verify", None)
+    # Additive manifest field: required means verify must re-derive the stage
+    # claim; none makes an intentionally unevidenced (and non-passing) stage visible.
+    rec.setdefault("evidence", "required" if rec.get("verify") else None)
     rec.setdefault("commit", False)
     rec.setdefault("prompt_file", None)
     rec.setdefault("prompt", None)
@@ -1621,30 +1626,29 @@ def _report_job(job_id: str, job: dict) -> str:
     tail = _log_tail(job.get("log_path"))
     marker = job.get("marker")
     verify_cmd = job.get("verify")
-    checks = []
     evidence = []
     if marker:
         found = _marker_found(job)
-        checks.append(found)
-        if found:
-            evidence.append(f"success marker {marker!r} confirmed in the agent's output")
-        else:
-            evidence.append(
-                f"the agent did not finish with its required success marker {marker!r}; "
-                f"remedy: re-run the task and have the agent end its final message with the exact line {marker!r}")
+        evidence.append(
+            f"informational marker {marker!r} was {'found' if found else 'not found'} "
+            "(marker is informational and does not gate completion)")
+    verify_passed = False
     if verify_cmd:
-        vok, vout = _run_verify(verify_cmd, job.get("repo"))
-        checks.append(vok)
-        if vok:
+        verify_passed, vout = _run_verify(verify_cmd, job.get("repo"))
+        if verify_passed:
             evidence.append(f"verification passed: {sanitize_decision_text(vout)}")
         else:
             evidence.append(
                 f"verification command {verify_cmd!r} failed"
                 + (f" ({sanitize_decision_text(vout)})" if vout else "")
                 + "; remedy: fix the issue the verification reported and re-run the task")
-    ok = bool(checks) and all(checks)
-    if not checks:
-        evidence.append("no marker or verification command configured, so completion could not be verified")
+    else:
+        evidence.append("no verification command configured; claim remains UNVERIFIED and cannot pass")
+    claim_status = "RE_DERIVED" if verify_passed else ("CONTRADICTED" if verify_cmd else "UNVERIFIED")
+    job["verify_passed"] = verify_passed
+    job["claim_status"] = claim_status
+    evidence.append(f"produced claim status: {claim_status}")
+    ok = verify_passed and claim_status == "RE_DERIVED"
     git = _git_status(job.get("repo"))
     commit = ""
     if ok and job.get("commit"):
@@ -1812,6 +1816,8 @@ def monitor_jobs() -> int:
                     raise RuntimeError("job claim changed before report could be recorded")
                 current["status"] = "finished"
                 current["outcome"] = outcome  # DONE / FAILED — lets workflows advance on real results
+                current["verify_passed"] = bool(job.get("verify_passed"))
+                current["claim_status"] = str(job.get("claim_status") or "UNVERIFIED")
                 current["state"] = outcome
                 current["current_sha"] = _git_sha(current.get("repo"))
                 current["reported_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -2318,7 +2324,14 @@ def validate_workflow_manifest(manifest, name=None, workspace=None):
         if authority is not None and str(authority).strip().upper() not in AUTHORITY_ORDER:
             errors.append(f"stages[{i}].required_authority: unsupported {authority!r}")
         verify = stage.get("verify")
+        evidence_mode = stage.get("evidence")
+        if evidence_mode not in (None, "required", "none"):
+            errors.append(f"stages[{i}].evidence: must be 'required' or 'none'")
+        if not verify and evidence_mode != "none":
+            errors.append(f"stages[{i}].verify: required unless evidence is explicitly 'none'")
         if verify is not None:
+            if evidence_mode == "none":
+                errors.append(f"stages[{i}].evidence: 'none' cannot be combined with verify")
             if isinstance(verify, str):
                 # Admin-authored verify may legitimately use shell substitution, but
                 # must never interpolate owner text or contain destructive commands.
@@ -2359,11 +2372,11 @@ def _build_stage_result(workflow, stage, job, outcome):
     stage = stage or {}
     evidence = []
     if job.get("marker"):
-        evidence.append("marker:" + ("FOUND" if _marker_found(job) else "NOT_FOUND"))
+        evidence.append("marker:INFORMATIONAL:" + ("FOUND" if _marker_found(job) else "NOT_FOUND"))
     if job.get("verify"):
-        evidence.append("verify:configured")
+        evidence.append("verify:" + ("PASSED" if job.get("verify_passed") else "FAILED"))
     if not evidence:
-        evidence.append("no-marker-no-verify")
+        evidence.append("evidence:NONE")
     return {
         "schema_version": WORKFLOW_MANIFEST_SCHEMA_VERSION,
         "workflow_id": (workflow or {}).get("id"),
@@ -2373,6 +2386,7 @@ def _build_stage_result(workflow, stage, job, outcome):
         "outcome": outcome,
         "model": job.get("model"),
         "marker_found": _marker_found(job) if job.get("marker") else None,
+        "claim_status": str(job.get("claim_status") or "UNVERIFIED"),
         "evidence": evidence,
         "finished_at": job.get("finished_at"),
     }
@@ -2392,7 +2406,11 @@ def _stage_result_matches(workflow, stage, result):
         return False
     if result.get("outcome") != "DONE":
         return False
-    if not (result.get("evidence") or []):
+    if (stage or {}).get("evidence") == "none" or not (stage or {}).get("verify"):
+        return False
+    if result.get("claim_status") != "RE_DERIVED":
+        return False
+    if "verify:PASSED" not in (result.get("evidence") or []):
         return False
     return True
 
@@ -2711,9 +2729,8 @@ def advance_workflows() -> int:
                 stage_result = _build_stage_result(wf, stage, job, "DONE")
                 stage["stage_result"] = stage_result
                 if not _stage_result_matches(wf, stage, stage_result):
-                    # Structured result identity check: a marker that identifies a
-                    # different run/workflow, or a DONE outcome without its required
-                    # verification evidence, must not advance the workflow.
+                    # Structured result identity check: only a verify:PASSED,
+                    # RE_DERIVED claim for this workflow/stage may advance it.
                     log(f"workflow {wid} stage {stage.get('name')} result identity mismatch; refusing to advance")
                     stage["status"] = "failed"
                     _record_stage_attempt(stage, "failed", job_id=job.get("id"), run_id=job.get("run_id"))

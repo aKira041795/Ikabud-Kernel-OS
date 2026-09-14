@@ -1,4 +1,4 @@
-You are gpt-5.4, executing SLICE 4 of the HARPP hardening roadmap: **DEC-xxxx decision recorder**.
+You are gpt-5.6-sol, executing SLICE 4 of the HARPP hardening roadmap: **DEC-xxxx decision recorder**.
 
 Repo root (workspace): {{WORKSPACE}}  (= /var/www/html/applicationostest)
 Previous stage output: {{PREV_OUTPUT}}  (slice 3 added message-type escalation)
@@ -6,7 +6,7 @@ Previous stage output: {{PREV_OUTPUT}}  (slice 3 added message-type escalation)
 Scope: `tools/harpp-bridge` ONLY (harpp_wake.py, harpp, harpp_client.py, wake/task-contract.md, tests/test_harpp_wake.py). Do NOT touch modules/harpp, kernel/, or /var/www/html/harpp. Do NOT commit/push. Do NOT spawn nested agents. Never print secrets. Python stdlib only.
 
 # Mission
-The owner directs HARPP from their phone. Those directives must become DURABLE repository/project knowledge (DEC-xxxx records), not transient chat — so future gpt-sol / gpt-5.4 / deepseek sessions act on them WITHOUT needing the conversation history.
+The owner directs HARPP from their phone. Those directives must become DURABLE repository/project knowledge (DEC-xxxx records), not transient chat — so future gpt-sol / gpt-5.6-sol / deepseek sessions act on them WITHOUT needing the conversation history.
 
 # Deliverables
 1. **Local decision ledger**: `~/.config/harpp/decisions.json` (append-only array of DEC-xxxx records) with fields: id (DEC-0001...), task (task_id / workflow), decision, constraints, additional_requirements, source (human), applied_to (contract_revision / stage), created_at. CLI: `harpp decision record --task T --decision D [--constraint C] [--additional A] [--source human] [--applied-to X]` and `harpp decision list`.

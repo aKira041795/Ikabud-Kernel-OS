@@ -258,8 +258,16 @@ a Raspberry Pi / NAS / LAN runner can execute or broker work continuously.
   harpp workflow start --manifest workflows/governed-loop.json --conversation <id> --dry-run
   ```
 - `validate`/`start --dry-run` fail with the exact field (unsupported model, missing prompt,
-  invalid budget/authority, owner-text interpolation in `verify`, missing workspace, …). Stage
-  results are structured + identity-checked, so a marker from another run cannot advance a stage.
+  invalid budget/authority, owner-text interpolation in `verify`, missing workspace, …).
+- The stage `verify` command is the authoritative evidence gate. A stage advances only when
+  `verify` exits `0` and the resulting structured claim is `RE_DERIVED`. `marker` remains in logs
+  for humans but is informational: present or absent, it never changes the gate result.
+- The additive `evidence` manifest key accepts `"required"` or `"none"`. Use `"required"` with a
+  real `verify` command. `"none"` explicitly identifies an intentionally unevidenced stage; such
+  a stage is valid to describe but cannot pass. Omitting both `verify` and `evidence: "none"` is a
+  preflight error, and combining `evidence: "none"` with `verify` is also rejected.
+- Stage results are structured + identity-checked, so output from another run cannot advance a
+  stage and marker-only self-reports remain `UNVERIFIED`.
 
 ### Wake-on-LAN (optional)
 - Enable under `~/.config/harpp/config.json` → `wake_on_lan`. It is strictly optional and is
