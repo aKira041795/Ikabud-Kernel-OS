@@ -550,3 +550,114 @@ user-level `~/.config/harpp/config.json`, which was not copied and must not be e
 **Authority:** owner directive, 2026-09-14. Policy amended to match; no escalation required because you are the
 source of the rule being changed.
 **Owner intervention:** given and implemented.
+
+## CD-17 — The harness is a tool, and live decisions are the point (owner correction)
+
+**Owner directive, verbatim:** *"i'm fine with live decisions as this is the crux of having a chair. the harness
+is a tool, remember that always. live decision making makes harpp and harness an intuitive tool/code agent."*
+
+**Issue:** the policy carried a blanket prohibition — *"No test may create a live decision on the host"* —
+requiring `HARPP_NOTIFY=0`, a stubbed `harpp` on `PATH` and a sandbox `HARPP_CONFIG` for **every** test
+invocation. I wrote the S5 slice accordingly, making "no live decision created" an acceptance criterion.
+
+**Options:**
+- A. Keep the prohibition; treat live decisions as test debris.
+- B. Remove it entirely and say nothing about provenance.
+- C. Amend it: live decisions are permitted and expected; keep only a provenance requirement so the director's
+  queue stays readable.
+
+**Chosen:** C.
+**Reason:** the prohibition treated the *intended behaviour* as a hazard. A Chair that cannot file a real
+decision is not exercising delegated authority — it is performing a rehearsal. The owner's framing is the
+correct one and is now recorded as doctrine: **the harness is a tool.** Its purpose is that decisions get made,
+live, by an authority that has been delegated; not that a governance apparatus accumulates around it. The only
+surviving requirement is readability — a decision filed by an automated run names its run id — because an
+unlabelled queue costs the director exactly the attention the harness exists to save.
+
+**A correction to my own behaviour, not just the rule.** This session produced 17 recorded decisions, several
+briefs, a positioning plan and a measurement programme — and then I encoded a constraint whose effect was to
+keep the Chair from doing the one thing that makes it a Chair. Process accreted faster than it earned its
+keep. The tool framing is now the standing check on that tendency: **if a rule stops the harness from acting
+decisively, the rule is the suspect.**
+
+**Consequence for the running slice:** S5 (`.ai/projects/harpp-gen4/slices/s5-first-real-run.md`) is mid-flight
+with the old constraint in its envelope. It is **not** being edited during execution — a contract is not changed
+while a run is live. Its stub-based verification remains valid evidence (stubbing isolates the gate logic from
+the service, which is a *stronger* test of the gate), and the relaxed rule applies from the next slice onward.
+**Authority:** owner directive, 2026-09-14; policy amended to match.
+**Owner intervention:** given and implemented.
+
+## CD-18 — The loop's first real dispatch: it stopped, correctly, and the gap is an interface
+
+**What happened.** `php tools/ai-loop.php --project=harpp-gen4 --max-slices=2` ran unattended. S4's run
+completed (`exit=0`, 5,520-byte report). The loop then extracted **5 claims** — all `TEST_RESULT`, all
+`re_derivable: true` — verified them, received **`UNVERIFIED` for all five** with
+`reason: no_command_declared`, **stopped the project** (`loop_exit=3`), marked S4 `blocked`, and did not
+advance to S5. No human touched it.
+
+**The loop is right; the interface is missing.** A claim's evidence read
+`"ai_project_test          exit=0  6/6 passed"` — it names the *result* but not the *command*. Synthesising a
+command would risk verifying something other than what was claimed and reporting `RE_DERIVED`, which is false
+confidence — the worst possible outcome for the one mechanism that exists to remove trust. Refusing was correct.
+
+**The burden transferred, and the Chair discharged it.** S4's work is real: `metrics --project=harpp-gen4`
+produces the full table (runs by status, lane distribution, wall-clock per slice, claim outcomes, chair
+decisions 17 with **3 incorrect**), `tests/ai_project_metrics_test.php` is **16/16 with zero skips**, and
+`metrics.json` is `tool_written: true` with `cost_usd` and `director_minutes` as **`null` plus a stated
+reason** — the no-estimation rule held.
+
+**S4's substantive discovery, which matters more than its deliverable:** cost and tokens are *not derivable*
+because **the run ledger binds no session to a run**. `pi` exposes per-message usage and cost in its session
+jsonl; the ledger records the contract, lane and exit code but no session identifier. **To make the cost thesis
+measurable at all, the ledger must record the pi session id per run.** It found the blocker rather than
+guessing a number, which is exactly the behaviour the `null`-with-a-reason rule was written to produce.
+
+**Accepted fix (the claim-command convention):**
+1. a claim should **declare its command**, and the extractor should prefer a command-bearing evidence line over
+a result-only line;
+2. an **exact-match fallback** may derive `php tests/<name>.php` **only** when the file exists and passes the
+   purity screen, and the claim must record that the command was **derived, not declared**, so a reviewer can
+   tell the two apart.
+Both halves matter: (1) alone forces a new report convention on every future slice; (2) alone lets the tool
+invent commands. Together, declaration is preferred and derivation is a labelled, bounded fallback.
+
+**Honest status, recorded rather than glossed:** the loop has now proven it **stops correctly on real work** —
+that is a result, and the first real dispatch ending in a block is the system working. But **the loop has never
+completed a real slice end to end**, so "≥2 slices unattended" is proven on fixtures only and Gen 4's
+*seamless* remains undemonstrated. The next attempt must pass, or the concept is not yet usable.
+**Authority:** Chair, IN-CONTRACT (diagnosis in hand, options enumerable).
+**Owner intervention:** not required.
+
+## CD-19 — Project handover is now the unit of work; non-disruption is endorsed as a feature
+
+**Owner directive, verbatim:** *"that's fine and your constraint in disrupting the process midflight is what i
+want in this setup. you as chair, when a project is handed over to you can now create decisive options and
+follow through. this will impact how we do projects moving on."*
+
+**What this settles.** The operating model is now:
+
+```
+OWNER     states an objective and its constraints  (not a plan, not a task list)
+   |
+   v
+CHAIR     decomposes, sequences, chooses lanes by cost shape, generates decisive options,
+          picks one, records why, drives each slice to RE_DERIVED claims, reports an account
+   |
+   v
+L4        only when satisfying the contract would change or violate it
+```
+
+**Two decisions inside this directive, both recorded because they change how future work is done:**
+1. **Non-disruption is a feature of the setup**, not a courtesy: no editing a live contract, no committing while
+a run is not `completed`, no writing to a tree a run is writing to, no inferring run state from a log or a
+process list. Reading and verifying are always permitted — only writing is constrained. This is precisely the
+behaviour that kept today's S4 dispatch from being corrupted and that let the loop's own refusal stand.
+2. **The Chair's output is an account, not a question**: what was decided, what the evidence is, what remains,
+what is uncertain. Options are the Chair's to choose when they are in-contract; the owner is not asked to pick
+between them.
+
+**Codified in** `.ai/ai-autonomy-harness.contract.md` → *Project handover — the Chair's standing remit*, kept
+short deliberately: CD-17 recorded that this session accreted process faster than it earned its keep, so the
+remit is a page, not a programme.
+**Authority:** owner directive, 2026-09-14.
+**Owner intervention:** given and implemented.

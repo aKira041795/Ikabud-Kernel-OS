@@ -45,6 +45,28 @@
                     "at": "2026-09-14T04:25:49+00:00"
                 }
             ]
+        },
+        "S4": {
+            "state": "blocked",
+            "run_id": "harpp-gen4-s4-20260914045055-cd664e",
+            "reason": "claims were not all RE_DERIVED: UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED",
+            "updated_at": "2026-09-14T04:55:49+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "harpp-gen4-s4-20260914045055-cd664e",
+                    "reason": null,
+                    "at": "2026-09-14T04:50:56+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "harpp-gen4-s4-20260914045055-cd664e",
+                    "reason": "claims were not all RE_DERIVED: UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED",
+                    "at": "2026-09-14T04:55:49+00:00"
+                }
+            ]
         }
     }
 }

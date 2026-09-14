@@ -476,6 +476,19 @@ stored as a hand-maintained counter. `transition` records `pending → running �
 `done` transition unless the named completed run has at least one claim and every claim is
 `RE_DERIVED` in the ledger.
 
+### Metrics are derived, never self-reported (added 2026-09-14)
+
+`php tools/ai-project.php metrics --project=<id> [--json] [--write] [--chair-decisions=PATH]
+[--projects-dir=DIR] [--runs-dir=DIR]` is the only writer of `.ai/projects/<id>/metrics.json`, and it
+derives every number from artefacts: run records in `.ai/runs/*.json` matched to the project's slice
+contracts, the slice table, `## CD-` headings in `.ai/chair-decisions.md`,
+`.ai/projects/<id>/chair-errors.json` and `.ai/projects/<id>/director-minutes.json`. **The harness must
+not be the source of its own metrics:** cost and tokens are read from a run record's `usage` block only
+when every matched run carries one — otherwise they are `null` with a reason, never estimated from bytes
+or tokens. Director minutes are a logged input; when the file is absent the metric is `null`, never `0`.
+Any metric that cannot be derived appears in the `unavailable` map with the reason it is null. The output
+carries `tool_written: true`; a hand-edited `metrics.json` is a finding, not data.
+
 Run bounded unattended progression with
 `php tools/ai-loop.php --project=<id> [--max-slices=N] [--dry-run] [--json]`. For every real dispatch it
 calls `commit-check` first, records ledger `start`, invokes the declared lane as an argv array without a
@@ -488,6 +501,36 @@ ledger nor project state.
 **No marker trust:** an executor line such as `SOL_IMPL status=PASS` is prose, not evidence. The project
 stage gate consumes one or more independently `RE_DERIVED` claims. A marker-only report has zero claims
 and therefore blocks, even when the executor exited zero.
+
+## Project handover — the Chair's standing remit
+
+**Owner directive 2026-09-14 (CD-19):** *"you as chair, when a project is handed over to you can now create
+decisive options and follow through. this will impact how we do projects moving on."*
+
+A handover is an **objective plus constraints** — not a plan, and not a list of tasks. On handover the Chair owns:
+
+1. **Decomposition and sequencing** — break the objective into bounded slices, order them, record the order.
+2. **Decisive options** — where a genuine architectural choice exists, state 2–4 concrete options with their
+   effects and a recommendation, **choose one**, and record why. The owner is not asked to choose between
+   in-contract options.
+3. **Lane assignment by cost shape** — fixed-cost lanes for judgement, variable-cost lanes for bounded
+   mechanical work, reallocating on exhaustion rather than stopping.
+4. **Follow-through to evidence** — drive each slice to `RE_DERIVED` claims; where a loop stops for lack of
+   verifiable evidence, discharge the verification rather than declaring the work impossible.
+5. **Reporting that is an account, not a question** — what was decided, what the evidence is, what remains,
+   what is uncertain. Escalation is reserved for contract breach (L4).
+
+### Non-disruption of in-flight work (a feature, not a courtesy)
+
+Endorsed by the owner as the behaviour he wants in this setup:
+
+- **Never edit a contract whose run is live.** A changed contract takes effect from the next slice.
+- **Never commit while any run is not `completed`** — decided by `commit-check`, never by how the tree looks.
+- **Never write to a tree a run is writing to.** A coherent-looking tree is not evidence that it has stopped
+  changing (CD-11).
+- **Never sample a log or a process list to infer run state** — the ledger records it (CD-9, CD-12).
+- **Reading is always permitted.** Inspecting artefacts, asking the ledger and verifying outputs do not disturb
+  a run; only writing does.
 
 ## Simulation harness
 

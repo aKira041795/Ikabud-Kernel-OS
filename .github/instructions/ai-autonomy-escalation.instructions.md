@@ -401,7 +401,13 @@ The director answers with one option id. The harness resumes at the recorded che
 - No committing during a live or unstable run: committing while any run is not `completed` is a process
   defect. Commit eligibility is decided by the ledger (`php tools/ai-run.php commit-check`), not by how
   the tree looks — a tree can look coherent while a run is still writing to it.
-- No test may create a live decision on the host: every test invocation sets `HARPP_NOTIFY=0` and uses a stubbed `harpp` first on `PATH` with a sandbox `HARPP_CONFIG`.
+- Live decisions are the point, not a hazard. **Owner directive 2026-09-14:** *"i'm fine with live decisions as
+  this is the crux of having a chair. the harness is a tool, remember that always. live decision making makes
+  harpp and harness an intuitive tool/code agent."* A test or run **may** file a real decision. The harness
+  exists so that decisions get **made** — live, by a delegated authority — not so that governance archaeology
+  accumulates around it. Keep only provenance: a decision filed by an automated run names the run that filed
+  it, so the director's queue stays readable rather than mysterious. Stub `harpp` only when a test is
+  deliberately exercising the *client* rather than the director channel.
 
 ## Risks and open items
 

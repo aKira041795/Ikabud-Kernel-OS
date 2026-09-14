@@ -21,8 +21,15 @@ Usage:
   php tools/ai-project.php obligations --project=ID [--projects-dir=DIR] [--json]
   php tools/ai-project.php transition --project=ID --slice=ID --state=running|done|blocked
        [--run=ID] [--reason=TEXT] [--projects-dir=DIR] [--runs-dir=DIR] [--json]
+  php tools/ai-project.php metrics --project=ID [--chair-decisions=PATH]
+       [--projects-dir=DIR] [--runs-dir=DIR] [--json] [--write]
 
 Exit codes: 0 ok; 2 malformed project/input; 3 no eligible slice or refused transition.
+
+metrics derives the project's numbers from artefacts only (run records, the slice
+table, chair-decisions headings, chair-errors.json, director-minutes.json). Any
+metric that cannot be derived is null with a reason in the `unavailable` map; it is
+never estimated. --write persists .ai/projects/<id>/metrics.json.
 A done transition is accepted only when the named completed ledger run contains
 one or more claims and every claim is RE_DERIVED.
 TXT
@@ -38,7 +45,7 @@ function projectArgs(array $args): array
     $options = [];
     $flags = [];
     foreach ($args as $arg) {
-        if ($arg === '--json' || $arg === '--help') {
+        if ($arg === '--json' || $arg === '--help' || $arg === '--write') {
             $flags[substr($arg, 2)] = true;
             continue;
         }
@@ -304,6 +311,361 @@ function transitionProject(array $project, string $sliceId, string $target, ?str
     writeProjectJson((string) $project['state_file'], ['schema' => 'ark.ai-project-state.v1', 'project' => $project['id'], 'slices' => $states]);
 }
 
+/**
+ * Read every run record under $runsDir, keyed by run id.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function loadRunRecords(string $runsDir): array
+{
+    $records = [];
+    foreach (glob(rtrim($runsDir, '/') . '/*.json') ?: [] as $file) {
+        $decoded = json_decode((string) @file_get_contents($file), true);
+        if (!is_array($decoded)) {
+            continue;
+        }
+        $id = is_string($decoded['id'] ?? null) ? $decoded['id'] : basename($file, '.json');
+        $records[$id] = $decoded;
+    }
+    ksort($records);
+    return $records;
+}
+
+/**
+ * Map each declared contract path to the slice ids it covers.
+ *
+ * @param array<string,mixed> $project
+ * @return array<string,list<string>>
+ */
+function projectSliceContracts(array $project): array
+{
+    $map = [];
+    foreach ($project['slices'] as $slice) {
+        $contract = $slice['contract'] ?? null;
+        if (is_string($contract)) {
+            $map[$contract][] = (string) $slice['id'];
+        }
+    }
+    return $map;
+}
+
+/**
+ * @param array<string,mixed> $record
+ * @return array{0:int,1:int}|null
+ */
+function runSpan(array $record): ?array
+{
+    $start = $record['started_at'] ?? null;
+    $finish = $record['finished_at'] ?? null;
+    if (!is_string($start) || !is_string($finish)) {
+        return null;
+    }
+    $from = strtotime($start);
+    $to = strtotime($finish);
+    if ($from === false || $to === false || $to < $from) {
+        return null;
+    }
+    return [$from, $to];
+}
+
+/**
+ * Derive the project metric table from artefacts only.
+ *
+ * @param array<string,mixed> $project
+ * @return array{metrics:array<string,mixed>,unavailable:array<string,string>}
+ */
+function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFile): array
+{
+    $reasons = [];
+    $contracts = projectSliceContracts($project);
+
+    /** @var array<string,array<string,mixed>> $matched */
+    $matched = [];
+    /** @var array<string,list<string>> $sliceRuns */
+    $sliceRuns = [];
+    foreach (loadRunRecords($runsDir) as $id => $record) {
+        $contract = $record['contract'] ?? null;
+        if (!is_string($contract) || !isset($contracts[$contract])) {
+            continue;
+        }
+        $matched[$id] = $record;
+        foreach ($contracts[$contract] as $sliceId) {
+            $sliceRuns[$sliceId][] = $id;
+        }
+    }
+
+    $dispatched = array_keys($sliceRuns);
+    sort($dispatched);
+
+    $statuses = ['completed' => 0, 'silent' => 0, 'failed' => 0, 'abandoned' => 0, 'running' => 0, 'other' => 0];
+    $lanes = [];
+    foreach ($matched as $record) {
+        $status = is_string($record['status'] ?? null) ? $record['status'] : 'other';
+        $statuses[isset($statuses[$status]) ? $status : 'other']++;
+        $lane = is_string($record['lane'] ?? null) ? $record['lane'] : 'unknown';
+        $lanes[$lane] = ($lanes[$lane] ?? 0) + 1;
+    }
+    ksort($lanes);
+
+    $completedSlices = [];
+    foreach ($sliceRuns as $sliceId => $ids) {
+        foreach ($ids as $id) {
+            if (($matched[$id]['status'] ?? null) === 'completed') {
+                $completedSlices[$sliceId] = true;
+                break;
+            }
+        }
+    }
+    $completedSlices = array_keys($completedSlices);
+    sort($completedSlices);
+
+    $bySlice = [];
+    foreach ($project['slices'] as $slice) {
+        $sliceId = (string) $slice['id'];
+        $ids = $sliceRuns[$sliceId] ?? [];
+        if ($ids === []) {
+            continue;
+        }
+        $starts = [];
+        $finishes = [];
+        $incomplete = null;
+        foreach ($ids as $id) {
+            $span = runSpan($matched[$id]);
+            if ($span === null) {
+                $incomplete ??= $id;
+                continue;
+            }
+            $starts[] = $span[0];
+            $finishes[] = $span[1];
+        }
+        if ($incomplete !== null || $starts === []) {
+            $bySlice[$sliceId] = null;
+            $reasons['wall_clock_seconds_by_slice.' . $sliceId] =
+                "run {$incomplete} for slice {$sliceId} has no complete started_at/finished_at pair";
+            continue;
+        }
+        $bySlice[$sliceId] = max($finishes) - min($starts);
+    }
+
+    $total = null;
+    if ($matched === []) {
+        $reasons['wall_clock_seconds_total'] = 'no run records match this project';
+    } else {
+        $starts = [];
+        $finishes = [];
+        $incomplete = null;
+        foreach ($matched as $id => $record) {
+            $span = runSpan($record);
+            if ($span === null) {
+                $incomplete ??= $id;
+                continue;
+            }
+            $starts[] = $span[0];
+            $finishes[] = $span[1];
+        }
+        if ($incomplete !== null || $starts === []) {
+            $reasons['wall_clock_seconds_total'] =
+                "run {$incomplete} has no complete started_at/finished_at pair";
+        } else {
+            $total = max($finishes) - min($starts);
+        }
+    }
+
+    $claimOutcomes = ['RE_DERIVED' => 0, 'CONTRADICTED' => 0, 'UNVERIFIED' => 0, 'other' => 0];
+    foreach ($matched as $record) {
+        $results = $record['claim_verification']['results'] ?? null;
+        if (!is_array($results)) {
+            continue;
+        }
+        foreach ($results as $result) {
+            $status = is_array($result) && is_string($result['status'] ?? null) ? $result['status'] : 'other';
+            $claimOutcomes[isset($claimOutcomes[$status]) ? $status : 'other']++;
+        }
+    }
+
+    $tokens = null;
+    $cost = null;
+    if ($matched === []) {
+        $reasons['tokens_total'] = $reasons['cost_usd'] = 'no run records match this project';
+    } else {
+        $tokenSum = 0;
+        $costSum = 0.0;
+        $missing = null;
+        foreach ($matched as $id => $record) {
+            $usage = $record['usage'] ?? null;
+            if (!is_array($usage) || !is_numeric($usage['total_tokens'] ?? null) || !is_numeric($usage['cost_usd'] ?? null)) {
+                $missing ??= $id;
+                continue;
+            }
+            $tokenSum += (int) $usage['total_tokens'];
+            $costSum += (float) $usage['cost_usd'];
+        }
+        if ($missing !== null) {
+            $reasons['tokens_total'] = $reasons['cost_usd'] =
+                "run {$missing} carries no usage block; pi exposes per-message usage and cost in its session "
+                . 'jsonl, but the run ledger binds no session to a run, so a complete per-project figure is not derivable';
+        } else {
+            $tokens = $tokenSum;
+            $cost = round($costSum, 6);
+        }
+    }
+
+    $chairDecisions = null;
+    $markdown = @file_get_contents($chairDecisionsFile);
+    if ($markdown === false) {
+        $reasons['chair_decisions'] = "chair decisions file '{$chairDecisionsFile}' is not readable";
+    } else {
+        $count = preg_match_all('/^##\s+CD-\d+/m', $markdown);
+        $chairDecisions = $count === false ? null : $count;
+        if ($chairDecisions === null) {
+            $reasons['chair_decisions'] = "chair decisions file '{$chairDecisionsFile}' could not be counted";
+        }
+    }
+
+    $chairErrors = null;
+    $errorIds = [];
+    $errorsPath = rtrim((string) $project['path'], '/') . '/chair-errors.json';
+    $errorsJson = is_file($errorsPath) ? json_decode((string) @file_get_contents($errorsPath), true) : null;
+    if (!is_array($errorsJson) || !is_array($errorsJson['errors'] ?? null)) {
+        $reasons['chair_decisions_incorrect'] =
+            "no readable chair-errors.json at {$errorsPath}; incorrect decisions are never estimated";
+    } else {
+        foreach ($errorsJson['errors'] as $entry) {
+            if (is_array($entry) && is_string($entry['id'] ?? null)) {
+                $errorIds[] = $entry['id'];
+            }
+        }
+        $chairErrors = count($errorsJson['errors']);
+    }
+
+    $reasons['contract_violations'] =
+        "the ledger records each run's declared envelope (allowed_count/forbidden_count) but no changed-path "
+        . 'artefact, so a scope diff cannot be derived';
+
+    $minutes = null;
+    $minutesPath = rtrim((string) $project['path'], '/') . '/director-minutes.json';
+    $minutesJson = is_file($minutesPath) ? json_decode((string) @file_get_contents($minutesPath), true) : null;
+    if (!is_array($minutesJson) || !is_array($minutesJson['entries'] ?? null) || $minutesJson['entries'] === []) {
+        $reasons['director_minutes'] = is_file($minutesPath)
+            ? 'director-minutes.json has no entries; the director has not logged any minutes (not zero)'
+            : 'director-minutes.json is absent; the director has not logged any minutes (not zero)';
+    } else {
+        $byCategory = [];
+        foreach ($minutesJson['entries'] as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $category = is_string($entry['category'] ?? null) ? $entry['category'] : 'uncategorised';
+            $byCategory[$category] = ($byCategory[$category] ?? 0) + (int) ($entry['minutes'] ?? 0);
+        }
+        ksort($byCategory);
+        $minutes = [
+            'entries' => count($minutesJson['entries']),
+            'by_category' => $byCategory,
+            'total' => array_sum($byCategory),
+        ];
+    }
+
+    return [
+        'metrics' => [
+            'slices_dispatched' => count($dispatched),
+            'slices_completed' => count($completedSlices),
+            'slices_dispatched_ids' => $dispatched,
+            'slices_completed_ids' => $completedSlices,
+            'runs_by_status' => $statuses,
+            'lane_distribution' => $lanes,
+            'wall_clock_seconds_by_slice' => $bySlice,
+            'wall_clock_seconds_total' => $total,
+            'claim_outcomes' => $claimOutcomes,
+            'chair_decisions' => $chairDecisions,
+            'chair_decisions_incorrect' => $chairErrors,
+            'chair_errors' => $errorIds,
+            'contract_violations' => null,
+            'cost_usd' => $cost,
+            'tokens_total' => $tokens,
+            'director_minutes' => $minutes,
+        ],
+        'unavailable' => $reasons,
+    ];
+}
+
+/** Format a scalar metric for the human table. */
+function formatMetric(int|float|null $value): string
+{
+    if ($value === null) {
+        return 'null';
+    }
+    if (is_float($value)) {
+        return rtrim(rtrim(number_format($value, 6, '.', ''), '0'), '.');
+    }
+    return (string) $value;
+}
+
+/**
+ * @param array<string,mixed> $metrics
+ * @param array<string,string> $unavailable
+ */
+function renderMetricsTable(string $id, array $metrics, array $unavailable): string
+{
+    $pad = static fn (string $label): string => str_pad($label, 27);
+    $out = "METRICS {$id} — derived from artefacts only\n";
+    $out .= $pad('slices dispatched') . ' ' . $metrics['slices_dispatched']
+        . ' (' . implode(', ', $metrics['slices_dispatched_ids']) . ")\n";
+    $out .= $pad('slices completed') . ' ' . $metrics['slices_completed']
+        . ' (' . implode(', ', $metrics['slices_completed_ids']) . ")\n";
+    foreach ($metrics['runs_by_status'] as $status => $count) {
+        $out .= $pad('runs ' . $status) . ' ' . $count . "\n";
+    }
+    $lanes = [];
+    foreach ($metrics['lane_distribution'] as $lane => $count) {
+        $lanes[] = $lane . '=' . $count;
+    }
+    $out .= $pad('lanes') . ' ' . ($lanes === [] ? 'none' : implode(', ', $lanes)) . "\n";
+    if ($metrics['wall_clock_seconds_by_slice'] === []) {
+        $out .= $pad('wall-clock by slice') . ' null — no run records match this project' . "\n";
+    }
+    foreach ($metrics['wall_clock_seconds_by_slice'] as $sliceId => $seconds) {
+        if ($seconds === null) {
+            $out .= $pad('wall-clock ' . $sliceId) . ' null — '
+                . ($unavailable['wall_clock_seconds_by_slice.' . $sliceId] ?? 'not derivable') . "\n";
+            continue;
+        }
+        $out .= $pad('wall-clock ' . $sliceId) . ' ' . $seconds . "s\n";
+    }
+    $out .= $pad('wall-clock total') . ' ' . ($metrics['wall_clock_seconds_total'] === null
+        ? 'null — ' . ($unavailable['wall_clock_seconds_total'] ?? 'not derivable')
+        : $metrics['wall_clock_seconds_total'] . 's') . "\n";
+    foreach ($metrics['claim_outcomes'] as $status => $count) {
+        $out .= $pad('claims ' . $status) . ' ' . $count . "\n";
+    }
+    $out .= $pad('chair decisions') . ' ' . formatMetric($metrics['chair_decisions'])
+        . ($metrics['chair_decisions'] === null ? ' — ' . ($unavailable['chair_decisions'] ?? 'not derivable') : '') . "\n";
+    $incorrect = $metrics['chair_decisions_incorrect'];
+    $out .= $pad('chair decisions incorrect') . ' ' . formatMetric($incorrect)
+        . ($incorrect === null
+            ? ' — ' . ($unavailable['chair_decisions_incorrect'] ?? 'not derivable')
+            : ' (' . implode(', ', $metrics['chair_errors']) . ')')
+        . "\n";
+    $out .= $pad('contract violations') . ' null — ' . ($unavailable['contract_violations'] ?? 'not derivable') . "\n";
+    $out .= $pad('cost (usd)') . ' ' . ($metrics['cost_usd'] === null
+        ? 'null — ' . ($unavailable['cost_usd'] ?? 'not derivable')
+        : formatMetric($metrics['cost_usd'])) . "\n";
+    $out .= $pad('tokens total') . ' ' . ($metrics['tokens_total'] === null
+        ? 'null — ' . ($unavailable['tokens_total'] ?? 'not derivable')
+        : formatMetric($metrics['tokens_total'])) . "\n";
+    $minutes = $metrics['director_minutes'];
+    if ($minutes === null) {
+        $out .= $pad('director minutes') . ' null — ' . ($unavailable['director_minutes'] ?? 'not derivable') . "\n";
+    } else {
+        $pairs = [];
+        foreach ($minutes['by_category'] as $category => $count) {
+            $pairs[] = $category . '=' . $count;
+        }
+        $out .= $pad('director minutes') . ' total=' . $minutes['total'] . ' (' . implode(', ', $pairs) . ")\n";
+    }
+    return $out;
+}
+
 function projectMain(): int
 {
     $args = array_slice($_SERVER['argv'], 1);
@@ -312,11 +674,14 @@ function projectMain(): int
         return PROJECT_OK;
     }
     $command = array_shift($args);
-    if (!in_array($command, ['status', 'next', 'obligations', 'transition'], true)) {
+    if (!in_array($command, ['status', 'next', 'obligations', 'transition', 'metrics'], true)) {
         throw new InvalidArgumentException("unknown command '{$command}'");
     }
     $parsed = projectArgs($args);
     $allowed = ['project', 'projects-dir', 'runs-dir'];
+    if ($command === 'metrics') {
+        $allowed = array_merge($allowed, ['chair-decisions']);
+    }
     if ($command === 'transition') {
         $allowed = array_merge($allowed, ['slice', 'state', 'run', 'reason']);
     }
@@ -351,6 +716,37 @@ function projectMain(): int
     if ($command === 'obligations') {
         $remaining = remainingObligations($project);
         fwrite(STDOUT, $json ? json_encode(['project' => $id, 'remaining' => $remaining], JSON_THROW_ON_ERROR) . "\n" : $remaining . "\n");
+        return PROJECT_OK;
+    }
+    if ($command === 'metrics') {
+        $derived = deriveMetrics(
+            $project,
+            projectOption($parsed['options'], 'runs-dir', '.ai/runs') ?? '.ai/runs',
+            projectOption($parsed['options'], 'chair-decisions', '.ai/chair-decisions.md') ?? '.ai/chair-decisions.md'
+        );
+        $output = [
+            'schema' => 'ark.ai-project-metrics.v1',
+            'project' => $id,
+            'generated_at' => date(DATE_ATOM),
+            'tool_written' => true,
+            'source' => 'derived from .ai/runs/*.json matched to this project, the project slice table, '
+                . 'chair-decisions.md headings, chair-errors.json and director-minutes.json; no model judgement, no estimation',
+            'metrics' => $derived['metrics'],
+            'unavailable' => $derived['unavailable'],
+        ];
+        $written = null;
+        if (isset($parsed['flags']['write'])) {
+            $written = rtrim((string) $project['path'], '/') . '/metrics.json';
+            writeProjectJson($written, $output);
+        }
+        if ($json) {
+            fwrite(STDOUT, json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+        } else {
+            fwrite(STDOUT, renderMetricsTable($id, $derived['metrics'], $derived['unavailable']));
+            if ($written !== null) {
+                fwrite(STDOUT, "wrote {$written}\n");
+            }
+        }
         return PROJECT_OK;
     }
     if ($command === 'status') {

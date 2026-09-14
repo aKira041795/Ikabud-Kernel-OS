@@ -1,0 +1,64 @@
+{
+    "schema": "ark.ai-project-metrics.v1",
+    "project": "harpp-gen4",
+    "generated_at": "2026-09-14T04:54:43+00:00",
+    "tool_written": true,
+    "source": "derived from .ai/runs/*.json matched to this project, the project slice table, chair-decisions.md headings, chair-errors.json and director-minutes.json; no model judgement, no estimation",
+    "metrics": {
+        "slices_dispatched": 3,
+        "slices_completed": 2,
+        "slices_dispatched_ids": [
+            "S2",
+            "S3",
+            "S4"
+        ],
+        "slices_completed_ids": [
+            "S2",
+            "S3"
+        ],
+        "runs_by_status": {
+            "completed": 2,
+            "silent": 0,
+            "failed": 0,
+            "abandoned": 0,
+            "running": 1,
+            "other": 0
+        },
+        "lane_distribution": {
+            "deepseek/deepseek-v4-flash": 1,
+            "deterministic-release-evidence": 1,
+            "openai-codex/gpt-5.6-sol": 1
+        },
+        "wall_clock_seconds_by_slice": {
+            "S2": 694,
+            "S3": 694,
+            "S4": null
+        },
+        "wall_clock_seconds_total": null,
+        "claim_outcomes": {
+            "RE_DERIVED": 4,
+            "CONTRADICTED": 0,
+            "UNVERIFIED": 0,
+            "other": 0
+        },
+        "chair_decisions": 17,
+        "chair_decisions_incorrect": 3,
+        "chair_errors": [
+            "CD-6",
+            "CD-11",
+            "CD-12"
+        ],
+        "contract_violations": null,
+        "cost_usd": null,
+        "tokens_total": null,
+        "director_minutes": null
+    },
+    "unavailable": {
+        "wall_clock_seconds_by_slice.S4": "run harpp-gen4-s4-20260914045055-cd664e for slice S4 has no complete started_at/finished_at pair",
+        "wall_clock_seconds_total": "run harpp-gen4-s4-20260914045055-cd664e has no complete started_at/finished_at pair",
+        "cost_usd": "run harpp-gen4-s4-20260914045055-cd664e carries no usage block; pi exposes per-message usage and cost in its session jsonl, but the run ledger binds no session to a run, so a complete per-project figure is not derivable",
+        "tokens_total": "run harpp-gen4-s4-20260914045055-cd664e carries no usage block; pi exposes per-message usage and cost in its session jsonl, but the run ledger binds no session to a run, so a complete per-project figure is not derivable",
+        "contract_violations": "the ledger records each run's declared envelope (allowed_count/forbidden_count) but no changed-path artefact, so a scope diff cannot be derived",
+        "director_minutes": "director-minutes.json is absent; the director has not logged any minutes (not zero)"
+    }
+}
