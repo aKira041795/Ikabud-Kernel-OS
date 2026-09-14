@@ -1,0 +1,231 @@
+BRIEF VERIFICATION REPORT — brief-verify-2
+Generated: 2026-09-14 (L2 re-lane, independent confirmation of a failed groq attempt)
+Repo: /var/www/html/ikabudsix
+HEAD: 00480ca037c9a5acbb6adbcbfd5c49fa9aa5cf13
+Branch: feat/akira-editorial-and-authority-coverage
+Scope: read-only verification. No tracked file was modified, staged, committed or pushed.
+         The only file written is this report itself. (The suites write their own
+         test_results/*.json, which are gitignored — git status confirms no tracked change.)
+
+====================================================================
+WHAT WAS ASKED
+====================================================================
+"that the brief's claimed suite counts reproduce: run the five pure suites
+ and compare against what the brief states"
+
+The deliverable under test is already committed (docs/reviews/harness-independent-evaluation-brief.md
+last touched by commit 9a24649). This report only confirms or refutes its suite-count claims.
+
+NOTE ON "FIVE" vs THE BRIEF'S OWN COUNT — stated up front so nothing is hidden:
+  - The task instruction says "five pure suites".
+  - The brief itself (§1.2 "Test suites" row) claims SIX passing pure suites plus ONE red
+    suite = SEVEN total, and §2 C6 lists exactly seven suites in its command.
+  - There is no natural subset of exactly five non-vacuous suites in that list: six are green,
+    one is red, and all seven are MODE_PURE. The five-PHP-claim set is real only in a different
+    context (the S5 run record's claim_verification, which holds five PHP TEST_RESULT claims
+    plus two python LINT_RESULT claims). Both contexts were measured and are reported below.
+  - I therefore ran the FULL set of seven suites named by the brief's own C6 command — a superset
+    of any "five" — so the confirmation cannot be defeated by the count ambiguity.
+
+====================================================================
+CLAIM UNDER TEST (verbatim quotes from the brief)
+====================================================================
+docs/reviews/harness-independent-evaluation-brief.md, §1.2 Components table:
+
+  | **Test suites** | `tests/ai_*.php` | Six passing pure suites: `ai_autonomy` 59, `ai_run` 67,
+  `ai_project` 18, `ai_contract_lint` 3, `ai_loop` 18, `ai_autonomy_glob_scope` 5 assertions
+  (all exit 0; the first two were **46** and **19** when first written). `ai_project_metrics` is
+  **15/16, exit 1** (one stale assertion — see §3.17) |
+
+docs/reviews/harness-independent-evaluation-brief.md, §2 C6, command and measured values:
+
+  for f in ai_autonomy_test ai_run_test ai_project_test ai_project_metrics_test \
+           ai_contract_lint_test ai_loop_test ai_autonomy_glob_scope_test; do
+    out=$(php tests/$f.php 2>&1); code=$?
+    echo "$f: exit=$code $(echo "$out" | grep -oE '[0-9]+/[0-9]+ passed' | tail -1)"
+  done
+
+  Measured (2026-09-14 evening, HEAD 995553a):
+    ai_autonomy_test:            exit=0  59/59 passed
+    ai_run_test:                 exit=0  67/67 passed
+    ai_project_test:             exit=0  18/18 passed
+    ai_project_metrics_test:     exit=1  15/16 passed   <- assertion 3 (see §3.17)
+    ai_contract_lint_test:       exit=0   3/3 passed
+    ai_loop_test:                exit=0  18/18 passed
+    ai_autonomy_glob_scope_test: exit=0   5/5 passed
+
+So the claim under test has two falsifiable parts:
+  (a) each suite's `N/N passed` summary and exit code reproduce on the current tree;
+  (b) `ai_project_metrics_test` is red on assertion 3, deterministically (not a flake).
+
+====================================================================
+CLAIM C6 — Command
+====================================================================
+$ cd /var/www/html/ikabudsix
+$ for f in ai_autonomy_test ai_run_test ai_project_test ai_project_metrics_test \
+         ai_contract_lint_test ai_loop_test ai_autonomy_glob_scope_test; do
+    out=$(php tests/$f.php 2>&1); code=$?
+    echo "$f: exit=$code $(echo "$out" | grep -oE '[0-9]+/[0-9]+ passed' | tail -1)"
+  done
+
+NOTE: the loop's own process exit is not the subject of the claim; each suite's `exit=$code`
+above is captured immediately after that suite runs, which is the value the brief reports.
+
+====================================================================
+CLAIM C6 — OBSERVED (verbatim output)
+====================================================================
+ai_autonomy_test: exit=0 59/59 passed
+ai_run_test: exit=0 67/67 passed
+ai_project_test: exit=0 18/18 passed
+ai_project_metrics_test: exit=1 15/16 passed
+ai_contract_lint_test: exit=0 3/3 passed
+ai_loop_test: exit=0 18/18 passed
+ai_autonomy_glob_scope_test: exit=0 5/5 passed
+
+(the shell `for` loop itself terminates cleanly; exit codes are the per-suite values echoed above)
+
+--------------------------------------------------------------------
+Per-suite reproduction, brief claim vs observed
+--------------------------------------------------------------------
+suite                         brief claim        observed            match
+ai_autonomy_test              exit=0  59/59       exit=0  59/59       YES
+ai_run_test                   exit=0  67/67       exit=0  67/67       YES
+ai_project_test               exit=0  18/18       exit=0  18/18       YES
+ai_project_metrics_test       exit=1  15/16       exit=1  15/16       YES (red reproduces)
+ai_contract_lint_test         exit=0   3/3        exit=0   3/3        YES
+ai_loop_test                  exit=0  18/18       exit=0  18/18       YES
+ai_autonomy_glob_scope_test   exit=0   5/5        exit=0   5/5        YES
+
+Every count and every exit code reproduces exactly. Nothing drifted.
+
+The brief says "Six passing pure suites" and that set is exactly the six that show exit=0 above
+(ai_autonomy, ai_run, ai_project, ai_contract_lint, ai_loop, ai_autonomy_glob_scope), and
+`ai_project_metrics` is the seventh and is red. The brief's own prose ("six passing ... one
+assertion in the seventh is red") is internally consistent with the observed data.
+
+====================================================================
+CLAIM — the red suite is a stale expectation, deterministic, not a flake
+====================================================================
+COMMAND:
+$ php tests/ai_project_metrics_test.php > /tmp/bv2/ai_project_metrics_test.out 2>&1; echo "exit=$?"
+$ php tests/ai_project_metrics_test.php > /tmp/bv2/metrics2.out 2>&1; echo "run2 exit=$?"
+
+OBSERVED (verbatim):
+exit=1
+run2 exit=1
+
+Both runs report:
+  15/16 passed
+  Assertions: 16
+
+The single failing assertion is exactly the one the brief names (assertion 3), verbatim from the
+suite's own output:
+
+  ── Derived metrics match hand-computed values ──
+    ✅ 1. only runs whose contract belongs to the project are counted (3 of 4)
+    ✅ 2. slices completed counts only slices with a completed run (S1, not S2)
+    ❌ 3. runs by status counts every canonical status — {
+      ... "runs_by_status": {
+            "completed": 1,
+            "silent": 0,
+            "failed": 1,
+            "abandoned": 0,
+            "blocked": 0,
+            "running": 1,
+            "other": 0
+          } ...
+
+  ❌ FAILURES:
+    • [Derived metrics match hand-computed values] 3. runs by status counts every canonical status
+
+This is consistent with §3.17's claim that the test's hand-computed expected `runs_by_status` map
+omits the `blocked` status the tool now emits. I did NOT fix it (tests/ is out of scope); I confirm
+the failure is present and deterministic across two runs.
+
+====================================================================
+SEPARATE CONTEXT — the FIVE PHP test claims re-derived in the S5 run
+====================================================================
+The task's "five" most plausibly refers to the five PHP TEST_RESULT claims that
+`harpp-gen4-s5-20260914082239-fce746` re-derived by execution. Verified against the run record:
+
+COMMAND:
+$ python3 - <<'PY'
+import json
+d=json.load(open('.ai/runs/harpp-gen4-s5-20260914082239-fce746.json'))
+for r in d['claim_verification']['results']:
+    s=r.get('subject',{})
+    print(r['type'], '|', s.get('command'), '|', r['status'], '|', r['verification'].get('observed'))
+PY
+
+OBSERVED (verbatim):
+TEST_RESULT | php tests/ai_project_test.php | RE_DERIVED | {'exit_code': 0, 'passed': 18, 'total': 18}
+TEST_RESULT | php tests/ai_loop_test.php | RE_DERIVED | {'exit_code': 0, 'passed': 18, 'total': 18}
+TEST_RESULT | php tests/ai_run_test.php | RE_DERIVED | {'exit_code': 0, 'passed': 67, 'total': 67}
+TEST_RESULT | php tests/ai_autonomy_test.php | RE_DERIVED | {'exit_code': 0, 'passed': 59, 'total': 59}
+TEST_RESULT | php tests/ai_contract_lint_test.php | RE_DERIVED | {'exit_code': 0, 'passed': 3, 'total': 3}
+LINT_RESULT | python3 -m py_compile tools/harpp-bridge/harpp_wake.py | RE_DERIVED | {'exit_code': 0}
+LINT_RESULT | python3 -m py_compile tools/harpp-bridge/tests/test_harpp_wake.py | RE_DERIVED | {'exit_code': 0}
+
+Those five PHP suites' observed values (18/18, 18/18, 67/67, 59/59, 3/3) match the brief's §1.2 and
+C6 numbers exactly, and my fresh re-runs above reproduce them again.
+
+====================================================================
+TREE-BINDING CHECK — why counts should reproduce
+====================================================================
+COMMAND:
+$ git rev-parse HEAD
+$ git log --oneline -1 -- docs/reviews/harness-independent-evaluation-brief.md
+$ git diff --stat 995553a..HEAD -- tests/; echo "exit=$?"
+
+OBSERVED (verbatim):
+00480ca037c9a5acbb6adbcbfd5c49fa9aa5cf13
+9a24649 docs(review): refresh the independent evaluation brief; and a three-lane capability test
+exit=0 (empty = no test changes)
+
+No file under tests/ changed between the brief's stated measurement HEAD (`995553a`) and the current
+HEAD (`00480ca`). That is the mechanical reason the brief's suite counts still reproduce. (The brief's
+header still says "Commits under review: 995553a (HEAD)"; that pointer is stale relative to 00480ca,
+but it does not affect the suite-count claim, which is what this report was asked to check.)
+
+====================================================================
+NON-MODIFICATION CHECK
+====================================================================
+COMMAND:
+$ git status --short
+
+OBSERVED (verbatim), after all measurements:
+ M .ai/chair-decisions.md
+?? .ai/_p13_closure_probe.php
+?? .ai/_p13_phase1_probe.php
+?? .ai/_p13_state_probe.php
+?? .ai/brief-verify-1.report.txt
+?? .ai/plan-review/
+?? .ai/research/
+?? .ai/runs/brief-verify-1.json
+?? .ai/runs/brief-verify-2.json
+?? .ai/standing-authorization-and-decisions.md
+
+The ` M .ai/chair-decisions.md` and the untracked entries were present BEFORE this verification began
+(observed identically at the start). No new tracked file was modified by this run. The suites'
+`test_results/*.json` outputs do not appear because that directory is gitignored. Nothing was staged,
+committed or pushed.
+
+====================================================================
+VERDICT
+====================================================================
+CLAIM: the brief's measured suite counts (six green pure suites with counts 59, 67, 18, 3, 18, 5;
+       ai_project_metrics red at exit=1, 15/16) reproduce.
+RESULT: HOLDS. All seven suites named by the brief's C6 command were run; every `N/N passed`
+        summary and every exit code matches the brief exactly, on current HEAD 00480ca.
+        The one red suite reproduces its single named failure (assertion 3) deterministically
+        across two runs.
+
+  - No fabricated pass: the brief's only red value (ai_project_metrics 15/16, exit 1) is confirmed
+    red, and I say so rather than smoothing it.
+  - No fabricated failure: the six green suites are genuinely green with the exact counts claimed.
+  - The only discrepancy I found is between the task instruction's word "five" and the brief's own
+    enumeration (six green + one red = seven). This is an instruction/claim count mismatch, not a
+    mismatch in any measured value. I resolved it by running all seven (superset), and by also
+    confirming the five PHP claims in the S5 run record. All reproduce.
+
+END OF REPORT
