@@ -2103,3 +2103,69 @@ whole harness makes everywhere else. Pretending to detect it would require the m
 **Authority:** owner directive 2026-09-14 (*"lift the freeze. fix"*); CD-22 (design), CD-31 (why not the
 matcher), CD-43 (the finding). Freeze resumes on landing.
 **Owner intervention:** given.
+
+## CD-45 — GEN4-R1 data point 2: the route worked, the work landed, and a PROSE claim blocked it
+
+**The exceptions route did exactly what it was built for.** On S1's re-run:
+
+```
+SCOPE OK delta=1                    <- the correction LANDED (previously delta=0, refused)
+VERIFY statuses=RE_DERIVED,RE_DERIVED,UNVERIFIED
+and the suite: 16/16 passed         <- the test is FIXED
+```
+
+So the prohibition no longer refuses the correction, the change is in the tree, and the suite is green. **The
+slice still blocked — on one claim.**
+
+**The cause, measured:**
+
+| claim | source | command | verdict |
+|---|---|---|---|
+| 1 | declared | `php tests/ai_project_metrics_test.php` | `RE_DERIVED` |
+| 2 | derived | `php tests/ai_project_metrics_test.php` | `RE_DERIVED` |
+| 3 | — | **(none)** | `UNVERIFIED` |
+
+The executor wrote a third claim **with no `COMMAND` line** — an honest statement it could not back with an
+executable one. Typed `TEST_RESULT`, it is expected to be re-derivable, so a command-less instance binds as
+`UNVERIFIED` and **the all-or-nothing gate blocks the whole slice.**
+
+**This is a defect of MINE, not of the executor or the apparatus.** The claim format invites a prose statement
+and my contract never said prose is not a claim. **The rule now written into the contract: every claim must
+carry a `COMMAND`; a statement you cannot back with an executable command is prose, and belongs in the report
+body rather than in the claim list.**
+
+**Why it is worth recording rather than just fixing.** It is the same *shape* as the marker problem the whole
+harness was built to remove — a self-report being mistaken for evidence — inverted: here an honest report was
+mistaken for something it never claimed to be. **A gate whose failure mode is "you stated something true in
+the wrong section" costs a run and teaches nothing about the work.** The format must make the distinction
+explicit, because nothing else will.
+
+**Authority:** recorded by the Chair; the contract fix is authoring, so the freeze is undisturbed.
+**Owner intervention:** not required.
+
+### CD-45 correction — two claims I made were WRONG, and one of them I wrote into a contract
+
+**Retracted, with the evidence that falsifies them.** Reading `extractClaims()` (`tools/ai-run.php:1591-1650`)
+after S1 blocked a second time:
+
+1. **"Fenced content is skipped by the extractor" — FALSE.** A line inside a fence that carries an allowlisted
+   command binds via `parseInlineCommand()` (`:1497`). In the very run I cited, claim 2 bound from *inside* a
+   fence (line 116, `$ php tests/ai_project_metrics_test.php`). **I inferred a rule from one observation,
+   recorded it as fact, and then instructed a slice on it.**
+2. **"The executor wrote a third claim with no command" — FALSE.** The report contains exactly **one**
+   `CLAIM:` line. The other two were manufactured by the extractor: one by `parseInlineCommand()`, and one by
+   **`parseProseClaim()` (`:1407`), which binds report *prose* as a claim by design.** The executor did nothing
+   wrong.
+
+**The real cause, and it is a defect of my authoring.** S1's acceptance criterion required a **non-vacuity
+demonstration by temporary revert** — a *procedure*, not a command. The executor described it honestly, the
+extractor bound the description as a claim, the claim had no command, and `UNVERIFIED` blocks. **An acceptance
+criterion that demands a non-mechanisable demonstration will always block the evidence gate.** The gate is not
+at fault and must not be loosened: a report is *evidence*, so every statement in it is expected to be backable.
+
+**The rule this yields, for every future contract I write: evidence must be executable.** Any criterion asking
+for a demonstration must supply the **command** that demonstrates it, or the demonstration is the Chair's to
+perform — not a claim the executor is asked to assert in prose.
+
+**Authority:** corrections recorded by the Chair, from the source rather than from the report.
+**Owner intervention:** not required.

@@ -1,0 +1,145 @@
+# GEN4-R1 S1 — the stale `runs_by_status` expectation
+
+Run: `gen4-r1-s1-20260914160412-87ff12` · report written to this run's canonical path (found in the run
+record, not invented).
+
+The metric is correct; the expectation was stale. `blocked` became a canonical run status today
+(`tools/ai-run.php:58` `RUN_STATUSES = ['running','completed','silent','failed','abandoned','blocked']`),
+so the metric emits it and the old six-key expectation no longer matched. The correction adds the one
+missing explicit count and keeps strict full-array equality over every canonical status plus the metric's
+own `other` bucket. `tools/ai-project.php` (trust-surface, frozen under CD-41) was not touched: its
+SHA-256 is `6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6`, unchanged.
+
+Authority: CD-41 plus the pre-declared `exceptions:` entry under CD-44. The autonomy matcher returns
+`VERDICT: RECORD` (not `ESCALATE`), so the existing-test prohibition did not block this correction.
+
+## Claim
+
+CLAIM: The corrected metrics suite is green — every canonical run status is counted, 16 of 16 assertions pass, zero skips, exit code 0 — and the assertion still catches a dropped status or a wrong count.
+COMMAND: php tests/ai_project_metrics_test.php
+php tests/ai_project_metrics_test.php
+OBSERVED:
+  ✅ 3. runs by status counts every canonical status
+  16/16 passed
+  Assertions: 16
+  EXIT=0
+
+Non-vacuity (acceptance criterion 3) — the expectation with `'blocked' => 0` temporarily removed, nothing
+else changed, fails assertion 3 again:
+
+  ❌ 3. runs by status counts every canonical status — {
+        "runs_by_status": {
+            "completed": 1,
+            "silent": 0,
+            "failed": 1,
+            "abandoned": 0,
+            "blocked": 0,
+            "running": 1,
+            "other": 0
+        }
+  15/16 passed
+  EXIT=1
+
+Restored to the corrected expectation (SHA-256 back to
+`12b9012e7d8d0b28636567aa40f77cc14a0b3e02596489b68647a3fb73b7f453`) and re-run:
+
+  16/16 passed
+  Assertions: 16
+  EXIT=0
+
+Control that matters (acceptance criterion 4) — a `/tmp` probe compared the live `harpp-gen4` metrics
+payload (whose actual `runs_by_status` genuinely contains `"blocked":1`) against the strict full-array
+form. The corrected assertion is true for the honest metric and false for every regression:
+
+  actual runs_by_status: {"completed":7,"silent":0,"failed":0,"abandoned":0,"blocked":1,"running":0,"other":0}
+  (a) corrected expectation === actual                 : true
+  (b) stale expectation (no blocked) === actual        : false
+  (c) corrected MINUS blocked === actual               : false
+  (d) actual with canonical completed dropped === exp  : false
+  (e) actual with canonical blocked dropped === exp    : false
+  (f) actual with a wrong failed count === exp         : false
+
+## Assertion 3 as it now reads (acceptance criterion 2)
+
+Pasted verbatim from `tests/ai_project_metrics_test.php`:
+
+    // The canonical run statuses are `tools/ai-run.php:58` RUN_STATUSES
+    // (running, completed, silent, failed, abandoned, blocked); `other` is the
+    // metric's bucket for a status outside that list. The expectation must name
+    // every canonical status with an explicit count, so a status silently dropped
+    // from the metric fails this strict comparison.
+    $h->test(
+        '3. runs by status counts every canonical status',
+        ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
+        $resultA['output']
+    );
+
+The canonical list is not written from memory. Its authority is `RUN_STATUSES` at `tools/ai-run.php:58`
+(`running, completed, silent, failed, abandoned, blocked`) plus the metric's own `other` bucket at
+`tools/ai-project.php:517`. A comment above the assertion records exactly that.
+
+## Weakening judgement (acceptance criterion 5)
+
+This edit does not weaken any existing test. It inserts one required key, `'blocked' => 0`, between
+`abandoned` and `running`. It removes no key, changes no other value, and keeps the strict `===`
+full-array comparison. The pre-existing assertion was the weaker one (six keys); the corrected assertion is
+strictly stronger (seven keys), and the control above shows it can still fail on a dropped canonical
+status or a wrong count. No judgement is deferred to the Chair on this point.
+
+## Scope and hygiene
+
+`git status` shows no change to `tools/`, `src/`, `kernel/`, `scripts/`, `modules/`, the phpstan files or
+`.github/workflows/`. Nothing was staged, committed or pushed. The only repository file changed by this
+slice is `tests/ai_project_metrics_test.php`. All command logs were written under `/tmp`
+(`/tmp/gen4s1-green.log`, `/tmp/gen4s1-nonvacuity.log`, `/tmp/gen4s1-restored.log`,
+`/tmp/gen4s1-control.log`, `/tmp/gen4s1-control.php`). The required pure suite was the only test run; no
+full `scripts/run-tests.php` or `composer test` was invoked, so the APCu module-cache was not touched.
+
+## Verifier result
+
+`php tools/ai-run.php verify --run=gen4-r1-s1-20260914160412-87ff12` re-derived the single declared claim:
+
+    binding: rev=c200ac8a5cfb6d6c2da3d798f5ed851c3590ba6b dirty=yes
+    [RE_DERIVED] TEST_RESULT  php tests/ai_project_metrics_test.php
+        claimed {"passed":16,"total":16,"exit_code":0} observed {"exit_code":0,"passed":16,"total":16}
+    summary: attempted=1 re-derived=1 contradicted=0 refused=0 not_re_derivable=0 unverified=0
+Done. The correction was already present in the working tree from the prior (blocked-on-format) run; I verified it, proved non-vacuity and regression-catching, and wrote the run's canonical report so the single claim re-derives.
+
+## What I found and did
+
+`tests/ai_project_metrics_test.php:188` already carried the corrected expectation (adds `'blocked' => 0`, keeps strict `===` over all seven keys). `tools/ai-project.php` untouched.
+
+**Acceptance-criteria evidence**
+
+1. Suite green:
+```
+$ php tests/ai_project_metrics_test.php
+  ✅ 3. runs by status counts every canonical status
+  16/16 passed
+  Assertions: 16
+  EXIT=0
+```
+
+2. **Non-vacuity** — removed `'blocked' => 0` temporarily (nothing else), suite fell to `15/16 passed`, `EXIT=1`, failing assertion 3; restored and re-ran → `16/16`, `EXIT=0`. File SHA-256 confirmed identical before/after (`12b9012e…`).
+
+3. **Control (live metric)** — live `harpp-gen4` `runs_by_status` genuinely contains `"blocked":1`:
+```
+actual runs_by_status: {"completed":7,"silent":0,"failed":0,"abandoned":0,"blocked":1,"running":0,"other":0}
+(a) corrected expectation === actual               : true
+(b) stale expectation (no blocked) === actual      : false
+(c) corrected MINUS blocked === actual             : false
+(d) actual with canonical completed dropped === exp: false
+(e) actual with canonical blocked dropped === exp  : false
+(f) actual with a wrong failed count === exp       : false
+```
+
+4. **Weakening?** No — it inserts one required key, removes none, and keeps full-array equality; strictly stronger (6→7 keys) and still falsifiable.
+
+5. **Authority** — `php tools/ai-autonomy.php check …` returns `VERDICT: RECORD` via the pre-declared CD-44 exception; the existing-test prohibition did not block it.
+
+**Report + verifier**
+- Report written to the canonical path: `.ai/runs/gen4-r1-s1-20260914160412-87ff12.report.txt`
+- Extractor sees exactly **1** claim (declared `php tests/ai_project_metrics_test.php`).
+- `php tools/ai-run.php verify --run=gen4-r1-s1-20260914160412-87ff12` → `[RE_DERIVED]`, `attempted=1 re-derived=1 contradicted=0 unverified=0`.
+
+**Hygiene**: only `tests/ai_project_metrics_test.php` changed among code files; nothing staged/committed/pushed; all logs under `/tmp`; only the required pure suite was run (no full test runner, so no APCu poisoning).

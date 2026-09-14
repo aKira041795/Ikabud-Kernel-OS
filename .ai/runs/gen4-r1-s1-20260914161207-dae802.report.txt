@@ -1,0 +1,140 @@
+CLAIM: The corrected metrics suite is green: every canonical status counted, 16 of 16 assertions, zero skips, exit 0.
+COMMAND: php tests/ai_project_metrics_test.php
+php tests/ai_project_metrics_test.php
+OBSERVED:
+16/16 passed
+Assertions: 16
+exit 0
+
+---
+
+CLAIM: Assertion 3 names an explicit count for every canonical status, blocked included, and keeps the strict full-array comparison.
+COMMAND: php -r 'echo implode("", array_slice(file("tests/ai_project_metrics_test.php"), 180, 10));'
+OBSERVED:
+// The canonical run statuses are `tools/ai-run.php:58` RUN_STATUSES
+// (running, completed, silent, failed, abandoned, blocked); `other` is the
+// metric's bucket for a status outside that list. The expectation must name
+// every canonical status with an explicit count, so a status silently dropped
+// from the metric fails this strict comparison.
+$h->test(
+    '3. runs by status counts every canonical status',
+    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
+    $resultA['output']
+);
+
+---
+
+CLAIM: The corrected expectation is non-vacuous: removing only the single key blocked => 0 makes assertion 3 fail and the suite exit 1.
+COMMAND: php /tmp/gen4s1-nonvacuity.php
+OBSERVED:
+FAILING_ASSERTION=❌ 3. runs by status counts every canonical status — {
+REVERTED_SUITE_EXIT=1
+
+---
+
+CLAIM: The corrected assertion still catches a real regression: a canonical status silently dropped from the metric, or a wrong count, makes the comparison false.
+COMMAND: php /tmp/gen4s1-control.php
+OBSERVED:
+actual runs_by_status: {"completed":7,"silent":0,"failed":0,"abandoned":0,"blocked":1,"running":0,"other":0}
+(a) corrected expectation === actual                 : true
+(b) stale expectation (no blocked) === actual        : false
+(c) corrected MINUS blocked === actual               : false
+(d) actual with canonical completed dropped === exp  : false
+(e) actual with canonical blocked dropped === exp    : false
+(f) actual with a wrong failed count === exp         : false
+
+---
+
+CLAIM: This edit does not weaken any existing test: it adds the single required key blocked and removes no key, no comparison and no value.
+COMMAND: php -r 'echo shell_exec("git diff -- tests/ai_project_metrics_test.php");'
+OBSERVED:
+diff --git a/tests/ai_project_metrics_test.php b/tests/ai_project_metrics_test.php
+index 0c40b04..727917a 100644
+--- a/tests/ai_project_metrics_test.php
++++ b/tests/ai_project_metrics_test.php
+@@ -178,9 +178,14 @@ $h->test(
+     ($m['slices_completed'] ?? null) === 1 && ($m['slices_completed_ids'] ?? null) === ['S1'],
+     $resultA['output']
+ );
++// The canonical run statuses are `tools/ai-run.php:58` RUN_STATUSES
++// (running, completed, silent, failed, abandoned, blocked); `other` is the
++// metric's bucket for a status outside that list. The expectation must name
++// every canonical status with an explicit count, so a status silently dropped
++// from the metric fails this strict comparison.
+ $h->test(
+     '3. runs by status counts every canonical status',
+-    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'running' => 1, 'other' => 0],
++    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
+     $resultA['output']
+ );
+ $h->test(
+CLAIM: The corrected metrics suite is green: every canonical status counted, 16 of 16 assertions, zero skips, exit 0.
+COMMAND: php tests/ai_project_metrics_test.php
+php tests/ai_project_metrics_test.php
+OBSERVED:
+16/16 passed
+Assertions: 16
+exit 0
+
+---
+
+CLAIM: Assertion 3 names an explicit count for every canonical status, blocked included, and keeps the strict full-array comparison.
+COMMAND: php -r 'echo implode("", array_slice(file("tests/ai_project_metrics_test.php"), 180, 10));'
+OBSERVED:
+// The canonical run statuses are `tools/ai-run.php:58` RUN_STATUSES
+// (running, completed, silent, failed, abandoned, blocked); `other` is the
+// metric's bucket for a status outside that list. The expectation must name
+// every canonical status with an explicit count, so a status silently dropped
+// from the metric fails this strict comparison.
+$h->test(
+    '3. runs by status counts every canonical status',
+    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
+    $resultA['output']
+);
+
+---
+
+CLAIM: The corrected expectation is non-vacuous: removing only the single key blocked => 0 makes assertion 3 fail and the suite exit 1.
+COMMAND: php /tmp/gen4s1-nonvacuity.php
+OBSERVED:
+FAILING_ASSERTION=❌ 3. runs by status counts every canonical status — {
+REVERTED_SUITE_EXIT=1
+
+---
+
+CLAIM: The corrected assertion still catches a real regression: a canonical status silently dropped from the metric, or a wrong count, makes the comparison false.
+COMMAND: php /tmp/gen4s1-control.php
+OBSERVED:
+actual runs_by_status: {"completed":7,"silent":0,"failed":0,"abandoned":0,"blocked":1,"running":0,"other":0}
+(a) corrected expectation === actual                 : true
+(b) stale expectation (no blocked) === actual        : false
+(c) corrected MINUS blocked === actual               : false
+(d) actual with canonical completed dropped === exp  : false
+(e) actual with canonical blocked dropped === exp    : false
+(f) actual with a wrong failed count === exp         : false
+
+---
+
+CLAIM: This edit does not weaken any existing test: it adds the single required key blocked and removes no key, no comparison and no value.
+COMMAND: php -r 'echo shell_exec("git diff -- tests/ai_project_metrics_test.php");'
+OBSERVED:
+diff --git a/tests/ai_project_metrics_test.php b/tests/ai_project_metrics_test.php
+index 0c40b04..727917a 100644
+--- a/tests/ai_project_metrics_test.php
++++ b/tests/ai_project_metrics_test.php
+@@ -178,9 +178,14 @@ $h->test(
+     ($m['slices_completed'] ?? null) === 1 && ($m['slices_completed_ids'] ?? null) === ['S1'],
+     $resultA['output']
+ );
++// The canonical run statuses are `tools/ai-run.php:58` RUN_STATUSES
++// (running, completed, silent, failed, abandoned, blocked); `other` is the
++// metric's bucket for a status outside that list. The expectation must name
++// every canonical status with an explicit count, so a status silently dropped
++// from the metric fails this strict comparison.
+ $h->test(
+     '3. runs by status counts every canonical status',
+-    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'running' => 1, 'other' => 0],
++    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
+     $resultA['output']
+ );
+ $h->test(

@@ -1,0 +1,212 @@
+{
+    "id": "gen4-r1-s1-20260914161207-dae802",
+    "contract": ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md",
+    "contract_revision": "9c907903c822d42a",
+    "allowed_count": 1,
+    "forbidden_count": 9,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T16:12:08+00:00",
+    "pid": 2625436,
+    "log": null,
+    "report": ".ai/runs/gen4-r1-s1-20260914161207-dae802.report.txt",
+    "status": "completed",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/chair-decisions.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md",
+        ".ai/projects/gen4-r1/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/gen4-r1-s1-20260914160024-b44be7.json",
+        ".ai/runs/gen4-r1-s1-20260914160024-b44be7.report.txt",
+        ".ai/runs/gen4-r1-s1-20260914160412-87ff12.json",
+        ".ai/runs/gen4-r1-s1-20260914160412-87ff12.report.txt",
+        ".ai/runs/gen4-r1-s1-20260914160753-631a86.json",
+        ".ai/runs/gen4-r1-s1-20260914160753-631a86.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        "tests/ai_project_metrics_test.php"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/chair-decisions.md": "file:abd12a04f5976fc7112a3956700ab92c57efc51eb7502cc39cbb7fcecaa47ce4",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md": "file:d2b53c18e19175610d8b827bf629958cfd2a6d192fba53dac518a26dfef464ae",
+        ".ai/projects/gen4-r1/state.json": "file:acac184d562882f6b0538d1b1fab947ac992a73ddc14db7e3ee27faad8522b59",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/runs/gen4-r1-s1-20260914160024-b44be7.json": "file:59ab176a9af0f5b6e064559709a0567b89e49773a64735906e3ed4f32104c1ae",
+        ".ai/runs/gen4-r1-s1-20260914160024-b44be7.report.txt": "file:451ef3b6a5704731858732d8ee52e9ab0c23aa9e2aabd64fa33a4193c7d38b48",
+        ".ai/runs/gen4-r1-s1-20260914160412-87ff12.json": "file:26a43147c8b53a9e801c5ff0d3ffbf5ce04bcadf551b5778700eee7157c43cbf",
+        ".ai/runs/gen4-r1-s1-20260914160412-87ff12.report.txt": "file:580ff8e6abe891da36bd2ea24322d235580d50813a4b4f9769ab2a40543f8122",
+        ".ai/runs/gen4-r1-s1-20260914160753-631a86.json": "file:dfa959fe524f744aef86ef7cb700ac1df373fd16747e513681071063a6e70491",
+        ".ai/runs/gen4-r1-s1-20260914160753-631a86.report.txt": "file:f8a014cde987fd93e36fb284526daf5c70c3988d031d6b4b5eebd035ab1870ca",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1",
+        "tests/ai_project_metrics_test.php": "file:12b9012e7d8d0b28636567aa40f77cc14a0b3e02596489b68647a3fb73b7f453"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/gen4-r1-s1-20260914161207-dae802.json",
+        ".ai/runs/gen4-r1-s1-20260914161207-dae802.report.txt"
+    ],
+    "harness_artifacts": [
+        ".ai/projects/gen4-r1/repair-decisions.json",
+        ".ai/projects/gen4-r1/state.json"
+    ],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": null,
+    "trust_surface_hash": "6ec30b419a6c7914ec6be6b4dd585d3851ec44a76a6537ef1293aa3ee5d7fdec",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+        "tools/ai-autonomy.php": "4fc95033dddf0e251856ba784c9c7897703d03e502e57be83322db45a018e8d5",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "32dfbbcfa7f21cf69b031f60d047c16a3200fcd5dc3b6e18f715cc1be9ceb347",
+        "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+    },
+    "declared_exceptions": [
+        {
+            "what": "correct the stale runs_by_status expectation in the metrics suite",
+            "why": "the assertion expects a shape the metric no longer produces, because `blocked` became a canonical run status today; the EXPECTATION is stale, and the corrected form checks MORE keys than before, so the assertion is strengthened rather than weakened",
+            "scope": [
+                {
+                    "path": "tests/ai_project_metrics_test.php",
+                    "kind": "file"
+                }
+            ],
+            "decided_when": "2026-09-14T16:00:00+00:00",
+            "authority": "CD-44"
+        }
+    ],
+    "finished_at": "2026-09-14T16:16:20+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 6826,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/chair-decisions.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md",
+        ".ai/projects/gen4-r1/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/gen4-r1-s1-20260914160024-b44be7.json",
+        ".ai/runs/gen4-r1-s1-20260914160024-b44be7.report.txt",
+        ".ai/runs/gen4-r1-s1-20260914160412-87ff12.json",
+        ".ai/runs/gen4-r1-s1-20260914160412-87ff12.report.txt",
+        ".ai/runs/gen4-r1-s1-20260914160753-631a86.json",
+        ".ai/runs/gen4-r1-s1-20260914160753-631a86.report.txt",
+        ".ai/runs/gen4-r1-s1-20260914161207-dae802.json",
+        ".ai/runs/gen4-r1-s1-20260914161207-dae802.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        "tests/ai_project_metrics_test.php"
+    ],
+    "scope_delta_paths": [],
+    "scope_conformance": {
+        "ok": true,
+        "checked": [],
+        "offending": [],
+        "declared_harness_artifacts": [
+            ".ai/projects/gen4-r1/repair-decisions.json",
+            ".ai/projects/gen4-r1/state.json"
+        ]
+    },
+    "evidence_fingerprint": "b45d93935cb1a09738274f03ce2e426648145a04a9a698e92fbc70f38d1e216e",
+    "evidence_unavailable_reason": null,
+    "claim_verification": {
+        "verified_at": "2026-09-14T16:16:21+00:00",
+        "contract_revision": "9c907903c822d42a",
+        "rev": "c200ac8a5cfb6d6c2da3d798f5ed851c3590ba6b",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-gen4-r1-s1-20260914161207-dae802-1",
+                "run": "gen4-r1-s1-20260914161207-dae802",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_metrics_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/gen4-r1-s1-20260914161207-dae802.report.txt",
+                    "line": 3,
+                    "text": "php tests/ai_project_metrics_test.php"
+                },
+                "executor_claim": {
+                    "passed": 16,
+                    "total": 16,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 16,
+                        "total": 16
+                    },
+                    "binding": {
+                        "rev": "c200ac8a5cfb6d6c2da3d798f5ed851c3590ba6b",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-gen4-r1-s1-20260914161207-dae802-2",
+                "run": "gen4-r1-s1-20260914161207-dae802",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_metrics_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/gen4-r1-s1-20260914161207-dae802.report.txt",
+                    "line": 73,
+                    "text": "php tests/ai_project_metrics_test.php"
+                },
+                "executor_claim": {
+                    "passed": 16,
+                    "total": 16,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 16,
+                        "total": 16
+                    },
+                    "binding": {
+                        "rev": "c200ac8a5cfb6d6c2da3d798f5ed851c3590ba6b",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            }
+        ]
+    }
+}

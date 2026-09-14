@@ -178,9 +178,14 @@ $h->test(
     ($m['slices_completed'] ?? null) === 1 && ($m['slices_completed_ids'] ?? null) === ['S1'],
     $resultA['output']
 );
+// The canonical run statuses are `tools/ai-run.php:58` RUN_STATUSES
+// (running, completed, silent, failed, abandoned, blocked); `other` is the
+// metric's bucket for a status outside that list. The expectation must name
+// every canonical status with an explicit count, so a status silently dropped
+// from the metric fails this strict comparison.
 $h->test(
     '3. runs by status counts every canonical status',
-    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'running' => 1, 'other' => 0],
+    ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
     $resultA['output']
 );
 $h->test(
