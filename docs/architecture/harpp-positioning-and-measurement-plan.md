@@ -129,7 +129,17 @@ So the proposition is not *"here is another coding agent"* but:
 | cost per slice | requires new capture (below) |
 | tokens per slice | requires new capture |
 | wall-clock time per slice | run ledger timestamps |
-| **director minutes** | logged by the director, not inferred |
+| model-lane distribution (which executor did each slice) | run ledger `lane` |
+| **deterministic-tool share** — work decided without a model | contracts, `check`, gates, `verify` |
+| **director minutes, split** into concept/business decisions · harness intervention · verification | logged by the director, not inferred |
+
+The two added rows exist because the cost thesis is otherwise unfalsifiable. *Cheapest adequate intelligence* is
+only defensible if the numbers show **how often the cheap lane sufficed** and **how much was decided by software
+rather than by any model**. A low-cost result achieved by using a smaller model for everything is a different
+claim from one achieved by routing most decisions to deterministic tools.
+
+Director minutes are split for the same reason: the thesis is that the director's attention **shifts to concept
+and business judgement**. A single "minutes" figure would hide exactly the movement being claimed.
 
 - Then run the **same jobs directly** with Codex, Claude or Pi alone, and compare.
 
@@ -153,7 +163,34 @@ Mitigations, to be binding on the programme:
 5. **Treat coverage honestly.** Four slices, one repository, one operator is a pilot, not a study; scale and
    diversity are part of the claim, not a caveat bolted onto it.
 
-## 8. What this changes about day-to-day work
+## 8. First data point — derived from artefacts, 2026-09-14
+
+Produced by grepping the record rather than by recollection, because §7.1 binds the programme to that. This is
+one session, one repository, one operator: a pilot row, not a study.
+
+| Metric | Value (derived) |
+|---|---|
+| slices dispatched | **6** (+1 attempt that failed on an executor usage cap) |
+| delivered without director intervention | **6 of 6** — one needed lane reallocation, one needed the Chair to finish a deliverable the run left incomplete |
+| director directives required | **3** — approve the plan, a doctrine change, and one authorization decision. **Two of the three are exactly the classes the model reserves for the director** (concept/architecture, and authority/security) |
+| Chair decisions recorded | **15** (CD-1…CD-15) — ≈2.5 per slice |
+| **Chair errors requiring correction** | **3** (CD-6 fabricated readiness, CD-11 commit during a live run, CD-12 a published claim that was false) — i.e. **half the slices involved a Chair error** |
+| contract violations | **0** |
+| claim-verification failures | not yet applicable — `verify` landed in the final slice |
+| cost / tokens | **not captured** — the first gap the programme exposes |
+| commits | **16** today, of which **11** harness and **5** from a concurrent lane |
+
+**The instructive number is the error column.** A flattering summary of the same session would read "six slices
+shipped unattended". The honest one is that **the Chair was wrong three times, and each error was found by
+reading an artefact — a log's size, a file's mtime, a staged diff — not by a gate.** No deterministic check
+caught any of them. That is direct support for the assessment's rating of independent verification as
+"not there yet", and it is why the metric exists: a governance harness that cannot count its own mistakes
+cannot be evaluated at all.
+
+It also shows the artefact discipline working: every one of the three errors was caught *because* work left
+traceable artefacts, including the refusal to accept a report on its own word.
+
+## 9. What this changes about day-to-day work
 
 - No new capability surface until independent verification is exercised at least once end to end on real
   slices (per the assessment, and consistent with CD-13's ordering).
