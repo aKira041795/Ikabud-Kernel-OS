@@ -1,9 +1,21 @@
 # SLICE — gen4-r1 S2: declare the last two undeclared write routes in Akira
 
-project: gen4-r1 · status: READY_FOR_IMPLEMENTATION · revision: 1
+project: gen4-r1 · status: READY_FOR_IMPLEMENTATION · revision: 2
 repo: `/var/www/html/ikabudsix`
 lane: deepseek/deepseek-v4-flash
 dispatch: ["pi", "-p", "-a", "--thinking", "medium", "--model", "deepseek/deepseek-v4-flash", "--name", "gen4-r1-s2", "<CONTRACT>"]
+
+> **Revision 2 — the work is already applied; this run VERIFIES it.** Attempt 1 did the work correctly and was
+> then blocked by the scope gate on two **provably false** premises (recorded as CD-46, deliberately not
+> repaired because CD-41 freezes the apparatus): the absolute *authorisation-weakening* prohibition matched the
+> test **filename** because the word "authority" contains "auth" (`tools/ai-autonomy.php:945`, an unanchored
+> `#|auth|#` alternation), and the absolute *existing-test* prohibition matched because `isExistingTestPath()`
+> evaluates `file_exists()` **after** the run, so a file the run itself created is judged pre-existing.
+>
+> **Therefore: do NOT create, rename, or modify any test file in this run.** Not because the test is
+> unwelcome — a good regression test already exists at
+> `modules/gui-settings/tests/gui_settings_route_authority_test.php` and you are to **run** it, not write it.
+> Creating another one cannot pass the gate, whatever it contains, and will cost the run.
 
 ```yaml
 harness:
@@ -118,21 +130,31 @@ Every criterion below must be shown by a command you declare.
    active row's `allowed_roles` is exactly `admin`.
 2. **The census closes.** `php ikabud workbench:governance --all --json` shows `gui-settings` with
    `undeclared 0` and `write_ratio 100`, and the **akira rollup** with `undeclared 0` and `write_ratio 100`.
-3. **The declaration is enforced, not merely present** — the negative control: identical request, identical
-   actor, declared route refused where the undeclared one proceeds.
-4. **No authority was widened.** State the role set before and after; they are identical.
+3. **The declaration is enforced, not merely present** — by running the existing test, which carries the
+   negative control: an identical actor refused on the declared route and proceeding on the undeclared GET
+   route, so the declaration alone decides the outcome.
+4. **No authority was widened.** State the role set the handlers admit and the role set the policy grants;
+   they are identical.
 5. Say plainly whether this edit **weakens** any existing test or gate. If it does, say so and stop — that
    judgement is the Chair's.
+
+## Architectural constraints on verification
+
+- Verify by **declared commands**. Do not create or modify any file to produce evidence — the two prohibitions
+  in the revision note make a new test file impossible, and that restriction is a measured property of the
+  frozen apparatus (CD-46), not a preference of this contract.
+- If the work appears **already applied**, that is expected and correct. Your job is to establish that it is
+  right, not to change it. A run with `delta=0` that re-derives every claim is a **success**, not a no-op.
 
 ## Required tests
 
 ```
-php modules/gui-settings/tests/<your new test>.php
+php modules/gui-settings/tests/gui_settings_route_authority_test.php
 ```
 
-Pure suite only. It must exit 0 with zero skips; if a prerequisite is genuinely unavailable, print
-`SKIP: <reason>` via `testEnvironmentSkip()` rather than silently passing. Call `requireNotLiveTenantDatabase()`
-if the test touches a database.
+**Run it; do not edit it and do not write another.** It must exit 0 with zero skips and 14 checks passing. If a
+prerequisite is genuinely unavailable, report `SKIP: <reason>` rather than claiming a pass. The file already
+exists and is committed — modifying it would re-trip the two prohibitions described in the revision note.
 
 ## Report format — required
 
