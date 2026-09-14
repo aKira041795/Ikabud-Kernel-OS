@@ -1,0 +1,363 @@
+BRIEF REFRESH — SLICE E — implementation report
+================================================
+Date:        2026-09-14 (evening)
+HEAD:        995553aeb603c290705a970f17f1a55817a80608
+Repo:        /var/www/html/ikabudsix
+Contract:    .ai/brief-refresh-groq.contract.md
+Run record:  .ai/runs/brief-refresh-flash.json  (lane deepseek/deepseek-v4-flash)
+Model:       PI_PROVIDER=deepseek  PI_MODEL=deepseek-v4-flash  (the reallocation; the contract's dispatch
+             header named groq/openai/gpt-oss-120b, which is itself the measured instance behind limit §3.15)
+Deliverable: docs/reviews/harness-independent-evaluation-brief.md  (the only file changed by this slice)
+Report:      .ai/brief-refresh-groq.report.txt
+
+This report is CLAIM / COMMAND / OBSERVED. Every number the brief now carries was either re-measured in this
+session (below) or is listed under NOT RE-MEASURED with its cited artefact path. Nothing was committed,
+staged or pushed. No CMS-bootstrapping command was run; only pure suites and the harness CLI.
+
+--------------------------------------------------------------------------------------------------
+AC6 — working tree
+--------------------------------------------------------------------------------------------------
+CLAIM: this slice changed only the brief.
+COMMAND: git status --porcelain ; git diff --stat
+OBSERVED:
+ M .ai/chair-decisions.md
+ M docs/reviews/harness-independent-evaluation-brief.md
+?? .ai/_p13_closure_probe.php
+?? .ai/_p13_phase1_probe.php
+?? .ai/_p13_state_probe.php
+?? .ai/brief-refresh-groq.contract.md
+?? .ai/plan-review/
+?? .ai/research/
+?? .ai/runs/brief-refresh-flash.json
+?? .ai/runs/brief-refresh-groq-retry.json
+?? .ai/runs/brief-refresh-groq.json
+?? .ai/runs/brief-refresh-qwen.json
+?? .ai/standing-authorization-and-decisions.md
+
+ .ai/chair-decisions.md                       | 101 ++++
+ docs/reviews/harness-independent-evaluation-brief.md | 543 +++++++++++++++++++--
+ 2 files changed, 591 insertions(+), 53 deletions(-)
+
+NOTE: `.ai/chair-decisions.md` was ALREADY modified when this session began (first `git status` of the
+session, before any edit, showed ` M .ai/chair-decisions.md`). Its diff is 101 insertions and is entirely
+CD-39 and CD-40 — the two `gpt-oss-120b` attempts and the qwen budget rejection. This slice did not touch it.
+`git diff .ai/chair-decisions.md | tail` shows the CD-40 addendum paragraph. The report file itself is a
+required new deliverable and appears as untracked.
+
+--------------------------------------------------------------------------------------------------
+1. The stale facts, re-measured
+--------------------------------------------------------------------------------------------------
+CLAIM: the suite assertion counts in the components table were stale.
+COMMAND:
+  for f in ai_autonomy_test ai_run_test ai_project_test ai_project_metrics_test \
+           ai_contract_lint_test ai_loop_test ai_autonomy_glob_scope_test; do
+    out=$(php tests/$f.php 2>&1); code=$?
+    echo "$f: exit=$code $(echo "$out" | grep -oE '[0-9]+/[0-9]+ passed' | tail -1)"
+  done
+OBSERVED:
+ai_autonomy_test:            exit=0  59/59 passed
+ai_run_test:                 exit=0  67/67 passed
+ai_project_test:             exit=0  18/18 passed
+ai_project_metrics_test:     exit=1  15/16 passed
+ai_contract_lint_test:       exit=0   3/3 passed
+ai_loop_test:                exit=0  18/18 passed
+ai_autonomy_glob_scope_test: exit=0   5/5 passed
+(old brief: 46/46 and 19/19 for the first two.)
+
+CLAIM: the red assertion is deterministic and is a stale expectation, not a flake.
+COMMAND: php tests/ai_project_metrics_test.php >/tmp/mt.txt 2>&1; echo exit=$?; grep -n "runs by status" /tmp/mt.txt
+OBSERVED:
+exit=1
+  ❌ 3. runs by status counts every canonical status — { ... "blocked": 0, ... }
+  (expected map in tests/ai_project_metrics_test.php:183 omits the `blocked` key that
+   tools/ai-project.php metrics now emits)
+Re-run gave exit=1 again (15/16). Recorded as brief §3.17.
+
+CLAIM: the decision record runs CD-1 .. CD-40 (the old brief said CD-1..CD-11).
+COMMAND: grep -cE '^## CD-[0-9]+' .ai/chair-decisions.md; grep -oE '^## CD-[0-9]+' .ai/chair-decisions.md | tail -1
+OBSERVED:
+40
+## CD-40
+
+CLAIM: the trust surface has seven recorded amendments under three distinct director decisions.
+COMMAND:
+  python3 - <<'PY'
+  import json
+  d = json.load(open('.ai/trust-surface-amendments.json'))['amendments']
+  print(len(d)); [print(a['id'], a['director_decision']) for a in d]
+  PY
+OBSERVED:
+7
+TSA-0001 CD-28
+TSA-0002 CD-28
+TSA-0003 CD-28
+TSA-0004 CD-28
+TSA-0005 CD-33
+TSA-0006 CD-37
+TSA-0007 CD-37
+
+CLAIM: run-ledger status distribution across the 19 run records present at measurement time.
+COMMAND:
+  python3 - <<'PY'
+  import json, glob
+  from collections import Counter
+  c=Counter()
+  for f in glob.glob('.ai/runs/*.json'):
+      c[json.load(open(f)).get('status','?')] += 1
+  print(len(glob.glob('.ai/runs/*.json')), dict(c))
+  PY
+OBSERVED:
+19 {'blocked': 6, 'running': 1, 'silent': 1, 'failed': 3, 'completed': 8}
+
+CLAIM: harpp-gen4 completed five of five slices; metrics are derived from artefacts and nulls are explained.
+COMMAND: php tools/ai-project.php metrics --project=harpp-gen4
+OBSERVED (key lines; full text in /tmp/metrics.txt):
+slices dispatched           5 (S2, S3, S4, S5, S6)
+slices completed            5 (S2, S3, S4, S5, S6)
+runs completed              7   runs blocked 1
+lanes                       deepseek/deepseek-v4-flash=5, deterministic-release-evidence=1, openai-codex/gpt-5.6-sol=2
+claims RE_DERIVED           37  claims CONTRADICTED 0  claims UNVERIFIED 6
+chair decisions             40  chair decisions incorrect 3 (CD-6, CD-11, CD-12)
+contract violations         null — ... not derivable
+cost (usd)                  null — ... project totals are null, not estimated
+tokens total                null — ... project totals are null, not estimated
+director minutes            null — director-minutes.json is absent (not zero)
+
+CLAIM: the corpus lint summary moved, and the trust-surface blast radius re-measured.
+COMMAND: php tools/ai-contract-lint.php; echo exit=$?
+OBSERVED:
+SUMMARY total=78 live=43 stale=5 unknown=30 live_parse_failures=39 live_with_phantoms=3 with_phantoms=4 missing_status=17
+exit=3
+(old brief: total=65 live=36 stale=4 unknown=25 live_parse_failures=31 ...)
+
+COMMAND (blast radius):
+  count=0; while IFS= read -r cf; do
+    out=$(php tools/ai-autonomy.php plan --contract="$cf" 2>&1); code=$?
+    [ $code -eq 2 ] && { echo "$out" | grep -q "trust surface\|not contract-authorisable" && refusal=$((refusal+1)); }
+  done < <(find .ai -name '*.contract.md' | sort)
+OBSERVED:
+trust-surface refusals=12  other parse failures=47
+total contracts: 73
+(CD-27 recorded 8 on the then-corpus.)
+
+CLAIM: the independent review artefact is 16,578 bytes.
+COMMAND: wc -c < .ai/review-implementations.sol.md
+OBSERVED: 16578
+
+--------------------------------------------------------------------------------------------------
+2. Existing claims C1-C8, re-measured
+--------------------------------------------------------------------------------------------------
+CLAIM C1: the corrected probe parses and yields an envelope.
+COMMAND: php tools/ai-autonomy.php plan --json --contract=/tmp/probe.contract.md; echo "exit=$?"
+OBSERVED (exit=0): JSON whose top-level keys are
+['absolute_prohibitions', 'chair_decisions', 'contract_relative_l4', 'decisions_dir', 'deterministic_first',
+ 'envelope', 'l4_taxonomy', 'model_policy', 'model_tiers', 'pending', 'phases', 'warnings']
+NOTE: the OLD probe contract (which named `tools/ai-run.php`) now exits 2; see C10. The brief's probe was
+changed to `docs/` so C1-C3 remain reachable.
+
+CLAIM C2: an absolute prohibition cannot be authorised by a contract.
+COMMAND:
+  for p in phpstan.neon tests/entity_fallback_test.php .github/workflows/ci.yml; do
+    php tools/ai-autonomy.php check "weaken or disable this" --contract=/tmp/probe.contract.md --path="$p" >/dev/null 2>&1
+    echo "$p -> exit=$?"
+  done
+OBSERVED:
+phpstan.neon -> exit=3
+tests/entity_fallback_test.php -> exit=3
+.github/workflows/ci.yml -> exit=3
+
+CLAIM C3: legitimate new work is not blocked.
+COMMAND: php tools/ai-autonomy.php check "add a new regression test" --contract=/tmp/probe.contract.md --path=tests/brand_new_regression_test.php >/dev/null 2>&1; echo exit=$?
+OBSERVED: exit=0
+
+CLAIM C4: the stop invariant is checkable.
+COMMAND:
+  for a in "--remaining=0 --stop-reason=PROJECT_COMPLETE" "--remaining=3 --stop-reason=CONTRACT_BLOCKED" \
+           "--remaining=3 --stop-reason=PROJECT_COMPLETE" "--remaining=abc"; do
+    php tools/ai-autonomy.php stop-report $a >/dev/null 2>&1; echo "[$a] exit=$?"; done
+OBSERVED:
+[--remaining=0 --stop-reason=PROJECT_COMPLETE] exit=0
+[--remaining=3 --stop-reason=CONTRACT_BLOCKED] exit=0
+[--remaining=3 --stop-reason=PROJECT_COMPLETE] exit=3
+[--remaining=abc] exit=2
+
+CLAIM C5: run state is recorded, not inferred.
+COMMAND:
+  : > /tmp/empty.log
+  php tools/ai-run.php start --runs-dir=/tmp/vb --contract=/tmp/probe.contract.md --lane=verify --name=s1 --log=/tmp/empty.log >/dev/null 2>&1
+  php tools/ai-run.php finish --runs-dir=/tmp/vb --id=s1 --exit=0 >/dev/null 2>&1
+  php tools/ai-run.php status --runs-dir=/tmp/vb | tail -2
+  php tools/ai-run.php status --runs-dir=/tmp/vb --gate >/dev/null 2>&1; echo "gate exit=$?"
+OBSERVED:
+  s1                           silent     exit=0    age=0s       pid=2562548 log=0B report=0B lane=verify
+gate exit=3
+
+CLAIM C6: (see section 1) six suites green, metrics suite red.
+
+CLAIM C7: (see section 1) lint summary.
+
+CLAIM C8: the phantom rule reports prose, not legitimate directories.
+COMMAND: (probe contract with `docs/` in Files likely affected) php tools/ai-contract-lint.php | grep zz-phantom-probe; rm -f .ai/zz-phantom-probe.contract.md
+OBSERVED:
+zz-phantom-probe   parse=ok   harness_ref=no  phantoms=1  status=READY_FOR_MEASUREMENT  class=live [never stage anything without asking first]
+NOTE: with the OLD probe (naming `tools/ai-run.php`) the line is `parse=FAIL ... phantoms=1 ...`, because the
+guardrail refuses the contract. The brief's C8 probe was changed to `docs/` to isolate the phantom finding.
+
+--------------------------------------------------------------------------------------------------
+3. New falsifiable claims C10-C15
+--------------------------------------------------------------------------------------------------
+CLAIM C10: the verifier trust surface is not contract-authorisable (four ranked rules).
+COMMAND:
+  php tools/ai-autonomy.php plan --contract=/tmp/ts-direct.contract.md >/dev/null 2>&1; echo "direct exit=$?"
+  php tools/ai-autonomy.php plan --contract=/tmp/ts-cover.contract.md  >/dev/null 2>&1; echo "cover  exit=$?"
+  php tools/ai-autonomy.php check "widen the command allowlist" --contract=/tmp/ts-cover.contract.md --path=tools/ai-run.php >/dev/null 2>&1; echo "check  exit=$?"
+  python3 -c "import json; a=json.load(open('.ai/trust-surface-amendments.json'))['amendments'][-1]; s=json.load(open('.ai/runs/harpp-gen4-s5-20260914082239-fce746.json')); print('hash-equal:', a['trust_surface_hash']==s['trust_surface_hash'])"
+OBSERVED:
+direct exit=2   ERROR: contract names the verifier trust surface in its scope and is refused:
+                entry 'tools/ai-run.php' reaches 'tools/ai-run.php' — the trust surface is not
+                contract-authorisable (owner directive 2026-09-14)
+cover  exit=2   (names all six paths the covering `tools` directory reaches)
+check  exit=3   path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust
+                surface (no justification can authorise it)
+hash-equal: True
+
+CLAIM C11: a director route exists and refuses without a named recorded decision.
+COMMAND:
+  php tools/ai-autonomy.php trust-surface amend --reason="probe" --director-decision="CD-999" >/dev/null 2>&1; echo "unrecorded-decision exit=$?"
+OBSERVED:
+unrecorded-decision exit=3
+REFUSED: --director-decision must name a recorded decision in .ai/decisions/ or a ## CD-<n> heading in .ai/chair-decisions.md
+Obtain and record the director's decision, then retry trust-surface amend. No trust-surface file was changed.
+(and 7 recorded amendments as in section 1.)
+
+CLAIM C12: the loop enforces scope conformance against a dispatch-time baseline.
+COMMAND: php tests/ai_loop_test.php >/tmp/loop.txt 2>&1; echo "exit=$? $(grep -oE '[0-9]+/[0-9]+ passed' /tmp/loop.txt | tail -1)"; grep -E ' (9|10|11)\. ' /tmp/loop.txt
+OBSERVED:
+exit=0 18/18 passed
+  ✅ 9. an out-of-scope write blocks the slice, ledger and event stream
+  ✅ 10. an all-in-scope changed-path delta advances (positive control)
+  ✅ 11. a pre-existing out-of-scope modification is baseline, not attributed to the run
+
+COMMAND:
+  python3 - <<'PY'
+  import json
+  s=json.load(open('.ai/runs/harpp-gen4-s5-20260914082239-fce746.json'))
+  b=json.load(open('.ai/runs/harness-declared-artifacts.json'))
+  print('S5     ', s['scope_conformance'])
+  print('blocked', b['scope_conformance']['ok'], [o['path'] for o in b['scope_conformance']['offending']])
+  PY
+OBSERVED:
+S5      {'ok': True, 'checked': ['.ai/projects/harpp-gen4/metrics.json'], 'offending': [], 'declared_harness_artifacts': ['.ai/projects/harpp-gen4/repair-decisions.json', '.ai/projects/harpp-gen4/state.json']}
+blocked False ['.ai/trust-surface-amendments.json', 'tests/ai_loop_test.php', 'tests/ai_run_test.php', 'tools/ai-loop.php', 'tools/ai-run.php']
+
+CLAIM C13: a bounded repair ladder promotes rather than replays.
+COMMAND: php tests/ai_loop_test.php >/tmp/loop.txt 2>&1; echo "exit=$? $(grep -oE '[0-9]+/[0-9]+ passed' /tmp/loop.txt | tail -1)"; grep -E ' (12|13|14|15|16|17)\. ' /tmp/loop.txt
+OBSERVED:
+exit=0 18/18 passed
+  ✅ 12. an implementation failure is repaired at L1 and completes as a linked new run
+  ✅ 13. an approach failure visibly promotes directly to L2, never replays L1
+  ✅ 14. exhausted/same failure promotes L1 -> L2 rather than replaying L1
+  ✅ 15. a contract-changing condition files L4 and stops without amending contract/verifier
+  ✅ 16. a rung declaring a verifier path is structurally refused before dispatch
+  ✅ 17. ladder refuses to advance when the failed attempt supplies no new evidence
+
+CLAIM C14: the allowlist executes more than one language, executable from the matched rule.
+COMMAND: php tools/ai-run.php verify --run=harpp-gen4-s5-20260914082239-fce746 --runs-dir=.ai/runs; echo "exit=$?"
+OBSERVED (exit=0):
+VERIFY — harpp-gen4-s5-20260914082239-fce746
+  binding: rev=995553aeb603c290705a970f17f1a55817a80608 dirty=yes
+  [RE_DERIVED] TEST_RESULT  php tests/ai_project_test.php
+  [RE_DERIVED] TEST_RESULT  php tests/ai_loop_test.php
+  [RE_DERIVED] TEST_RESULT  php tests/ai_run_test.php
+  [RE_DERIVED] TEST_RESULT  php tests/ai_autonomy_test.php
+  [RE_DERIVED] TEST_RESULT  php tests/ai_contract_lint_test.php
+  [RE_DERIVED] LINT_RESULT  python3 -m py_compile tools/harpp-bridge/harpp_wake.py
+  [RE_DERIVED] LINT_RESULT  python3 -m py_compile tools/harpp-bridge/tests/test_harpp_wake.py
+  summary: attempted=7 re-derived=7 contradicted=0 refused=0 not_re_derivable=0 unverified=0
+NOTE: `verify` records the tree binding into the run record by design; the tracked file
+`.ai/runs/harpp-gen4-s5-20260914082239-fce746.json` was restored with `git checkout --` immediately after
+measuring, so the working tree is clean of that mutation.
+
+CLAIM C15: the harness declares the files it writes on a run's behalf.
+COMMAND:
+  rm -rf /tmp/vb2
+  php tools/ai-run.php start --runs-dir=/tmp/vb2 --contract=/tmp/probe.contract.md --lane=verify --name=h1 --harness-artifact=.ai/zz-probe-artefact.json >/dev/null 2>&1; echo "start exit=$?"
+  python3 -c "import json; print(json.load(open('/tmp/vb2/h1.json'))['harness_artifacts'])"
+  php tools/ai-run.php start --runs-dir=/tmp/vb3 --contract=/tmp/probe.contract.md --lane=verify --name=g1 --harness-artifact=tools/ai-run.php >/dev/null 2>&1; echo "guard1 exit=$?"
+  php tools/ai-run.php finish --runs-dir=/tmp/vb2 --id=h1 --exit=0 --harness-artifact=/tmp/bar.json >/dev/null 2>&1; echo "guard2 exit=$?"
+OBSERVED:
+start exit=0
+['.ai/zz-probe-artefact.json']
+guard1 exit=2   ERROR: harness artefact 'tools/ai-run.php' refused: it reaches the verifier trust surface, which is never contract-authorisable (GUARD 1)
+guard2 exit=2   ERROR: --harness-artifact is only valid on start: a declaration made after the evidence exists is an exemption shaped to fit the run, not a declaration (GUARD 2)
+(no artefact file was created; the declaration is a record of intent.)
+
+--------------------------------------------------------------------------------------------------
+4. Reviewed defects: A-F3 fixed; commit-check still blocks
+--------------------------------------------------------------------------------------------------
+CLAIM: A-F3 (commit-check failing open on an unreadable record) is fixed.
+COMMAND: mkdir -p /tmp/vbad; printf '{ this is not json' > /tmp/vbad/broken.json; php tools/ai-run.php commit-check --runs-dir=/tmp/vbad; echo exit=$?
+OBSERVED:
+exit=3
+COMMIT-CHECK — /tmp/vbad
+  NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+  BLOCK  broken.json  unreadable  age=0s  pid=0
+WARN: unreadable run record /tmp/vbad/broken.json
+
+CLAIM: commit eligibility is decided by the ledger, and this session's own run is (correctly) in flight.
+COMMAND: php tools/ai-run.php commit-check; echo exit=$?
+OBSERVED:
+exit=3
+COMMIT-CHECK — .ai/runs
+  NOT ELIGIBLE — committing now would capture a non-final state; 4 run(s) are not completed
+  BLOCK  brief-refresh-groq  failed  age=7m33s  pid=2549949
+  BLOCK  brief-refresh-groq-retry  silent  age=5m53s  pid=2551890
+  BLOCK  brief-refresh-qwen  failed  age=4m57s  pid=2552331
+  BLOCK  brief-refresh-flash  running  age=1m29s  pid=2556470
+
+--------------------------------------------------------------------------------------------------
+5. Culture preserved verbatim (AC5)
+--------------------------------------------------------------------------------------------------
+COMMAND: f=docs/reviews/harness-independent-evaluation-brief.md
+  grep -c 'Please treat every claim in §2 as false until you reproduce it' "$f"
+  grep -c 'VERDICT: PASS | PASS_WITH_CHANGES | FAIL' "$f"
+  grep -c 'the delegated project authority beneath the contract; decides, records, continues' "$f"
+OBSERVED:
+1
+1
+1
+
+CLAIM: markdown parses and the section structure is intact.
+COMMAND: python3 -c "import markdown; print(len(markdown.markdown(open('docs/reviews/harness-independent-evaluation-brief.md').read(), extensions=['tables','fenced_code'])))"
+OBSERVED: 71997
+COMMAND: grep -c '^```' docs/reviews/harness-independent-evaluation-brief.md
+OBSERVED: 50   (even)
+All original headings (## 0 – ## 7, 1.1-1.4, C1-C9, 3.1-3.10, 4, 5, 6, 7.1-7.4, Appendix A/B/C) are present;
+new headings added: C10-C15, 4.1, 3.11-3.17, 7.5.
+
+--------------------------------------------------------------------------------------------------
+NOT RE-MEASURED — numbers cited from a named artefact rather than re-run
+--------------------------------------------------------------------------------------------------
+1. qwen3.8-27b daily-budget figures `Limit 750000`, `Used 718752`, `Requested 70094`.
+   Cited from `.ai/chair-decisions.md` CD-40 addendum (line ~1847). NOT re-measured: the run's log is 0 bytes
+   (`.ai/runs/brief-refresh-qwen.json` → log_bytes=0, report_bytes=0), so there is nothing to re-run.
+2. The observation that a lane "replied with a different model name".
+   Cited from the contract's §D3 / CD-40. NOT re-measured: the surviving `gpt-oss-120b` logs are 0 bytes. The
+   related, measurable fact IS re-measured in brief §3.15: contract dispatch names
+   `groq/openai/gpt-oss-120b`, the run record `.ai/runs/brief-refresh-flash.json` records
+   `lane: deepseek/deepseek-v4-flash`, and `PI_MODEL=deepseek-v4-flash`.
+3. The trust-surface "loud" mismatch branch (commit-check refusing on a changed hash).
+   Cited from CD-31. NOT re-measured: triggering a mismatch requires editing a trust-surface file, which the
+   contract forbids. The positive half (recorded hash == current run hash) IS re-measured in C10.
+4. The trust-surface guardrail blast radius of 8 (CD-27).
+   NOT re-measured as "8"; re-measured as 12 refusals / 47 other parse failures across 73 contracts on
+   2026-09-14 (section 1). The old value is kept in the brief beside the new one.
+5. The step-by-step `harpp-gen4` event stream quoted in brief §7.5 (`SCOPE OK delta=1`, `ADVANCE S5`,
+   `PROJECT COMPLETE remaining=0`).
+   Cited from CD-38 / commit `311a480`. NOT re-run end to end (that would dispatch live slices). The current
+   project state IS re-measured: `php tools/ai-project.php status --project=harpp-gen4` → `remaining=0` with
+   S2/S3/S6/S4/S5 all `done`.
+
+--------------------------------------------------------------------------------------------------
+END OF REPORT
+--------------------------------------------------------------------------------------------------

@@ -1769,3 +1769,104 @@ why five authorisations were needed rather than one.
 
 **Authority:** owner decision ("A is approved", CD-37) for the repair; result verified by the Chair.
 **Owner intervention:** not required.
+
+## CD-39 — A recoverable tool-call error killed a run outright, and that is a harness-class defect
+
+**Observed, from the dispatch log rather than inferred:**
+
+```
+Tool call validation failed: attempted to call tool 'grep' which was not in request.tools
+```
+
+`slice_E_exit=1`, `report=0 bytes`. The lane was `groq/openai/gpt-oss-120b`; the probe immediately after
+returned `GROQ_STILL_OK`, so **this was neither a quota exhaustion nor a context overflow** — the reading load
+was 578 + 1771 lines (~125 KB), comfortably inside the model's window.
+
+**The finding is not "groq made a mistake" — it is that the runner made a recoverable error fatal.** A model
+that calls a tool it was not given has produced *malformed input*, not a fatal condition. The correct behaviour
+is to return the validation error to the model **as a tool result**, so it can correct itself and continue;
+what happened instead was that the whole run aborted, producing zero bytes and no evidence of the work.
+
+**Why this matters more than one failed slice.** This harness exists to run **heterogeneous models** — that is
+the entire cost-shape doctrine (CD-1). Different models have different tool-use tendencies; some will reach for
+a search tool by name where another would read the file. A dispatch path in which **guessing a tool name is
+fatal** therefore makes lane choice fragile in exactly the way the doctrine makes it cheap. The failure mode is
+also maximally unhelpful: the run dies with an empty report, so the only artefact is the error line — which is
+better than silence, but only barely.
+
+**Where the defect lives:** the `pi` runner, **not** this repository's tools — so it is **outside the trust
+surface** and needs no director authorisation. Recorded here because a defect you cannot fix is still a defect
+you must know about, and because a future lane failure should be read against this case before being blamed on
+the model.
+
+**Disposition (CD-5, reallocation — not a stop):** retry the slice on the same lane with the constraint stated
+explicitly, since the owner's purpose is to *test groq's capability* and a capability result needs the task to
+be attempted on fair terms. If it fails identically, that **is** the capability result and it should be
+recorded as one, with the slice then reallocated to `deepseek/deepseek-v4-flash` so the brief is updated
+regardless.
+
+**Authority:** diagnosed by the Chair; reallocation per CD-5; owner instruction 2026-09-14 (*"use groq, so we
+can test it's capabilities as a model"*).
+**Owner intervention:** not required.
+
+## CD-40 — `gpt-oss-120b` did not complete the task, in two different ways
+
+Two attempts, two distinct failure modes, both recorded from the run records rather than from memory:
+
+| attempt | run | status | what happened |
+|---|---|---|---|
+| 1 | `brief-refresh-groq` | **failed**, exit 1, 0 B | tool-call validation error: attempted `grep`, which the runner does not provide (CD-39). The run aborted. |
+| 2 | `brief-refresh-groq-retry` | **silent**, exit 0, 0 B | exited cleanly having done nothing. `delta=0`; the brief was untouched. |
+
+**What the second attempt rules out.** With the tool constraint stated explicitly in the prompt, the lane still
+produced nothing. So the tool-call defect was a **trigger, not the root cause** of the gap on this task — which
+is why attempt 2 matters more than attempt 1 for judging the lane.
+
+**The honest caveat, stated so the result is not over-read.** One task is not a model assessment, and **this
+task is unusually demanding for a T1 lane**: it requires reading ~1771 lines of Chair decisions plus a 578-line
+document and synthesising them **without inventing a single number**, then producing evidence for every claim.
+A model that fails here may be entirely adequate for classification, extraction, or bounded code edits — which
+is what T1 exists for. **The result is specific to this task and is recorded as such, not as "groq is weak".**
+
+**Disposition.** The owner confirms only two lanes exist on this provider — `groq/openai/gpt-oss-120b` and
+`groq/qwen/qwen3.8-27b`. The second is attempted next. **The trade-off is recorded rather than passed over:**
+`qwen3.8-27b` holds 750 K tokens/day and is the repository's **only vision-capable lane**, so spending it on a
+text task consumes headroom reserved for screenshot triage. The owner's instruction is a deliberate capability
+test, so it proceeds — and the consumption should be counted against the result.
+
+**Authority:** owner note 2026-09-14 (*"we have gpt oss 120b and qwen only"*); attempted by the Chair under
+CD-5's reallocation rule.
+**Owner intervention:** given.
+
+### CD-40 addendum — the third attempt, and why it is NOT a capability result
+
+| # | lane | status | what happened |
+|---|---|---|---|
+| 1 | `gpt-oss-120b` | **failed** exit 1, 0 B | tool-call validation error — attempted `grep`; the run aborted (CD-39) |
+| 2 | `gpt-oss-120b` | **silent** exit 0, 0 B | executed and did nothing; the brief was untouched |
+| 3 | `qwen3.8-27b` | **failed** exit 1, 0 B | **never executed.** `429 tokens per day: Limit 750000, Used 718752, Requested 70094. Try again in 1h14m35` |
+
+**Attempts 1–2 and attempt 3 are different kinds of result, and conflating them would be the error.**
+gpt-oss-120b **executed twice and failed twice** — that is a task-specific capability signal. qwen3.8-27b
+**never ran**: the request was rejected for budget before the model was reached. **We learned nothing about
+qwen's capability here**, and the finding is about *cost shape*, not competence.
+
+**The finding I should have anticipated, and the doctrine already said so.** This task needs ~2,350 lines
+(~70 K tokens) in a single call — roughly **10% of qwen's entire daily budget** in one request. The model
+policy states, in the Chair's own words: *"free burst capacity … reserve headroom for slices rather than
+spending a day of it on questions a test answers."* **I designed a capability test that violated the cost-shape
+rule I had been citing all session**: burst lanes take bounded work, and a long-context synthesis task is not
+bounded, however cheap it looks per token.
+
+> **Cost shape includes context length.** A per-token-cheap lane with a daily cap is *expensive* for large
+> contexts, because one call can consume the day. "Cheap" is a property of the workload, not only of the price.
+
+**Consequence for how lanes are chosen:** a big-context task belongs on a lane whose spending is already
+committed (fixed) or metered-per-use — **not** on a daily-capped burst lane, even though that lane is nominally
+the cheapest. Recording this because the same mistake is available to any future Chair, and because the
+doctrine table alone did not prevent it.
+
+**If the owner wants a fair qwen capability test**, it should be a task that fits its budget — small enough to
+leave headroom, with the reset at roughly **1 h 15 m** from the attempt. **This slice is not that test and
+should not be retried on qwen**; it reallocates to `deepseek/deepseek-v4-flash`, which has already carried five
+slices of comparable reading load today.
