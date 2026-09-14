@@ -1,0 +1,155 @@
+# Scope-path semantics — implementation report
+
+## ⚠️ Governance disclosure first
+
+**A parallel process modified and committed to this repository during my run. I did not commit, stage, or push anything.**
+
+- `git reflog` shows `ba80298 fix(harness): honest scope-path semantics -- globs are globs, prose is prose`, authored `AI Assistant <bot@example.com>` at `Mon Sep 14 11:23:51 2026 +0800`.
+- That commit contains files I never edited (`.github/instructions/ai-autonomy-escalation.instructions.md`, `.ai/chair-decisions.md`, `.ai/scope-path-semantics.contract.md`, `.ai/builder-spec-truth.contract.md`) and it **excluded my three new test files** — so it is a separate writer.
+- It captured the parser/driver/lint at an intermediate point. My working tree adds the final lint change (parser-backed fallback) and the three test files; the parser also carries a concurrent prose-detection refinement I did not originally author (`$backticked` / `$looksLikeProse`). I adopted it because it is in scope, I verified it, and I locked it with tests.
+
+The deliverable is the **working tree**. HEAD `ba80298` plus the uncommitted working-tree changes together contain the complete slice.
+
+---
+
+## What changed
+
+| File | Change | P |
+|---|---|---|
+| `kernel/Workbench/Development/DevelopmentTaskContract.php` | Bullets partitioned into `forbidden_scope` (paths) + `forbidden_rules` (verbatim non-path bullets); `kind: glob` added; glob no longer collapses to parent dir; trailing-slash dirs stay `directory` | P1, P2 |
+| `tools/ai-autonomy.php` | `pathMatches` enforces `kind: glob` with `fnmatch(..., FNM_PATHNAME)`; `plan --json` exposes `forbidden_rules`; D8 backstop reads the rule bucket without re-parsing / double-reporting | P2, P5 |
+| `tools/ai-contract-lint.php` | Primary phantom = `forbidden_rules` (unbound bullets); fallback for rejected contracts hands each raw bullet to the **kernel parser** so both paths use one rule; added `--contract=PATH` for fixture self-tests | P3 |
+| `tests/development_task_contract_scope_test.php` (new) | P1/P2/P3 kernel cases + corpus invariant | required test |
+| `tests/ai_contract_lint_test.php` (new) | Lint self-test: `kernel/`+`tests/` ⇒ 0 phantoms; `git add` ⇒ phantom | required test |
+| `tests/ai_autonomy_glob_scope_test.php` (new) | Glob precision/enforcement via the driver | P2 acceptance |
+
+**Invariant:** for every parseable contract, `bullets in ## Forbidden changes == forbidden_scope entries + forbidden_rules entries`. Corpus test passes.
+
+**Ambiguity is resolved toward enforcement:** a non-path bullet becomes a *rule*, never nothing; an unmarked bare word followed by prose (`this repair.`, `No weakening…`) is a rule, never a fake path.
+
+---
+
+## P4 — corpus before/after (full)
+
+Baseline = 63 contracts captured at session start. `builder-spec-truth` appeared externally during the session (parse=ok, phantoms=0, live) and is excluded from the common set.
+
+```
+P4 - CORPUS BEFORE/AFTER (final tree; common 63-file baseline)
+External addition during the session: builder-spec-truth (parse=ok, phantoms=0, live); not created by this slice.
+
+P4a KERNEL PARSER: 17 parse-OK, 46 parse-FAIL; parse status identical before/after for every baseline contract.
+--- ai-autonomy-harness ---
+  allowed before: tools/ai-autonomy.php(file), tests/ai_autonomy_test.php(file), kernel/Workbench/Schemas/development-decision-request.v1.schema.json(file), .github/instructions/ai-autonomy-escalation.instructions.md(file), .ai/harpp-sim(directory), .ai/decisions(directory)
+  forbidden before: kernel/Workbench/Development(directory), phpstan-baseline.neon(file), composer.json(file), package.json(file), .github/workflows(directory), kernel/App.php(file)
+  rules bucket: 6 -> 0; revision ab95ea1a8af7f68e -> 1d916b3154c65c0b
+--- ai-autonomy-mechanise-doctrine ---
+  allowed before: tools/ai-autonomy.php(file), tests/ai_autonomy_test.php(file), .github/instructions/ai-autonomy-escalation.instructions.md(file), .ai/ai-autonomy-harness.contract.md(file)
+  forbidden before: phpstan-baseline.neon(file), phpstan.neon(file), composer.json(file), package.json(file), .github/workflows(directory), kernel(directory)
+  rules bucket: 6 -> 0; revision 194aa6aa12d01cc3 -> 9b2498c0c52ee620
+--- ai-autonomy-remote-shape-repair ---
+  allowed before: tools/ai-autonomy.php(file), tests/ai_autonomy_test.php(file)
+  forbidden before: kernel/Workbench/Development(directory), kernel/Workbench/Schemas(directory), phpstan-baseline.neon(file), composer.json(file), package.json(file), .github/workflows(directory), .ai/harpp-sim(directory), this(file)
+  forbidden after : kernel/Workbench/Development(directory), kernel/Workbench/Schemas(directory), phpstan-baseline.neon(file), composer.json(file), package.json(file), .github/workflows(directory), .ai/harpp-sim(directory)   <-- CHANGED
+  rules bucket: 9 -> 2; revision 8f2332dd929c8ae6 -> b75c5714f19e5a89
+--- akira-theme-scope ---
+  ... (unchanged) ...
+  rules bucket: 10 -> 0; revision a6f5dffdd3261a73 -> c0ec167700d8c56a
+--- contract-corpus-conformance ---
+  ... (unchanged) ...
+  rules bucket: 8 -> 1; revision a309f4378ede29b0 -> 798a0e9b44b59978
+--- harness-acceptance-a-simulated-harpp ---
+  ... (unchanged) ...
+  rules bucket: 7 -> 2; revision 8eae68f9b452d4a1 -> 0f606f756f36cb3f
+--- p1.3-activation-enforcement ... rules 4 -> 0
+--- p2.1-navigation-surface ... rules 8 -> 0
+--- p2.2a-post-redirects ... rules 8 -> 0
+--- p2.4-search-console ... rules 8 -> 0
+--- p3.1-akira-settings ... rules 8 -> 0
+--- p3.1b-more-settings ... rules 8 -> 0
+--- p3.2-workflow-console ... rules 8 -> 0
+--- p4.2a-r2-module-manager-view ... rules 6 -> 0
+--- p6a-backup-export-console ... rules 8 -> 0
+--- playwright-rate-limit-cap ---
+  allowed before: playwright.config.js(file), tests/browser/auth.setup.ts(file), tests/browser(directory), .gitignore(file)
+  allowed after : playwright.config.js(file), tests/browser/auth.setup.ts(file), tests/browser/*.spec.ts(glob), .gitignore(file)   <-- CHANGED
+  forbidden before: ... (unchanged) ...
+  rules bucket: 9 -> 0; revision f3582833b633cda0 -> 749ed81d7f181d0c
+--- scope-path-semantics ---
+  allowed: ... (unchanged) ...
+  forbidden: ... (unchanged) ...
+  rules bucket: 9 -> 0; revision 63048ad9f7c16101 -> 1767756749dbab3e
+
+parse-FAIL (46, unchanged): ai-autonomy-harpp-binding, akira-cli-capability-scope, ... (full list in run log)
+```
+
+### Accounting for **every** difference
+
+1. **`forbidden_rules` bucket changed for all 17 parse-OK contracts.** Before it held *all* bullets (paths and prose duplicated); now it holds only the bullets the parser could not bind to a path. This is the representation fix, not an authority change. It changes `revisionId` for all 17 (the revision hashes the rule bucket). `forbidden_scope` and `allowed_scope` are unchanged for 16 of 17.
+2. **`playwright-rate-limit-cap` allowed scope narrowed:** `tests/browser` (directory) → `tests/browser/*.spec.ts` (glob). The old parse widened a file glob to the whole directory — a *fail-open* widening of authorisation. This is the one allowed-scope change, and it **removes** authorisation, never grants it (fact 2).
+3. **`ai-autonomy-remote-shape-repair` forbidden scope changed:** the spurious file entry `this` (produced by a wrapped continuation line `this repair.`) is removed from `forbidden_scope`; the bullet is now honestly represented as the rule `this repair.`. The removed entry named a non-existent root file `this`, so no real prohibition was lost, and `git add` remains a rule. This is the fact-1 family defect corrected.
+4. **No contract flipped `parse=FAIL → parse=ok` or vice versa** on the baseline set. No contract gained an allowed entry. No other forbidden entry changed. The external `builder-spec-truth` is not mine and is parse-OK with 0 phantoms under the new parser.
+
+### Lint phantoms before/after (common set)
+
+```
+before: live_parse_failures=31 live_with_phantoms=3 with_phantoms=14
+after : live_parse_failures=31 live_with_phantoms=3 with_phantoms=4
+```
+
+Every difference is explained:
+
+- **False positives removed (11 contracts).** `ai-autonomy-mechanise-doctrine` `[kernel]→0`, `akira-theme-scope` `[migrations,modules]→0`, `p1.3`/`p2.4`/`p3.1`/`p3.1b`/`p3.2`/`p4.2a-r2`/`p6a` `[migrations]→0`, `playwright-rate-limit-cap` `[kernel,modules,src,config,migrations]→0`, and the contract under implementation `scope-path-semantics` `[src,modules,public]→0`. These were all single-segment directory prohibitions whose trailing slash had been stripped. **This is CD-7 fact 3 fixed.**
+- **True positives surfaced.** `harness-acceptance-a-simulated-harpp` `0→2` (`` `~/.config/harpp/` `` and `` `git add` `` rules that the old primary path silently dropped). `contract-corpus-conformance` `[kernel]→[`git add` rule]`. `ai-autonomy-remote-shape-repair` `[this]→[this repair., `git add` rule]`. **This is CD-7 fact 1/4 fixed.**
+- **`ai-autonomy-harpp-binding`** (parse-FAIL, fallback) `3→5`: the fallback now asks the kernel parser, so it reports the actual prose bullets (`seven files listed above.`, the two `~/.config/...` bullets, `No git add...`, `No weakening...`) instead of bare-word tokens. The fallback and primary now use one rule.
+
+---
+
+## Verification (real output / exit codes)
+
+```
+php -l on all six changed/added PHP files  -> No syntax errors (all)
+/usr/bin/php8.3 vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G \
+    kernel/Workbench/Development/DevelopmentTaskContract.php tools/ai-contract-lint.php tools/ai-autonomy.php
+    -> [OK] No errors ; exit 0
+
+tests/ai_autonomy_test.php                    -> 46/46 passed ; exit 0
+tests/development_task_contract_scope_test.php-> 11/11 passed ; exit 0
+tests/ai_contract_lint_test.php               ->  3/3 passed ; exit 0
+tests/ai_autonomy_glob_scope_test.php         ->  5/5 passed ; exit 0
+
+php tools/ai-contract-lint.php --contract=<legit kernel/+tests/fixture>
+    -> phantoms=0 ; exit 0
+php tools/ai-contract-lint.php --contract=<git add fixture>
+    -> phantoms=1 ; exit 3   [`git add` reported]
+php tools/ai-contract-lint.php                -> total=64 live=35 live_parse_failures=31
+                                                 live_with_phantoms=3 with_phantoms=4 ; exit 3
+
+Three absolute-prohibition probes against a contract that ALLOWS the paths:
+  --path=phpstan.neon                  -> VERDICT: ESCALATE ; exit 3
+  --path=tests/entity_fallback_test.php-> VERDICT: ESCALATE ; exit 3
+  --path=.github/workflows/ci.yml      -> VERDICT: ESCALATE ; exit 3
+
+plan --json on the contract: exit 0, forbidden_scope=9, forbidden_rules=0, warnings=[]
+plan --json on the dropped fixture: exit 0, forbidden_rules=[`git add` ...], D8 warning present
+```
+
+`php tests/ai_autonomy_test.php` count is **46 (unchanged)** — I reverted my five extra cases out of it and put them in a new file, because the driver treats any edit to an existing test path as an absolute prohibition. The standing harness test is byte-for-byte untouched.
+
+---
+
+## Out-of-scope gap — reported, not silently added
+
+`kernel/Workbench/Development/DevelopmentArtifactIngestor.php:945` `withinScope()` recognises only `file` and `directory`. A new `kind: glob` forbidden entry is therefore **not enforced by the Workbench `classifyScope()` release-gate path** (probe: `withinScope('.ai/foo.contract.md', [glob .ai/*.contract.md]) === false`, whereas the old directory representation matched). The driver's `check` *does* enforce globs, so the harness tripwire is fail-closed; the Workbench classifier is a second consumer that would fail open for a glob. That file is **not in `allowed_scope`**, so I did not edit it. It needs a follow-up (`withinScope` handling `glob` with `fnmatch`). No current contract uses a forbidden glob.
+
+---
+
+## Acceptance criteria
+
+1. ✅ Non-path bullet represented as a rule, visible in `plan --json`; invariant tested (`11/11` kernel test).
+2. ✅ `.ai/*.contract.md` is `kind: glob`, not directory `.ai`; glob test proves no intersection with a non-matching sibling and that `*` does not cross `/`.
+3. ✅ Lint: `kernel/`+`tests/` ⇒ 0 phantoms; dropped `git add` ⇒ phantom.
+4. ✅ P4 produced for the whole corpus; every difference explained above.
+5. ✅ Already-parsing contracts still parse with equivalent `allowed_scope`/`forbidden_scope`, except the `playwright-rate-limit-cap` narrowing (fail-closed) and the `ai-autonomy-remote-shape-repair` spurious-`this` removal (explained).
+6. ✅ `php tests/ai_autonomy_test.php` exits `0`, 46/46, none relaxed.
+
+**No commit/stage/push was performed by me.** The commit in the log is the parallel writer's; the working tree carries the final lint fallback fix and the three test files untracked.

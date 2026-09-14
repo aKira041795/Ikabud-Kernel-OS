@@ -1,0 +1,159 @@
+All work is complete and verified. Here is the implementation report.
+
+---
+
+# Builder spec truth — implementation report
+
+**Status: DONE.** All acceptance criteria met, full suite green, nothing weakened, no product UI changed, nothing staged/committed.
+
+## Chair decision (CD-8 — in-contract, not escalated)
+
+I held this decision. Options enumerated and chosen:
+
+| Question | Options | Chosen | Why |
+|---|---|---|---|
+| Block flow (fact 3) | `hero` / `richtext` / `card-grid` / `quote` / `cta` (the only shipped blocks, `storage/cms-themes/akira-editorial/block-definitions.json:5,54,85,144,175`) | **`richtext`** | The original intent was a *heading* section (`+ heading`). `richtext.title` is the shipped heading primitive — it renders `<h2>` — and its `body` lets the preview prove content. `hero` is a page-level layout section, not a heading; the other three are not headings. |
+| Route for the string `"Composition editor"` | assert on list route (impossible) / assert on editor route | **editor route** | `app.tsx:52` selects the panel from `boot.mode`; list mode renders `<h2>Compositions</h2>` (`app.tsx:80`) and the string exists only in `EditPanel` (`app.tsx:435`). List-route assertions now name what `ListPanel` truly ships (`app.tsx:80,84`). |
+| Publish fixture | use a random key / reuse an existing post / create a published fixture | **create a deterministic published fixture, delete it in `finally`** | `akira.builder.publish@1` resolves the post via `akira.post.get@1`, which only returns `status='published'` posts (`cms-akira-core/helpers/capabilities.php:209`), else 422 (`cms-akira-builder/helpers.php:903`). The original random key named no post, so publish was unreachable. Reusing an existing post is not deterministic. |
+| BaseURL precedence | `APP_URL` first / `TENANT_URL` first | **`TENANT_URL` first** | `.env` sets `APP_URL=http://ikabudsix.test` (kernel/control host) and `TENANT_URL=http://akiracms.test`. The builder's `/cms-akira-shell/*` routes 404 on the kernel host (verified: kernel `404`, tenant `200`), so a relative `goto` must resolve to the tenant. |
+
+No L4 was triggered; all decisions stayed inside the contract.
+
+## S1 — spec rewrite (`tests/browser/akira-builder-admin.spec.ts`)
+
+Journey now executes end to end and asserts the shipped UI:
+
+```
+shell session (from auth.setup storageState, no login POST)
+→ create published post fixture (UI + governed workflow submit→approve→publish)
+→ open builder LIST via a relative goto → 200 + tenant origin
+→ assert ListPanel: heading "Compositions" + "Attach a composition to a post"
+→ click the real "Compose “<title>”" link → editor route
+→ assert EditPanel: heading "Composition editor"
+→ fill title, select real block richtext, fill heading + body, "+ Add Rich text"
+→ Create & save draft → control flips to "Save draft"
+→ server-rendered preview iframe contains the authored <h2> and body
+→ Validate → ".ab-ok" contains "Validated"
+→ Publish (confirm dialog) → .ab-pill-pub = PUBLISHED + "published revision N"
+→ return to list → the composition row shows PUBLISHED
+→ finally: delete composition + soft-delete post
+```
+
+The previous run's corrections (storageState auth, absolute URLs) were kept and are recorded. Nothing was deleted from the journey; `validate` was already a step and now runs.
+
+## S2 — baseURL precedence fix (`playwright.config.js`)
+
+```diff
+-        // APP_URL wins; TENANT_URL is the name the specs themselves use. The default
++        // TENANT_URL wins; APP_URL is the kernel/control host in .env. The default
+         // is the tenant host these specs actually drive -- the previous default
+-        // (palsystem.test) is stale, and because the Akira specs use relative
+-        // page.goto() it made them impossible to run under this config.
+-        baseURL: process.env.APP_URL || process.env.TENANT_URL || 'http://akiracms.test',
++        // (palsystem.test) is stale, and a relative page.goto() must resolve to the
++        // tenant (the builder's /cms-akira-shell/* routes 404 on the kernel host),
++        // not to whichever host APP_URL happens to name.
++        baseURL: process.env.TENANT_URL || process.env.APP_URL || 'http://akiracms.test',
+```
+
+Proof (asserted inside the spec, printed to the log):
+
+```
+[builder] relative goto -> http://akiracms.test/cms-akira-shell/compositions (200)
+```
+
+The kernel host does not serve that route (control evidence):
+```
+kernel host compositions: 404
+tenant host compositions: 200
+```
+The whole shared suite still passes (below).
+
+## S3 — change report (assertion by assertion)
+
+| # | Original assertion (HEAD) | Contradicting artifact (`file:line`) | Why it cannot hold | Now asserts | Outcome still proven |
+|---|---|---|---|---|---|
+| 1 | `#cms-akira-builder-root` contains `Composition editor` **on the list route** | `app.tsx:52` (`boot.mode` picks panel), `app.tsx:80` (list `<h2>Compositions</h2>`), `app.tsx:435` (`Composition editor` only in `EditPanel`) | list mode never renders `EditPanel` | list route: exact heading `Compositions` + `Attach a composition to a post`; editor route: heading `Composition editor` | the list rendered (not an error page), and the editor rendered where it belongs |
+| 2 | `page.goto('/cms-akira-shell/compositions/${key}/edit')` (relative) | `.env` `APP_URL=http://ikabudsix.test`; config preferred `APP_URL`; kernel route `404` vs tenant `200` | resolved to the kernel host → 404 → no builder root | config prefers `TENANT_URL`; the first builder nav is relative and asserts `200` + tenant origin | the builder journey is reachable from the configured baseURL |
+| 3 | `click('button:has-text("+ heading")')` | `block-definitions.json:54` etc. (no `heading` block); `app.tsx:497` renders `+ Add {label}` | no such block and the text never matches | select `richtext`, `+ Add Rich text`, canvas contains `Rich text` + heading | a real validated theme block is added |
+| 4 | after save, `.ab-ok,.ab-error` contains `/Created\|Saved/` | `app.tsx:244` sets the toast; `app.tsx:251` calls `reload()`; `app.tsx:171` does `setResult(null)` | the save handler clears its own toast, so it is not reliably observable | Save control flips to `Save draft` **and** the server-rendered preview contains the authored heading/body | the draft persisted and renders server-side |
+| 5 | attach to random key `pw-<ts>`, then Publish | `cms-akira-builder/helpers.php:901-903` requires `akira.post.get@1`; `capabilities.php:209` returns published posts only | the key names no post → publish 422; original never created a post | deterministic published post fixture, attach by slug, then publish | a composition attached to a real published post is published |
+| 6 | `#cms-akira-builder-root input` first (positional) | — (worked, but brittle) | not impossible; positional | `getByLabel('Title').first()` + `.ab-block-form`-scoped block props | same authored values persisted |
+| 7 | click `Render preview (draft)`, iframe visible | — (worked; save auto-renders) | not impossible; redundant | iframe visible + `frameLocator` asserts the rendered heading and body | the saved server-rendered draft is shown |
+| 8 | Publish → `.ab-pill-pub` = `PUBLISHED` | — (unreachable via #5) | blocked by #5, not by the assertion | kept, now reachable; plus the published row on the list route | published state visible in editor and in persisted list |
+
+Nothing is asserted weaker than the original intent. Where the original proved a *toast*, the spec now proves the *persisted revision + server render* (strictly stronger); where it proved a *pill*, it still proves the pill and additionally the list projection.
+
+## S4 — product findings (recorded, not absorbed)
+
+**PF-1 — the save confirmation is cleared before the user can read it.** `handleSave` sets `Created draft composition.` / `Saved draft revision.` (`app.tsx:244,248`) and then immediately `await reload()` (`app.tsx:251`); `reload()`'s first statement is `setResult(null)` (`app.tsx:171`). React can batch these into one render, so the success message is not reliably visible. Evidence: `modules/cms-akira/cms-akira-builder/admin-ui/src/app.tsx:171,244,251`. This did **not** block the journey, and I did **not** weaken the save check to accommodate it — the spec asserts the durable result (revision exists, preview renders). Recorded here as required.
+
+**Reviewed, not a defect:** the editor allows a composition key to be created/saved/validated before the post exists or is published; the failure only surfaces at publish (422). This matches the product's draft-first model and the list only offers existing posts, so it is noted, not filed.
+
+## S5 — robustness
+
+- No `waitForTimeout`; no `test.skip` / `test.fail` / `test.fixme` / `describe.skip` (grep: `NONE FOUND`).
+- Assertions use `getByRole`/`getByLabel`/`getByText` and retrying `expect` with auto-wait; `waitForURL` for navigation.
+- The one timing-dependent relationship (post fixture must be published before the composition can publish) is made deterministic by awaiting the workflow state, not by sleeping.
+
+## Evidence
+
+### Full suite (`npx playwright test --reporter=list`)
+```
+  1) ... (baseline, before fix: builder spec timed out at line 79 "+ heading")  → EXIT=1
+...
+  9 passed (55.8s)
+EXIT=0
+```
+Baseline before changes: **8 passed / 1 failed** (the builder spec timed out waiting for `+ heading`). After: **9 passed / 0 failed**, exit **0**.
+
+### Builder spec alone, final code
+```
+[builder] fixture post workflow Submit -> ok
+[builder] fixture post workflow Approve -> ok
+[builder] fixture post workflow Publish -> ok
+[builder] fixture post published -> pw-builder-mu0ovjdd
+[builder] relative goto -> http://akiracms.test/cms-akira-shell/compositions (200)
+[builder] editor opened -> Composition editor
+[builder] block added -> richtext
+[builder] preview rendered saved draft
+[builder] validate -> ok
+[builder] publish -> published
+[builder] list shows published composition
+[builder] fixture cleaned -> pw-builder-mu0ovjdd
+  ✓  1 ... builder admin: create -> save draft -> preview -> validate -> publish (22.5s)
+  1 passed (31.4s)
+EXIT=0
+```
+
+### Config + spec diff / config load
+```
+ playwright.config.js                      |  54 ++++++-
+ tests/browser/akira-builder-admin.spec.ts | 252 ++++++++++++++++++++++--------
+ 2 files changed, 237 insertions(+), 69 deletions(-)
+```
+`git diff playwright.config.js` shown in full above. `node -e "require('./playwright.config.js')"` → `loaded ok; baseURL= http://akiracms.test`, exit `0`. `npx playwright test --list` → `Total: 9 tests in 6 files` (unchanged).
+
+### Weakening check
+```
+forbidden patterns in spec: NONE FOUND
+```
+Zero tests added to a skip list, zero `test.fail`, zero journey steps removed. This is a repair, not a weakening.
+
+### Rate limiter / error log
+```
+auth.login_rate_limited total: 0     # before=0 and after=0 for the runs
+error.log lines: 0
+```
+Live fixture residue after the runs: none (composition rows `0`; fixture posts soft-deleted, which is the product's delete semantics).
+
+## Scope note (reported, not silently added)
+
+The harness parsed this contract's `allowed_scope` as exactly:
+`tests/browser/akira-builder-admin.spec.ts`, `playwright.config.js`, `tests/browser/`, `docs/testing/`.
+The S3 report therefore lives here inline rather than as a new file under `.ai/` (which is outside `allowed_scope`). No `docs/testing/` doc contradicts the shipped behaviour, so none was edited. No forbidden path was touched.
+
+## Final state
+- Changed by this run: `tests/browser/akira-builder-admin.spec.ts`, `playwright.config.js`.
+- The builder's authorization guards were not touched (repaired and verified previously).
+- Nothing staged, committed, or pushed; no product UI changed.
