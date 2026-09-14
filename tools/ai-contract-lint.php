@@ -3,6 +3,8 @@
 
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskContract.php';
+
 /**
  * Contract-corpus conformance lint.
  *
@@ -11,13 +13,15 @@ declare(strict_types=1);
  * block, whether any `## Forbidden changes` bullet is prose masquerading as a
  * path (a "phantom"), and its declared status/class.
  *
- * Parsing is delegated to `tools/ai-autonomy.php plan --json`; the kernel
- * parser is never re-implemented here. After the scope-path fix every bullet
- * is represented exactly once — a scope path in `forbidden_scope` or a
- * verbatim rule in `forbidden_rules` — so a phantom is simply a raw bullet the
- * parser could not bind to a path, i.e. an entry in `forbidden_rules`. A
- * trailing-slash directory arrives as `kind: directory` and is never a
- * phantom; the old bug was testing the normalised path instead of the bullet.
+ * Parsing is delegated to `tools/ai-autonomy.php plan --json`. After the
+ * scope-path fix every bullet is represented exactly once — a scope path in
+ * `forbidden_scope` or a verbatim rule in `forbidden_rules` — so for a parsed
+ * contract a phantom is simply a raw bullet the parser could not bind to a
+ * path, i.e. an entry in `forbidden_rules`. A trailing-slash directory arrives
+ * as `kind: directory` and is never a phantom; the old bug was testing the
+ * normalised path instead of the bullet. For a contract the driver rejects,
+ * the same rule is applied by asking the kernel parser directly, so the two
+ * paths cannot disagree.
  *
  * Usage:
  *   php tools/ai-contract-lint.php [--json] [--live-only]
@@ -141,15 +145,15 @@ function hasHarnessReference(string $markdown): bool
 
 /**
  * Fallback phantom detection for contracts the driver rejects: read the raw
- * `## Forbidden changes` section and apply the same prose-as-path signature.
+ * `## Forbidden changes` bullets so the kernel parser can classify each one.
  *
  * @return list<string>
  */
-function rawForbiddenTokens(string $markdown): array
+function rawForbiddenBullets(string $markdown): array
 {
     $lines = preg_split('/\r?\n/', $markdown) ?: [];
     $inSection = false;
-    $tokens = [];
+    $bullets = [];
 
     foreach ($lines as $line) {
         if (preg_match('/^#{1,3}\s+Forbidden changes\s*$/i', $line) === 1) {
@@ -166,33 +170,25 @@ function rawForbiddenTokens(string $markdown): array
         if ($trimmed === '' || str_starts_with($trimmed, '```')) {
             continue;
         }
-        $token = '';
-        if (preg_match('/`([^`]+)`/', $trimmed, $m) === 1) {
-            $token = $m[1];
-        } else {
-            $parts = preg_split('/\s+/', $trimmed);
-            $token = $parts[0] ?? '';
-        }
-        $token = trim($token, " \t\n\r\0\x0B,;:-");
-        if ($token !== '') {
-            $tokens[] = $token;
-        }
+        $bullets[] = preg_replace('/^[-*]\s+/', '', $trimmed) ?? $trimmed;
     }
 
-    return $tokens;
+    return $bullets;
 }
 
 /**
- * The prose-as-path signature, applied to a raw fallback token: a token that
- * cannot be a scope path under the parser's own grammar. A token with a
- * trailing slash is a directory and can never be a phantom. A bare single word
- * is path-like and is bound as a file entry by the parser, so the fallback does
- * not invent a phantom for it either — the driver's `plan` warnings cover
- * suspicious-but-parseable entries.
+ * Whether a raw fallback bullet is a phantom, decided by the kernel parser
+ * itself so the fallback and the primary path cannot disagree: a bullet is a
+ * phantom when the parser would classify it as a forbidden `rule`, i.e. its
+ * first token is not a path — or it is unmarked prose with trailing words and
+ * no path signal. A trailing-slash directory is a valid directory entry and is
+ * never a phantom.
  */
-function isPhantom(string $token): bool
+function isPhantomBullet(string $bullet): bool
 {
-    return $token === '' || preg_match('#^[A-Za-z0-9_./*?\[\]{}\-]+$#', $token) !== 1;
+    $parsed = \Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::parseScopeEntry($bullet, 'forbidden');
+
+    return $parsed['ok'] === false && $parsed['kind'] === 'rule';
 }
 
 /**
@@ -271,12 +267,12 @@ function analyseContract(string $root, string $file, string $relative): array
  *
  * Fallback path (the driver rejects the contract): only contracts with no
  * parsed envelope reach this branch — 46 of the corpus at the time of writing.
- * There is no partition to consult, so it applies the same grammar to the raw
- * `## Forbidden changes` first tokens: a token that cannot be a scope path is a
- * phantom. A trailing slash survives in the raw token and can never be a
- * phantom. The two paths run on disjoint inputs (primary only for parseable
- * contracts, fallback only for rejected ones), so they can never disagree about
- * the same contract.
+ * There is no driver partition to consult, so each raw `## Forbidden changes`
+ * bullet is handed to the kernel parser and classified with exactly the same
+ * rule (a phantom is a bullet the parser keeps as a forbidden `rule`). A
+ * trailing slash is a directory and is never a phantom. The two paths run on
+ * disjoint inputs (primary only for parseable contracts, fallback only for
+ * rejected ones), so they can never disagree about the same contract.
  *
  * @param list<string> $rules
  * @return list<string>
@@ -287,9 +283,14 @@ function phantomEntries(string $markdown, bool $parseOk, array $rules): array
         return array_values(array_unique($rules));
     }
 
-    $tokens = rawForbiddenTokens($markdown);
+    $phantoms = [];
+    foreach (rawForbiddenBullets($markdown) as $bullet) {
+        if (isPhantomBullet($bullet)) {
+            $phantoms[] = $bullet;
+        }
+    }
 
-    return array_values(array_unique(array_filter($tokens, 'isPhantom')));
+    return array_values(array_unique($phantoms));
 }
 
 /**

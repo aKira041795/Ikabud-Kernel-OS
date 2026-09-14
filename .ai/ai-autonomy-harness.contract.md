@@ -416,6 +416,28 @@ path during development) and report that evidence.
    changed, and the release-gate result is recorded. If any condition is absent, report `PARTIAL` or
    `BLOCKED`, never done.
 
+### Run ledger — authoritative run state (added 2026-09-14)
+
+A dispatched lane run is bracketed by the ledger in `tools/ai-run.php`; its record lives at
+`.ai/runs/<id>.json`. The dispatch protocol is **`start` → run → `finish` → `status`**:
+
+```
+php tools/ai-run.php start  --contract=<path> --lane=<model> --name=<id> [--log=<path>] [--report=<path>]
+# the dispatcher runs the lane and observes the exit code
+php tools/ai-run.php finish --id=<id> --exit=<observed code>
+php tools/ai-run.php status [--gate]
+```
+
+**Never infer run state from the size of a log file or from `pgrep`.** `pi` can exit 0 having written
+**0 bytes** to stdout — a *silent* success, indistinguishable from death — and the run executes inside a
+wrapper, so a process pattern either misses a live run or matches the checking command itself. `status`
+answers liveness from the recorded pid: a `running` record whose pid is no longer alive is reconciled to
+`abandoned`. **The terminal's completion notification carries the exit code — wait for it and pass it to
+`finish`;** it is the only authoritative signal that the run ended. `silent` and `abandoned` are recorded
+facts, not guesses: `status --gate` exits `3` so a phase can refuse to advance on a run that never
+reported. `claims --id=<id>` extracts test-result claims from a run's report/log and marks every one
+`unverified` — the ledger records claims, it does not verify them (re-derivation is a later slice).
+
 ## Simulation harness
 
 `.ai/harpp-sim/` proves only that the local driver speaks the HARPP CLI subset and consumes the real JSON

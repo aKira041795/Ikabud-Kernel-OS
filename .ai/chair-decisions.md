@@ -315,3 +315,42 @@ anchor for the run-ledger slice's non-vacuity tests —
 `tests/ai_run_test.php` must classify exactly this case as `silent`, never `completed`.
 **Authority:** Chair, IN-CONTRACT.
 **Owner intervention:** not required.
+
+## CD-11 — Run ledger verified; and a process defect of my own: I committed during a live run
+
+**Verified (Chair, independently, not from the report):**
+- `php tests/ai_run_test.php` → **19/19, exit 0**. `php tests/ai_autonomy_test.php` → **46/46, exit 0**
+  (nothing else disturbed).
+- Live demonstration with the tool's own CLI and a temp ledger: a run finished `exit=0` with a **0-byte log**
+  classifies **`silent`** (`exit=0 log=0B report=0B`, with age and pid shown), and `status --gate` exits **3**.
+- The usage text states the caveat that makes the tool honest rather than decorative:
+  *"This is only meaningful because the DISPATCHER runs `finish` in the shell that observed the exit code; a
+  self-reported code with no dispatcher is theatre."* It also documents pid semantics — the recorded pid is the
+  dispatcher shell unless `--pid=N` is passed — which is the subtlety that caused one of this session's three
+  false negatives.
+
+**Scope attribution (three files looked suspicious; two were innocent):**
+`tests/default_entity_renderer_post_row_action_test.php` (mtime 2026-09-13 16:07) and
+`tests/read_authority_probe_test.php` (09:05 today) **predate** the slice and belong to earlier sessions. Only
+`tools/ai-run.php` (11:39) is the slice's, plus the three documentation files. **No scope violation.**
+
+**The process defect — mine.** The third file, `tools/ai-contract-lint.php` (mtime **11:25**), is the *parser*
+slice's final edit, made **after** I committed `ba80298`. I committed a run's work while the run was still
+live, so the commit captured a **non-final state** and the final version sat uncommitted. The cause is
+uncomfortable precisely because it is the rule recorded four paragraphs earlier in CD-9: I treated "the files
+look coherent and the tests pass" as licence to commit, instead of waiting for the terminal notification.
+**Lesson: the completion notification is not only the outcome signal, it is the commit authorisation.** A
+coherent-looking tree is not evidence that the tree has stopped changing.
+
+**The lint's final change is sound:** 39/−38, a refactor in which the fallback for driver-rejected contracts
+asks the kernel parser directly instead of re-implementing the prose signature — so the two detection paths
+agree by construction rather than by duplicated logic. Corpus behaviour is unchanged
+(`live_parse_failures=31`, `with_phantoms=4`).
+
+**Third false negative, third bad signal.** After log size and the `pgrep` pattern, `ps -eo args` **truncates
+long command lines**, so `--name <run>` at the end of a long invocation was invisible and a live run looked
+dead. **The reliable primitive is the pid captured at dispatch**, checked with `ps -p <pid>` — which is
+precisely what the ledger now records. Three unvalidated heuristics produced three wrong conclusions; none of
+them this time reached the director, because the tree was checked rather than the report believed.
+**Authority:** Chair, IN-CONTRACT.
+**Owner intervention:** not required.
