@@ -1,0 +1,47 @@
+{
+    "id": "harpp-gen4-s5-20260914051616-73c40c",
+    "contract": ".ai/projects/harpp-gen4/slices/s5-first-real-run.md",
+    "contract_revision": "eb82d6858181d30e",
+    "allowed_count": 5,
+    "forbidden_count": 17,
+    "lane": "openai-codex/gpt-5.6-sol",
+    "started_at": "2026-09-14T05:16:16+00:00",
+    "pid": 2176096,
+    "log": null,
+    "report": ".ai/runs/harpp-gen4-s5-20260914051616-73c40c.report.txt",
+    "status": "completed",
+    "finished_at": "2026-09-14T05:25:05+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 3828,
+    "claim_verification": {
+        "verified_at": "2026-09-14T05:25:05+00:00",
+        "rev": "1867eaf35e5386bb078f454cbe3ab40ef01e4be3",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914051616-73c40c-1",
+                "run": "harpp-gen4-s5-20260914051616-73c40c",
+                "type": "FILE_SCOPE",
+                "re_derivable": true,
+                "subject": {
+                    "command": "git diff --check           PASS",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914051616-73c40c.report.txt",
+                    "line": 111,
+                    "text": "git diff --check           PASS"
+                },
+                "executor_claim": [],
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "command_not_allowlisted",
+                    "detail": "the command is shown but was NOT executed; a human must decide"
+                },
+                "status": "UNVERIFIED"
+            }
+        ]
+    }
+}

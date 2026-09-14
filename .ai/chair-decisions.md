@@ -661,3 +661,42 @@ short deliberately: CD-17 recorded that this session accreted process faster tha
 remit is a page, not a programme.
 **Authority:** owner directive, 2026-09-14.
 **Owner intervention:** given and implemented.
+
+## CD-20 — When the loop fails, the Chair decides (owner expectation; the ladder is not yet built)
+
+**Owner directive, verbatim:** *"what happens when loop fails? will the chair make decisions? for me, if it's
+within the scope, yes."*
+
+**What the loop does today — measured, not assumed.** On a failed stage it records `LEDGER finish`, extracts and
+verifies claims, emits `STOP <slice>: …`, marks the slice **`blocked`**, exits `3`, and halts the project. It
+does **not** repair, re-lane, re-plan or ask. The decision therefore reaches the Chair only **from outside the
+loop** — which is literally what happened to S4: it stopped, I diagnosed the interface gap by hand, wrote S6,
+and re-queued S4 manually.
+
+**So the expectation is not yet implemented.** The policy's repair ladder (§13) exists as doctrine; the loop
+implements only its final rung.
+
+**Accepted design — the ladder, escalating LEVEL rather than repeating the attempt:**
+
+| rung | action | authority |
+|---|---|---|
+| 1 | repair the implementation — same lane, same contract | L1, in-contract: decide and continue |
+| 2 | **re-lane** to a different model, same contract | L2 — reallocation, not escalation (CD-5) |
+| 3 | **re-decompose** (split the slice) — a *plan* change | L3, in-contract (CD-8, CD-19) |
+| 4 | stop with the reason recorded and **remaining obligations still counted** | legitimate only for a contract-level blocker |
+
+Precedent already exists in the subject: HARPP's own manifests carry `max_repairs: 2`.
+
+**Three guardrails, because they are what separates repair from collusion:**
+1. **A repair may change the approach, never the acceptance criteria or the verification.** Claims must still
+   be `RE_DERIVED`; a repair that turns a failing gate green by weakening it stays impossible.
+2. **Each attempt must produce new evidence.** Retrying an identical failure is the most expensive pattern in
+   the harness; an unchanged failure signature means climb a rung, not retry.
+3. **Every rung is recorded** — attempt count, what changed, why — so the ladder's cost is visible in the
+   metric table instead of appearing as elapsed time.
+
+**Scheduling:** lands as slice S7 after the current run completes. It is deliberately **not** being written
+into the tree now: the loop is mid-flight on S4+S5, and the non-disruption rule endorsed in CD-19 forbids
+writing to a tree a run is writing to. Recording the decision is not permission to disturb the run.
+**Authority:** owner directive, 2026-09-14; design accepted, implementation pending.
+**Owner intervention:** given; no further decision required.

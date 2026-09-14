@@ -47,10 +47,10 @@
             ]
         },
         "S4": {
-            "state": "pending",
-            "run_id": "harpp-gen4-s4-20260914045055-cd664e",
-            "reason": "S6 bound claim commands; re-dispatch S4 so its claims re-derive against the current tree (old run harpp-gen4-s4-20260914045055-cd664e preserved in history)",
-            "updated_at": "2026-09-14T05:06:31+00:00",
+            "state": "done",
+            "run_id": "harpp-gen4-s4-20260914051323-095234",
+            "reason": null,
+            "updated_at": "2026-09-14T05:16:16+00:00",
             "history": [
                 {
                     "from": "pending",
@@ -72,6 +72,20 @@
                     "run_id": "harpp-gen4-s4-20260914045055-cd664e",
                     "reason": "S6 bound claim commands; re-dispatch S4 so its claims re-derive against the current tree (old run harpp-gen4-s4-20260914045055-cd664e preserved in history)",
                     "at": "2026-09-14T05:06:31+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "harpp-gen4-s4-20260914051323-095234",
+                    "reason": null,
+                    "at": "2026-09-14T05:13:23+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "harpp-gen4-s4-20260914051323-095234",
+                    "reason": null,
+                    "at": "2026-09-14T05:16:16+00:00"
                 }
             ]
         },
@@ -94,6 +108,28 @@
                     "run_id": "harpp-gen4-s6-20260914045910-393241",
                     "reason": null,
                     "at": "2026-09-14T05:11:43+00:00"
+                }
+            ]
+        },
+        "S5": {
+            "state": "blocked",
+            "run_id": "harpp-gen4-s5-20260914051616-73c40c",
+            "reason": "claims were not all RE_DERIVED: UNVERIFIED",
+            "updated_at": "2026-09-14T05:25:05+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "harpp-gen4-s5-20260914051616-73c40c",
+                    "reason": null,
+                    "at": "2026-09-14T05:16:17+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "harpp-gen4-s5-20260914051616-73c40c",
+                    "reason": "claims were not all RE_DERIVED: UNVERIFIED",
+                    "at": "2026-09-14T05:25:05+00:00"
                 }
             ]
         }
