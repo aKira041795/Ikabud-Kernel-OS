@@ -54,6 +54,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "d0a78c4226c61c83a96049779d5606a6d5c45319c3f98cad5a438b284cd11384"
+        },
+        {
+            "run_id": "bf1-vacuity",
+            "block_reason": "ALL OFFENDERS ARE THE SLICE'S AUTHORISED PURPOSE (CD-41): tools/harpp-bridge/harpp_wake.py is the trust-surface file this slice existed to change; tests/test_harpp_wake.py gained the vacuity assertions (83 lines, nothing weakened); the six manifests gained negative controls. VERIFIED BY THE CHAIR: the four runner-level assertions pass (constant-true -> unproven; no control -> does not pass; non-falsifiable control -> does not pass; real verify + real control -> still passes), the pre-existing marker-only anchor still fails, and all six manifests carry controls. RESIDUAL, declared by the executor and accepted: a control's FAITHFULNESS is authored, not enforced -- a pairing attack (unlisted vacuous verify + unrelated failing control) survives D2. Recorded, not papered over.",
+            "director_decision": "CD-41",
+            "acknowledged_at": "2026-09-14T15:31:57+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "ba0782b5ba5f8fc01f358deb152d58064d50795df992aa18dd7fa9b741fe38ee"
         }
     ]
 }

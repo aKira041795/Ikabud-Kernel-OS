@@ -1206,6 +1206,9 @@ def _normalize_job(job: dict) -> dict:
     rec.setdefault("human_decisions", [])
     rec.setdefault("verify_passed", None)
     rec.setdefault("claim_status", "UNVERIFIED")
+    rec.setdefault("evidence", None)
+    rec.setdefault("negative_control", None)
+    rec.setdefault("negative_control_status", None)
     return rec
 
 
@@ -1226,6 +1229,10 @@ def _normalize_stage(stage: dict, index: int) -> dict:
     # Additive manifest field: required means verify must re-derive the stage
     # claim; none makes an intentionally unevidenced (and non-passing) stage visible.
     rec.setdefault("evidence", "required" if rec.get("verify") else None)
+    # Additive manifest field: a command that MUST fail, executed before the real
+    # verify. It is the negative control that shows the verifier is capable of
+    # failing; without it an evidence-required stage is UNPROVEN, never passing.
+    rec.setdefault("negative_control", None)
     rec.setdefault("commit", False)
     rec.setdefault("prompt_file", None)
     rec.setdefault("prompt", None)
@@ -1289,6 +1296,7 @@ def _normalize_workflow(wf: dict) -> dict:
 def track_job(*, pid: int, model: str, task: str, conversation_id: int | None = None,
               log_path: str | None = None, verify: str | None = None,
               marker: str | None = None, repo: str | None = None,
+              evidence: str | None = None, negative_control: str | None = None,
               commit: bool = False, timeout: int = 0, run_id: str | None = None,
               task_id: str | None = None, contract_revision: int = 0,
               state: str | None = None, human_decisions: list | None = None,
@@ -1310,6 +1318,7 @@ def track_job(*, pid: int, model: str, task: str, conversation_id: int | None = 
         "model": model, "task": task, "conversation_id": int(conversation_id),
         "log_path": log_path, "log_offset": log_offset, "log_identity": log_identity,
         "verify": verify, "marker": marker, "repo": repo, "commit": bool(commit),
+        "evidence": evidence, "negative_control": negative_control,
         "git_baseline": _git_changed_paths(repo),
         "deadline": (_now() + int(timeout)) if int(timeout) > 0 else None,
         "status": "running", "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1347,6 +1356,7 @@ def _drain(proc: subprocess.Popen) -> None:
 def launch_job(*, model: str, task: str, conversation_id: int, command,
                log_path: str | None = None, verify: str | None = None,
                marker: str | None = None, repo: str | None = None,
+               evidence: str | None = None, negative_control: str | None = None,
                commit: bool = False, quiet: bool = False, timeout: int = 0,
                cwd: str | None = None, open_terminal: bool = True,
                run_id: str | None = None, task_id: str | None = None,
@@ -1374,6 +1384,7 @@ def launch_job(*, model: str, task: str, conversation_id: int, command,
         job_id = track_job(pid=proc.pid, model=model, task=task,
                            conversation_id=conversation_id, log_path=log_path,
                            verify=verify, marker=marker, repo=repo,
+                           evidence=evidence, negative_control=negative_control,
                            commit=commit, timeout=timeout, run_id=run_id,
                            task_id=task_id, contract_revision=contract_revision,
                            state=state, human_decisions=human_decisions,
@@ -1589,6 +1600,39 @@ def _run_verify(verify: str, repo: str | None) -> tuple[bool, str]:
         return False, f"(verification failed: {e})"
 
 
+# Constant-true verify shapes whose exit status is independent of repository state.
+# A verifier that cannot fail carries no information, so its pass is not evidence.
+_CONSTANT_TRUE_VERIFY_EXACT = frozenset(
+    {"true", ":", "/bin/true", "/usr/bin/true", "exit 0"}
+)
+
+
+def is_constant_true_verify(command: object) -> bool:
+    """True when a verify command cannot fail by construction.
+
+    This is deliberately a DENY-LIST of known constant-true shapes, not a heuristic
+    about weak verifiers. A weak-but-fallible command (for example ``git diff
+    --check``, which checks patch whitespace rather than correctness) is NOT refused
+    here: it can fail, so it is not vacuous. Weakness is answered by the negative
+    control (a stage must show its verifier is capable of failing), not by refusal.
+    """
+    if not isinstance(command, str):
+        return False
+    normalized = re.sub(r"\s+", " ", command.strip())
+    if not normalized:
+        return False
+    if normalized in _CONSTANT_TRUE_VERIFY_EXACT:
+        return True
+    # `test -n ""` / `test -n ''` — an emptiness test on a literal empty string.
+    if re.fullmatch(r"test -n (?:''|\"\")", normalized):
+        return True
+    # A bare `echo ...`: with no shell operator, pipe, substitution or redirect it
+    # always exits 0, so it is constant-true.
+    if re.fullmatch(r"echo(?: .*)?", normalized) and not re.search(r"[&|;<>`$()]", normalized):
+        return True
+    return False
+
+
 def _git_status(repo: str | None) -> str:
     if not repo:
         return ""
@@ -1633,19 +1677,54 @@ def _report_job(job_id: str, job: dict) -> str:
             f"informational marker {marker!r} was {'found' if found else 'not found'} "
             "(marker is informational and does not gate completion)")
     verify_passed = False
+    evidence_mode = job.get("evidence")
+    negative_control = job.get("negative_control")
+    negative_control_status = None
     if verify_cmd:
-        verify_passed, vout = _run_verify(verify_cmd, job.get("repo"))
-        if verify_passed:
-            evidence.append(f"verification passed: {sanitize_decision_text(vout)}")
-        else:
+        if evidence_mode == "required" and is_constant_true_verify(verify_cmd):
+            negative_control_status = "CONSTANT_TRUE_VERIFY"
             evidence.append(
-                f"verification command {verify_cmd!r} failed"
-                + (f" ({sanitize_decision_text(vout)})" if vout else "")
-                + "; remedy: fix the issue the verification reported and re-run the task")
+                f"verification command {verify_cmd!r} is a constant-true shape; a verifier "
+                "that cannot fail is not evidence (claim is UNPROVEN)")
+        elif evidence_mode == "required" and not (isinstance(negative_control, str) and negative_control.strip()):
+            negative_control_status = "MISSING"
+            evidence.append(
+                "no negative control declared for an evidence-required stage; a verifier "
+                "must be shown capable of failing (claim is UNPROVEN)")
+        else:
+            if evidence_mode == "required":
+                control_ok, control_out = _run_verify(str(negative_control), job.get("repo"))
+                if control_ok:
+                    negative_control_status = "NOT_FALSIFIABLE"
+                    evidence.append(
+                        f"negative control {negative_control!r} exited 0 and is NOT_FALSIFIABLE; "
+                        "the verifier has not been shown capable of failing (claim is UNPROVEN)")
+                else:
+                    negative_control_status = "FALSIFIABLE"
+                    evidence.append(
+                        "negative control exited non-zero (FALSIFIABLE)"
+                        + (f": {sanitize_decision_text(control_out)}" if control_out else ""))
+            if negative_control_status != "NOT_FALSIFIABLE":
+                verify_passed, vout = _run_verify(verify_cmd, job.get("repo"))
+                if verify_passed:
+                    evidence.append(f"verification passed: {sanitize_decision_text(vout)}")
+                else:
+                    evidence.append(
+                        f"verification command {verify_cmd!r} failed"
+                        + (f" ({sanitize_decision_text(vout)})" if vout else "")
+                        + "; remedy: fix the issue the verification reported and re-run the task")
     else:
         evidence.append("no verification command configured; claim remains UNVERIFIED and cannot pass")
-    claim_status = "RE_DERIVED" if verify_passed else ("CONTRADICTED" if verify_cmd else "UNVERIFIED")
+    if verify_passed:
+        claim_status = "RE_DERIVED"
+    elif not verify_cmd:
+        claim_status = "UNVERIFIED"
+    elif negative_control_status in ("MISSING", "NOT_FALSIFIABLE", "CONSTANT_TRUE_VERIFY"):
+        claim_status = "UNPROVEN"
+    else:
+        claim_status = "CONTRADICTED"
     job["verify_passed"] = verify_passed
+    job["negative_control_status"] = negative_control_status
     job["claim_status"] = claim_status
     evidence.append(f"produced claim status: {claim_status}")
     ok = verify_passed and claim_status == "RE_DERIVED"
@@ -1818,6 +1897,7 @@ def monitor_jobs() -> int:
                 current["outcome"] = outcome  # DONE / FAILED — lets workflows advance on real results
                 current["verify_passed"] = bool(job.get("verify_passed"))
                 current["claim_status"] = str(job.get("claim_status") or "UNVERIFIED")
+                current["negative_control_status"] = job.get("negative_control_status")
                 current["state"] = outcome
                 current["current_sha"] = _git_sha(current.get("repo"))
                 current["reported_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -2248,6 +2328,7 @@ def _launch_stage(wid: str, stage: dict, index: int, workflow: dict,
     jid, _proc = launch_job(
         model=str(stage.get("model")), task=task, conversation_id=int(workflow["conversation_id"]),
         command=cmd, log_path=log_path, verify=stage.get("verify"), marker=stage.get("marker"),
+        evidence=stage.get("evidence"), negative_control=stage.get("negative_control"),
         repo=workflow.get("workspace"), commit=bool(stage.get("commit")),
         timeout=int(stage.get("timeout") or 1800), cwd=workflow.get("workspace"),
         open_terminal=True, task_id=workflow.get("task_id"), contract_revision=int(workflow.get("contract_revision") or 0),
@@ -2339,6 +2420,27 @@ def validate_workflow_manifest(manifest, name=None, workspace=None):
                     errors.append(f"stages[{i}].verify: must not interpolate owner text or be destructive")
             elif not (isinstance(verify, list) and verify):
                 errors.append(f"stages[{i}].verify: must be a string or a non-empty list")
+            # D1: a constant-true verify cannot fail, so its pass is not evidence.
+            # Deny-list only — weak-but-fallible shapes (e.g. `git diff --check`) stay.
+            for shape in (verify if isinstance(verify, list) else [verify]):
+                if is_constant_true_verify(shape):
+                    errors.append(
+                        f"stages[{i}].verify: constant-true shape {shape!r} cannot fail; "
+                        "a verifier that cannot fail is not evidence")
+        negative_control = stage.get("negative_control")
+        evidence_enforced = evidence_mode != "none" and (bool(verify) or evidence_mode == "required")
+        if evidence_enforced:
+            # D2: evidence-required stages declare a command that MUST fail. The runner
+            # executes it and requires a non-zero exit; a control that exits 0 makes the
+            # stage UNPROVEN (NOT_FALSIFIABLE), never a pass.
+            if not (isinstance(negative_control, str) and negative_control.strip()):
+                errors.append(
+                    f"stages[{i}].negative_control: required for an evidence-required stage "
+                    "(a command that must exit non-zero, proving the verifier can fail)")
+            elif any(tok in negative_control for tok in ("{owner}", "{body}", "{message}", "{{", "}}")) or "rm -rf /" in negative_control:
+                errors.append(f"stages[{i}].negative_control: must not interpolate owner text or be destructive")
+        elif negative_control is not None and not isinstance(negative_control, str):
+            errors.append(f"stages[{i}].negative_control: must be a string")
     for key in ("max_repairs", "max_total_cycles", "max_browser_repairs",
                 "max_tool_retries", "max_network_retries"):
         val = manifest.get(key)
@@ -2375,6 +2477,8 @@ def _build_stage_result(workflow, stage, job, outcome):
         evidence.append("marker:INFORMATIONAL:" + ("FOUND" if _marker_found(job) else "NOT_FOUND"))
     if job.get("verify"):
         evidence.append("verify:" + ("PASSED" if job.get("verify_passed") else "FAILED"))
+    if job.get("negative_control_status"):
+        evidence.append("negative_control:" + str(job.get("negative_control_status")))
     if not evidence:
         evidence.append("evidence:NONE")
     return {
@@ -2387,6 +2491,7 @@ def _build_stage_result(workflow, stage, job, outcome):
         "model": job.get("model"),
         "marker_found": _marker_found(job) if job.get("marker") else None,
         "claim_status": str(job.get("claim_status") or "UNVERIFIED"),
+        "negative_control_status": job.get("negative_control_status"),
         "evidence": evidence,
         "finished_at": job.get("finished_at"),
     }
@@ -2755,6 +2860,10 @@ def advance_workflows() -> int:
                     advanced += 1
             else:
                 stage["status"] = "failed"
+                if str(job.get("claim_status") or "") == "UNPROVEN":
+                    # A not-falsifiable or absent negative control is a finding, not a
+                    # silent failure: record the stage result explicitly as UNPROVEN.
+                    stage["stage_result"] = _build_stage_result(wf, stage, job, "UNPROVEN")
                 _record_stage_attempt(stage, "failed", job_id=job.get("id"), run_id=job.get("run_id"))
                 repairs = int(wf.get("repair_count", 0))
                 max_repairs = int(wf.get("max_repairs", 0))

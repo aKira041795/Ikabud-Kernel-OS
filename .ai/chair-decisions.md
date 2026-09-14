@@ -1870,3 +1870,68 @@ doctrine table alone did not prevent it.
 leave headroom, with the reset at roughly **1 h 15 m** from the attempt. **This slice is not that test and
 should not be retried on qwen**; it reallocates to `deepseek/deepseek-v4-flash`, which has already carried five
 slices of comparable reading load today.
+
+## CD-41 — Adopting the repeatability programme, and freezing the apparatus BEFORE measuring it
+
+**Owner submission:** an external assessment of HARPP's state, pasted 2026-09-14 evening, with an explicit
+sequencing recommendation. Adopted, including the one swap it makes to the brief's proposed order.
+
+**Adopted sequence:**
+
+```
+P0  close B-F1 (the vacuity hole)          <- MUST precede measurement
+P1  FREEZE the guardrail architecture
+P2  run 10-20 ordinary slices, rules unchanged
+P3  analyse the failure distribution
+P4  only then consider corpus retrofit
+```
+
+**The rewrite of the priority order is accepted and its reasoning is the point.** The assessment moves B-F1
+ahead of repeatability measurement on the ground that *"you risk collecting 20 successful runs against a
+verifier whose evidence semantics you already know contain a hole."* That is decisive: a **vacuous verifier
+makes every success uninformative**, so measuring first would produce twenty numbers whose meaning is unknown.
+This is the same principle the whole day has run on — **an observation is only worth collecting if the
+instrument can fail.**
+
+### The discipline this commits the Chair to, recorded before the experiment rather than after
+
+> **During GEN4-R1, HARPP does not change because a slice failed.** Failures are **data**, not bugs to erase.
+> The only permitted stop is a security or safety issue that makes continuing irresponsible.
+
+The assessment names the failure mode this prevents: *"otherwise HARPP will perpetually pass because HARPP
+changes after every failure."* That is the same structure as a check that cannot fail, one level up — applied
+to the **process** rather than to a test. And it is a discipline the Chair is uniquely prone to break, because
+the whole day's habit has been *discover defect → fix harness → continue*, and every one of those five fixes was
+the right call at the time. **The habit is correct during development and fatal during measurement.**
+
+**Therefore the architecture is frozen at the moment B-F1 is closed.** After that: slices are dispatched, failures
+are recorded, and the Chair's job is to *observe and count*, not to repair. Repair resumes after P3, informed by
+the distribution instead of by the first failure encountered.
+
+**What the experiment must count, not fix:**
+- completions, repairs, promotions by rung, contract-level stops, incorrect completions;
+- verifier outcomes (`RE_DERIVED` / `CONTRADICTED` / `UNVERIFIED`), and **any contradiction**;
+- **interpretive drift** — Chair decisions, Chair interpretations, which affected acceptance, which were later
+  challenged or reversed. The assessment is right that we do not yet know whether this is rare or HARPP's
+  dominant failure mode, and **we should not build a complicated solution before measuring it**;
+- cost, repairs per slice, and owner attention in minutes.
+
+**Deferred deliberately, per the assessment:** empirical lane profiles (from the day's three-lane failure we
+*do* have signal — a fixed-cost lane exhausted, one empty result, one budget rejection, and flash carrying the
+implementation — but the profiles wait for the streak); any automatic solution to interpretive drift; corpus
+retrofit.
+
+### One behaviour the assessment singles out to keep
+
+`tests/ai_project_metrics_test.php` was left **red (15/16, exit 1)** because correcting a stale assertion was
+outside the slice's authority. The assessment's read is exactly right and worth preserving as doctrine:
+
+> **Competence does not create authority.** *"Yes, the correction appears obvious. No, this slice does not have
+> authority to make it."*
+
+The same reasoning binds the Chair here: **a Chair that can see a defect is not thereby authorised to fix it** —
+and during GEN4-R1 that is the difference between an experiment and a rehearsal.
+
+**Authority:** owner submission 2026-09-14 (external assessment), authorising P0 (the B-F1 fix) as the last
+trust-surface change before the freeze.
+**Owner intervention:** given.

@@ -7,6 +7,7 @@
             "prompt_file": "stages/architect.md",
             "marker": "SOL_ARCH status=PASS",
             "verify": "test -s ARCHITECTURE.md && test \"$(tail -n 1 ARCHITECTURE.md)\" = \"status: READY_FOR_IMPLEMENTATION\"",
+            "negative_control": "printf 'status: NOT_READY\\n' > /tmp/harpp-negative-control-arch.md && test \"$(tail -n 1 /tmp/harpp-negative-control-arch.md)\" = \"status: READY_FOR_IMPLEMENTATION\"",
             "evidence": "required",
             "timeout": 1800
         },
@@ -16,6 +17,7 @@
             "prompt_file": "stages/implement.md",
             "marker": "SOL_IMPL status=PASS",
             "verify": "git diff --check",
+            "negative_control": "rm -rf \"/tmp/harpp-negative-control-git\" && mkdir -p /tmp/harpp-negative-control-git && cd /tmp/harpp-negative-control-git && git init -q && printf 'x\\n' > f && git add f && git -c user.email=nc@example.invalid -c user.name=nc commit -qm init && printf 'x \\n' > f && git diff --check",
             "evidence": "required",
             "timeout": 2400
         },
@@ -25,6 +27,7 @@
             "prompt_file": "stages/review.md",
             "marker": "SOL_REVIEW status=PASS",
             "verify": "git diff --check",
+            "negative_control": "rm -rf \"/tmp/harpp-negative-control-git\" && mkdir -p /tmp/harpp-negative-control-git && cd /tmp/harpp-negative-control-git && git init -q && printf 'x\\n' > f && git add f && git -c user.email=nc@example.invalid -c user.name=nc commit -qm init && printf 'x \\n' > f && git diff --check",
             "evidence": "required",
             "timeout": 1800
         },
@@ -34,6 +37,7 @@
             "prompt_file": "stages/release-gate.md",
             "marker": "SOL_GATE status=PASS",
             "verify": "git diff --check",
+            "negative_control": "rm -rf \"/tmp/harpp-negative-control-git\" && mkdir -p /tmp/harpp-negative-control-git && cd /tmp/harpp-negative-control-git && git init -q && printf 'x\\n' > f && git add f && git -c user.email=nc@example.invalid -c user.name=nc commit -qm init && printf 'x \\n' > f && git diff --check",
             "evidence": "required",
             "timeout": 1800
         }

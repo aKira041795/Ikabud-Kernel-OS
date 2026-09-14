@@ -8,6 +8,7 @@
             "prompt_file": "stages/slice2-authority.md",
             "marker": "SOL_SLICE2 status=PASS",
             "verify": "python3 -m py_compile tools/harpp-bridge/harpp_wake.py tools/harpp-bridge/harpp tools/harpp-bridge/harpp_client.py && python3 tools/harpp-bridge/harpp self-test",
+            "negative_control": "printf 'def broken(:\\n' > /tmp/harpp-negative-control-broken.py && PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/harpp-negative-control-pycache python3 -m py_compile /tmp/harpp-negative-control-broken.py",
             "evidence": "required",
             "timeout": 2400
         },
@@ -17,6 +18,7 @@
             "prompt_file": "stages/slice3-escalation.md",
             "marker": "SOL_SLICE3 status=PASS",
             "verify": "python3 -m py_compile tools/harpp-bridge/harpp_wake.py tools/harpp-bridge/harpp tools/harpp-bridge/harpp_client.py && python3 tools/harpp-bridge/harpp self-test",
+            "negative_control": "printf 'def broken(:\\n' > /tmp/harpp-negative-control-broken.py && PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/harpp-negative-control-pycache python3 -m py_compile /tmp/harpp-negative-control-broken.py",
             "evidence": "required",
             "timeout": 2400
         },
@@ -26,6 +28,7 @@
             "prompt_file": "stages/slice4-decision-recorder.md",
             "marker": "SOL_SLICE4 status=PASS",
             "verify": "python3 -m py_compile tools/harpp-bridge/harpp_wake.py tools/harpp-bridge/harpp tools/harpp-bridge/harpp_client.py && python3 tools/harpp-bridge/harpp self-test",
+            "negative_control": "printf 'def broken(:\\n' > /tmp/harpp-negative-control-broken.py && PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/harpp-negative-control-pycache python3 -m py_compile /tmp/harpp-negative-control-broken.py",
             "evidence": "required",
             "timeout": 2400
         },
@@ -35,6 +38,7 @@
             "prompt_file": "stages/slice5-summaries.md",
             "marker": "SOL_SLICE5 status=PASS",
             "verify": "python3 -m py_compile tools/harpp-bridge/harpp_wake.py tools/harpp-bridge/harpp tools/harpp-bridge/harpp_client.py && python3 tools/harpp-bridge/harpp self-test",
+            "negative_control": "printf 'def broken(:\\n' > /tmp/harpp-negative-control-broken.py && PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/harpp-negative-control-pycache python3 -m py_compile /tmp/harpp-negative-control-broken.py",
             "evidence": "required",
             "timeout": 2400
         }

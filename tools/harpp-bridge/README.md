@@ -266,6 +266,17 @@ a Raspberry Pi / NAS / LAN runner can execute or broker work continuously.
   real `verify` command. `"none"` explicitly identifies an intentionally unevidenced stage; such
   a stage is valid to describe but cannot pass. Omitting both `verify` and `evidence: "none"` is a
   preflight error, and combining `evidence: "none"` with `verify` is also rejected.
+- A `verify` whose exit status cannot depend on repository state carries no information and is
+  refused at manifest validation: the constant-true shapes `true`, `:`, `exit 0`, `/bin/true`, a
+  bare `echo …`, and `test -n ""` are denied. The deny-list targets only shapes that cannot fail —
+  a weak but fallible verifier (for example `git diff --check`, which checks patch whitespace, not
+  correctness) is **not** refused. Weakness is answered by the negative control, not by refusal.
+- The additive `negative_control` manifest key is required for every evidence-required stage: a
+  command that MUST exit non-zero. The runner executes it and requires a non-zero exit, so the
+  verifier is shown capable of failing before its pass counts as evidence. A control that exits
+  `0` is recorded `NOT_FALSIFIABLE`, a missing control is recorded `MISSING`, and in both cases the
+  stage claim is `UNPROVEN` and cannot advance. `negative_control` is executed with the same
+  owner-text/destructive guards as `verify`.
 - Stage results are structured + identity-checked, so output from another run cannot advance a
   stage and marker-only self-reports remain `UNVERIFIED`.
 

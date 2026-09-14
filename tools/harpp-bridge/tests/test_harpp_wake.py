@@ -556,6 +556,55 @@ class HarppWakeTest(unittest.TestCase):
         finally:
             harpp_wake.harpp_client.send_message = original
 
+    def _report_finished_job(self, **job_kwargs):
+        jid = harpp_wake.track_job(pid=self._dead_pid(), model="model",
+                                   task="vacuity probe", conversation_id=11, **job_kwargs)
+        sent, original = self._patch_send()
+        try:
+            harpp_wake.monitor_jobs()
+        finally:
+            harpp_wake.harpp_client.send_message = original
+        job = next(j for j in harpp_wake.list_jobs() if j["id"] == jid)
+        return jid, job, sent
+
+    def test_evidence_required_without_negative_control_does_not_pass(self):
+        probe = Path(self.tmp.name) / "probe.txt"
+        probe.write_text("present\n", encoding="utf-8")
+        _jid, job, sent = self._report_finished_job(
+            verify=f"test -f {probe}", evidence="required")
+        self.assertEqual(job["outcome"], "FAILED")
+        self.assertEqual(job["claim_status"], "UNPROVEN")
+        self.assertEqual(job["negative_control_status"], "MISSING")
+        self.assertIn("UNPROVEN", sent[0]["body"])
+
+    def test_not_falsifiable_negative_control_does_not_pass(self):
+        probe = Path(self.tmp.name) / "probe.txt"
+        probe.write_text("present\n", encoding="utf-8")
+        _jid, job, sent = self._report_finished_job(
+            verify=f"test -f {probe}", evidence="required", negative_control="true")
+        self.assertEqual(job["outcome"], "FAILED")
+        self.assertEqual(job["claim_status"], "UNPROVEN")
+        self.assertEqual(job["negative_control_status"], "NOT_FALSIFIABLE")
+        self.assertIn("NOT_FALSIFIABLE", sent[0]["body"])
+
+    def test_real_verify_with_falsifiable_control_still_passes(self):
+        probe = Path(self.tmp.name) / "probe.txt"
+        probe.write_text("present\n", encoding="utf-8")
+        _jid, job, sent = self._report_finished_job(
+            verify=f"test -f {probe}", evidence="required",
+            negative_control=f"test -f {probe}.missing")
+        self.assertEqual(job["outcome"], "DONE")
+        self.assertEqual(job["claim_status"], "RE_DERIVED")
+        self.assertEqual(job["negative_control_status"], "FALSIFIABLE")
+        self.assertIn("VERIFIED", sent[0]["body"])
+
+    def test_constant_true_verify_is_unproven_at_runner(self):
+        _jid, job, _sent = self._report_finished_job(
+            verify="true", evidence="required", negative_control="false")
+        self.assertEqual(job["outcome"], "FAILED")
+        self.assertEqual(job["claim_status"], "UNPROVEN")
+        self.assertEqual(job["negative_control_status"], "CONSTANT_TRUE_VERIFY")
+
     def test_monitor_retries_when_delivery_fails(self):
         harpp_wake.track_job(pid=self._dead_pid(), model="deepseek/deepseek-v4-flash",
                              task="flaky network", conversation_id=5, marker="ok")
@@ -2355,10 +2404,12 @@ class WorkflowManifestValidationTest(unittest.TestCase):
             "stages": [
                 {"name": "architect", "model": "openai-codex/gpt-5.6-sol",
                  "prompt": "You are the architect.\n", "marker": "SOL_ARCH status=PASS",
-                 "verify": "test -f ARCHITECTURE.md", "timeout": 1800},
+                 "verify": "test -f ARCHITECTURE.md",
+                 "negative_control": "test -f /nonexistent-negative-control", "timeout": 1800},
                 {"name": "implement", "model": "deepseek/deepseek-v4-flash",
                  "prompt": "You are the implementer.\n", "marker": "SOL_IMPL status=PASS",
-                 "verify": "git diff --check", "timeout": 2400},
+                 "verify": "git diff --check",
+                 "negative_control": "test -f /nonexistent-negative-control", "timeout": 2400},
             ],
         }
 
@@ -2437,6 +2488,34 @@ class WorkflowManifestValidationTest(unittest.TestCase):
         m = self._valid_manifest()
         m["stages"][0]["verify"] = 'test -s ARCHITECTURE.md && test "$(tail -n 1 ARCHITECTURE.md)" = "ok"'
         self.assertEqual(harpp_wake.validate_workflow_manifest(m), [])
+
+    def test_constant_true_verify_shapes_refused(self):
+        shapes = ["true", ":", "exit 0", "/bin/true", "echo hello", 'test -n ""']
+        for shape in shapes:
+            with self.subTest(shape=shape):
+                m = self._valid_manifest()
+                m["stages"][0]["verify"] = shape
+                errors = harpp_wake.validate_workflow_manifest(m)
+                self.assertTrue(any("constant-true" in e for e in errors), (shape, errors))
+
+    def test_weak_but_fallible_verify_is_not_refused(self):
+        # `git diff --check` checks whitespace, not correctness, so it is weak — but
+        # it can fail, so it is not vacuous and must not be denied.
+        m = self._valid_manifest()
+        m["stages"][1]["verify"] = "git diff --check"
+        self.assertEqual(harpp_wake.validate_workflow_manifest(m), [])
+
+    def test_negative_control_required_for_evidence_required(self):
+        m = self._valid_manifest()
+        m["stages"][0].pop("negative_control")
+        errors = harpp_wake.validate_workflow_manifest(m)
+        self.assertTrue(any("negative_control" in e and "required" in e for e in errors), errors)
+
+    def test_manifests_with_constant_true_verify_do_not_advance(self):
+        m = self._valid_manifest()
+        m["stages"][0]["verify"] = "true"
+        errors = harpp_wake.validate_workflow_manifest(m)
+        self.assertTrue(errors)
 
     def test_preflight_raises_with_exact_field(self):
         m = self._valid_manifest()
