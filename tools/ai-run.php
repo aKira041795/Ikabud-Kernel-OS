@@ -13,10 +13,13 @@ require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskCo
  * Two questions caused real harm this session and both were answered by inference from unreliable
  * signals instead of a record:
  *
- *   - "did this run succeed?"  was answered from the size of a log file. `pi` can exit 0 having
- *     written 0 bytes to stdout — a *silent success* that is indistinguishable from death.
+ *   - "did this run succeed?"  was answered from the size of a log file. That is unsound: redirected
+ *     stdout is buffered and flushed at exit, so a 0-byte log read *while a run is in progress* means
+ *     only "not flushed yet" — never "produced nothing". Reading that size as an outcome produced two
+ *     false conclusions about runs that had in fact written full reports.
  *   - "is this run still running?" was answered with `pgrep`. The run executes inside a wrapper, so
- *     the pattern either missed the live run or matched the checking command itself.
+ *     the pattern either missed the live run or matched the checking command itself. `ps` is no
+ *     better: it truncates long command lines, hiding the run's own `--name`.
  *
  * This tool removes the inference. A run is started (`start`), the dispatcher that observed the exit
  * code finishes it (`finish`), and `status` reads the pid — never the log — to answer liveness.
@@ -383,8 +386,9 @@ function commandFinish(array $options, bool $json): int
     fwrite(STDOUT, "  log:       {$logBytes} bytes" . ($log !== null ? " ({$log})" : '') . "\n");
     fwrite(STDOUT, "  report:    {$reportBytes} bytes" . ($report !== null ? " ({$report})" : '') . "\n");
     if ($record['status'] === 'silent') {
-        fwrite(STDOUT, "  NOTE: exit 0 with no report/log content — a silent success. The work may be real;\n");
-        fwrite(STDOUT, "        the evidence is not. Do not read this as failure or as a report.\n");
+        fwrite(STDOUT, "  NOTE: exit 0 and no report after the process exited — a silent run. The work may be\n");
+        fwrite(STDOUT, "        real; the evidence is not. This is recorded, not inferred: `finish` runs after the\n");
+        fwrite(STDOUT, "        process exited, so its log has been flushed. Never classify from a log read mid-run.\n");
     }
     return EXIT_OK;
 }
