@@ -458,6 +458,36 @@ advances on claims whose status is `RE_DERIVED`, read from the run record's `cla
 `verify --json` output). Non-re-derivable claim types are listed as needing a human or a separate
 procedure — they are not silently treated as satisfied.
 
+**How a slice reports evidence so its claims are re-derivable (added 2026-09-14).** A claim can only be
+re-derived if a command is bound to it, so the reporting convention is part of the evidence, not
+cosmetics. A claim's `subject.command_source` records exactly how the command was bound:
+
+- **`declared`** — the evidence line carries the command. Accepted forms are a whole line that is the
+  command (optionally prefixed with `$ ` or `> `, optionally wrapped in backticks), or one line that
+  contains an allowlisted `php …` invocation together with its result. Preferred form:
+
+  ```
+  $ php tests/ai_project_test.php
+    6/6 passed
+    exit=0
+  ```
+
+  The `$ php …` line opens a claim and the following result lines attach to it. Shell chaining
+  (`;`, `&&`, `|`, backticks, `$(`) is never bound from an inline line: bind a command instead of a
+  shell expression, or it is refused.
+- **`derived`** — a `TEST_RESULT` names a test file under `tests/` but does not carry the command. The
+  tool binds `php tests/<file>` by **exact match only**: the named file must exist under `tests/` and
+  pass the purity screen (no `bootstrap.php`, no `MODE_INTEGRATION`). The claim records
+  `command_source: "derived"` so a reviewer can always tell derived from declared. A named file that is
+  **missing** (`test_file_missing`) or **impure** (`test_file_impure`) is **refused** — the claim stays
+  `UNVERIFIED` with that reason. A command is never invented silently, and `null` means no command was
+  bound at all.
+
+A line that names only a result (`ai_project_test exit=0 6/6 passed`) is the shape that stopped the loop:
+it derives when `tests/ai_project_test.php` exists and is pure, and refuses otherwise. Report commands
+explicitly when more than one test could match, or when the command carries arguments the derived form
+would lose.
+
 ### Project convention and evidence-gated loop (added 2026-09-14)
 
 A governed project is stored as:
@@ -474,7 +504,11 @@ slice table as authoritative order. Remaining obligations are derived from each 
 acceptance criteria (one explicit slice obligation when its contract has not yet been authored), never
 stored as a hand-maintained counter. `transition` records `pending → running → done|blocked` and refuses a
 `done` transition unless the named completed run has at least one claim and every claim is
-`RE_DERIVED` in the ledger.
+`RE_DERIVED` in the ledger. `blocked` is never terminal: `php tools/ai-project.php retry
+--project=<id> --slice=<id> --reason="<text>"` records `blocked → pending`, keeps the prior run id and
+the blocked history, and requires a reason. It refuses a slice that is not blocked and refuses an empty
+reason; after a retry `next` returns that slice again. A blocked slice is never cleared by hand — the
+transition is recorded, not erased.
 
 ### Metrics are derived, never self-reported (added 2026-09-14)
 

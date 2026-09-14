@@ -119,8 +119,11 @@ Usage:
 
   php tools/ai-run.php claims --id=ID [--runs-dir=DIR] [--json]
                               Extract claims from the run's report/log as STRUCTURED objects: claim_id,
-                              type, re_derivable, subject.command, executor_claim and status. Every
-                              claim starts UNVERIFIED; `verify` re-derives by execution.
+                              type, re_derivable, subject.command, subject.command_source, executor_claim
+                              and status. `command_source` is `declared` when the evidence line carries
+                              the command, `derived` when the command was bound by exact-match from a
+                              test the line names (existing and pure), and null when no command is
+                              bound. Every claim starts UNVERIFIED; `verify` re-derives by execution.
 
   php tools/ai-run.php commit-check [--runs-dir=DIR] [--json]
                               Decide commit eligibility from the ledger, not from how the tree looks.
@@ -139,6 +142,9 @@ Usage:
                               RE_DERIVED when the observation agrees and CONTRADICTED when it does
                               not, recording both claimed and observed. A command that is not on the
                               allowlist is refused, never executed, and shown so a human can decide.
+                              A claim whose text names a test file that is missing or not pure is
+                              refused during binding (`test_file_missing` / `test_file_impure`) and
+                              stays UNVERIFIED.
                               A type that cannot be re-derived by a pure tool is never reported as
                               verified.
 
@@ -706,14 +712,15 @@ function parseEvidence(string $line): array
 }
 
 /**
- * A bare result line without a command can still name a test we know how to re-run.
+ * A bare result line without a declared command can still name a test we know how to re-run. The
+ * command is not bound here: `deriveTestCommand` binds it and labels the route as derived.
  *
  * @return array{command:?string,type:string,re_derivable:bool}|null
  */
 function parseProseClaim(string $line): ?array
 {
-    if (preg_match('/\b(tests\/[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php)\s+ok\b/i', $line, $matches) === 1) {
-        return ['command' => 'php ' . $matches[1], 'type' => 'TEST_RESULT', 're_derivable' => true];
+    if (preg_match('/\b(tests\/[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php)\s+ok\b/i', $line) === 1) {
+        return ['command' => null, 'type' => 'TEST_RESULT', 're_derivable' => true];
     }
     if (preg_match('/(\d+)\s*\/\s*(\d+)\s+passed\b/i', $line) === 1
         || preg_match('/\b(passed|failed)\s*[=:]\s*\d+/i', $line) === 1) {
@@ -725,20 +732,157 @@ function parseProseClaim(string $line): ?array
     return null;
 }
 
-/** @return array<string,mixed> */
-function buildClaim(string $runId, int $sequence, string $type, ?string $command, string $source, int $lineNumber, string $text): array
+/**
+ * A relative test path may carry a derived command only when the file exists and passes the purity
+ * screen (no bootstrap, no MODE_INTEGRATION).
+ *
+ * @return array{ok:bool,reason:?string}
+ */
+function testFileDerivationVerdict(string $relativePath): array
 {
+    if (!is_file(dirname(__DIR__) . '/' . $relativePath)) {
+        return ['ok' => false, 'reason' => 'test_file_missing'];
+    }
+    if (!testFileIsPure($relativePath)) {
+        return ['ok' => false, 'reason' => 'test_file_impure'];
+    }
+    return ['ok' => true, 'reason' => null];
+}
+
+/**
+ * Build the `derived` binding verdict for one candidate test path.
+ *
+ * @return array{command:?string,command_source:?string,derivation:array{attempted:bool,candidate:string,refused:?string}}
+ */
+function deriveVerdict(string $candidate): array
+{
+    $verdict = testFileDerivationVerdict($candidate);
+    if ($verdict['ok']) {
+        return [
+            'command' => 'php ' . $candidate,
+            'command_source' => 'derived',
+            'derivation' => ['attempted' => true, 'candidate' => $candidate, 'refused' => null],
+        ];
+    }
+    return [
+        'command' => null,
+        'command_source' => null,
+        'derivation' => ['attempted' => true, 'candidate' => $candidate, 'refused' => $verdict['reason']],
+    ];
+}
+
+/**
+ * Derive a test command for a TEST_RESULT that names a test file but declares no command. The
+ * binding is exact-match: an explicit `tests/<file>.php` token, or a bare name for which
+ * `tests/<name>.php` exists. A named but missing or impure file is refused and the claim stays
+ * UNVERIFIED. A command is never invented silently.
+ *
+ * @return array{command:?string,command_source:?string,derivation:array{attempted:bool,candidate:?string,refused:?string}|null}
+ */
+function deriveTestCommand(string $type, string $text): array
+{
+    $none = ['command' => null, 'command_source' => null, 'derivation' => null];
+    if ($type !== 'TEST_RESULT') {
+        return $none;
+    }
+    if (preg_match('/\btests\/([A-Za-z0-9_][A-Za-z0-9_.\/-]*)\.php\b/', $text, $matches) === 1) {
+        return deriveVerdict('tests/' . $matches[1] . '.php');
+    }
+    if (preg_match_all('/\b([A-Za-z0-9_][A-Za-z0-9_]*)\b/', $text, $matches) >= 1) {
+        foreach ($matches[1] as $token) {
+            $candidate = 'tests/' . $token . '.php';
+            if (is_file(dirname(__DIR__) . '/' . $candidate)) {
+                return deriveVerdict($candidate);
+            }
+        }
+    }
+    return $none;
+}
+
+/**
+ * A line carrying an allowlisted `php ...` invocation together with its result on the same line
+ * declares its own command. Shell chaining is refused here so the bound command is exactly the safe
+ * invocation shown, never a fragment of a larger shell expression.
+ *
+ * @param array<string,mixed> $evidence
+ * @return array{command:string,type:string,re_derivable:bool}|null
+ */
+function parseInlineCommand(string $line, array $evidence): ?array
+{
+    if ($evidence === []) {
+        return null;
+    }
+    $candidate = trim($line);
+    $candidate = preg_replace('/^[>$]\s*/', '', $candidate) ?? $candidate;
+    if (strpbrk($candidate, ";|&`") !== false || str_contains($candidate, '$(')) {
+        return null;
+    }
+    $patterns = [
+        '/(?:^|[\s`$>])(php\s+tests\/[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php)\b/',
+        '/(?:^|[\s`$>])(php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php)\b/',
+        '/(?:^|[\s`$>])(php\s+tools\/ai-contract-lint\.php(?:\s+--(?:json|live-only|contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md))?)\b/',
+    ];
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $candidate, $matches) !== 1) {
+            continue;
+        }
+        $command = trim($matches[1]);
+        $type = classifyCommand($command);
+        if ($type === null) {
+            continue;
+        }
+        return ['command' => $command, 'type' => $type, 're_derivable' => claimReDerivable($type)];
+    }
+    return null;
+}
+
+/**
+ * Build a prose claim, binding a derived command when the text names an existing pure test.
+ *
+ * @param array{command:?string,type:string,re_derivable:bool} $prose
+ * @param array<string,mixed> $evidence
+ * @return array<string,mixed>
+ */
+function buildProseClaim(string $runId, int &$sequence, array $prose, string $source, int $lineNumber, string $text, array $evidence): array
+{
+    $binding = deriveTestCommand($prose['type'], $text);
+    $claim = buildClaim(
+        $runId,
+        ++$sequence,
+        $prose['type'],
+        $binding['command'],
+        $source,
+        $lineNumber,
+        $text,
+        $binding['command_source'],
+        $binding['derivation']
+    );
+    $claim['executor_claim'] = $evidence;
+    return $claim;
+}
+
+/**
+ * @param array{attempted:bool,candidate:?string,refused:?string}|null $derivation
+ * @return array<string,mixed>
+ */
+function buildClaim(string $runId, int $sequence, string $type, ?string $command, string $source, int $lineNumber, string $text, ?string $commandSource = null, ?array $derivation = null): array
+{
+    $subject = [
+        'command' => $command,
+        'command_source' => $commandSource,
+        'source' => $source,
+        'line' => $lineNumber,
+        'text' => trim($text),
+    ];
+    if ($derivation !== null) {
+        $subject['derivation'] = $derivation;
+    }
     return [
         'claim_id' => 'CLM-' . $runId . '-' . $sequence,
         'run' => $runId,
         'type' => $type,
         're_derivable' => claimReDerivable($type),
-        'subject' => [
-            'command' => $command,
-            'source' => $source,
-            'line' => $lineNumber,
-            'text' => trim($text),
-        ],
+        'subject' => $subject,
         'executor_claim' => [],
         'verification' => [
             'method' => null,
@@ -768,13 +912,22 @@ function extractClaims(string $text, string $source, string $runId, int &$sequen
         if (preg_match('/^\s*(?:```|#{1,6}\s|\*\*|---)/', $line) === 1) {
             $active = null;
         }
-        $parsed = parseCommandLine($line);
-        if ($parsed !== null) {
-            $claims[] = buildClaim($runId, ++$sequence, $parsed['type'], $parsed['command'], $source, $index + 1, $line);
+        $evidence = parseEvidence($line);
+        // A single line that carries an allowlisted command AND its result declares its own command.
+        $inline = parseInlineCommand($line, $evidence);
+        if ($inline !== null) {
+            $claim = buildClaim($runId, ++$sequence, $inline['type'], $inline['command'], $source, $index + 1, $line, 'declared');
+            $claim['executor_claim'] = $evidence;
+            $claims[] = $claim;
             $active = count($claims) - 1;
             continue;
         }
-        $evidence = parseEvidence($line);
+        $parsed = parseCommandLine($line);
+        if ($parsed !== null) {
+            $claims[] = buildClaim($runId, ++$sequence, $parsed['type'], $parsed['command'], $source, $index + 1, $line, 'declared');
+            $active = count($claims) - 1;
+            continue;
+        }
         if ($evidence !== []) {
             if ($active !== null) {
                 foreach ($evidence as $key => $value) {
@@ -785,16 +938,14 @@ function extractClaims(string $text, string $source, string $runId, int &$sequen
                 if ($prose === null) {
                     continue;
                 }
-                $claim = buildClaim($runId, ++$sequence, $prose['type'], $prose['command'], $source, $index + 1, $line);
-                $claim['executor_claim'] = $evidence;
-                $claims[] = $claim;
+                $claims[] = buildProseClaim($runId, $sequence, $prose, $source, $index + 1, $line, $evidence);
             }
             continue;
         }
         if ($active === null) {
             $prose = parseProseClaim($line);
             if ($prose !== null) {
-                $claims[] = buildClaim($runId, ++$sequence, $prose['type'], $prose['command'], $source, $index + 1, $line);
+                $claims[] = buildProseClaim($runId, $sequence, $prose, $source, $index + 1, $line, []);
             }
         }
     }
@@ -974,11 +1125,13 @@ function commandClaims(array $options, bool $json): int
         $type = is_string($claim['type'] ?? null) ? $claim['type'] : 'UNKNOWN';
         $status = is_string($claim['status'] ?? null) ? $claim['status'] : 'UNVERIFIED';
         $kind = ($claim['re_derivable'] ?? false) === true ? 're-derivable' : 'human/procedure';
+        $origin = is_string($subject['command_source'] ?? null) ? (string) $subject['command_source'] : 'none';
         fwrite(STDOUT, sprintf(
-            "  [%s] %-22s %-16s %s  %s:%d\n",
+            "  [%s] %-22s %-16s [%-8s] %s  %s:%d\n",
             $status,
             $type,
             $kind,
+            $origin,
             $command,
             $source,
             $line
@@ -1111,7 +1264,9 @@ function commandVerify(array $options, bool $json, int $timeoutSeconds): int
             continue;
         }
         if ($command === null) {
-            $verification['reason'] = 'no_command_declared';
+            $derivation = is_array($subject['derivation'] ?? null) ? $subject['derivation'] : [];
+            $refused = is_string($derivation['refused'] ?? null) ? $derivation['refused'] : null;
+            $verification['reason'] = $refused ?? 'no_command_declared';
             $claim['verification'] = $verification;
             $results[] = $claim;
             continue;

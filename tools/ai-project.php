@@ -21,10 +21,17 @@ Usage:
   php tools/ai-project.php obligations --project=ID [--projects-dir=DIR] [--json]
   php tools/ai-project.php transition --project=ID --slice=ID --state=running|done|blocked
        [--run=ID] [--reason=TEXT] [--projects-dir=DIR] [--runs-dir=DIR] [--json]
+  php tools/ai-project.php retry --project=ID --slice=ID --reason=TEXT
+       [--projects-dir=DIR] [--json]
   php tools/ai-project.php metrics --project=ID [--chair-decisions=PATH]
        [--projects-dir=DIR] [--runs-dir=DIR] [--json] [--write]
 
 Exit codes: 0 ok; 2 malformed project/input; 3 no eligible slice or refused transition.
+
+retry is the recorded way out of `blocked`: it moves a blocked slice back to
+`pending`, records the retry reason, and preserves the prior run id and the full
+history (why it blocked is evidence, not debris). It refuses unless the slice is
+blocked and a reason is given.
 
 metrics derives the project's numbers from artefacts only (run records, the slice
 table, chair-decisions headings, chair-errors.json, director-minutes.json). Any
@@ -304,6 +311,48 @@ function transitionProject(array $project, string $sliceId, string $target, ?str
     $states[$sliceId] = [
         'state' => $target,
         'run_id' => $runId,
+        'reason' => $reason,
+        'updated_at' => date(DATE_ATOM),
+        'history' => $history,
+    ];
+    writeProjectJson((string) $project['state_file'], ['schema' => 'ark.ai-project-state.v1', 'project' => $project['id'], 'slices' => $states]);
+}
+
+/** @param array<string,mixed> $project */
+function retrySlice(array $project, string $sliceId, ?string $reason): void
+{
+    $slice = null;
+    foreach ($project['slices'] as $candidate) {
+        if (($candidate['id'] ?? null) === $sliceId) {
+            $slice = $candidate;
+            break;
+        }
+    }
+    if ($slice === null) {
+        throw new InvalidArgumentException("unknown slice '{$sliceId}'");
+    }
+    $current = (string) $slice['state'];
+    if ($current !== 'blocked') {
+        throw new RuntimeException("retry refused: {$sliceId} is {$current}, not blocked");
+    }
+    if ($reason === null || trim($reason) === '') {
+        throw new InvalidArgumentException('retry requires --reason');
+    }
+
+    $states = $project['states'];
+    // The prior run id is preserved: the evidence of why it blocked is history, not debris.
+    $priorRunId = is_string($slice['run_id'] ?? null) ? $slice['run_id'] : null;
+    $history = is_array($states[$sliceId]['history'] ?? null) ? $states[$sliceId]['history'] : [];
+    $history[] = [
+        'from' => 'blocked',
+        'to' => 'pending',
+        'run_id' => $priorRunId,
+        'reason' => $reason,
+        'at' => date(DATE_ATOM),
+    ];
+    $states[$sliceId] = [
+        'state' => 'pending',
+        'run_id' => $priorRunId,
         'reason' => $reason,
         'updated_at' => date(DATE_ATOM),
         'history' => $history,
@@ -674,7 +723,7 @@ function projectMain(): int
         return PROJECT_OK;
     }
     $command = array_shift($args);
-    if (!in_array($command, ['status', 'next', 'obligations', 'transition', 'metrics'], true)) {
+    if (!in_array($command, ['status', 'next', 'obligations', 'transition', 'retry', 'metrics'], true)) {
         throw new InvalidArgumentException("unknown command '{$command}'");
     }
     $parsed = projectArgs($args);
@@ -682,7 +731,7 @@ function projectMain(): int
     if ($command === 'metrics') {
         $allowed = array_merge($allowed, ['chair-decisions']);
     }
-    if ($command === 'transition') {
+    if ($command === 'transition' || $command === 'retry') {
         $allowed = array_merge($allowed, ['slice', 'state', 'run', 'reason']);
     }
     foreach (array_keys($parsed['options']) as $key) {
@@ -773,6 +822,13 @@ function projectMain(): int
     }
 
     $sliceId = strtoupper(projectOption($parsed['options'], 'slice') ?? '');
+    if ($command === 'retry') {
+        retrySlice($project, $sliceId, projectOption($parsed['options'], 'reason'));
+        fwrite(STDOUT, $json
+            ? json_encode(['project' => $id, 'slice' => $sliceId, 'state' => 'pending'], JSON_THROW_ON_ERROR) . "\n"
+            : "SLICE {$sliceId} blocked -> pending (retry)\n");
+        return PROJECT_OK;
+    }
     $target = projectOption($parsed['options'], 'state') ?? '';
     if (!in_array($target, ['running', 'done', 'blocked'], true)) {
         throw new InvalidArgumentException("invalid --state '{$target}'");

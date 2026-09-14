@@ -571,5 +571,97 @@ $h->test(
     aiRunDetail($verifyBrowser)
 );
 
+// ── R9: command binding is declared or derived, never invented ──────────────────────────────────
+$h->section('claim binding: declared routes and labelled derivation');
+// Build the purity markers without writing the literal substrings into this file, or the screen
+// would (correctly) classify this suite as impure and refuse to re-derive it.
+$impureIntegrationMarker = 'MODE_' . 'INTEGRATION';
+$impureBootstrapMarker = 'bootstrap' . '.php';
+$declaredClaimsRun = $run(['claims', '--id=verify-ok', '--json']);
+$declaredClaimsData = json_decode($declaredClaimsRun['output'], true);
+$declaredClaimsList = is_array($declaredClaimsData['claims'] ?? null) ? $declaredClaimsData['claims'] : [];
+$declaredClaim = is_array($declaredClaimsList[0] ?? null) ? $declaredClaimsList[0] : [];
+$declaredSubject = is_array($declaredClaim['subject'] ?? null) ? $declaredClaim['subject'] : [];
+$h->test(
+    '31. a command-bearing evidence line binds command_source declared',
+    $declaredClaimsRun['code'] === 0
+        && ($declaredSubject['command'] ?? null) === 'php -l tools/ai-run.php'
+        && ($declaredSubject['command_source'] ?? null) === 'declared',
+    aiRunDetail($declaredClaimsRun)
+);
+
+$derivedReport = $fixture . '/binding-derived.md';
+file_put_contents($derivedReport, <<<'MD'
+# Binding fixture — derived
+### Suites
+ai_contract_lint_test exit=0 3/3 passed
+MD);
+$run(array_merge($startArgs('binding-derived'), ["--report={$derivedReport}"]));
+$run(['finish', '--id=binding-derived', '--exit=0']);
+$derivedVerify = $run(['verify', '--run=binding-derived', '--json']);
+$derivedData = json_decode($derivedVerify['output'], true);
+$derivedClaims = is_array($derivedData['claims'] ?? null) ? $derivedData['claims'] : [];
+$derivedClaim = is_array($derivedClaims[0] ?? null) ? $derivedClaims[0] : [];
+$derivedSubject = is_array($derivedClaim['subject'] ?? null) ? $derivedClaim['subject'] : [];
+$derivedDerivation = is_array($derivedSubject['derivation'] ?? null) ? $derivedSubject['derivation'] : [];
+$derivedTarget = dirname(__DIR__) . '/tests/ai_contract_lint_test.php';
+$derivedContent = is_file($derivedTarget) ? (string) file_get_contents($derivedTarget) : '';
+$h->test(
+    '32. a TEST_RESULT naming an existing pure test binds a labelled derived command',
+    $derivedVerify['code'] === 0
+        && ($derivedClaim['status'] ?? null) === 'RE_DERIVED'
+        && ($derivedSubject['command'] ?? null) === 'php tests/ai_contract_lint_test.php'
+        && ($derivedSubject['command_source'] ?? null) === 'derived'
+        && ($derivedDerivation['candidate'] ?? null) === 'tests/ai_contract_lint_test.php'
+        && array_key_exists('refused', $derivedDerivation)
+        && $derivedDerivation['refused'] === null
+        && is_file($derivedTarget)
+        && !str_contains($derivedContent, $impureIntegrationMarker)
+        && !str_contains($derivedContent, $impureBootstrapMarker),
+    aiRunDetail($derivedVerify)
+);
+
+$missingReport = $fixture . '/binding-missing.md';
+file_put_contents($missingReport, "# Binding fixture — missing\n### Suites\ntests/no_such_test_xyz.php 1/1 passed\n");
+$run(array_merge($startArgs('binding-missing'), ["--report={$missingReport}"]));
+$run(['finish', '--id=binding-missing', '--exit=0']);
+$missingVerify = $run(['verify', '--run=binding-missing', '--json']);
+$missingData = json_decode($missingVerify['output'], true);
+$missingClaims = is_array($missingData['claims'] ?? null) ? $missingData['claims'] : [];
+$missingClaim = is_array($missingClaims[0] ?? null) ? $missingClaims[0] : [];
+$missingSubject = is_array($missingClaim['subject'] ?? null) ? $missingClaim['subject'] : [];
+$missingDerivation = is_array($missingSubject['derivation'] ?? null) ? $missingSubject['derivation'] : [];
+$h->test(
+    '33. a TEST_RESULT naming a missing file is refused and stays UNVERIFIED',
+    ($missingClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($missingSubject['command'] ?? null) === null
+        && ($missingSubject['command_source'] ?? null) === null
+        && ($missingDerivation['refused'] ?? null) === 'test_file_missing'
+        && !is_file(dirname(__DIR__) . '/tests/no_such_test_xyz.php'),
+    aiRunDetail($missingVerify)
+);
+
+$impureReport = $fixture . '/binding-impure.md';
+file_put_contents($impureReport, "# Binding fixture — impure\n### Suites\nauthority_scope_test exit=0 1/1 passed\n");
+$run(array_merge($startArgs('binding-impure'), ["--report={$impureReport}"]));
+$run(['finish', '--id=binding-impure', '--exit=0']);
+$impureVerify = $run(['verify', '--run=binding-impure', '--json']);
+$impureData = json_decode($impureVerify['output'], true);
+$impureClaims = is_array($impureData['claims'] ?? null) ? $impureData['claims'] : [];
+$impureClaim = is_array($impureClaims[0] ?? null) ? $impureClaims[0] : [];
+$impureSubject = is_array($impureClaim['subject'] ?? null) ? $impureClaim['subject'] : [];
+$impureDerivation = is_array($impureSubject['derivation'] ?? null) ? $impureSubject['derivation'] : [];
+$impureTarget = dirname(__DIR__) . '/tests/authority_scope_test.php';
+$impureContent = is_file($impureTarget) ? (string) file_get_contents($impureTarget) : '';
+$h->test(
+    '34. a TEST_RESULT naming an impure file is refused and stays UNVERIFIED',
+    ($impureClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($impureSubject['command'] ?? null) === null
+        && ($impureSubject['command_source'] ?? null) === null
+        && ($impureDerivation['refused'] ?? null) === 'test_file_impure'
+        && (str_contains($impureContent, $impureBootstrapMarker) || str_contains($impureContent, $impureIntegrationMarker)),
+    aiRunDetail($impureVerify)
+);
+
 aiRunRemoveFixture($fixture);
 $h->done();

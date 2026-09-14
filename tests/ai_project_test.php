@@ -85,5 +85,48 @@ projectTestRun(array_merge(['transition', '--slice=S2', '--state=blocked', '--ru
 $blocked = projectTestRun(array_merge(['next'], $common));
 $h->test('6. a blocked slice refuses next with the recorded reason', $blocked['code'] === 3 && str_contains($blocked['output'], 'blocked') && str_contains($blocked['output'], 'fixture contradiction'), $blocked['output']);
 
+$h->section('Retry is the recorded way out of blocked');
+$retryReason = 'claim binding repaired; re-derive the S4 run';
+$retry = projectTestRun(array_merge(['retry', '--slice=S2', '--reason=' . $retryReason], $common));
+$stateFile = $projects . '/fixture/state.json';
+$retryState = json_decode((string) @file_get_contents($stateFile), true);
+$retryHistory = is_array($retryState['slices']['S2']['history'] ?? null) ? $retryState['slices']['S2']['history'] : [];
+$retryEntry = is_array(end($retryHistory)) ? end($retryHistory) : [];
+$h->test(
+    '7. retry moves blocked -> pending, records the reason and preserves the prior run id',
+    $retry['code'] === 0
+        && ($retryState['slices']['S2']['state'] ?? null) === 'pending'
+        && ($retryState['slices']['S2']['reason'] ?? null) === $retryReason
+        && ($retryState['slices']['S2']['run_id'] ?? null) === 'block-evidence'
+        && ($retryEntry['from'] ?? null) === 'blocked'
+        && ($retryEntry['to'] ?? null) === 'pending'
+        && ($retryEntry['reason'] ?? null) === $retryReason
+        && ($retryEntry['run_id'] ?? null) === 'block-evidence',
+    $retry['output'] . json_encode($retryState['slices']['S2'] ?? null)
+);
+$retryNext = projectTestRun(array_merge(['next'], $common));
+$h->test('8. after a retry, next returns the slice again', $retryNext['code'] === 0 && str_contains($retryNext['output'], 'NEXT S2'), $retryNext['output']);
+
+$notBlocked = projectTestRun(array_merge(['retry', '--slice=S2', '--reason=again'], $common));
+$h->test(
+    '9. retry refuses a slice that is not blocked',
+    $notBlocked['code'] === 3 && str_contains($notBlocked['output'], 'not blocked'),
+    $notBlocked['output']
+);
+
+projectTestRun(array_merge(['transition', '--slice=S2', '--state=blocked', '--run=block-evidence', '--reason=blocked again'], $common));
+$emptyReason = projectTestRun(array_merge(['retry', '--slice=S2', '--reason= '], $common));
+$h->test(
+    '10. retry refuses an empty reason',
+    $emptyReason['code'] === 2 && str_contains($emptyReason['output'], 'requires --reason'),
+    $emptyReason['output']
+);
+$doneRetry = projectTestRun(array_merge(['retry', '--slice=S1', '--reason=should refuse'], $common));
+$h->test(
+    '11. retry refuses a done slice',
+    $doneRetry['code'] === 3 && str_contains($doneRetry['output'], 'not blocked'),
+    $doneRetry['output']
+);
+
 removeProjectFixture($base);
 $h->done();
