@@ -987,5 +987,129 @@ file_put_contents($liveAckRuns . '/live.json', json_encode(['id' => 'live', 'sta
 $liveAck = aiRunLedger($tool, ['commit-check', '--acknowledge-block=live', '--reason=not finished', '--director-decision=CD-29', "--runs-dir={$liveAckRuns}"]);
 $h->test('42. a still-running run cannot be acknowledged (exit 3)', $liveAck['code'] === 3 && str_contains($liveAck['output'], 'still running'), aiRunDetail($liveAck));
 
+// ── R11: declared harness artefacts are shown, guarded, and A-F2 is unweakened (slice D) ─────────
+$h->section('declared harness artefacts: shown, guarded, and A-F2 unweakened');
+$repoRoot = dirname(__DIR__);
+$guardContract = $fixture . '/guard-contract.md';
+file_put_contents($guardContract, <<<'MD'
+# CONTRACT — guard fixture
+## Objective
+Exercise the declared harness-artefact guards.
+## Architectural constraints
+- none
+## Files likely affected
+- `docs/guard.md` — benign in-scope path
+## Acceptance criteria
+- guard refusals name the path and the reason
+## Required tests
+- `php tests/ai_run_test.php`
+## Risks
+- a declaration that becomes an exemption
+## Forbidden changes
+- `kernel/`
+- `docs/`
+MD);
+
+// GUARD 1a — a declared artefact may not be the verifier: an exact file or anything covering it.
+$guardTrust = $run(['start', "--contract={$contract}", '--lane=fixture', '--name=guard-trust', '--harness-artifact=tools/ai-run.php']);
+$guardTrustDir = $run(['start', "--contract={$contract}", '--lane=fixture', '--name=guard-trust-dir', '--harness-artifact=tools']);
+$h->test(
+    '43. GUARD 1 refuses a trust-surface artefact (exact file and covering directory), exit 2',
+    $guardTrust['code'] === 2 && str_contains($guardTrust['output'], 'tools/ai-run.php') && str_contains($guardTrust['output'], 'trust surface')
+        && $guardTrustDir['code'] === 2 && str_contains($guardTrustDir['output'], 'trust surface')
+        && !is_file($runs . '/guard-trust.json') && !is_file($runs . '/guard-trust-dir.json'),
+    aiRunDetail($guardTrust) . "\n---\n" . aiRunDetail($guardTrustDir)
+);
+
+// GUARD 1b — a declared artefact may not lie inside the contract's forbidden_scope.
+$guardForbidden = $run(['start', "--contract={$guardContract}", '--lane=fixture', '--name=guard-forbidden', '--harness-artifact=docs/guard.md']);
+$h->test(
+    '44. GUARD 1 refuses a forbidden_scope artefact, naming the entry, exit 2',
+    $guardForbidden['code'] === 2 && str_contains($guardForbidden['output'], 'forbidden_scope') && str_contains($guardForbidden['output'], 'docs')
+        && !is_file($runs . '/guard-forbidden.json'),
+    aiRunDetail($guardForbidden)
+);
+
+// GUARD 1c — traversal and absolute paths are refused before anything is recorded.
+$guardTraversal = $run(['start', "--contract={$contract}", '--lane=fixture', '--name=guard-traversal', '--harness-artifact=../etc/passwd']);
+$guardAbsolute = $run(['start', "--contract={$contract}", '--lane=fixture', '--name=guard-absolute', '--harness-artifact=/etc/passwd']);
+$h->test(
+    '45. a traversal or absolute artefact is refused, exit 2',
+    $guardTraversal['code'] === 2 && str_contains($guardTraversal['output'], 'refused')
+        && $guardAbsolute['code'] === 2 && str_contains($guardAbsolute['output'], 'refused')
+        && !is_file($runs . '/guard-traversal.json') && !is_file($runs . '/guard-absolute.json'),
+    aiRunDetail($guardTraversal) . "\n---\n" . aiRunDetail($guardAbsolute)
+);
+
+// GUARD 2 — an artefact declared after the evidence exists is refused.
+$run($startArgs('guard-finish'));
+$guardFinish = $run(['finish', '--id=guard-finish', '--exit=0', '--harness-artifact=docs/nope.txt']);
+$h->test(
+    '46. GUARD 2 refuses --harness-artifact on finish and leaves the run running, exit 2',
+    $guardFinish['code'] === 2 && str_contains($guardFinish['output'], 'GUARD 2')
+        && aiRunStatus($runs, 'guard-finish') === 'running',
+    aiRunDetail($guardFinish)
+);
+
+// A declared artefact is excluded from the attributed delta AND shown in scope_conformance.
+$declaredRelative = '.ai/ai-run-declared-' . bin2hex(random_bytes(6)) . '.txt';
+$declaredAbsolute = $repoRoot . '/' . $declaredRelative;
+$declaredStart = $run(['start', "--contract={$contract}", '--lane=fixture', '--name=declared-artifact', '--harness-artifact=' . $declaredRelative]);
+$declaredStartRecord = aiRunRecord($runs, 'declared-artifact');
+file_put_contents($declaredAbsolute, "written by the harness in the run name\n");
+$declaredFinish = $run(['finish', '--id=declared-artifact', '--exit=0']);
+$declaredRecord = aiRunRecord($runs, 'declared-artifact');
+@unlink($declaredAbsolute);
+$h->test(
+    '47. a declared artefact is excluded from the delta and shown in scope_conformance',
+    $declaredStart['code'] === 0 && $declaredFinish['code'] === 0
+        && ($declaredStartRecord['harness_artifacts'] ?? null) === [$declaredRelative]
+        && ($declaredRecord['scope_conformance']['ok'] ?? false) === true
+        && in_array($declaredRelative, (array) ($declaredRecord['scope_conformance']['declared_harness_artifacts'] ?? []), true)
+        && !in_array($declaredRelative, (array) ($declaredRecord['scope_delta_paths'] ?? []), true)
+        && (array) ($declaredRecord['scope_conformance']['checked'] ?? []) === [],
+    'record=' . json_encode($declaredRecord, JSON_UNESCAPED_SLASHES)
+);
+
+// A-F2 is unweakened: an undeclared out-of-scope path is detected and attributed exactly as before.
+$undeclaredRelative = '.ai/ai-run-undeclared-' . bin2hex(random_bytes(6)) . '.txt';
+$undeclaredAbsolute = $repoRoot . '/' . $undeclaredRelative;
+$run($startArgs('undeclared-block'));
+file_put_contents($undeclaredAbsolute, "written by the executor\n");
+$undeclaredFinish = $run(['finish', '--id=undeclared-block', '--exit=0']);
+$undeclaredRecord = aiRunRecord($runs, 'undeclared-block');
+@unlink($undeclaredAbsolute);
+$undeclaredOffending = array_column((array) ($undeclaredRecord['scope_conformance']['offending'] ?? []), 'path');
+$h->test(
+    '48. A-F2 unweakened: an undeclared out-of-scope path still blocks (exit 3)',
+    $undeclaredFinish['code'] === 3 && aiRunStatus($runs, 'undeclared-block') === 'blocked'
+        && in_array($undeclaredRelative, $undeclaredOffending, true)
+        && ($undeclaredRecord['scope_conformance']['ok'] ?? true) === false,
+    'record=' . json_encode($undeclaredRecord, JSON_UNESCAPED_SLASHES)
+);
+
+// A declaration narrows only what is attributed: the undeclared path still blocks, the declared one is shown.
+$mixedDeclared = '.ai/ai-run-mixed-declared-' . bin2hex(random_bytes(6)) . '.txt';
+$mixedDeclaredAbsolute = $repoRoot . '/' . $mixedDeclared;
+$mixedUndeclared = '.ai/ai-run-mixed-undeclared-' . bin2hex(random_bytes(6)) . '.txt';
+$mixedUndeclaredAbsolute = $repoRoot . '/' . $mixedUndeclared;
+$run(['start', "--contract={$contract}", '--lane=fixture', '--name=mixed-artifact', '--harness-artifact=' . $mixedDeclared]);
+file_put_contents($mixedDeclaredAbsolute, "harness\n");
+file_put_contents($mixedUndeclaredAbsolute, "executor\n");
+$mixedFinish = $run(['finish', '--id=mixed-artifact', '--exit=0']);
+$mixedRecord = aiRunRecord($runs, 'mixed-artifact');
+@unlink($mixedDeclaredAbsolute);
+@unlink($mixedUndeclaredAbsolute);
+$mixedOffending = array_column((array) ($mixedRecord['scope_conformance']['offending'] ?? []), 'path');
+$h->test(
+    '49. a declaration narrows attribution only: declared shown, undeclared still blocks',
+    $mixedFinish['code'] === 3
+        && in_array($mixedDeclared, (array) ($mixedRecord['scope_conformance']['declared_harness_artifacts'] ?? []), true)
+        && !in_array($mixedDeclared, $mixedOffending, true)
+        && in_array($mixedUndeclared, $mixedOffending, true)
+        && !in_array($mixedDeclared, (array) ($mixedRecord['scope_delta_paths'] ?? []), true),
+    'record=' . json_encode($mixedRecord, JSON_UNESCAPED_SLASHES)
+);
+
 aiRunRemoveFixture($fixture);
 $h->done();

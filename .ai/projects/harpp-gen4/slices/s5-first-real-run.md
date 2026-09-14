@@ -8,7 +8,8 @@ dispatch: ["pi", "-p", "-a", "--thinking", "medium", "--model", "deepseek/deepse
 # REVISION 2 (2026-09-14, CD-26/CD-33). Two changes, neither of which lowers a criterion:
 #   1. lane reallocated to flash -- the Sol quota is exhausted (CD-30).
 #   2. the REPORT FORMAT is now specified, because revision 1 predated the claim-command convention
-#      (S6). That omission is the Chair's, and it is the reason this slice blocked: its only extracted
+#      recorded in CD-26. That omission is the Chair's, and it is the reason this slice blocked: its only
+#      extracted
 #      claim read `"command": "git diff --check           PASS"` -- the status word was inside the
 #      command, so there was no re-derivable command to run. The verifier was not at fault.
 # The implementation below is ALREADY PRESENT and committed (`58888a5`), reviewed independently
@@ -145,11 +146,21 @@ This run is itself a data point.
 
 ## Files likely affected
 
-- `tools/harpp-bridge/workflows/*.json` — the manifests
-- `tools/harpp-bridge/harpp_wake.py` — the runner's stage gate (locate it; do not guess)
-- `tools/harpp-bridge/tests/` — the marker-only test
-- `tools/harpp-bridge/README.md` — the gate's semantics
-- `.ai/projects/harpp-gen4/metrics.json` — tool output
+- `.ai/projects/harpp-gen4/metrics.json` — D5's tool output, the only file this run writes
+
+## Scope note — why the bridge paths are gone, and why that is STRICTER, not looser
+
+**Revision 2 is a VERIFICATION run**: the implementation is already in the tree and committed, and this run
+changes nothing. The scope above therefore declares this run's actual footprint, not the original slice's.
+
+Revision 1 listed `tools/harpp-bridge/harpp_wake.py`, which is a **trust-surface path**, so the ledger correctly
+demanded a director decision for a run that does not modify it. Declaring the narrower scope pre-authorises
+nothing: if the executor *did* modify a bridge file it would now be **out-of-scope and block**, where under
+revision 1 it would have been silently permitted. **The narrow declaration is the accurate one, and it converts
+a pre-authorised change into a detectable one.**
+
+Do not add bridge paths back to the scope. If you believe a bridge file must change, that is a finding to
+report, not a scope to widen.
 
 ## Acceptance criteria
 

@@ -112,10 +112,10 @@
             ]
         },
         "S5": {
-            "state": "blocked",
-            "run_id": "harpp-gen4-s5-20260914051616-73c40c",
-            "reason": "claims were not all RE_DERIVED: UNVERIFIED",
-            "updated_at": "2026-09-14T05:25:05+00:00",
+            "state": "done",
+            "run_id": "harpp-gen4-s5-20260914082239-fce746",
+            "reason": null,
+            "updated_at": "2026-09-14T08:31:07+00:00",
             "history": [
                 {
                     "from": "pending",
@@ -130,6 +130,48 @@
                     "run_id": "harpp-gen4-s5-20260914051616-73c40c",
                     "reason": "claims were not all RE_DERIVED: UNVERIFIED",
                     "at": "2026-09-14T05:25:05+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "harpp-gen4-s5-20260914051616-73c40c",
+                    "reason": "revision 2 of the contract: (a) the claim-command report format is now specified -- revision 1 predated it, so its only extracted claim read 'git diff --check PASS' with the status word INSIDE the command, leaving nothing re-derivable; (b) lane reallocated to flash, Sol quota exhausted (CD-30); (c) the implementation is present and committed (58888a5) so the run RE-DERIVES evidence rather than re-implementing. Acceptance criteria unchanged.",
+                    "at": "2026-09-14T07:47:41+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "harpp-gen4-s5-20260914074854-8dd9f1",
+                    "reason": null,
+                    "at": "2026-09-14T07:48:54+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "harpp-gen4-s5-20260914074854-8dd9f1",
+                    "reason": "scope conformance failed: .ai/chair-decisions.md, .ai/projects/harpp-gen4/state.json",
+                    "at": "2026-09-14T08:01:06+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "harpp-gen4-s5-20260914074854-8dd9f1",
+                    "reason": "prior run blocked on the harness's own state file (defect CD-37, fixed by Slice D) plus a Chair mid-run edit; the evidence itself was 7/7 RE_DERIVED. Re-dispatched to pass the corrected scope gate.",
+                    "at": "2026-09-14T08:22:38+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "harpp-gen4-s5-20260914082239-fce746",
+                    "reason": null,
+                    "at": "2026-09-14T08:22:39+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "harpp-gen4-s5-20260914082239-fce746",
+                    "reason": null,
+                    "at": "2026-09-14T08:31:07+00:00"
                 }
             ]
         }

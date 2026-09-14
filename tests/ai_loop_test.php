@@ -44,9 +44,9 @@ function loopRemove(string $path): void
  * @param list<string> $modes
  * @return array{base:string,projects:string,runs:string,args:list<string>}
  */
-function loopFixture(array $modes): array
+function loopFixture(array $modes, ?string $root = null): array
 {
-    $base = sys_get_temp_dir() . '/ikabud-ai-loop-' . bin2hex(random_bytes(6));
+    $base = $root ?? sys_get_temp_dir() . '/ikabud-ai-loop-' . bin2hex(random_bytes(6));
     $projects = $base . '/projects';
     $runs = $base . '/runs';
     $dir = $projects . '/fixture';
@@ -304,5 +304,34 @@ $h->test('17. ladder refuses to advance when the failed attempt supplies no new 
     && str_contains($noEvidence['output'], 'RUNG REFUSED S1: no new evidence')
     && !str_contains($noEvidence['output'], 'rung=L1'), $noEvidence['output']);
 loopRemove($fixture['base']);
+
+// ── D3: the loop declares the state file IT writes, in a repository-relative projects dir ───────
+// The other fixtures use a /tmp projects dir, where the state file can never appear in git scope and
+// therefore must not be declared. This fixture puts the project inside the repository so the write
+// IS part of the delta; the declaration must remove it from attribution while keeping it visible.
+$h->section('the loop declares the project state it writes in the run name');
+$loopRepoBase = dirname(__DIR__) . '/.ai/loop-declared-' . bin2hex(random_bytes(6));
+$declaredFixture = loopFixture(['happy'], $loopRepoBase);
+$declaredLoop = loopTestRun($declaredFixture['args']);
+$declaredState = json_decode((string) @file_get_contents($declaredFixture['projects'] . '/fixture/state.json'), true);
+$declaredRecords = glob($declaredFixture['runs'] . '/*.json') ?: [];
+$declaredRecord = $declaredRecords === [] ? null : json_decode((string) file_get_contents($declaredRecords[0]), true);
+$declaredRelative = substr($declaredFixture['projects'] . '/fixture/state.json', strlen(dirname(__DIR__)) + 1);
+$declaredArtifacts = is_array($declaredRecord) ? (array) ($declaredRecord['harness_artifacts'] ?? []) : [];
+$declaredSlices = array_filter($declaredArtifacts, static fn (string $path): bool => str_contains($path, '/slices/'));
+loopRemove($declaredFixture['base']);
+$h->test(
+    '18. the loop declares its state file, excludes it from the attributed delta, and advances',
+    $declaredLoop['code'] === 0
+        && ($declaredState['slices']['S1']['state'] ?? null) === 'done'
+        && is_array($declaredRecord)
+        && in_array($declaredRelative, $declaredArtifacts, true)
+        && in_array($declaredRelative, (array) ($declaredRecord['scope_conformance']['declared_harness_artifacts'] ?? []), true)
+        && !in_array($declaredRelative, (array) ($declaredRecord['scope_delta_paths'] ?? []), true)
+        && ($declaredRecord['scope_conformance']['ok'] ?? false) === true
+        && $declaredSlices === []
+        && str_contains($declaredLoop['output'], 'SCOPE OK') && str_contains($declaredLoop['output'], 'ADVANCE S1'),
+    $declaredLoop['output'] . "\nrecord=" . json_encode($declaredRecord, JSON_UNESCAPED_SLASHES)
+);
 
 $h->done();

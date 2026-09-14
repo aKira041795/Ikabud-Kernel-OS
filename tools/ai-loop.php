@@ -207,6 +207,43 @@ function loopFileL4(string $projectsDir, string $project, string $slice, string 
 }
 
 /**
+ * The repo-relative paths the loop writes in a run's name, for declaration at `start`. Read from the
+ * code, never guessed: `ai-project.php transition` rewrites `<projects>/<id>/state.json`, and
+ * `loopFileL4` writes `<projects>/<id>/repair-decisions.json`. `.ai/projects/<id>/slices/` is
+ * authored work and is deliberately NOT declared. A `--projects-dir` outside the repository (used
+ * by tests) is omitted: it can never appear in git-status scope anyway.
+ *
+ * @return list<string>
+ */
+function loopHarnessArtifacts(string $projectsDir, string $project): array
+{
+    $declared = [];
+    foreach ([rtrim($projectsDir, '/') . '/' . $project . '/state.json',
+        rtrim($projectsDir, '/') . '/' . $project . '/repair-decisions.json'] as $candidate) {
+        $relative = loopRepositoryRelativePath($candidate);
+        if ($relative !== null) { $declared[] = $relative; }
+    }
+    return array_values(array_unique($declared));
+}
+
+/** Normalise a loop-written path to repo-relative, or null when it lies outside the repository. */
+function loopRepositoryRelativePath(string $path): ?string
+{
+    $root = str_replace('\\', '/', dirname(__DIR__));
+    $candidate = str_replace('\\', '/', $path);
+    if (str_starts_with($candidate, $root . '/')) {
+        $candidate = substr($candidate, strlen($root) + 1);
+    } elseif (str_starts_with($candidate, '/')) {
+        return null;
+    }
+    $candidate = preg_replace('#^\./+#', '', $candidate) ?? $candidate;
+    if ($candidate === '' || preg_match('#(^|/)\.\.(/|$)#', $candidate) === 1) {
+        return null;
+    }
+    return $candidate;
+}
+
+/**
  * Execute one attempt and append its complete evidence trail to the event stream.
  * @param list<string> $dispatch
  * @param list<string> $events
@@ -222,6 +259,9 @@ function loopAttempt(array $dispatch, string $lane, string $contract, string $pr
     $report = rtrim($runsDir, '/') . '/' . $runId . '.report.txt';
     $startArgv = [PHP_BINARY, $runTool, 'start', '--contract=' . $contract, '--lane=' . $lane,
         '--name=' . $runId, '--report=' . $report, '--runs-dir=' . $runsDir];
+    foreach (loopHarnessArtifacts($projectsDir, $project) as $artifact) {
+        $startArgv[] = '--harness-artifact=' . $artifact;
+    }
     if ($directorDecision !== null) { $startArgv[] = '--director-decision=' . $directorDecision; }
     if ($predecessor !== null) {
         $startArgv[] = '--predecessor=' . $predecessor;
@@ -449,6 +489,9 @@ function loopMain(): int
             PHP_BINARY, $runTool, 'start', '--contract=' . $contract, '--lane=' . $dispatch['lane'],
             '--name=' . $runId, '--report=' . $report, '--runs-dir=' . $runsDir,
         ];
+        foreach (loopHarnessArtifacts($projectsDir, $id) as $artifact) {
+            $startArgv[] = '--harness-artifact=' . $artifact;
+        }
         if ($directorDecision !== null) { $startArgv[] = '--director-decision=' . $directorDecision; }
         $start = loopRun($startArgv);
         if ($start['code'] !== 0) {

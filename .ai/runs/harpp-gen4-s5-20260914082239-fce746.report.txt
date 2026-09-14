@@ -1,0 +1,353 @@
+# S5 (revision 2) — re-derived evidence: the bridge's own loops no longer trust markers
+
+repo: `/var/www/html/ikabudsix` · HEAD: `f5679ae` · implementation under verification: `58888a5`
+lane: `deepseek/deepseek-v4-flash` · run: `harpp-gen4-s5-20260914082239-fce746`
+
+This is a verification run. The implementation is already in the tree and committed (`58888a5`);
+this run modifies no bridge file. `git diff --stat 58888a5 -- tools/harpp-bridge/` is empty and
+`tools/harpp-bridge/harpp_wake.py` still hashes `a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab`,
+the digest recorded in this run's trust surface. The only tracked file this run writes is
+`.ai/projects/harpp-gen4/metrics.json` (D5); the harness suites also write their gitignored
+`test_results/*.json` output, which is not part of the tree.
+
+## How a command binds, and why the commands below sit on their own lines
+
+The harness extractor (`tools/ai-run.php:1343 parseCommandLine`) binds a command only when the
+**whole line is the command** (optionally prefixed `$ ` or `> `; backticks allowed). A `COMMAND:`
+label is prose to the extractor. So each claim below is written as a `COMMAND:` label line followed
+by the exact command verbatim on its own line, so the extractor binds it and a reader can paste it
+and see the same output. This is the adaptation already recorded for S6; it is a format adaptation,
+not a relaxation.
+
+Two kinds of evidence appear below:
+
+- **Binding (executed by `verify`)**: the five pure harness suites and the two `py_compile` checks.
+  These are the only commands this report needs the verifier to run, because they are pure and their
+  claims can be re-derived without touching the live service.
+- **Non-binding (shown verbatim, deliberately not executable)**: the sandboxed bridge-test
+  invocations, `grep`, the manifest validator and the metrics command. They carry an environment
+  assignment at the start of the line (`HARPP_NOTIFY=0 …`, `HARPP_CONFIG=…`) so the extractor does
+  not classify them as commands. This is deliberate: the only allowlisted bridge-test command is the
+  whole file `python3 tools/harpp-bridge/tests/test_harpp_wake.py`, which, run by the verifier
+  without the sandbox, can reach the live service (finding F1). Declaring it re-derivable is exactly
+  what the slice's absolute constraint forbids, so the sandboxed evidence is shown and not declared.
+
+## Findings (reported, not fixed — fixing now would invalidate the verification)
+
+**F1 — the bridge's own suite cannot be both green and safe under the contract's sandbox, and a
+single test can reach the live service.** `HarppWakeTest.test_workflow_stops_after_max_repairs`
+patches `harpp_client.send_message` but not `harpp_client.submit_decision`; when the workflow reaches
+BLOCKED, `_notify_workflow` (`tools/harpp-bridge/harpp_wake.py:2101`) calls `harpp_notify`, which
+calls the real `submit_decision`. Under the verifier's ambient environment (no `HARPP_NOTIFY`, no
+sandbox `HARPP_CONFIG`), that issues a live "Workflow blocked:" decision. With the contract's
+`HARPP_NOTIFY=0` the transport is neutralised (`submit_decision` returns `suppressed` before any
+network call), but `_notify_workflow` returns early, so 19 notification tests then fail. Measured:
+`HARPP_NOTIFY=0` full suite → `FAILED (failures=10, errors=9)`, exit 1, stub log 0 bytes.
+Consequence: this run does not declare the full bridge-suite command as a re-derivable claim.
+
+**F2 — the bridge's own model table still names the rejected `openai-codex/gpt-5.4`.**
+`MODEL_ALIASES` (`harpp_wake.py:85`) and `MODEL_FALLBACK_ORDER` (`harpp_wake.py:100`) still contain
+it, and `validate_workflow_manifest` accepts any model in either (`harpp_wake.py:2309`). D2 removed
+it from the manifests, but an operator phrase ("5.4") or an exhaustion fallback can still resolve to
+a dead lane. Bridge code is out of scope for this run: recorded, not edited.
+
+**F3 — the mandated report format is not what the extractor parses.** The slice's literal
+`COMMAND: <command>` line does not classify (`classifyCommand` is anchored at the start), so a
+literal reading of revision 2 would extract no command and block as revision 1 did. The label line
+plus a verbatim command line is the format that both reads correctly to a human and re-derives for
+the verifier. Recorded so it is not rediscovered next slice.
+
+## D1 — the evidence gate is authoritative (re-derived from the tree, not the commit message)
+
+- `_stage_result_matches` (`harpp_wake.py:2395`) refuses the stage when `evidence == "none"` or when
+  there is no `verify` (`:2409`), requires `claim_status == "RE_DERIVED"` (`:2411`), and requires
+  `verify:PASSED` in the structured evidence (`:2413`). Pipeline (`verify:PASSED`, `marker:FOUND`)
+  cannot advance a stage.
+- `_report_job` computes `ok = verify_passed and claim_status == "RE_DERIVED"`
+  (`harpp_wake.py:1651`); markers are informational (`:1633-1634`) and never enter `ok`.
+- `_build_stage_result` (`:2364`) emits `marker:INFORMATIONAL:{FOUND|NOT_FOUND}` and
+  `verify:{PASSED|FAILED}`, and carries `claim_status` (`:2389`).
+- `validate_workflow_manifest` (`:2278`) rejects an unknown `evidence` value, requires `verify`
+  unless `evidence == "none"`, and rejects `evidence: none` combined with a `verify` (`:2327-2334`).
+- `_normalize_stage` (`:1219`) defaults `evidence` to `required` when a `verify` exists, else `None`
+  (`:1230`).
+
+## D1/D2 — every manifest stage is keyed on evidence; no stale identifier remains
+
+All six manifests, every stage (read from the files):
+
+```
+governed-loop-flash.json     : 4 stages, all evidence=required
+governed-loop.json           : 4 stages, all evidence=required
+harpp-module-repair-loop.json: 3 stages, all evidence=required
+roadmap-slices.json          : 4 stages, all evidence=required
+standalone-harpp-loop.json   : 3 stages, all evidence=required
+standalone-harpp-remediation-loop.json : 3 stages, all evidence=required
+   each stage: marker=<self-report, informational>  verify=<non-empty command>  evidence=required
+```
+
+Model identifiers used by the manifests (verified against the registry and the recorded policy):
+
+```
+$ grep -rhoE '"model"[[:space:]]*:[[:space:]]*"[^"]+"' tools/harpp-bridge/workflows/*.json | sort | uniq -c
+      6 "model": "deepseek/deepseek-v4-flash"
+     15 "model": "openai-codex/gpt-5.6-sol"
+```
+
+- `~/.pi/agent/models-store.json`: provider `openai-codex` ids include `gpt-5.6-sol`; provider
+  `deepseek` ids include `deepseek-v4-flash`.
+- `~/.pi/agent/settings.json`: `defaultModel = deepseek-v4-flash`, `enabledModels = ["deepseek-v4-flash"]`.
+- Recorded policy `php tools/ai-autonomy.php models`: `architecture.preferred = openai-codex/gpt-5.6-sol`,
+  `implementation.preferred = deepseek-v4-flash`; T2 lane `deepseek-v4-flash`, T3 lane `openai-codex/gpt-5.6-sol`.
+
+The stale identifier is gone from the manifests:
+
+```
+$ grep -rn "gpt-5.4" tools/harpp-bridge/workflows/
+(no output; exit 1 — no match)
+```
+
+All six manifests still validate under the bridge's own validator (non-binding; each line is
+env-prefixed so the extractor does not classify it), stub log 0 bytes, exit 0 each:
+
+```
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/harpp workflow validate --manifest tools/harpp-bridge/workflows/governed-loop.json
+{"manifest": ".../governed-loop.json", "valid": true, "schema_version": 1}
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/harpp workflow validate --manifest tools/harpp-bridge/workflows/governed-loop-flash.json
+{"manifest": ".../governed-loop-flash.json", "valid": true, "schema_version": 1}
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/harpp workflow validate --manifest tools/harpp-bridge/workflows/harpp-module-repair-loop.json
+{"manifest": ".../harpp-module-repair-loop.json", "valid": true, "schema_version": 1}
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/harpp workflow validate --manifest tools/harpp-bridge/workflows/roadmap-slices.json
+{"manifest": ".../roadmap-slices.json", "valid": true, "schema_version": 1}
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/harpp workflow validate --manifest tools/harpp-bridge/workflows/standalone-harpp-loop.json
+{"manifest": ".../standalone-harpp-loop.json", "valid": true, "schema_version": 1}
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/harpp workflow validate --manifest tools/harpp-bridge/workflows/standalone-harpp-remediation-loop.json
+{"manifest": ".../standalone-harpp-remediation-loop.json", "valid": true, "schema_version": 1}
+```
+
+## D3 / acceptance 1 — a marker-only stage does not pass, and the anchor is non-vacuous
+
+The anchor test is `HarppWakeTest.test_monitor_rejects_marker_only_without_rederived_verification`:
+it tracks a job whose log ends `SOL_IMPL status=PASS` and asserts the job outcome is `FAILED` with
+`claim_status == "UNVERIFIED"`. Against the **pre-change** gate it fails (marker alone was `DONE`);
+against the tree as it is it passes. Both runs used the current test file; only `harpp_wake.py`
+differed (parent `58888a5^` vs HEAD). The sandbox is the same in both (env-prefixed, so non-binding).
+
+Pre-change gate (`cd /tmp/s5-pre/... && HARPP_NOTIFY=0 ... python3 tests/test_harpp_wake.py ...`):
+
+```
+harpp wake: ... job 3adaa5613ddd reported to conversation 3 (DONE)
+FAIL
+AssertionError: 'DONE' != 'FAILED'
+- DONE
++ FAILED
+Ran 1 test in 0.011s
+FAILED (failures=1)
+PRE_CHANGE_EXIT=1
+```
+
+Tree as it is (same test, sandboxed):
+
+```
+harpp wake: ... job 6e565d6bca6f reported to conversation 3 (FAILED)
+ok
+Ran 1 test in 0.009s
+OK
+CURRENT_EXIT=0
+```
+
+The scoped six-test invocation (the D3 anchor plus the four manifest/result-gate tests and the
+positive control) with `HARPP_NOTIFY=0`, the stub first on `PATH`, and the sandbox config:
+
+```
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/tests/test_harpp_wake.py HarppWakeTest.test_passing_verify_succeeds_when_informational_marker_is_missing HarppWakeTest.test_monitor_rejects_marker_only_without_rederived_verification WorkflowManifestValidationTest.test_marker_without_verify_must_be_visibly_unevidenced WorkflowManifestValidationTest.test_evidence_none_cannot_hide_a_configured_verify WorkflowManifestValidationTest.test_structured_stage_result_identity WorkflowManifestValidationTest.test_structured_result_identity_mismatch_rejected
+.....
+Ran 6 tests in 0.013s
+OK
+SCOPED_EXIT=0
+stub log bytes AFTER: 0
+```
+
+## D4 / acceptance 4-5 — sandboxed runs, and no live decision created
+
+Sandbox `/tmp/harpp-s5-verify`: `bin/harpp` is a stub that appends every invocation to
+`stub.log` and exits 99; it is first on `PATH`. `config/config-enabled.json` is
+`{"base_url":"https://sandbox.invalid","tenant_id":"sandbox",...,"harpp_notify":true}` — an
+unresolvable host, and notify explicitly enabled so the only suppression is the contract's
+`HARPP_NOTIFY=0`.
+
+In-process suppression probe (env-prefixed, non-binding):
+
+```
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 /tmp/harpp-s5-verify/probe.py
+HARPP_NOTIFY = 0
+HARPP_CONFIG = /tmp/harpp-s5-verify/config/config-enabled.json
+harpp on PATH = /tmp/harpp-s5-verify/bin/harpp
+_notify_enabled() = False
+submit_decision -> {'ok': True, 'suppressed': True, 'reason': 'testing/quiet mode'}
+send_message    -> {'ok': True, 'suppressed': True, 'reason': 'testing/quiet mode'}
+stub log bytes: 0
+```
+
+Full bridge suite, notifications enabled but dry-run transport (green, cannot egress):
+
+```
+HARPP_DRY_RUN=1 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/tests/test_harpp_wake.py
+Ran 207 tests in 5.759s
+OK
+DRYRUN_EXIT=0
+stub log bytes: 0
+```
+
+Full bridge suite with no network at all (`unshare -rn`, default config, no dry-run):
+
+```
+unshare -rn python3 tools/harpp-bridge/tests/test_harpp_wake.py
+Ran 207 tests in 6.541s
+OK
+UNSHARE_EXIT=0
+```
+
+F1 reproduced (contract's sandbox, green scoped only because the 19 notification tests are excluded):
+
+```
+HARPP_NOTIFY=0 HARPP_CONFIG=/tmp/harpp-s5-verify/config/config-enabled.json PATH=/tmp/harpp-s5-verify/bin:$PATH python3 tools/harpp-bridge/tests/test_harpp_wake.py
+Ran 207 tests in 4.256s
+FAILED (failures=10, errors=9)
+NOTIFY0_EXIT=1
+stub log bytes: 0
+```
+
+No live decision was created. The stub log is 0 bytes after every invocation above (the real `harpp`
+was never resolved), and the host's own ledger is byte-identical before and after:
+
+```
+sha256 decisions.json  0d5f597613430f1077060a8dd6c9b3c2615a6db2b9ef7f67ea28dd8ff3e59ffd  (before == after)
+sha256 config.json     6888412aa021d5a2b66896e5d522c2f6191c5a3c1891eabfdd2243a2bfc786f8  (before == after)
+local decisions ledger records: 26
+```
+
+## Re-derivable claims (these are what `verify` executes)
+
+Self-check: the extractor was run over this report as a temporary run record and yields exactly these
+seven claims, all `declared`; none of the sandboxed, `grep`, manifest-validator or metrics lines above
+is classified as a claim. A dry `verify` of that record reports `attempted=7 re-derived=7
+contradicted=0 refused=0 not_re_derivable=0 unverified=0`.
+
+### C1 — the ai-project harness suite is green with zero skips
+CLAIM: `php tests/ai_project_test.php` passes with no skips
+COMMAND:
+$ php tests/ai_project_test.php
+OBSERVED:
+18/18 passed
+Assertions: 18
+exit=0
+
+### C2 — the ai-loop harness suite is green with zero skips
+CLAIM: `php tests/ai_loop_test.php` passes with no skips (invoked outside the nested-dispatch guard)
+COMMAND:
+$ php tests/ai_loop_test.php
+OBSERVED:
+18/18 passed
+Assertions: 18
+exit=0
+
+### C3 — the ai-run harness suite is green with zero skips
+CLAIM: `php tests/ai_run_test.php` passes with no skips
+COMMAND:
+$ php tests/ai_run_test.php
+OBSERVED:
+67/67 passed
+Assertions: 67
+exit=0
+
+### C4 — the ai-autonomy harness suite is green with zero skips
+CLAIM: `php tests/ai_autonomy_test.php` passes with no skips
+COMMAND:
+$ php tests/ai_autonomy_test.php
+OBSERVED:
+59/59 passed
+Assertions: 59
+exit=0
+
+### C5 — the contract-lint harness suite is green with zero skips
+CLAIM: `php tests/ai_contract_lint_test.php` passes with no skips
+COMMAND:
+$ php tests/ai_contract_lint_test.php
+OBSERVED:
+3/3 passed
+Assertions: 3
+exit=0
+
+### C6 — the bridge gate module compiles
+CLAIM: the evidence-gate module is syntactically valid
+COMMAND:
+$ python3 -m py_compile tools/harpp-bridge/harpp_wake.py
+OBSERVED:
+exit=0
+
+### C7 — the bridge test module compiles
+CLAIM: the bridge test module is syntactically valid
+COMMAND:
+$ python3 -m py_compile tools/harpp-bridge/tests/test_harpp_wake.py
+OBSERVED:
+exit=0
+
+## D5 — the run's metric table, written by S4's tool
+
+Command and output (non-binding; `php tools/ai-project.php …` does not classify as a claim shape):
+
+```
+php tools/ai-project.php metrics --project=harpp-gen4 --write
+METRICS harpp-gen4 — derived from artefacts only
+slices dispatched           5 (S2, S3, S4, S5, S6)
+slices completed            5 (S2, S3, S4, S5, S6)
+runs completed              6
+runs silent                 0
+runs failed                 0
+runs abandoned              0
+runs blocked                1
+runs running                1
+runs other                  0
+lanes                       deepseek/deepseek-v4-flash=5, deterministic-release-evidence=1, openai-codex/gpt-5.6-sol=2
+wall-clock S2               694s
+wall-clock S3               694s
+wall-clock S6               720s
+wall-clock S4               1502s
+wall-clock S5               null — run harpp-gen4-s5-20260914082239-fce746 for slice S5 has no complete started_at/finished_at pair
+wall-clock total            null — run harpp-gen4-s5-20260914082239-fce746 has no complete started_at/finished_at pair
+claims RE_DERIVED           30
+claims CONTRADICTED         0
+claims UNVERIFIED           6
+claims other                0
+chair decisions             37
+chair decisions incorrect   3 (CD-6, CD-11, CD-12)
+contract violations         null — run harpp-gen4-s4-20260914045055-cd664e predates changed-path scope conformance
+cost (usd)                  null — not derivable (run record predates runner usage binding)
+tokens total                null — not derivable
+director minutes            null — director-minutes.json is absent; not logged (not zero)
+wrote .ai/projects/harpp-gen4/metrics.json
+```
+
+## Acceptance 7-8 — tests changed, skips, findings ledger
+
+No bridge test was changed or weakened; the implementation and its tests are `58888a5` as committed.
+The five harness suites are green with **zero skips** (C1–C5; no summary line reports any skipped
+test, and the suites print it when it happens). `php tests/ai_loop_test.php` must be invoked with the
+nested-dispatch guard unset while the executor runs, because the loop sets `AI_LOOP_ACTIVE=1` for the
+dispatched child; the loop's own `verify` is a separate `loopRun` process and does not carry the
+variable (the loop process env was checked: `AI_LOOP_ACTIVE` is absent). The verifier therefore sees
+the same 18/18. No PHP file was touched, so `php -l`/PHPStan are not applicable to this run.
+
+Acceptance 8: no stage is left ambiguous. Every one of the 22 stages carries a real `verify` and
+`evidence: required`; none is `evidence: none`, and the validator makes an unevidenced stage explicit
+(F1/F2 above are the recorded, out-of-scope product findings).
+
+## Verdict
+
+D1 (the evidence gate is authoritative and markers are informational), D2 (no stale manifest
+identifiers), D3 (the marker-only anchor is non-vacuous, falsified against `58888a5^`), D4 (no live
+decision) and D5 (the metric table) are re-derived against the tree as it is. The one criterion that
+cannot be both safely re-derived and re-derivable through the allowlist — rerunning the bridge suite
+— is delivered as sandboxed shown-evidence and reported as F1, because declaring its bare command
+would have the verifier create a live decision on the host, which this slice forbids absolutely.

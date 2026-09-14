@@ -234,15 +234,25 @@ Usage:
   php tools/ai-run.php start  --contract=PATH --lane=MODEL --name=ID [--log=PATH] [--report=PATH]
                               [--pid=N] [--director-decision=REF] [--predecessor=ID]
                               [--repair-level=L1|L2|L3] [--approach-change=TEXT]
-                              [--previous-failure=TEXT] [--runs-dir=DIR] [--json]
+                              [--previous-failure=TEXT] [--harness-artifact=PATH]...
+                              [--runs-dir=DIR] [--json]
                               Record the run before it starts, including the changed-path baseline.
                               A contract covering the verifier requires a real recorded director
                               decision; its reference is persisted in the ledger.
+                              --harness-artifact declares, before any evidence exists, a path the
+                              harness itself writes in the run's name (repeatable). Declared paths
+                              are recorded and shown in scope_conformance and excluded from the
+                              delta ATTRIBUTED to the executor; an undeclared out-of-scope path is
+                              still blocked (A-F2 unweakened). A verifier trust-surface path or a
+                              forbidden_scope path is refused (GUARD 1). Declaration is refused on
+                              finish: after the evidence exists it is an exemption, not a statement
+                              of intent (GUARD 2).
 
   php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH]
                               [--runs-dir=DIR] [--json]
                               Record the exit code observed by the dispatcher, compare changed paths
                               against the dispatch baseline and contract envelope, and classify:
+                              (--harness-artifact is refused here: declare at start, never finish)
                                 scope violation                    -> blocked (exit 3)
                                 exit != 0                          -> failed
                                 exit == 0, no report/log content   -> silent
@@ -368,6 +378,12 @@ function option(array $options, string $name, ?string $default = null): ?string
         throw new InvalidArgumentException("offending field --{$name}: supplied more than once");
     }
     return $options[$name][0];
+}
+
+/** @param array<string,list<string>> $options @return list<string> */
+function optionValues(array $options, string $name): array
+{
+    return array_values($options[$name] ?? []);
 }
 
 function requiredValue(?string $value, string $field): string
@@ -680,6 +696,124 @@ function repositoryRelativePath(?string $path): ?string
 }
 
 /**
+ * Does a declared harness artefact reach the verifier trust surface? Mirrors
+ * tools/ai-autonomy.php:isTrustSurfacePath()/trustSurfaceCoverage() so a declaration can never
+ * exempt the verifier itself (GUARD 1). The trust-surface list above is already mirrored and pinned
+ * by tests/ai_run_test.php and tests/ai_autonomy_test.php; the coverage rule is duplicated for the
+ * same reason (the two tools cannot require each other without a redeclaration fatal) and is
+ * exercised by the same suite.
+ */
+function isHarnessArtifactTrustSurface(string $path): bool
+{
+    return harnessArtifactTrustSurfaceCoverage($path) !== [];
+}
+
+/**
+ * The trust-surface files a declared path covers. Ambiguity resolves toward protection: an exact
+ * file, a directory prefix, a glob that could match, or a resolving symlink all reach the surface.
+ *
+ * @return list<string>
+ */
+function harnessArtifactTrustSurfaceCoverage(string $path): array
+{
+    $path = trim($path, " \t\n\r\0\x0B`\"'");
+    $path = preg_replace('#^\./+#', '', $path) ?? $path;
+    $path = rtrim($path, '/');
+    if ($path === '' || $path === '.') { return []; }
+
+    $reached = [];
+    foreach (trustSurfacePaths() as $trust) {
+        if (preg_match('/[*?\[\]{}]/', $path) === 1) {
+            if (fnmatch($path, $trust) || fnmatch($path, $trust, defined('FNM_PATHNAME') ? FNM_PATHNAME : 0)) {
+                $reached[] = $trust;
+            }
+        } elseif ($path === $trust || str_starts_with($trust, $path . '/')) {
+            $reached[] = $trust;
+        }
+    }
+
+    $root = dirname(__DIR__);
+    $absolute = $root . '/' . $path;
+    if (is_link($absolute)) {
+        $target = realpath($absolute);
+        if ($target === false) { return trustSurfacePaths(); }
+        foreach (trustSurfacePaths() as $trust) {
+            $resolved = realpath($root . '/' . $trust);
+            if ($resolved !== false && ($target === $resolved || str_starts_with($resolved, rtrim($target, '/') . '/'))) {
+                $reached[] = $trust;
+            }
+        }
+    }
+
+    return array_values(array_unique($reached));
+}
+
+/**
+ * Does one normalised path lie inside a forbidden_scope entry? Mirrors
+ * tools/ai-autonomy.php:pathMatches() exactly, so a declaration is measured by the same matcher as
+ * A-F2. This is GUARD 1's second half: without it a declaration would exempt a forbidden path.
+ *
+ * @param array<string,mixed> $entry
+ */
+function harnessArtifactMatchesForbidden(string $path, array $entry): bool
+{
+    $kind = (string) ($entry['kind'] ?? '');
+    $entryPath = (string) ($entry['path'] ?? '');
+    if ($entryPath === '') { return false; }
+    if ($kind === 'glob') {
+        return fnmatch($entryPath, $path, defined('FNM_PATHNAME') ? FNM_PATHNAME : 0);
+    }
+    if ($kind === 'file') {
+        return $path === $entryPath;
+    }
+    return $path === $entryPath || str_starts_with($path, $entryPath . '/');
+}
+
+/** Does the normalised path resolve, through existing parents, outside the repository? */
+function harnessArtifactEscapesRepository(string $path): bool
+{
+    $root = realpath(dirname(__DIR__));
+    if ($root === false) { return false; }
+    $ancestor = $root . '/' . $path;
+    while (!file_exists($ancestor) && dirname($ancestor) !== $ancestor) {
+        $ancestor = dirname($ancestor);
+    }
+    $resolved = realpath($ancestor);
+    if ($resolved === false) { return false; }
+    return $resolved !== $root && !str_starts_with($resolved, rtrim($root, '/') . '/');
+}
+
+/**
+ * Validate one declared harness artefact and return its normalised repo-relative path. Refuses
+ * (exit 2, message naming the path and the reason): an absolute/traversal path, a path that resolves
+ * outside the repository, a trust-surface path, or a path inside the contract's forbidden_scope.
+ * Declaration is never exemption: the caller records the normalised path so scope_conformance can
+ * show it rather than silently dropping it.
+ *
+ * @param array<string,mixed> $contract
+ */
+function validatedHarnessArtifact(string $raw, array $contract): string
+{
+    try {
+        $path = DevelopmentTaskContract::normalizePath($raw);
+    } catch (InvalidArgumentException $e) {
+        throw new InvalidArgumentException("harness artefact '{$raw}' refused: " . $e->getMessage());
+    }
+    if (harnessArtifactEscapesRepository($path)) {
+        throw new InvalidArgumentException("harness artefact '{$path}' refused: it resolves outside the repository");
+    }
+    if (isHarnessArtifactTrustSurface($path)) {
+        throw new InvalidArgumentException("harness artefact '{$path}' refused: it reaches the verifier trust surface, which is never contract-authorisable (GUARD 1)");
+    }
+    foreach ((array) ($contract['forbidden_scope'] ?? []) as $entry) {
+        if (is_array($entry) && harnessArtifactMatchesForbidden($path, $entry)) {
+            throw new InvalidArgumentException("harness artefact '{$path}' refused: it lies inside the contract forbidden_scope entry '" . (string) ($entry['path'] ?? '?') . "' (GUARD 1)");
+        }
+    }
+    return $path;
+}
+
+/**
  * Evaluate changed paths by invoking `check`; this guarantees A-F2 uses the exact envelope and
  * taxonomy matcher used by interactive checks, including trust-surface directory/glob semantics.
  *
@@ -729,6 +863,12 @@ function commandStart(array $options, bool $json): int
 
     $contractPath = requiredValue(option($options, 'contract'), 'contract');
     $parsed = loadContract($contractPath);
+    $harnessArtifacts = [];
+    foreach (optionValues($options, 'harness-artifact') as $rawArtifact) {
+        $harnessArtifacts[] = validatedHarnessArtifact($rawArtifact, $parsed);
+    }
+    $harnessArtifacts = array_values(array_unique($harnessArtifacts));
+    sort($harnessArtifacts, SORT_STRING);
     $directorDecision = trim((string) option($options, 'director-decision', ''));
     $requiresDirector = contractRequiresDirector($contractPath);
     if (($requiresDirector && $directorDecision === '') || ($directorDecision !== '' && !runDirectorDecisionExists($directorDecision))) {
@@ -790,6 +930,7 @@ function commandStart(array $options, bool $json): int
         'scope_baseline_paths' => $baseline['paths'],
         'scope_baseline_fingerprints' => changedPathFingerprints($baseline['paths']),
         'scope_ignored_paths' => $ignored,
+        'harness_artifacts' => $harnessArtifacts,
         'predecessor_run_id' => $predecessor,
         'repair' => $predecessor === null ? null : [
             'level' => $repairLevel,
@@ -823,6 +964,9 @@ function commandStart(array $options, bool $json): int
     fwrite(STDOUT, "  lane:      {$record['lane']}\n");
     fwrite(STDOUT, "  pid:       {$pid}\n");
     fwrite(STDOUT, "  baseline:  " . count($baseline['paths']) . " changed path(s) at dispatch\n");
+    if ($harnessArtifacts !== []) {
+        fwrite(STDOUT, "  harness:   " . implode(', ', $harnessArtifacts) . "\n");
+    }
     fwrite(STDOUT, "  director:  " . ($directorDecision === '' ? '(not required)' : $directorDecision) . "\n");
     fwrite(STDOUT, "  trust:     " . ($trustSurface['hash'] ?? 'unavailable') . "\n");
     fwrite(STDOUT, "  log:       " . ($log ?? '(none)') . "\n");
@@ -838,6 +982,9 @@ function commandFinish(array $options, bool $json): int
     $id = validateRunId(requiredValue(option($options, 'id'), 'id'));
     $runsDir = runsDirOf(option($options, 'runs-dir'));
     $exitCode = intValue(option($options, 'exit'), 'exit');
+    if (optionValues($options, 'harness-artifact') !== []) {
+        throw new InvalidArgumentException('--harness-artifact is only valid on start: a declaration made after the evidence exists is an exemption shaped to fit the run, not a declaration (GUARD 2)');
+    }
     $record = loadRecord($runsDir, $id);
 
     $log = option($options, 'log', is_string($record['log'] ?? null) ? $record['log'] : null);
@@ -848,9 +995,13 @@ function commandFinish(array $options, bool $json): int
     $current = workingTreeChangedPaths();
     $baseline = is_array($record['scope_baseline_paths'] ?? null) ? array_values(array_map('strval', $record['scope_baseline_paths'])) : null;
     $ignored = is_array($record['scope_ignored_paths'] ?? null) ? array_values(array_map('strval', $record['scope_ignored_paths'])) : [];
+    $declaredArtifacts = is_array($record['harness_artifacts'] ?? null)
+        ? array_values(array_unique(array_map('strval', $record['harness_artifacts'])))
+        : [];
+    sort($declaredArtifacts, SORT_STRING);
     if (!$current['ok'] || $baseline === null) {
         $detail = !$current['ok'] ? (string) $current['error'] : 'run has no dispatch-time changed-path baseline';
-        $conformance = ['ok' => false, 'checked' => [], 'offending' => [['path' => '(working-tree)', 'reasons' => [$detail]]]];
+        $conformance = ['ok' => false, 'checked' => [], 'offending' => [['path' => '(working-tree)', 'reasons' => [$detail]]], 'declared_harness_artifacts' => $declaredArtifacts];
         $delta = [];
     } else {
         $delta = array_values(array_unique(array_merge(array_diff($current['paths'], $baseline), array_diff($baseline, $current['paths']))));
@@ -863,12 +1014,18 @@ function commandFinish(array $options, bool $json): int
             }
         }
         $delta = array_values(array_diff(array_unique($delta), $ignored));
+        // Declaration, never exemption. The declared paths are removed from what is ATTRIBUTED to
+        // the executor, but they stay visible in scope_conformance.declared_harness_artifacts and
+        // the full declaration is in the run record's harness_artifacts. An undeclared out-of-scope
+        // path is untouched here, so A-F2 still blocks it.
+        $delta = array_values(array_diff($delta, $declaredArtifacts));
         sort($delta, SORT_STRING);
         $conformance = scopeConformance(
             (string) ($record['contract'] ?? ''),
             (string) ($record['contract_revision'] ?? ''),
             $delta
         );
+        $conformance['declared_harness_artifacts'] = $declaredArtifacts;
     }
 
     $record['finished_at'] = date(DATE_ATOM);
@@ -2051,11 +2208,11 @@ function main(): int
     $parsed = parseArguments($args);
 
     if ($command === 'start') {
-        validateArgumentNames($parsed, ['contract', 'lane', 'name', 'log', 'report', 'pid', 'director-decision', 'predecessor', 'repair-level', 'approach-change', 'previous-failure', 'runs-dir'], ['json']);
+        validateArgumentNames($parsed, ['contract', 'lane', 'name', 'log', 'report', 'pid', 'director-decision', 'predecessor', 'repair-level', 'approach-change', 'previous-failure', 'harness-artifact', 'runs-dir'], ['json']);
         return commandStart($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'finish') {
-        validateArgumentNames($parsed, ['id', 'exit', 'log', 'report', 'runs-dir'], ['json']);
+        validateArgumentNames($parsed, ['id', 'exit', 'log', 'report', 'harness-artifact', 'runs-dir'], ['json']);
         return commandFinish($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'claims') {

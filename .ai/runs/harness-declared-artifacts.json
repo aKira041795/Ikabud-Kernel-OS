@@ -1,0 +1,169 @@
+{
+    "id": "harness-declared-artifacts",
+    "contract": ".ai/harness-declared-artifacts.contract.md",
+    "contract_revision": "1fde12bbd67398ec",
+    "allowed_count": 4,
+    "forbidden_count": 7,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T08:06:18+00:00",
+    "pid": 2332971,
+    "log": null,
+    "report": ".ai/harness-declared-artifacts.report.txt",
+    "status": "blocked",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/allowlist-native-evidence.log",
+        ".ai/chair-decisions.md",
+        ".ai/guardrail-scope-integrity.log",
+        ".ai/guardrail-trust-surface.log",
+        ".ai/harness-declared-artifacts.contract.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/harpp-gen4/metrics.json",
+        ".ai/projects/harpp-gen4/slices/s5-first-real-run.md",
+        ".ai/projects/harpp-gen4/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.report.txt",
+        ".ai/standing-authorization-and-decisions.md"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/allowlist-native-evidence.log": "file:3e538300f5362be43f745ed58bce573171d1197985c036234ba2672ba5f7c1cb",
+        ".ai/chair-decisions.md": "file:dfe3578eff113ada4836d9ce55069d80a7e2c041a094368d11da79ce9c7f8727",
+        ".ai/guardrail-scope-integrity.log": "file:db56d457be3947a299a142caf81c258f2358d96b2044e8ba70a261a431725774",
+        ".ai/guardrail-trust-surface.log": "file:182bb833f1ea85023262197720c57b2a1853536ed8d78f0881f3ba8cda8e5319",
+        ".ai/harness-declared-artifacts.contract.md": "file:57042d10c218462de76a611d18cb8589be35d16e18c928b9934a2724202e2909",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/projects/harpp-gen4/metrics.json": "file:fa8e3a3aa2c3d3b6aa9084c9bcbfb6f153e1f949790a7ed9e7127d59993ae395",
+        ".ai/projects/harpp-gen4/slices/s5-first-real-run.md": "file:ed6cc6b8120fd4023875ae89c2922543f6faea27054763d5b5d24a1993bb45b6",
+        ".ai/projects/harpp-gen4/state.json": "file:4139e8b55377355dc8054fa8a8aea656b2e2553f8e5816ce7291b5a480bbc111",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.json": "file:d0a78c4226c61c83a96049779d5606a6d5c45319c3f98cad5a438b284cd11384",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.report.txt": "file:78d8044bf6907038e35ed5ca55b5dd693b38d26b920ee7b2845a98fcbd3182af",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/harness-declared-artifacts.json",
+        ".ai/harness-declared-artifacts.report.txt"
+    ],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": {
+        "decision_ref": "CD-37",
+        "recorded_at": "2026-09-14T08:06:18+00:00",
+        "required_for_trust_surface": true
+    },
+    "trust_surface_hash": "9139f93c68776c77add7aa2e1e5f5b58fe4f2516448d018b4b3b269dd484c457",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+        "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "ead4152cd9ed508d8572fcf898a29bf32f95f5fb75bf6ebc928e111b92cef2dc",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "9b7367fed2e9c83d6e6ab87866f888de524ffd36d5f9acdfcd3ff10cef24cf55",
+        "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+    },
+    "finished_at": "2026-09-14T08:20:48+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 30292,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/allowlist-native-evidence.log",
+        ".ai/chair-decisions.md",
+        ".ai/guardrail-scope-integrity.log",
+        ".ai/guardrail-trust-surface.log",
+        ".ai/harness-declared-artifacts.contract.md",
+        ".ai/harness-declared-artifacts.report.txt",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/harpp-gen4/metrics.json",
+        ".ai/projects/harpp-gen4/slices/s5-first-real-run.md",
+        ".ai/projects/harpp-gen4/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/harness-declared-artifacts.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        ".ai/trust-surface-amendments.json",
+        "tests/ai_loop_test.php",
+        "tests/ai_run_test.php",
+        "tools/ai-loop.php",
+        "tools/ai-run.php"
+    ],
+    "scope_delta_paths": [
+        ".ai/trust-surface-amendments.json",
+        "tests/ai_loop_test.php",
+        "tests/ai_run_test.php",
+        "tools/ai-loop.php",
+        "tools/ai-run.php"
+    ],
+    "scope_conformance": {
+        "ok": false,
+        "checked": [
+            ".ai/trust-surface-amendments.json",
+            "tests/ai_loop_test.php",
+            "tests/ai_run_test.php",
+            "tools/ai-loop.php",
+            "tools/ai-run.php"
+        ],
+        "offending": [
+            {
+                "path": ".ai/trust-surface-amendments.json",
+                "reasons": [
+                    "path '.ai/trust-surface-amendments.json' is outside the approved scope"
+                ]
+            },
+            {
+                "path": "tests/ai_loop_test.php",
+                "reasons": [
+                    "path 'tests/ai_loop_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tests/ai_run_test.php",
+                "reasons": [
+                    "path 'tests/ai_run_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tools/ai-loop.php",
+                "reasons": [
+                    "path 'tools/ai-loop.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tools/ai-run.php",
+                "reasons": [
+                    "path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"
+                ]
+            }
+        ],
+        "declared_harness_artifacts": []
+    },
+    "evidence_fingerprint": "4fc996a3e4f05d0fe025df5644286e5ba7c1ab4d4ba5d86f7b8e62e6012b58eb",
+    "evidence_unavailable_reason": null
+}

@@ -36,6 +36,24 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "7f968744e53c88d47c6ee7b9e86bc99811e90aa8a163ba94ea9e7f3da6e231a2"
+        },
+        {
+            "run_id": "harness-declared-artifacts",
+            "block_reason": "ALL FOUR OFFENDERS ARE THE SLICE'S AUTHORISED PURPOSE: tools/ai-run.php and tools/ai-loop.php are the verifier this slice was authorised to extend (owner decision 'A is approved', CD-37); tests/ai_run_test.php and tests/ai_loop_test.php GREW 60->67 and 17->18 with the new guard assertions, nothing weakened. Verified independently by the Chair: GUARD 1 refuses the verifier path and forbidden paths, traversal and absolute paths; GUARD 2 refuses declaration at finish; a legitimate artefact is accepted (positive control).",
+            "director_decision": "CD-37",
+            "acknowledged_at": "2026-09-14T08:22:18+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "9a48641a8ac544f9882196c557c05d03d93a06bf928d225502907fb50894bdc9"
+        },
+        {
+            "run_id": "harpp-gen4-s5-20260914074854-8dd9f1",
+            "block_reason": "ADJUDICABLE CLASS (CD-36); disposition was REPAIR, not acknowledgement. The work PROVED ITSELF: verify re-derived 7/7 including both python3 -m py_compile claims, contradicted=0 refused=0. The block concerned only WHAT THE RUN TOUCHED -- .ai/projects/harpp-gen4/state.json, written by the LOOP itself (defect CD-37, now fixed by Slice D), and .ai/chair-decisions.md, edited by the Chair during the run (my violation, recorded). Acknowledged now that its cause is fixed and the slice is being re-dispatched through the corrected machinery.",
+            "director_decision": "CD-37",
+            "acknowledged_at": "2026-09-14T08:22:38+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "d0a78c4226c61c83a96049779d5606a6d5c45319c3f98cad5a438b284cd11384"
         }
     ]
 }
