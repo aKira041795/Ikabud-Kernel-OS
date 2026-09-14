@@ -1,0 +1,50 @@
+{
+    "schema": "ark.ai-project-state.v1",
+    "project": "harpp-gen4",
+    "slices": {
+        "S2": {
+            "state": "done",
+            "run_id": "s2s3-delivery",
+            "reason": null,
+            "updated_at": "2026-09-14T04:25:49+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "s2s3-delivery",
+                    "reason": null,
+                    "at": "2026-09-14T04:25:49+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "s2s3-delivery",
+                    "reason": null,
+                    "at": "2026-09-14T04:25:49+00:00"
+                }
+            ]
+        },
+        "S3": {
+            "state": "done",
+            "run_id": "s2s3-delivery",
+            "reason": null,
+            "updated_at": "2026-09-14T04:25:49+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "s2s3-delivery",
+                    "reason": null,
+                    "at": "2026-09-14T04:25:49+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "s2s3-delivery",
+                    "reason": null,
+                    "at": "2026-09-14T04:25:49+00:00"
+                }
+            ]
+        }
+    }
+}

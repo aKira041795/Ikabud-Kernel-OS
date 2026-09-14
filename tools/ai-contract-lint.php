@@ -8,7 +8,7 @@ require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskCo
 /**
  * Contract-corpus conformance lint.
  *
- * Read-only. For every `.ai/*.contract.md` it reports whether the kernel
+ * Read-only. For every root contract and project/slice markdown file it reports whether the kernel
  * parser accepts the contract, whether it carries a `harness:` reference
  * block, whether any `## Forbidden changes` bullet is prose masquerading as a
  * path (a "phantom"), and its declared status/class.
@@ -39,7 +39,7 @@ const EXIT_USAGE = 2;
 const EXIT_LIVE_FAILURE = 3;
 
 const LIVE_CLASSES = ['READY_FOR_IMPLEMENTATION', 'QUEUED', 'BLOCKING', 'READY_FOR_MEASUREMENT'];
-const STALE_CLASSES = ['DONE', 'SHIPPED', 'CLOSED', 'COMPLETE', 'SUPERSEDED', 'ADOPTED'];
+const STALE_CLASSES = ['DONE', 'DELIVERED', 'SHIPPED', 'CLOSED', 'COMPLETE', 'SUPERSEDED', 'ADOPTED'];
 const STANDING_CONTRACT = '.ai/ai-autonomy-harness.contract.md';
 
 /** @return string absolute repository root */
@@ -197,7 +197,7 @@ function isPhantomBullet(string $bullet): bool
 function extractStatus(string $markdown): array
 {
     foreach (preg_split('/\r?\n/', $markdown) ?: [] as $line) {
-        if (preg_match('/^status:\s*(.*?)\s*$/', $line, $m) === 1) {
+        if (preg_match('/(?:^|·\s*)status:\s*(.*?)(?:\s+·.*)?\s*$/', $line, $m) === 1) {
             $value = trim($m[1]);
             return [
                 'value' => $value,
@@ -299,11 +299,24 @@ function phantomEntries(string $markdown, bool $parseOk, array $rules): array
 function collectContracts(string $root): array
 {
     $files = glob($root . '/.ai/*.contract.md') ?: [];
+    $projects = $root . '/.ai/projects';
+    if (is_dir($projects)) {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($projects, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $entry) {
+            if ($entry->isFile() && str_ends_with($entry->getFilename(), '.md')) {
+                $files[] = $entry->getPathname();
+            }
+        }
+    }
+    $files = array_values(array_unique($files));
     sort($files);
 
     $contracts = [];
     foreach ($files as $file) {
-        $contracts[] = analyseContract($root, $file, '.ai/' . basename($file));
+        $relative = str_starts_with($file, $root . '/') ? substr($file, strlen($root) + 1) : $file;
+        $contracts[] = analyseContract($root, $file, $relative);
     }
 
     return $contracts;
@@ -363,6 +376,7 @@ function usageError(string $message): int
  */
 function printTable(array $contracts): void
 {
+    fwrite(STDOUT, "COVERAGE .ai/*.contract.md + .ai/projects/**/*.md (project.md and slice contracts)\n");
     foreach ($contracts as $c) {
         $phantomSuffix = '';
         if ($c['phantoms'] > 0) {
@@ -430,6 +444,7 @@ function main(): int
                 'contracts' => [$contract],
                 'summary' => summarize([$contract]),
                 'live_only' => false,
+                'coverage' => ['.ai/*.contract.md', '.ai/projects/**/*.md'],
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
         } else {
             printTable([$contract]);
@@ -450,6 +465,7 @@ function main(): int
             'contracts' => $contracts,
             'summary' => $summary,
             'live_only' => $liveOnly,
+            'coverage' => ['.ai/*.contract.md', '.ai/projects/**/*.md'],
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
     } else {
         printTable($contracts);

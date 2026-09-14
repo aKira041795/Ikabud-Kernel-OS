@@ -3,7 +3,7 @@
 status: READY_FOR_IMPLEMENTATION
 repo: `/var/www/html/ikabudsix` — the harness **and** the subject.
 subject: `tools/harpp-bridge/` — the HARPP bridge, copied here as-is by owner decision (CD-16, 2026-09-14).
-revision: 2 — slice S1 withdrawn as unnecessary (see below).
+revision: 3 — S2 and S3 delivered together; slice S1 remains withdrawn (see below).
 references: `.ai/ai-autonomy-harness.contract.md`
 authority: owner directive 2026-09-14 — *"make this concept provable, stable, measurable, repeatable, seamless"*, with **HARPP as the project** and the Sol lane reset.
 
@@ -72,10 +72,31 @@ Ordered; each slice is dispatched, gated on evidence, and recorded in the ledger
 | # | Slice | Delivers | Unlocks |
 |---|---|---|---|
 | **~~S1~~** | ~~**Repo parameterisation**~~ — **WITHDRAWN** (CD-16): the subject is now in-tree, so no cross-repo transport is needed. Deferred until a project legitimately lives elsewhere | — | — |
-| **S2** | **Project object** — `tools/ai-project.php` (`status`, `next`, `obligations`); the project format above; obligations computed across slices, so the **stop invariant works at project level** | measurable · provable | S3 |
-| **S3** | **Evidence-gated loop** — `tools/ai-loop.php --project=<id>`: dispatch by lane policy → ledger `start`/`finish` → **verify (must be `RE_DERIVED`)** → `commit-check` → commit → next. Stops only on L4, budget exhaustion, or zero remaining obligations. **No marker trust.** | provable · stable · seamless | S5 |
+| **S2 — DELIVERED** | **Project object** — `tools/ai-project.php` (`status`, `next`, `obligations`); the project format above; obligations computed across slices, so the **stop invariant works at project level** | measurable · provable | S3 |
+| **S3 — DELIVERED** | **Evidence-gated loop** — `tools/ai-loop.php --project=<id>`: dispatch by lane policy → ledger `start`/`finish` → **verify (must be `RE_DERIVED`)** → next. `commit-check` runs before every dispatch. Stops on the first failed gate. **No marker trust.** | provable · stable · seamless | S5 |
 | **S4** | **Metrics capture** — derive the metric table from artefacts; capture cost/tokens where the runner exposes them, otherwise record `unavailable` **explicitly**; accept director-minutes as a logged input | measurable | S5 |
 | **S5** | **First real run** — bind the harness to the HARPP tree and run a small real HARPP task end-to-end through the loop, unattended, ≥2 slices, and produce the metric table from artefacts | the Gen 4 proof | — |
+
+## S2+S3 delivery record — 2026-09-14
+
+Chair decision: deliver S2 and S3 as one bounded implementation because the loop needs project
+obligations to exercise its gates; this is the decomposition authorised by the S2+S3 slice, not a scope
+increase. Owner intervention was not required (CD-8).
+
+Ledger run `s2s3-delivery` is `completed` and its four claims are independently `RE_DERIVED`, bound to
+revision `b0e57e2aaeade1052c782920817001a64c2bcc47` with `dirty=yes`:
+
+- `php tests/ai_project_test.php` — 6/6, exit 0, zero skips;
+- `php tests/ai_loop_test.php` — 8/8, exit 0, zero skips, including marker-only refusal,
+  commit-check refusal, dry-run no-write, all fail-closed modes, two-slice unattended progression, and
+  the hard slice bound;
+- `php tests/ai_run_test.php` — 31/31, exit 0, zero skips;
+- `php tests/ai_autonomy_test.php` — 46/46, exit 0, zero skips.
+
+`state.json`, written through `ai-project.php`, records `pending → running → done` for S2 and S3 with that
+run id. Two project obligations remain (S4 and S5); `stop-report --remaining=2
+--stop-reason=PROJECT_COMPLETE` correctly exits 3 with `ILLEGITIMATE_STOP`. The project is therefore not
+claimed complete.
 
 ## Architectural constraints
 

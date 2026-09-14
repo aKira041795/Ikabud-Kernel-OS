@@ -458,6 +458,37 @@ advances on claims whose status is `RE_DERIVED`, read from the run record's `cla
 `verify --json` output). Non-re-derivable claim types are listed as needing a human or a separate
 procedure — they are not silently treated as satisfied.
 
+### Project convention and evidence-gated loop (added 2026-09-14)
+
+A governed project is stored as:
+
+```
+.ai/projects/<project-id>/project.md      ordered `## Slices` table and project acceptance
+.ai/projects/<project-id>/slices/<n>.md   slice contracts and their acceptance criteria
+.ai/projects/<project-id>/state.json      transition history written only by `ai-project.php`
+.ai/projects/<project-id>/metrics.json    derived metrics (S4); never hand-edited
+```
+
+`php tools/ai-project.php status|next|obligations --project=<id>` treats the active rows in the project
+slice table as authoritative order. Remaining obligations are derived from each unfinished slice's
+acceptance criteria (one explicit slice obligation when its contract has not yet been authored), never
+stored as a hand-maintained counter. `transition` records `pending → running → done|blocked` and refuses a
+`done` transition unless the named completed run has at least one claim and every claim is
+`RE_DERIVED` in the ledger.
+
+Run bounded unattended progression with
+`php tools/ai-loop.php --project=<id> [--max-slices=N] [--dry-run] [--json]`. For every real dispatch it
+calls `commit-check` first, records ledger `start`, invokes the declared lane as an argv array without a
+shell, records `finish`, extracts claims, calls `verify`, and only then asks the project tool to record
+`done`. It stops on the first missing report, `silent`, `failed`, `abandoned`, `UNVERIFIED` or
+`CONTRADICTED` result. A blocked predecessor prevents `next` from selecting later work. Nested loops are
+refused and `--max-slices` is a hard bound; `--dry-run` reports only the next plan and writes neither
+ledger nor project state.
+
+**No marker trust:** an executor line such as `SOL_IMPL status=PASS` is prose, not evidence. The project
+stage gate consumes one or more independently `RE_DERIVED` claims. A marker-only report has zero claims
+and therefore blocks, even when the executor exited zero.
+
 ## Simulation harness
 
 `.ai/harpp-sim/` proves only that the local driver speaks the HARPP CLI subset and consumes the real JSON

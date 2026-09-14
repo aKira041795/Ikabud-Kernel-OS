@@ -1,0 +1,54 @@
+Implemented S2+S3 without modifying `tools/harpp-bridge/` or forbidden paths.
+
+### Delivered
+
+- `tools/ai-project.php`
+  - Project status, ordered `next`, derived obligations.
+  - Audited `pending → running → done|blocked` transitions.
+  - Refuses `done` unless every ledger claim is `RE_DERIVED`.
+- `tools/ai-loop.php`
+  - Commit-check before dispatch.
+  - Ledger start/finish, claim extraction, independent verification.
+  - Stops on marker-only, silent, failed, missing, unverified, or contradicted evidence.
+  - Dry-run, nesting refusal, and maximum-slice bound.
+- Tests:
+  - `tests/ai_project_test.php`
+  - `tests/ai_loop_test.php`
+- Recursive `.ai/projects/**/*.md` coverage in `tools/ai-contract-lint.php`.
+- Runbook and HARPP Gen4 project documentation updated.
+- S2/S3 state recorded as done under verified run `s2s3-delivery`.
+
+### Evidence
+
+- `ai_project_test`: **6/6**, exit 0, zero skips.
+- `ai_loop_test`: **8/8**, exit 0, zero skips.
+- `ai_run_test`: **31/31**, exit 0, zero skips.
+- `ai_autonomy_test`: **46/46**, exit 0, zero skips.
+- PHP syntax: all five changed/new PHP files passed.
+- PHPStan: **No errors**, exit 0.
+- Project and slice contract lint: parse OK, zero phantoms, exit 0.
+- Verification ledger: **4 RE_DERIVED, 0 contradicted, 0 unverified**.
+
+Marker-only falsification stopped at:
+
+```text
+CLAIMS ... extracted=0 (UNVERIFIED)
+STOP S1: missing verified report/claims (marker text is not evidence)
+```
+
+Dry-run proof:
+
+```text
+PLAN S1 ...
+DRY-RUN no ledger or project state written
+```
+
+The before/after fixture digest was identical; no state or run files appeared.
+
+Current project obligations:
+
+```text
+2
+```
+
+`stop-report --remaining=2 --stop-reason=PROJECT_COMPLETE` returned `ILLEGITIMATE_STOP`, exit 3, correctly showing S4 and S5 remain. No commit, stage, or push was performed.
