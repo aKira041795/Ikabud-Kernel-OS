@@ -1111,5 +1111,83 @@ $h->test(
     'record=' . json_encode($mixedRecord, JSON_UNESCAPED_SLASHES)
 );
 
+// ── R10: the exceptions route is recorded at run-finish, and not otherwise ───────────────────────
+// A run whose only delta is an existing test file is refused by A-F2 (scopeConformance -> check).
+// With a pre-declared exception in the dispatch contract, the same run records, and the run record
+// names which exception and under whose authority. Without one, it blocks exactly as before.
+$h->section('CD-44 — an authorised existing-test change is recorded and attributed');
+$exceptionProbeRelative = 'tests/ai-run-exception-' . bin2hex(random_bytes(6)) . '_test.php';
+$exceptionProbeAbsolute = $repoRoot . '/' . $exceptionProbeRelative;
+$exceptionContract = $fixture . '/exceptions-contract.md';
+file_put_contents($exceptionContract, str_replace(
+    "# CONTRACT — ledger fixture\n",
+    "# CONTRACT — ledger fixture\nexceptions:\n  - what:     correct a stale assertion in a probe suite\n    why:      prove the route is recorded at run-finish\n    scope:    {$exceptionProbeRelative}\n    decided_when: 2020-01-01T00:00:00+00:00\n    authority: CD-44\n",
+    $contractText
+));
+file_put_contents($exceptionProbeAbsolute, "<?php\n// probe: initial\n");
+$exceptionStart = $run(['start', "--contract={$exceptionContract}", '--lane=fixture', '--name=exception-route']);
+$exceptionStartRecord = aiRunRecord($runs, 'exception-route');
+file_put_contents($exceptionProbeAbsolute, "<?php\n// probe: corrected\n");
+$exceptionFinish = $run(['finish', '--id=exception-route', '--exit=0']);
+$exceptionRecord = aiRunRecord($runs, 'exception-route');
+@unlink($exceptionProbeAbsolute);
+$exceptionAuthorised = is_array($exceptionRecord) && is_array($exceptionRecord['scope_conformance']['authorised_exceptions'] ?? null) ? $exceptionRecord['scope_conformance']['authorised_exceptions'] : [];
+$h->test(
+    '50. an authorised existing-test change finishes OK and the record names the exception and its authority',
+    $exceptionStart['code'] === 0 && $exceptionFinish['code'] === 0
+        && is_array($exceptionStartRecord) && ($exceptionStartRecord['declared_exceptions'][0]['authority'] ?? null) === 'CD-44'
+        && is_array($exceptionRecord)
+        && ($exceptionRecord['scope_conformance']['ok'] ?? false) === true
+        && in_array($exceptionProbeRelative, (array) ($exceptionRecord['scope_conformance']['checked'] ?? []), true)
+        && count($exceptionAuthorised) === 1
+        && ($exceptionAuthorised[0]['exception']['authority'] ?? null) === 'CD-44'
+        && ($exceptionAuthorised[0]['path'] ?? null) === $exceptionProbeRelative,
+    aiRunDetail($exceptionStart) . "\n---\n" . aiRunDetail($exceptionFinish) . "\nstart_record=" . json_encode($exceptionStartRecord, JSON_UNESCAPED_SLASHES) . "\nfinish_record=" . json_encode($exceptionRecord, JSON_UNESCAPED_SLASHES)
+);
+
+// The control: the identical delta under a contract with no exception still blocks (exit 3).
+$controlProbeRelative = 'tests/ai-run-exception-' . bin2hex(random_bytes(6)) . '_test.php';
+$controlProbeAbsolute = $repoRoot . '/' . $controlProbeRelative;
+file_put_contents($controlProbeAbsolute, "<?php\n// control: initial\n");
+$controlStart = $run($startArgs('exception-control'));
+file_put_contents($controlProbeAbsolute, "<?php\n// control: corrected\n");
+$controlFinish = $run(['finish', '--id=exception-control', '--exit=0']);
+$controlRecord = aiRunRecord($runs, 'exception-control');
+@unlink($controlProbeAbsolute);
+$controlOffending = array_column((array) ($controlRecord['scope_conformance']['offending'] ?? []), 'path');
+$h->test(
+    '51. the same existing-test delta without an exception still blocks (exit 3), unweakened',
+    $controlStart['code'] === 0 && $controlFinish['code'] === 3
+        && aiRunStatus($runs, 'exception-control') === 'blocked'
+        && in_array($controlProbeRelative, $controlOffending, true)
+        && ($controlRecord['scope_conformance']['ok'] ?? true) === false,
+    aiRunDetail($controlFinish) . "\nrecord=" . json_encode($controlRecord, JSON_UNESCAPED_SLASHES)
+);
+
+// Pre-declaration is structural: retrofitting an exception into the contract after dispatch moves
+// the contract revision, and finish refuses the run rather than honouring it.
+$retrofitProbeRelative = 'tests/ai-run-exception-' . bin2hex(random_bytes(6)) . '_test.php';
+$retrofitProbeAbsolute = $repoRoot . '/' . $retrofitProbeRelative;
+file_put_contents($retrofitProbeAbsolute, "<?php\n// retrofit: initial\n");
+$retrofitStart = $run($startArgs('exception-retrofit'));
+file_put_contents($retrofitProbeAbsolute, "<?php\n// retrofit: corrected\n");
+file_put_contents($contract, str_replace(
+    "# CONTRACT — ledger fixture\n",
+    "# CONTRACT — ledger fixture\nexceptions:\n  - what:     retrofit after dispatch\n    why:      supplied after the evidence exists\n    scope:    {$retrofitProbeRelative}\n    decided_when: 2020-01-01T00:00:00+00:00\n    authority: CD-44\n",
+    $contractText
+));
+$retrofitFinish = $run(['finish', '--id=exception-retrofit', '--exit=0']);
+$retrofitRecord = aiRunRecord($runs, 'exception-retrofit');
+file_put_contents($contract, $contractText);
+@unlink($retrofitProbeAbsolute);
+$h->test(
+    '52. an exception supplied after dispatch moves the revision and is refused (exit 3)',
+    $retrofitStart['code'] === 0 && $retrofitFinish['code'] === 3
+        && aiRunStatus($runs, 'exception-retrofit') === 'blocked'
+        && str_contains($retrofitFinish['output'], 'contract revision moved after dispatch')
+        && ($retrofitRecord['scope_conformance']['ok'] ?? true) === false,
+    aiRunDetail($retrofitFinish) . "\nrecord=" . json_encode($retrofitRecord, JSON_UNESCAPED_SLASHES)
+);
+
 aiRunRemoveFixture($fixture);
 $h->done();

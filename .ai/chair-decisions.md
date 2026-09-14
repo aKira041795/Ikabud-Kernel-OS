@@ -1974,3 +1974,132 @@ than assumed.
 
 **Authority:** recorded by the Chair without prompting; the errors are mine and no director decision is needed
 to record them. **Owner intervention:** not required.
+
+## CD-43 — GEN4-R1's first data point: a test correction is refused by an authority no one can supply
+
+**The measured answer to the assessment's central question** — *"can HARPP Gen4-R1 run twenty ordinary slices
+without us changing the rules underneath it?"* — is **no, and it halts at slice 1.** The reason is specific and
+worth more than the number.
+
+### What happened
+
+S1 (correct the stale `runs_by_status` expectation) was dispatched. The executor **did not act**, and the loop
+recorded `SCOPE OK delta=0` — nothing touched, so the prohibition never fired at the gate. It blocked on the
+**evidence** gate instead, because its claims bound as `UNVERIFIED`.
+
+### Prediction scored, honestly: right outcome, wrong mechanism
+
+The project recorded a prediction before the run. **Outcome correct, mechanism wrong.** I predicted the *ledger*
+would refuse the change at finish; what actually happened is that the **executor consulted `check` on its own
+proposed change first**, saw `ESCALATE / L4`, and stopped — obeying the slice's own Risks clause. That is better
+behaviour than the prediction assumed, and it means the refusal happened *before* any work was wasted on it.
+
+### The architectural finding: the prohibition is effectively unauthorisable
+
+From the executor's own probe, verified in the source:
+
+- the matcher is `isExistingTestPath()` (`tools/ai-autonomy.php:840-847`);
+- the **absolute** branch is evaluated **before** `isGrounded()` (`:959-968`), so **no contract text, no
+  `--justify` and no L4 can authorise a change to an existing test file**;
+- enforcement is identical at run-finish via `scopeConformance()` (`tools/ai-run.php:815-849`).
+
+**The only remaining authority is a director-level trust-surface amendment**, because the matcher itself lives
+inside the verifier. So the real cost of correcting a *stale assertion in a test file* is **an amendment to the
+verifier's own prohibition logic** — which is the highest-authority change the system has.
+
+That is the same over-triggering pattern as CD-27, measured rather than described: **a matcher defined by path
+cannot distinguish "weakening a test" from "correcting one", and the prohibition's own strength makes the
+distinction unavailable to every authority short of the director.** CD-31 recorded this as a finding; GEN4-R1
+has now **reproduced it under the frozen rules**, which is exactly what the experiment exists to do — and it
+cost one slice rather than an argument.
+
+### Two incidental findings, both defects of MINE
+
+1. **A slice's declared report path can be outside its own scope.** I named
+   `.ai/projects/gen4-r1/runs/s1.report.txt` without adding it to `Files likely affected`. The executor noticed,
+   said so, and wrote to the run's canonical path instead rather than trip the matcher for a misleading reason.
+   **My seventh authoring error today.**
+2. **Claims inside a fenced code block do not bind.** The report's `CLAIM/COMMAND/OBSERVED` blocks were correct
+   in content but wrapped in a code fence, so the extractor returned two claims with **no command** and the run
+   blocked as `UNVERIFIED`. The format was right; its *placement* made it unextractable.
+
+### What should NOT be concluded
+
+Not "the harness is broken". The refusals were **correct behaviour on bad inputs**: a path-based matcher doing
+what it was built to do, and an evidence gate refusing claims that could not be re-derived. **Every failure in
+this slice was mine or the plumbing's.** The executor was the best-behaved actor in it.
+
+### Disposition, per CD-41: recorded, NOT repaired
+
+The instinct is to loosen `isExistingTestPath`, or to let the prohibition consult the change rather than the
+path. **That is trust-surface work and the architecture is frozen.** It is exactly the repair the assessment
+warned against making mid-measurement — and the same repair the Chair has already made five times today when
+the plumbing over-fired.
+
+So it is recorded as **data**, and it ranks as the strongest candidate for the first change *after* analysis.
+Until then the experiment is honest about its own ceiling: **a single blocked slice halts the project**, so a
+twenty-slice run requires slices that never touch an existing test file — which is a real constraint on what
+GEN4-R1 can measure, not a detail.
+
+**Authority:** CD-41 (freeze); recorded by the Chair; no director decision required to record a measurement.
+**Owner intervention:** not required.
+
+## CD-44 — Freeze lifted for one fix, and the fix is a ROUTE, not a smarter matcher
+
+**Owner directive, verbatim:** *"lift the freeze. fix"*
+
+**Scope of the lift, stated so it is not read as a general re-opening:** the freeze is lifted **for this one
+change** and **resumes after it lands**. The reason is the same one that created the freeze: a measurement taken
+against an apparatus that keeps changing measures nothing, so the lift has to be as narrow as the finding.
+
+### The finding being fixed (CD-43)
+
+`isExistingTestPath()` fires on the **absolute** branch, which is evaluated **before** `isGrounded()`, so **no
+contract text, no `--justify`, and no L4 can authorise a change to an existing test file.** The only remaining
+authority is a director-level **trust-surface amendment** — i.e. amending the verifier's own prohibition logic.
+The practical cost of correcting one stale assertion was therefore the highest-authority change the system has.
+
+### Rejected fix: make the matcher inspect the change instead of the path
+
+The obvious repair is to let the prohibition look at the *diff* — permit a non-reductive change, refuse a
+reductive one. **Rejected, for the reason CD-31 already recorded:**
+
+> **A matcher able to classify a change as *safe* is a matcher that can be argued into classifying a weakening
+> as safe.** Counting assertions does not close this: replacing `=== ['completed' => 1]` with `!== null` keeps
+> the count and destroys the check. That is a **hole dressed as precision**, and the prohibition would then be
+> satisfiable exactly by the edits it exists to stop.
+
+**The prohibition stays absolute.** What is missing is not cleverness — it is an **authority route**, and one was
+specified on 2026-09-14 (CD-22) and never built.
+
+### Adopted fix: build CD-22's `exceptions:` block
+
+CD-22 recorded the design and left it unimplemented; it is the answer to this finding:
+
+```
+exceptions:
+  - what:     <the change being authorised>
+    why:      <the reason>
+    scope:    <the paths it covers>
+    decided_when: <timestamp — BEFORE the run>
+    authority: <the decision reference>
+```
+
+with the prohibition consulting it, and three properties that keep it honest:
+
+1. **Pre-declared, never retrofitted.** An exception lives in the contract, read at `plan`/`start`. An
+   exception declared after the evidence exists is not an exception — it is an exemption shaped to fit the
+   result (CD-22's razor, and CD-37's GUARD 2 in a second place).
+2. **It cannot reach the verifier.** An exception naming a trust-surface path, or anything in
+   `forbidden_scope`, is **refused** — mirroring GUARD 1 on the harness-artifact route. Otherwise the exception
+   mechanism becomes the bypass for rule 1.
+3. **It is visible and attributed.** The record names *which* exception authorised the change and under whose
+   authority, so a weakening that travelled this route is **auditable afterwards**.
+
+**And the honest limit, stated rather than implied:** this does **not** detect a weakening. It makes the
+authorisation of an existing-test-file change **declared, evidenced and attributable** — the same trade the
+whole harness makes everywhere else. Pretending to detect it would require the matcher CD-31 rejects.
+
+**Authority:** owner directive 2026-09-14 (*"lift the freeze. fix"*); CD-22 (design), CD-31 (why not the
+matcher), CD-43 (the finding). Freeze resumes on landing.
+**Owner intervention:** given.

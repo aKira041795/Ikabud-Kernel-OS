@@ -637,6 +637,9 @@ function contractRequiresDirector(string $contractPath): bool
 {
     $run = executeArgv([PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php', 'plan', '--json', '--contract=' . $contractPath], dirname(__DIR__), 20);
     if (!$run['timed_out'] && $run['exit_code'] === 0) { return false; }
+    if (!$run['timed_out'] && $run['exit_code'] === EXIT_USAGE && str_contains($run['output'], 'declares an exception that is refused')) {
+        throw new InvalidArgumentException("contract '{$contractPath}' declares an exception that is refused: " . trim($run['output']));
+    }
     if (!$run['timed_out'] && $run['exit_code'] === EXIT_USAGE && str_contains($run['output'], 'trust surface')) { return true; }
     throw new InvalidArgumentException("contract '{$contractPath}' could not pass the autonomy plan check: " . trim($run['output']));
 }
@@ -816,11 +819,13 @@ function validatedHarnessArtifact(string $raw, array $contract): string
 /**
  * Evaluate changed paths by invoking `check`; this guarantees A-F2 uses the exact envelope and
  * taxonomy matcher used by interactive checks, including trust-surface directory/glob semantics.
+ * The dispatch time is passed so a declared exception dated after dispatch has no effect here
+ * either — the pre-declaration rule is enforced at run-finish, not merely at authoring time.
  *
  * @param list<string> $paths
- * @return array{ok:bool,checked:list<string>,offending:list<array{path:string,reasons:list<string>}>}
+ * @return array{ok:bool,checked:list<string>,offending:list<array{path:string,reasons:list<string>}>,authorised_exceptions?:list<array<string,mixed>>}
  */
-function scopeConformance(string $contract, string $expectedRevision, array $paths): array
+function scopeConformance(string $contract, string $expectedRevision, array $paths, ?string $dispatchAt = null): array
 {
     try {
         $finishContract = loadContract($contract);
@@ -833,12 +838,18 @@ function scopeConformance(string $contract, string $expectedRevision, array $pat
     }
 
     $offending = [];
+    $authorised = [];
     foreach ($paths as $path) {
-        $run = executeArgv([
-            PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php', 'check', 'run changed path',
-            '--path=' . $path, '--contract=' . $contract, '--json',
-        ], dirname(__DIR__), 20);
+        $arguments = [PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php', 'check', 'run changed path', '--path=' . $path, '--contract=' . $contract];
+        if ($dispatchAt !== null && trim($dispatchAt) !== '') { $arguments[] = '--dispatch-at=' . $dispatchAt; }
+        $arguments[] = '--json';
+        $run = executeArgv($arguments, dirname(__DIR__), 20);
         $payload = json_decode($run['output'], true);
+        if (is_array($payload) && is_array($payload['authorised_by_exceptions'] ?? null)) {
+            foreach ($payload['authorised_by_exceptions'] as $item) {
+                if (is_array($item)) { $authorised[] = $item; }
+            }
+        }
         if ($run['timed_out'] || $run['exit_code'] !== 0 || !is_array($payload) || ($payload['verdict'] ?? null) === 'ESCALATE') {
             $reasons = is_array($payload) && is_array($payload['reasons'] ?? null)
                 ? array_values(array_map('strval', $payload['reasons']))
@@ -846,7 +857,9 @@ function scopeConformance(string $contract, string $expectedRevision, array $pat
             $offending[] = ['path' => $path, 'reasons' => $reasons];
         }
     }
-    return ['ok' => $offending === [], 'checked' => $paths, 'offending' => $offending];
+    $result = ['ok' => $offending === [], 'checked' => $paths, 'offending' => $offending];
+    if ($authorised !== []) { $result['authorised_exceptions'] = $authorised; }
+    return $result;
 }
 
 /**
@@ -952,6 +965,13 @@ function commandStart(array $options, bool $json): int
     $trustSurface = trustSurfaceDigest();
     $record['trust_surface_hash'] = $trustSurface['hash'] ?? 'unavailable';
     $record['trust_surface_files'] = $trustSurface['files'];
+    // Declared exceptions are recorded at dispatch as a pre-commitment. The run's contract_revision
+    // already binds their content (a post-dispatch edit moves it), and finish re-reads the contract,
+    // so an exception cannot be supplied after the run began. A contract with no exceptions block
+    // adds no key and its record is byte-for-byte what it was before the route existed.
+    if (($parsed['exceptions'] ?? []) !== []) {
+        $record['declared_exceptions'] = array_values((array) $parsed['exceptions']);
+    }
     writeRecord($path, $record);
 
     if ($json) {
@@ -1023,7 +1043,8 @@ function commandFinish(array $options, bool $json): int
         $conformance = scopeConformance(
             (string) ($record['contract'] ?? ''),
             (string) ($record['contract_revision'] ?? ''),
-            $delta
+            $delta,
+            is_string($record['started_at'] ?? null) ? (string) $record['started_at'] : null
         );
         $conformance['declared_harness_artifacts'] = $declaredArtifacts;
     }

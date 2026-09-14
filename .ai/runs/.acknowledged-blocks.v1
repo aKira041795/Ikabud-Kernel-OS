@@ -63,6 +63,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "ba0782b5ba5f8fc01f358deb152d58064d50795df992aa18dd7fa9b741fe38ee"
+        },
+        {
+            "run_id": "exceptions-route",
+            "block_reason": "ALL FIVE OFFENDERS ARE THE SLICE'S DECLARED PURPOSE (CD-44): tools/ai-autonomy.php, tools/ai-run.php and DevelopmentTaskContract.php are the trust surface this slice was authorised to extend; tests/ai_autonomy_test.php and tests/ai_run_test.php gained the assertions. VERIFIED BY THE CHAIR, all four directions: matching exception -> RECORD/exit 0; NO exception -> ESCALATE/L4/exit 3 (prohibition unweakened); exception naming the trust surface -> refused exit 2, and refused via check too so it cannot RECORD; exception dated after dispatch -> no effect exit 3, with the control (dispatch after the date) -> RECORD, proving the TIMESTAMP discriminates. Plus: missing 'authority' refused by name; exception over forbidden_scope refused by name.",
+            "director_decision": "CD-44",
+            "acknowledged_at": "2026-09-14T15:59:57+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "983e8213d7ab33b34edefd3b9fdc11be70ecbd41dd8a672397f8b13687467824"
         }
     ]
 }

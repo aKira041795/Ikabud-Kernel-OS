@@ -503,6 +503,214 @@ $h->test('50. trust-surface amend records reason, real decision, context, timest
     && ($amendment['trust_surface_files_changed_by_route'] ?? null) === false
     && str_contains($amendOk['output'], 'NO TRUST-SURFACE FILE WAS CHANGED'), runDetail($amendOk) . "\nrecord=" . encodeForDetail($amendment));
 
+// ── CD-44: the exceptions: block is an authority route, not a smarter matcher ───────────────────
+// The four directions pull against each other and all four are asserted here: a matching exception
+// authorises (RECORD); no exception leaves the prohibition absolute (ESCALATE/L4/exit 3); an
+// exception may not reach the trust surface (refused); and an exception dated after dispatch has no
+// effect (pre-declaration). Structural and policy refusals are also pinned.
+$h->section('CD-44 — exceptions: is an authority route, not a judgement');
+$exceptionBody = <<<'MD'
+## Objective
+Exercise the exceptions route without widening anything else.
+## Architectural constraints
+- none
+## Files likely affected
+- `tests/` — tests
+- `phpstan.neon` — gate config
+## Acceptance criteria
+- authorised corrections record; everything else still refuses
+## Required tests
+- `php -l tools/ai-autonomy.php`
+## Risks
+- a route that quietly becomes the default
+## Forbidden changes
+- `kernel/` — never
+MD;
+$exceptionContract = static function (string $block) use ($fixture, $exceptionBody): string {
+    $file = $fixture . '/exceptions-' . substr(hash('sha256', $block), 0, 10) . '.md';
+    file_put_contents($file, "# CONTRACT — exceptions route fixture\n" . $block . "\n" . $exceptionBody);
+    return $file;
+};
+$matchingBlock = <<<'MD'
+exceptions:
+  - what:     correct the stale runs_by_status assertion
+    why:      the fixture asserted a shape the contract no longer produces
+    scope:    tests/ai_run_test.php
+    decided_when: 2026-09-14T15:00:00+00:00
+    authority: CD-44
+MD;
+$matchingContract = $exceptionContract($matchingBlock);
+$plainContract = $exceptionContract('');
+
+// Direction 1 — with a matching, pre-declared exception the existing-test prohibition records.
+$withException = $run(['check', 'correct a stale assertion', '--path=tests/ai_run_test.php', "--contract={$matchingContract}", '--json']);
+$withExceptionData = json_decode($withException['output'], true);
+$withExceptionAuthorised = is_array($withExceptionData) && is_array($withExceptionData['authorised_by_exceptions'] ?? null) ? $withExceptionData['authorised_by_exceptions'] : [];
+$h->test(
+    '51. a matching pre-declared exception routes an existing-test change to RECORD and names it',
+    $withException['code'] === 0 && is_array($withExceptionData)
+        && ($withExceptionData['verdict'] ?? null) === 'RECORD' && ($withExceptionData['authority_level'] ?? null) === 'L2'
+        && count($withExceptionAuthorised) === 1
+        && ($withExceptionAuthorised[0]['exception']['authority'] ?? null) === 'CD-44'
+        && str_contains(implode("\n", (array) ($withExceptionData['reasons'] ?? [])), 'authorised by exception'),
+    runDetail($withException)
+);
+
+// Direction 2 — the same probe without an exception is byte-for-byte the old behaviour.
+$withoutException = $run(['check', 'correct a stale assertion', '--path=tests/ai_run_test.php', "--contract={$plainContract}"]);
+$h->test(
+    '52. without an exception the same probe is ESCALATE / L4 / exit 3 (AC2: with and without)',
+    $withoutException['code'] === 3 && str_contains($withoutException['output'], 'VERDICT: ESCALATE')
+        && str_contains($withoutException['output'], 'level: L4')
+        && str_contains($withoutException['output'], 'absolute prohibition')
+        && !str_contains($withoutException['output'], 'authorised by exception'),
+    runDetail($withoutException) . "\n--- without ---\n" . runDetail($withException)
+);
+
+// Direction 3 — an exception naming the trust surface is refused; the route is not a rule-1 bypass.
+$trustExceptionContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     edit the verifier
+    why:      probe
+    scope:    tools/ai-run.php
+    decided_when: 2026-09-14
+    authority: CD-44
+MD);
+$trustExceptionPlan = $run(['plan', '--json', "--contract={$trustExceptionContract}", "--decisions-dir={$decisions}"]);
+$trustExceptionCheck = $run(['check', 'anything', '--path=tests/ai_run_test.php', "--contract={$trustExceptionContract}"]);
+$h->test(
+    '53. an exception naming the trust surface is refused by plan and check (direction 3)',
+    $trustExceptionPlan['code'] === 2 && str_contains($trustExceptionPlan['output'], 'tools/ai-run.php') && str_contains($trustExceptionPlan['output'], 'trust surface')
+        && !str_contains($trustExceptionPlan['output'], 'AUTONOMY ENVELOPE')
+        && $trustExceptionCheck['code'] === 2 && str_contains($trustExceptionCheck['output'], 'trust surface'),
+    runDetail($trustExceptionPlan) . "\n---\n" . runDetail($trustExceptionCheck)
+);
+$trustDirectoryContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     reach the verifier by directory capability
+    why:      probe
+    scope:    tools/
+    decided_when: 2026-09-14
+    authority: CD-44
+MD);
+$trustDirectoryPlan = $run(['plan', '--json', "--contract={$trustDirectoryContract}", "--decisions-dir={$decisions}"]);
+$h->test(
+    '53a. an exception scope covering the verifier (directory) is refused, naming a reached path',
+    $trustDirectoryPlan['code'] === 2 && str_contains($trustDirectoryPlan['output'], 'trust surface') && str_contains($trustDirectoryPlan['output'], 'tools/ai-run.php'),
+    runDetail($trustDirectoryPlan)
+);
+
+// D2 — an exception inside forbidden_scope is refused, naming the entry.
+$forbiddenExceptionContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     edit a forbidden path
+    why:      probe
+    scope:    kernel/Capabilities/Thing.php
+    decided_when: 2026-09-14
+    authority: CD-44
+MD);
+$forbiddenExceptionPlan = $run(['plan', '--json', "--contract={$forbiddenExceptionContract}", "--decisions-dir={$decisions}"]);
+$h->test(
+    '54. an exception whose scope lies inside forbidden_scope is refused, naming the entry',
+    $forbiddenExceptionPlan['code'] === 2 && str_contains($forbiddenExceptionPlan['output'], 'forbidden_scope') && str_contains($forbiddenExceptionPlan['output'], 'kernel'),
+    runDetail($forbiddenExceptionPlan)
+);
+
+// D2 — traversal and absolute exception scopes are refused before any policy guard sees them.
+$traversalExceptionContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     escape the tree
+    why:      probe
+    scope:    ../etc/passwd
+    decided_when: 2026-09-14
+    authority: CD-44
+MD);
+$absoluteExceptionContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     absolute path
+    why:      probe
+    scope:    /etc/passwd
+    decided_when: 2026-09-14
+    authority: CD-44
+MD);
+$traversalExceptionPlan = $run(['plan', '--json', "--contract={$traversalExceptionContract}", "--decisions-dir={$decisions}"]);
+$absoluteExceptionPlan = $run(['plan', '--json', "--contract={$absoluteExceptionContract}", "--decisions-dir={$decisions}"]);
+$h->test(
+    '55. a traversal or absolute exception scope is refused, naming the reason',
+    $traversalExceptionPlan['code'] === 2 && str_contains($traversalExceptionPlan['output'], 'traversal')
+        && $absoluteExceptionPlan['code'] === 2 && str_contains($absoluteExceptionPlan['output'], 'absolute'),
+    runDetail($traversalExceptionPlan) . "\n---\n" . runDetail($absoluteExceptionPlan)
+);
+
+// D1 — every required field is validated; a missing one is refused with the field named.
+$missingFieldBlocks = [
+    'why' => "exceptions:\n  - what: x\n    scope: tests/ai_run_test.php\n    decided_when: 2026-09-14\n    authority: CD-44",
+    'scope' => "exceptions:\n  - what: x\n    why: y\n    decided_when: 2026-09-14\n    authority: CD-44",
+    'decided_when' => "exceptions:\n  - what: x\n    why: y\n    scope: tests/ai_run_test.php\n    authority: CD-44",
+    'authority' => "exceptions:\n  - what: x\n    why: y\n    scope: tests/ai_run_test.php\n    decided_when: 2026-09-14",
+];
+$missingFieldFailures = [];
+foreach ($missingFieldBlocks as $field => $block) {
+    $probe = $run(['plan', '--json', '--contract=' . $exceptionContract($block), "--decisions-dir={$decisions}"]);
+    if ($probe['code'] !== 2 || !str_contains($probe['output'], $field) || !str_contains($probe['output'], 'missing required field')) {
+        $missingFieldFailures[] = "{$field}: exit {$probe['code']}";
+    }
+}
+$h->test(
+    '56. an entry missing why/scope/decided_when/authority is refused with the field named',
+    $missingFieldFailures === [],
+    'failures=' . encodeForDetail($missingFieldFailures)
+);
+
+// Direction 4 — an exception dated after dispatch has no effect; before dispatch it authorises.
+$afterDispatchContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     correct the assertion after seeing the red result
+    why:      retrofit
+    scope:    tests/ai_run_test.php
+    decided_when: 2030-01-01T00:00:00+00:00
+    authority: CD-44
+MD);
+$afterDispatch = $run(['check', 'correct a stale assertion', '--path=tests/ai_run_test.php', "--contract={$afterDispatchContract}", '--dispatch-at=2026-09-14T15:45:57+00:00']);
+$beforeDispatch = $run(['check', 'correct a stale assertion', '--path=tests/ai_run_test.php', "--contract={$afterDispatchContract}", '--dispatch-at=2031-01-01T00:00:00+00:00']);
+$h->test(
+    '57. an exception dated after dispatch has no effect; dated before dispatch it authorises (direction 4)',
+    $afterDispatch['code'] === 3 && str_contains($afterDispatch['output'], 'dated after dispatch') && str_contains($afterDispatch['output'], 'no effect')
+        && str_contains($afterDispatch['output'], 'absolute prohibition')
+        && $beforeDispatch['code'] === 0 && str_contains($beforeDispatch['output'], 'VERDICT: RECORD'),
+    runDetail($afterDispatch) . "\n--- before dispatch ---\n" . runDetail($beforeDispatch)
+);
+
+// AC4 — the route is scoped to the existing-test prohibition only.
+$gateExceptionContract = $exceptionContract(<<<'MD'
+exceptions:
+  - what:     lower the phpstan level
+    why:      probe
+    scope:    phpstan.neon
+    decided_when: 2026-09-14
+    authority: CD-44
+MD);
+$gateProbe = $run(['check', 'lower the phpstan level', '--path=phpstan.neon', "--contract={$gateExceptionContract}"]);
+$overscopeProbe = $run(['check', 'correct another test', '--path=tests/ai_autonomy_test.php', "--contract={$matchingContract}"]);
+$h->test(
+    '58. an exception cannot route a gate-config change and does not cover paths it does not name (AC4)',
+    $gateProbe['code'] === 3 && str_contains($gateProbe['output'], 'absolute prohibition') && !str_contains($gateProbe['output'], 'authorised by exception')
+        && $overscopeProbe['code'] === 3 && str_contains($overscopeProbe['output'], 'absolute prohibition') && !str_contains($overscopeProbe['output'], 'authorised by exception'),
+    runDetail($gateProbe) . "\n--- overscope ---\n" . runDetail($overscopeProbe)
+);
+
+// Additive format — an empty or absent exceptions block leaves the contract revision unchanged.
+require_once __DIR__ . '/../kernel/Workbench/Development/DevelopmentTaskContract.php';
+$emptyBlockContract = $exceptionContract("exceptions:\n");
+$plainRevision = \Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::revisionId(\Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::parseCurrentTaskMarkdown((string) file_get_contents($plainContract)));
+$emptyRevision = \Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::revisionId(\Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::parseCurrentTaskMarkdown((string) file_get_contents($emptyBlockContract)));
+$matchingRevision = \Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::revisionId(\Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::parseCurrentTaskMarkdown((string) file_get_contents($matchingContract)));
+$h->test(
+    '59. additive format: an empty exceptions block leaves the revision unchanged, a declared one moves it',
+    $plainRevision === $emptyRevision && $plainRevision !== $matchingRevision,
+    "plain={$plainRevision} empty={$emptyRevision} matching={$matchingRevision}"
+);
+
 removeFixture($fixture);
 $h->done();
 

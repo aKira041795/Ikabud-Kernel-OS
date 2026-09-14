@@ -328,7 +328,7 @@ function usage(): void
 Usage:
   php tools/ai-autonomy.php plan [--contract=PATH] [--decisions-dir=DIR] [--json] [--emit-manifest=PATH|--manifest]
   php tools/ai-autonomy.php check [<action words...>] [--path=PATH]... [--level=L0|L1|L2|L3|L4]
-                                  [--justify=TEXT] [--contract=PATH] [--json]
+                                  [--justify=TEXT] [--contract=PATH] [--dispatch-at=ISO8601] [--json]
   php tools/ai-autonomy.php defer --task=ID --question=TEXT --why=TEXT
                                   --option=ID|LABEL|EFFECT|COST|BLAST_RADIUS|REVERSIBILITY [--option=...]
                                   --recommend=ID [--priority=low|normal|high|critical] [--contract=PATH]
@@ -775,6 +775,70 @@ function trustSurfaceMatches(array $candidates): array
     return $matches;
 }
 
+/**
+ * Policy guards for the contract's declared exceptions (CD-44 D2). An exception may not reach the
+ * verifier trust surface and may not lie inside forbidden_scope — the same GUARD 1 that protects
+ * the harness-artifact route. Structural validity (all five fields, a parseable decided_when, a
+ * non-absolute non-traversal scope) is enforced by the parser, so every reader fails closed.
+ *
+ * @param array<string,mixed> $contract
+ * @return list<string>
+ */
+function exceptionPolicyViolations(array $contract): array
+{
+    $violations = [];
+    foreach ((array) ($contract['exceptions'] ?? []) as $exception) {
+        if (!is_array($exception)) { continue; }
+        $what = (string) ($exception['what'] ?? '');
+        foreach ((array) ($exception['scope'] ?? []) as $scope) {
+            if (!is_array($scope)) { continue; }
+            $path = (string) ($scope['path'] ?? '');
+            $reached = trustSurfaceCoverage($path);
+            if ($reached !== []) {
+                $violations[] = "exception '{$what}' scope '{$path}' reaches the verifier trust surface ('" . implode("', '", $reached) . "') and is refused — the trust surface is never contract-authorisable (CD-21 rule 1)";
+                continue;
+            }
+            foreach ((array) ($contract['forbidden_scope'] ?? []) as $forbidden) {
+                if (is_array($forbidden) && pathMatches($path, $forbidden)) {
+                    $violations[] = "exception '{$what}' scope '{$path}' lies inside forbidden_scope entry '" . (string) ($forbidden['path'] ?? '?') . "' and is refused";
+                    break;
+                }
+            }
+        }
+    }
+    return $violations;
+}
+
+/**
+ * The declared exception whose scope covers this path, if any. A match dated after dispatch is
+ * returned as inactive so the caller can report it rather than silently ignoring it (CD-22's razor:
+ * an exception invoked after the evidence exists is a lowered bar, not an exception).
+ *
+ * @param array<string,mixed> $contract
+ * @return array{exception:array<string,mixed>,scope:array{path:string,kind:string},active:bool}|null
+ */
+function exceptionForPath(array $contract, string $path, ?string $dispatchAt): ?array
+{
+    foreach ((array) ($contract['exceptions'] ?? []) as $exception) {
+        if (!is_array($exception)) { continue; }
+        foreach ((array) ($exception['scope'] ?? []) as $scope) {
+            if (!is_array($scope) || !pathMatches($path, $scope)) { continue; }
+            return ['exception' => $exception, 'scope' => $scope, 'active' => exceptionDecidedBeforeDispatch($exception, $dispatchAt)];
+        }
+    }
+    return null;
+}
+
+/** @param array<string,mixed> $exception */
+function exceptionDecidedBeforeDispatch(array $exception, ?string $dispatchAt): bool
+{
+    if ($dispatchAt === null || trim($dispatchAt) === '') { return true; }
+    $decided = strtotime((string) ($exception['decided_when'] ?? ''));
+    $dispatch = strtotime($dispatchAt);
+    if ($decided === false || $dispatch === false) { return false; }
+    return $decided <= $dispatch;
+}
+
 /** @param array<string,mixed> $contract */
 function commandPlan(array $contract, string $contractPath, string $directory, bool $json, ?string $manifestPath, bool $manifestStdout): int
 {
@@ -782,6 +846,10 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
     if ($trustViolations !== []) {
         $details = array_map(static fn (array $item): string => "entry '{$item['entry']}' reaches '{$item['path']}'", $trustViolations);
         throw new InvalidArgumentException('contract names the verifier trust surface in its scope and is refused: ' . implode('; ', $details) . ' — the trust surface is not contract-authorisable (owner directive 2026-09-14)');
+    }
+    $exceptionViolations = exceptionPolicyViolations($contract);
+    if ($exceptionViolations !== []) {
+        throw new InvalidArgumentException('contract declares an exception that is refused: ' . implode('; ', $exceptionViolations));
     }
     $pending = count(array_filter(decisions($directory), static fn (array $i): bool => !isset($i['resolution'])));
     $allowed = (array) $contract['allowed_scope']; $forbidden = (array) $contract['forbidden_scope'];
@@ -803,10 +871,22 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
     $markdown = @file_get_contents($contractPath);
     $warnings = planWarnings($contract, $markdown === false ? '' : $markdown);
     if ($json) {
-        fwrite(STDOUT, encodeJson(['envelope' => ['objective' => $contract['objective'], 'contract_revision' => DevelopmentTaskContract::revisionId($contract), 'allowed_scope' => $allowed, 'forbidden_scope' => $forbidden, 'forbidden_rules' => $forbiddenRules], 'phases' => $phases, 'absolute_prohibitions' => absoluteProhibitions(), 'contract_relative_l4' => contractRelativeTriggers(), 'chair_decisions' => chairDecisions(), 'deterministic_first' => deterministicFirst(), 'model_policy' => modelPolicy(), 'model_tiers' => modelTiers(), 'decisions_dir' => $directory, 'pending' => $pending, 'warnings' => $warnings, 'l4_taxonomy' => l4Taxonomy()]) . "\n");
+        $envelope = ['objective' => $contract['objective'], 'contract_revision' => DevelopmentTaskContract::revisionId($contract), 'allowed_scope' => $allowed, 'forbidden_scope' => $forbidden, 'forbidden_rules' => $forbiddenRules];
+        // A contract with no exceptions block keeps today's envelope byte-for-byte; declared
+        // exceptions are additive and visible.
+        if (($contract['exceptions'] ?? []) !== []) { $envelope['exceptions'] = array_values((array) $contract['exceptions']); }
+        fwrite(STDOUT, encodeJson(['envelope' => $envelope, 'phases' => $phases, 'absolute_prohibitions' => absoluteProhibitions(), 'contract_relative_l4' => contractRelativeTriggers(), 'chair_decisions' => chairDecisions(), 'deterministic_first' => deterministicFirst(), 'model_policy' => modelPolicy(), 'model_tiers' => modelTiers(), 'decisions_dir' => $directory, 'pending' => $pending, 'warnings' => $warnings, 'l4_taxonomy' => l4Taxonomy()]) . "\n");
         return EXIT_OK;
     }
     foreach ($warnings as $warning) { fwrite(STDOUT, "WARN {$warning}\n"); }
+    if (($contract['exceptions'] ?? []) !== []) {
+        fwrite(STDOUT, 'declared exceptions (' . count((array) $contract['exceptions']) . ") — authority routes for the existing-test prohibition only:\n");
+        foreach ((array) $contract['exceptions'] as $exception) {
+            if (!is_array($exception)) { continue; }
+            $scopePaths = array_map(static fn (array $scope): string => (string) ($scope['path'] ?? ''), (array) ($exception['scope'] ?? []));
+            fwrite(STDOUT, "  - {$exception['what']} [scope: " . implode(', ', $scopePaths) . "; authority: {$exception['authority']}; decided_when: {$exception['decided_when']}]\n");
+        }
+    }
     fwrite(STDOUT, "AUTONOMY ENVELOPE — {$contractPath}\nobjective: {$contract['objective']}\ncontract revision: " . DevelopmentTaskContract::revisionId($contract) . "\nallowed scope (" . count($allowed) . "):\n");
     foreach ($allowed as $entry) { fwrite(STDOUT, "  - {$entry['path']} ({$entry['kind']})\n"); }
     fwrite(STDOUT, 'forbidden scope (' . count($forbidden) . "):\n");
@@ -926,11 +1006,16 @@ function isGrounded(?string $justification, array $contract): bool
  * @param array<string,mixed> $contract
  * @param list<string> $paths
  */
-function commandCheck(array $contract, string $action, array $paths, string $level, ?string $justification, bool $json): int
+function commandCheck(array $contract, string $action, array $paths, string $level, ?string $justification, bool $json, ?string $dispatchAt = null): int
 {
     $level = strtoupper($level);
     if (!in_array($level, ['L0', 'L1', 'L2', 'L3', 'L4'], true)) { throw new InvalidArgumentException("offending field --level: '{$level}'"); }
-    $reasons = []; $resolved = $level;
+    if ($dispatchAt !== null && strtotime($dispatchAt) === false) { throw new InvalidArgumentException("offending field --dispatch-at: '{$dispatchAt}' is not a parseable timestamp"); }
+    $exceptionViolations = exceptionPolicyViolations($contract);
+    if ($exceptionViolations !== []) {
+        throw new InvalidArgumentException('contract declares an exception that is refused: ' . implode('; ', $exceptionViolations));
+    }
+    $reasons = []; $resolved = $level; $authorisedExceptions = [];
     foreach ($paths as &$path) {
         try { $path = DevelopmentTaskContract::normalizePath($path); }
         catch (InvalidArgumentException $e) { throw new InvalidArgumentException("offending field --path '{$path}': " . $e->getMessage()); }
@@ -956,22 +1041,56 @@ function commandCheck(array $contract, string $action, array $paths, string $lev
         foreach ($matches as $match) { $unique[$match['matcher'] . '|' . $match['path']] = $match; }
         $matches = array_values($unique);
         $absolute = array_values(array_filter($matches, static fn (array $match): bool => $match['class'] === 'absolute'));
-        if ($absolute !== []) {
+        $relative = array_values(array_filter($matches, static fn (array $match): bool => $match['class'] !== 'absolute'));
+        $remainingAbsolute = [];
+        foreach ($absolute as $match) {
+            // CD-22/CD-44: the existing-test prohibition is still absolute by default; only a
+            // pre-declared, policy-valid exception whose scope names this path supplies a route.
+            // Every other absolute prohibition (gate config, gate baseline, authority, trust
+            // surface) has no route and is untouched.
+            if ($match['matcher'] === 'existing_test') {
+                $declared = exceptionForPath($contract, $match['path'], $dispatchAt);
+                if ($declared !== null && $declared['active']) {
+                    $authorisedExceptions[] = ['path' => $match['path'], 'scope' => (string) $declared['scope']['path'], 'exception' => $declared['exception']];
+                    continue;
+                }
+                if ($declared !== null && !$declared['active']) {
+                    $reasons[] = "exception '{$declared['exception']['what']}' is dated after dispatch and has no effect on path '{$match['path']}' (pre-declaration only)";
+                }
+            }
+            $remainingAbsolute[] = $match;
+        }
+        if ($remainingAbsolute !== []) {
+            // Another absolute prohibition still binds, so no exception authorises this action.
+            $authorisedExceptions = [];
             $resolved = 'L4';
-            foreach ($absolute as $match) {
+            foreach ($remainingAbsolute as $match) {
                 $reasons[] = "path '{$match['path']}' trips an absolute prohibition: {$match['reason']} (no justification can authorise it)";
             }
-        } elseif ($matches !== []) {
-            $reasons = array_merge($reasons, sensitiveReasons($paths));
-            if (isGrounded($justification, $contract)) { $resolved = 'L3'; $reasons[] = 'sensitive change is explicitly grounded in contract acceptance/constraints'; }
-            else { $resolved = 'L4'; $reasons[] = 'justification is absent or not grounded in contract acceptance/constraints'; }
+        } else {
+            foreach ($authorisedExceptions as $authorised) {
+                $exception = $authorised['exception'];
+                $reasons[] = "path '{$authorised['path']}' would trip the existing-test prohibition; authorised by exception '{$exception['what']}' (authority: {$exception['authority']}; scope: {$authorised['scope']}; decided_when: {$exception['decided_when']})";
+            }
+            if ($relative !== []) {
+                $reasons = array_merge($reasons, array_values(array_unique(array_map(static fn (array $match): string => $match['reason'], $relative))));
+                if (isGrounded($justification, $contract)) { $resolved = 'L3'; $reasons[] = 'sensitive change is explicitly grounded in contract acceptance/constraints'; }
+                else { $resolved = 'L4'; $reasons[] = 'justification is absent or not grounded in contract acceptance/constraints'; }
+            }
         }
     }
     $verdict = in_array($resolved, ['L0', 'L1'], true) ? 'PROCEED' : (in_array($resolved, ['L2', 'L3'], true) ? 'RECORD' : 'ESCALATE');
-    if ($json) { fwrite(STDOUT, encodeJson(['verdict' => $verdict, 'authority_level' => $resolved, 'action' => $action, 'paths' => $paths, 'reasons' => $reasons]) . "\n"); }
-    else {
+    if ($json) {
+        $payload = ['verdict' => $verdict, 'authority_level' => $resolved, 'action' => $action, 'paths' => $paths, 'reasons' => $reasons];
+        if ($authorisedExceptions !== []) { $payload['authorised_by_exceptions'] = $authorisedExceptions; }
+        fwrite(STDOUT, encodeJson($payload) . "\n");
+    } else {
         fwrite(STDOUT, "VERDICT: {$verdict}\nlevel: {$resolved}\naction: {$action}\npaths:\n"); foreach ($paths as $path) { fwrite(STDOUT, "  - {$path}\n"); }
         fwrite(STDOUT, "reasons:\n"); foreach ($reasons as $reason) { fwrite(STDOUT, "  - {$reason}\n"); }
+        if ($authorisedExceptions !== []) {
+            fwrite(STDOUT, "authorised by exception:\n");
+            foreach ($authorisedExceptions as $authorised) { fwrite(STDOUT, "  - {$authorised['exception']['what']} (authority: {$authorised['exception']['authority']})\n"); }
+        }
         if ($verdict === 'ESCALATE') { fwrite(STDOUT, "next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question=\"...\" --option=...\n"); }
     }
     return $verdict === 'ESCALATE' ? EXIT_ESCALATE : EXIT_OK;
@@ -1242,8 +1361,8 @@ function main(): int
         return commandPlan(loadContract($path), $path, option($p['options'], 'decisions-dir', DEFAULT_DECISIONS_DIR) ?? DEFAULT_DECISIONS_DIR, isset($p['flags']['json']), option($p['options'], 'emit-manifest'), isset($p['flags']['manifest']));
     }
     if ($command === 'check') {
-        validateArgumentNames($p, ['path', 'level', 'justify', 'contract'], ['json']); $path = option($p['options'], 'contract', DEFAULT_CONTRACT) ?? DEFAULT_CONTRACT;
-        return commandCheck(loadContract($path), implode(' ', $p['positionals']), $p['options']['path'] ?? [], option($p['options'], 'level', 'L2') ?? 'L2', option($p['options'], 'justify'), isset($p['flags']['json']));
+        validateArgumentNames($p, ['path', 'level', 'justify', 'contract', 'dispatch-at'], ['json']); $path = option($p['options'], 'contract', DEFAULT_CONTRACT) ?? DEFAULT_CONTRACT;
+        return commandCheck(loadContract($path), implode(' ', $p['positionals']), $p['options']['path'] ?? [], option($p['options'], 'level', 'L2') ?? 'L2', option($p['options'], 'justify'), isset($p['flags']['json']), option($p['options'], 'dispatch-at'));
     }
     if ($command === 'defer') {
         validateArgumentNames($p, ['task', 'question', 'why', 'option', 'recommend', 'priority', 'impact', 'done', 'evidence', 'state', 'resume', 'git-head', 'by-role', 'by-model', 'by-harness', 'id', 'retry', 'contract', 'decisions-dir'], []);

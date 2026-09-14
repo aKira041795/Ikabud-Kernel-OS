@@ -95,9 +95,124 @@ final class DevelopmentTaskContract
             'baseline_scope' => $baseline,
             'source_hash' => hash('sha256', $markdown),
             'files_affected' => self::bulletLines($sections['Files likely affected']),
+            'exceptions' => self::parseExceptions($markdown),
         ];
 
         return self::normalizeParsed($parsed);
+    }
+
+    /**
+     * Parse the optional top-level `exceptions:` block (CD-22/CD-44).
+     *
+     * Shape:
+     *   exceptions:
+     *     - what:         <the change being authorised>
+     *       why:          <the reason>
+     *       scope:        <path[, path...]>
+     *       decided_when: <timestamp; must precede the run>
+     *       authority:    <the decision reference>
+     *
+     * Additive: a contract with no block yields an empty list, and the contract revision id is
+     * unchanged. All five fields are required; a defective entry fails the import closed so a
+     * malformed exception is refused rather than silently ignored. The trust-surface and
+     * forbidden_scope guards are policy checks applied by the autonomy/run tools (which own the
+     * trust-surface list); this parser enforces shape and path grammar only.
+     *
+     * @return list<array{what:string,why:string,scope:list<array{path:string,kind:string}>,decided_when:string,authority:string}>
+     */
+    private static function parseExceptions(string $markdown): array
+    {
+        $entries = [];
+        $current = null;
+        $inBlock = false;
+        $flush = static function () use (&$entries, &$current): void {
+            if ($current !== null) { $entries[] = $current; $current = null; }
+        };
+        foreach (preg_split('/\r?\n/', $markdown) ?: [] as $line) {
+            if (preg_match('/^exceptions[ \t]*:[ \t]*$/', $line) === 1) {
+                $flush();
+                $inBlock = true;
+                continue;
+            }
+            if (!$inBlock) { continue; }
+            if (trim($line) === '') { continue; }
+            // Entry starts are recognised before the block terminator, so both `  - what:` and a
+            // non-indented `- what:` begin an entry.
+            if (preg_match('/^\s*-\s*([A-Za-z_]+)\s*:\s*(.*)$/', $line, $m) === 1) {
+                $flush();
+                $current = ['what' => '', 'why' => '', 'scope' => [], 'decided_when' => '', 'authority' => ''];
+                self::setExceptionField($current, $m[1], $m[2]);
+                continue;
+            }
+            // Any other non-indented line ends the block (a heading, or the next top-level field).
+            if (preg_match('/^\S/', $line) === 1) {
+                $inBlock = false;
+                $flush();
+                continue;
+            }
+            if (preg_match('/^\s+([A-Za-z_]+)\s*:\s*(.*)$/', $line, $m) === 1) {
+                if ($current === null) {
+                    throw new \InvalidArgumentException("Architecture import rejected: exceptions block field '{$m[1]}' appears before any entry");
+                }
+                self::setExceptionField($current, $m[1], $m[2]);
+                continue;
+            }
+        }
+        $flush();
+
+        foreach ($entries as $index => $entry) {
+            $position = $index + 1;
+            $label = $entry['what'] !== '' ? $entry['what'] : "entry {$position}";
+            foreach (['what', 'why', 'scope', 'decided_when', 'authority'] as $field) {
+                $empty = $field === 'scope' ? $entry['scope'] === [] : $entry[$field] === '';
+                if ($empty) {
+                    throw new \InvalidArgumentException("Architecture import rejected: exception '{$label}' is missing required field '{$field}'");
+                }
+            }
+            if (strtotime($entry['decided_when']) === false) {
+                throw new \InvalidArgumentException("Architecture import rejected: exception '{$label}' field 'decided_when' is not a parseable timestamp: '{$entry['decided_when']}'");
+            }
+        }
+
+        return array_values($entries);
+    }
+
+    /** Assign one key/value from an `exceptions:` entry. Unknown keys are ignored, so a missing
+     * required field is still reported by name rather than being masked by a typo. Unknown keys are
+     * deliberately not refused: CD-24 adds fields (`decided_phase`, `authority_source`) and an
+     * implementation of CD-22 must not pre-empt them.
+     *
+     * @param array<string,mixed> $entry
+     */
+    private static function setExceptionField(array &$entry, string $key, string $raw): void
+    {
+        if (!array_key_exists($key, $entry)) { return; }
+        if ($key === 'scope') {
+            foreach (self::parseExceptionScope($raw) as $scope) { $entry['scope'][] = $scope; }
+            return;
+        }
+        $entry[$key] = trim(trim($raw), "`'\"");
+    }
+
+    /**
+     * Parse one `scope:` value into normalised path entries. Commas separate a path list. Absolute
+     * and traversal paths are refused here, before any policy guard sees them.
+     *
+     * @return list<array{path:string,kind:string}>
+     */
+    private static function parseExceptionScope(string $raw): array
+    {
+        $scope = [];
+        foreach (preg_split('/\s*,\s*/', trim($raw)) ?: [] as $token) {
+            $token = trim(trim($token), " \t`'\"");
+            if ($token === '') { continue; }
+            $parsed = self::parseScopeEntry($token, 'allowed');
+            if (!$parsed['ok']) {
+                throw new \InvalidArgumentException("Architecture import rejected: exception scope '{$token}' is invalid: {$parsed['reason']}");
+            }
+            $scope[] = ['path' => $parsed['path'], 'kind' => $parsed['kind']];
+        }
+        return $scope;
     }
 
     /**
@@ -145,6 +260,14 @@ final class DevelopmentTaskContract
             'forbidden_scope' => $normalized['forbidden_scope'] ?? [],
             'baseline_scope' => $normalized['baseline_scope'] ?? [],
         ];
+
+        // Declared exceptions are part of the contracted envelope. Including them (only when
+        // present) binds them to the revision id, so an exception added after dispatch moves the
+        // revision and is therefore detectable — pre-declaration is enforced, not assumed. A
+        // contract with no `exceptions:` block hashes exactly as before (additive format).
+        if (($normalized['exceptions'] ?? []) !== []) {
+            $canonical['exceptions'] = $normalized['exceptions'];
+        }
 
         return substr(hash('sha256', json_encode($canonical, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)), 0, 16);
     }

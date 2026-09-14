@@ -1,0 +1,28 @@
+{
+    "schema": "ark.ai-project-state.v1",
+    "project": "gen4-r1",
+    "slices": {
+        "S1": {
+            "state": "blocked",
+            "run_id": "gen4-r1-s1-20260914153917-4ff23f",
+            "reason": "claims were not all RE_DERIVED: UNVERIFIED,UNVERIFIED",
+            "updated_at": "2026-09-14T15:41:49+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s1-20260914153917-4ff23f",
+                    "reason": null,
+                    "at": "2026-09-14T15:39:17+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s1-20260914153917-4ff23f",
+                    "reason": "claims were not all RE_DERIVED: UNVERIFIED,UNVERIFIED",
+                    "at": "2026-09-14T15:41:49+00:00"
+                }
+            ]
+        }
+    }
+}
