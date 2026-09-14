@@ -180,10 +180,14 @@ php tools/ai-run.php status --runs-dir=/tmp/vb --gate >/dev/null 2>&1; echo "gat
 ```
 **Expected and measured:** the run classifies **`silent`** (`exit=0 log=0B report=0B`) and `--gate` exits `3`.
 
-Why this exists: the model runner used here **can exit 0 having written nothing to stdout**. A 0-byte log is
-therefore a *silent success*, not a death — and during this session three different heuristics (log size, a
-`pgrep` pattern, and `ps` truncating long command lines) each produced a **false "the run died" conclusion**.
-The ledger replaces inference with a record; a `running` record whose pid is dead reconciles to `abandoned`.
+Why this exists: during the session preceding this review, the reviewer sampled run state three times with
+three different heuristics — a log's size, a `pgrep` pattern, and `ps` (which truncates long command lines
+and so hid the run's own `--name` argument) — and **all three produced a false "the run has died"
+conclusion** about runs that were healthy and working. In one case the wrong conclusion was published to the
+operator and had to be retracted. The root cause is that a redirected log is written **progressively**: a
+0-byte log means the writer has not flushed yet, not that nothing happened. The ledger replaces inference with
+a record — `status` reports the run's own pid and reconciles a dead pid to `abandoned`, so "is it still
+running?" is answered from the process, never from a file's size.
 
 ### C6 — The two suites pass
 
@@ -298,10 +302,15 @@ blast radius; it does not verify correctness.
 
 ### 3.4 Silence is recorded, not prevented
 
-A silent run is now *visible* (C5) and a `--gate` can refuse to advance on one. Nothing forces a re-run, and
-nothing stops work continuing on a tree that a silent run left half-changed. During this session a run
-completed with no output and correct edits; another was committed **while still running**, capturing a
-non-final state (recorded as CD-11).
+A silent run — one that exits 0 while producing no report — is now *visible* (C5), and `--gate` can refuse to
+advance on one. Nothing forces a re-run, and nothing stops work continuing on a tree a silent run left
+half-changed.
+
+**No genuine silent success was observed in this session.** An earlier claim that two had occurred was
+**wrong** and is corrected in CD-12: the logs were sampled while the runs were still executing, and both had
+in fact written full reports (12.7 KB and 11.8 KB). The real event that occurred is subtler and worse: the
+reviewer **committed a run's work while the run was still going**, capturing an intermediate state (CD-11) —
+and the run independently detected and disclosed that in its own report.
 
 ### 3.5 The verification loop was, in practice, a model looking at files
 
@@ -355,8 +364,12 @@ Three of these were found by the harness's own instruments; three by a human-sty
 ratio is the honest answer to "how autonomous is this really?"
 
 **Failures of the reviewer itself**, recorded for the same reason: three false "the run died" conclusions
-from three unvalidated signals; one commit made during a live run; one claim published to the operator and
-later corrected.
+from three unvalidated signals (log size, a `pgrep` pattern, `ps` truncation); one commit made during a live
+run, which captured an intermediate state and which **the run itself independently detected and disclosed**;
+and one conclusion published to the operator — that two runs had "succeeded silently" — which further
+checking **falsified** (both had written full reports; the logs were sampled before they were flushed). Two
+of the three run reports in this session were never read by the reviewer before he declared their slices
+verified.
 
 ---
 
