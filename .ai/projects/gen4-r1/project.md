@@ -66,7 +66,7 @@ would measure the harness against itself, which is the one thing this project mu
 | id | slice | source | status |
 |---|---|---|---|
 | **S1** | the stale `runs_by_status` assertion in the metrics suite | CD-41 (left red for want of authority) | **done** — advanced on the 4th attempt, commit `02a4559` |
-| **S2** | declare the last two undeclared write routes (both in `gui-settings`), 45/47 → 47/47 | `docs/architecture/akira-beyond-the-cms.md` §P2, via `.ai/authority-route-coverage-akira.contract.md` | pending |
+| **S2** | declare the last two undeclared write routes (both in `gui-settings`), 45/47 → 47/47 | `docs/architecture/akira-beyond-the-cms.md` §P2, via `.ai/authority-route-coverage-akira.contract.md` | work **complete and shipped** (census 47/47); run **blocked** on evidence admissibility — see CD-46/CD-47 |
 
 **Do not write a placeholder slice id in the table above.** CD-34 recorded that the id scanner cannot tell a
 declaration from a reference, and it bites a third time here: an earlier draft of this table said "S2+" for the

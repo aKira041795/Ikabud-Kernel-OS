@@ -825,3 +825,58 @@ the first task to use the harness end to end.
 - `package.json` — no new Node dependency.
 - `.github/workflows/` — no edit to CI workflow definitions.
 - `kernel/App.php` — no edit to kernel runtime classes.
+
+## Evidence admissibility — read this before writing any acceptance criterion
+
+Added 2026-09-14 from CD-46/CE-08, after two slices were blocked by mechanical properties of the
+apparatus rather than by their work. These are properties of the frozen harness, measured, not
+preferences. A contract that ignores them cannot produce evidence, however good the work is.
+
+### 1. Evidence is limited to the command allowlist
+
+`tools/ai-run.php:COMMAND_ALLOWLIST` is the whole admissible surface. `argvForCommand()` takes the
+executable from the matched rule and returns `null` otherwise, so an unlisted command **binds no
+claim at all** — the report is not merely weak, it extracts **zero claims** and the run stops with
+`missing verified report/claims`.
+
+Admissible today, and nothing else:
+
+```
+php tests/<name>.php                       — ROOT tests/ only; a module test path is NOT matched
+php -l <file>.php
+php tools/ai-contract-lint.php [--json|--live-only|--contract=…]
+python3 -m py_compile <file>.py
+python3 -m unittest tests.<pkg>.test_<name>
+python3 tools/harpp-bridge/tests/<name>.py
+```
+
+Refused: `php -r '…'`, `php ikabud …`, `grep`, `git`, any `;`-chained or redirected form, and
+`php modules/<mod>/tests/<name>.php`. **Write acceptance criteria in the admissible shapes, or the
+slice cannot be verified** — CD-47 records a slice whose correct verification (a census, a policy
+read) was unrepresentable, so it could only have offered vacuous evidence, which B-F1 forbids.
+
+### 2. No slice may create a test file
+
+`isExistingTestPath()` evaluates `file_exists()` **after** the run, so a file the run created is
+judged a pre-existing test under modification — an absolute prohibition with no authority route
+(CD-46 defect 2). Evidence must come from **existing root tests**.
+
+### 3. Path prohibitions are substring matches
+
+`taxonomyMatcherMatches('authority', $path)` uses the unanchored pattern
+`#…|auth|JWT|policy#i`, so any path containing `auth` — **including the word "authority"** — trips
+the absolute prohibition on authorisation weakening (CD-46 defect 1). Do not name new files after
+the thing they do.
+
+### 4. Every slice must run the root tests that cover what it touches
+
+**The mechanical corrective for CE-08.** A slice changing a module's behaviour must name, under
+`## Required tests`, the **root** `tests/*.php` files that assert on that behaviour, and the run
+must execute them. S2 was committed as "verified" while `tests/module_route_authority_test.php`
+went 29/0 → 26/3, because the test used the **real** `gui-settings` module as its example of a
+module with no declarations and the slice gave gui-settings declarations. Verification that never
+runs the thing capable of failing is not verification — B-F1's rule, applied to the Chair.
+
+Corollary for fixtures: **a test must not use a live module as a stand-in for a negative case.**
+Discover the subject (e.g. a module whose declarations are currently empty) and assert the premise,
+so the failure says *why* it failed.

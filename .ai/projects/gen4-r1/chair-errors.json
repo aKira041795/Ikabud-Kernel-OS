@@ -50,6 +50,13 @@
       "what": "Wrote a slice table row reading 'S2+' as a placeholder for work not yet specified.",
       "falsified_by": "The project's id scanner cannot distinguish a declaration from a reference (CD-34); the project reported a phantom slice named 'S2+' with one obligation. project.md now forbids placeholder ids.",
       "cost": "One phantom obligation in the project state."
+    },
+    {
+      "id": "CE-08",
+      "when": "2026-09-14",
+      "what": "Accepted and committed S2 (c51f024) as 'verified' without running the root test that covered the touched area. tests/module_route_authority_test.php went 29 passed / 0 failed to 26 / 3.",
+      "falsified_by": "Running that test against both manifests: pre-S2 module.json gives 29/0/exit 0, post-S2 gives 26/3/exit 1. The failure is entirely S2's and entirely correct behaviour by the test — it used the REAL gui-settings module as its example of 'a module with no declarations', and S2's whole purpose was to give gui-settings declarations.",
+      "cost": "A red root test committed to the branch. The deeper fault: my verification could not fail, because it never ran the thing capable of failing. B-F1's rule — a verifier must be shown capable of failing before its pass counts — applied to the Chair and was not applied."
     }
   ]
 }

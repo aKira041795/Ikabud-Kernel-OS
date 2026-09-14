@@ -2241,3 +2241,62 @@ against the gate that judges them before a run is spent.
 **Authority:** CD-41 (freeze) governs; repair deferred by the Chair, not declined.
 **Owner intervention:** not required — this is a recorded defect and a deferred repair, not a request for a
 decision. It becomes an owner decision only if the owner wants the freeze lifted to fix it.
+
+## CD-47 — the evidence surface excludes the commands that verify ordinary work
+
+**Issued by:** the Chair, from the S2 re-verification run record
+(`.ai/runs/gen4-r1-s2-20260914163558-380c79.json`: `SCOPE OK delta=0`, then `CLAIMS extracted=0`).
+
+**What happened.** With the two CD-46 false positives removed by construction (delta 0, so nothing to match),
+the run still could not complete — and this time the apparatus was right to refuse. S2's report was clean: five
+`CLAIM:` lines, each with a `COMMAND:`. **Zero claims bound.** The reason is the allowlist
+(`tools/ai-run.php:COMMAND_ALLOWLIST`), which is narrow by design:
+
+```
+php tests/<name>.php          (root tests/ only)
+php -l <file>.php
+php tools/ai-contract-lint.php […]
+python3 -m py_compile|unittest …, python3 tools/harpp-bridge/tests/<name>.py
+```
+
+Measured against that table: `php -r …` **refused**, `php ikabud workbench:governance …` **refused**,
+`grep …` **refused**, `git diff …` **refused**, any `;`-chained or redirected form **refused**, and — the
+sharp one — **`php modules/<mod>/tests/<name>.php` refused**, because the rule is anchored to `tests/` at the
+repository root. `argvForCommand()` takes the executable from the matched rule and returns null otherwise, so
+an unlisted command is not executed at all.
+
+**The finding, stated precisely.** *The commands that verify ordinary product work are inadmissible, and the
+commands that are admissible cannot verify it.* S2's evidence — the census, the policy row read from the
+authority store — is exactly the right verification and cannot be represented. The admissible substitutes are
+vacuously true of the change: `tests/workbench_governance_census_test.php` builds synthetic modules and passes
+either way, so offering it as evidence would assert nothing. **The apparatus will accept such evidence; B-F1
+exists to say it should not.** Refusing is the correct behaviour under its own rules, which is why this is a
+capability limit rather than a bug in the gate.
+
+**Consequence for GEN4-R1's distribution, at n=2.** S1 — a change to a root test — completed, because it was
+admissible by construction. S2 — a change to a module — completed its work, was refused for its filename
+(CD-46), and then could not evidence itself at all. **The apparatus measures work that is expressible as a
+root-test run, and blocks work that is not.** That is the distribution's headline and it is a property of the
+frozen apparatus, not of the slices.
+
+**Decision: the freeze is not lifted, and this is recorded as the measurement's result rather than repaired
+mid-flight.** CD-41's premise was that the apparatus is measured before it is changed; the measurement has now
+answered the question it was created to ask, which is when repair becomes legitimate rather than a way of
+making the next slice pass.
+
+**Chair error CE-08, recorded because it is the more instructive of the two.** S2 was committed as *verified*
+without running `tests/module_route_authority_test.php`, which then failed **26/29** — because that test used
+the **real** `gui-settings` module as its example of *"a module with no declarations"*, and S2's purpose was to
+give gui-settings declarations. My verification could not fail: it never ran the thing capable of failing.
+B-F1's rule — *a verifier must be shown capable of failing before its pass counts* — was written for the
+harness and not applied to the Chair.
+
+**Repaired, with the coupling removed rather than the assertion weakened.** The subject is now **discovered**
+(a module whose declarations are currently empty, via `discoverModules()`), not named, with the premise
+asserted so a future disappearance is legible instead of mysterious. Verified **29/29 with and without the
+declaration** — the assertion count is unchanged, so nothing was loosened. The repair could not be dispatched:
+the path is `tests/module_route_authority_test.php`, whose name contains "authority" and therefore "auth",
+which CD-46 defect 1 refuses absolutely. **The Chair performed it and the test itself is the evidence.**
+
+**Authority:** CD-41 (freeze) governs; the repair is the Chair's, from evidence in the run records.
+**Owner intervention:** not required.
