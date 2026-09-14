@@ -103,16 +103,15 @@ imply — and say which you chose and why.
   app** — a full run poisons the APCu module-cache and 503s the live tenant. Run only the test you write.
 - Do not commit, stage or push. Write logs to `/tmp`, never into the repository.
 
-## Files allowed
+## Files likely affected
 
 - `modules/gui-settings/module.json`
 - `modules/gui-settings/helpers.php`
-- `modules/gui-settings/tests/` (new test file)
+- `modules/gui-settings/tests/`
 
-Nothing else. `modules/gui-settings/handlers.php` and `routes.php` are **out of scope** — the handlers already
-have their gate and the routes already exist.
+## Acceptance criteria
 
-## Acceptance criteria — every one must be shown by a command you declare
+Every criterion below must be shown by a command you declare.
 
 1. **The policy exists, before the declaration is relied on.**
    `php -r '...CapabilityAuthorizationRegistry::hasPolicyFor("gui_settings.apply@1")...'` prints `true`, and the
@@ -172,3 +171,12 @@ report path:** a slice-authored path is outside the slice's own approved scope a
 - **This tree is served live.** The local tenant runs from this working tree, so the manifest change takes effect
   immediately for that tenant. If any acceptance step cannot be completed, revert to the pre-slice state rather
   than leaving a half-declared module.
+
+## Forbidden changes
+
+- `modules/gui-settings/handlers.php` — the existing `role === 'admin'` gates stay exactly as they are.
+- `modules/gui-settings/routes.php` — the routes already exist; this slice declares them, it does not create them.
+- `tools/` — the harness, the ledger and the census are **frozen** under CD-41; the measurement is not adjusted.
+- `kernel/` — no engine, registry or guard change; the primitives are sufficient (verified in PR #132).
+- `.governance-baseline.json` — never edited to make a gate pass.
+- `scripts/` — never touched, and never run.
