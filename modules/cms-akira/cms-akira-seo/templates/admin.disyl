@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{page_title} — CMS Akira</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800">
+    <header class="bg-slate-950 px-6 py-4 text-white">
+        <nav class="mx-auto flex max-w-6xl items-center gap-5" aria-label="Akira SEO administration">
+            <a class="font-bold" href="/cms-akira-shell">CMS Akira</a>
+            <a class="text-violet-300" href="/cms-akira-seo">SEO metadata</a>
+            <a class="ml-auto text-sm text-slate-300" href="/auth/logout">Sign out</a>
+        </nav>
+    </header>
+    <main class="mx-auto max-w-6xl p-6">
+        <h1 class="text-3xl font-black text-slate-950">SEO metadata</h1>
+        <p class="mt-2 text-slate-600">Find, create, update, or delete tenant-scoped metadata for an entity.</p>
+
+        {if error}
+            <div class="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700" role="alert">{error}</div>
+        {/if}
+        {if saved}
+            <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-700" role="status">SEO metadata saved.</div>
+        {/if}
+        {if deleted}
+            <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-700" role="status">SEO metadata deleted.</div>
+        {/if}
+
+        <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 class="text-xl font-bold text-slate-950">Choose entity</h2>
+            <form class="mt-5 grid gap-4 md:grid-cols-[1fr_2fr_auto]" method="get" action="/cms-akira-seo">
+                <label class="grid gap-1 text-sm font-semibold">Entity type
+                    <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="entity_type" value="{entity_type}" required maxlength="64" pattern="[a-z][a-z0-9_-]{0,63}" placeholder="post">
+                </label>
+                <label class="grid gap-1 text-sm font-semibold">Entity key
+                    <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="entity_key" value="{entity_key}" required maxlength="190" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="welcome-to-akira">
+                </label>
+                <button class="self-end rounded-lg bg-slate-800 px-5 py-2 font-bold text-white hover:bg-slate-900" type="submit">Load metadata</button>
+            </form>
+        </section>
+
+        {if entity_key}
+            <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-xl font-bold text-slate-950">Metadata fields</h2>
+                    {if record.updated_at}
+                        <span class="text-sm text-slate-500">Last updated {record.updated_at}</span>
+                    {/if}
+                </div>
+                <form class="mt-5 grid gap-4 md:grid-cols-2" method="post" action="/cms-akira-seo/upsert">
+                    {csrf_field | raw}
+                    <input type="hidden" name="idempotency_key" value="{upsert_idempotency_key}">
+                    <input type="hidden" name="entity_type" value="{entity_type}">
+                    <input type="hidden" name="entity_key" value="{entity_key}">
+                    {if record.updated_at}
+                        <input type="hidden" name="expected_updated_at" value="{record.updated_at}">
+                    {/if}
+                    <label class="grid gap-1 text-sm font-semibold md:col-span-2">Title
+                        <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="title" value="{record.title}" maxlength="255">
+                    </label>
+                    <label class="grid gap-1 text-sm font-semibold md:col-span-2">Meta description
+                        <textarea class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="meta_description" rows="3" maxlength="500">{record.meta_description}</textarea>
+                    </label>
+                    <label class="grid gap-1 text-sm font-semibold md:col-span-2">Canonical URL
+                        <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="canonical_url" value="{record.canonical_url}" maxlength="2048" placeholder="/posts/welcome-to-akira">
+                    </label>
+                    <label class="grid gap-1 text-sm font-semibold">Robots
+                        <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="robots" value="{record.robots}" maxlength="255" placeholder="index, follow">
+                    </label>
+                    <label class="grid gap-1 text-sm font-semibold">Open Graph title
+                        <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="og_title" value="{record.og_title}" maxlength="255">
+                    </label>
+                    <label class="grid gap-1 text-sm font-semibold md:col-span-2">Open Graph description
+                        <textarea class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="og_description" rows="3" maxlength="500">{record.og_description}</textarea>
+                    </label>
+                    <label class="grid gap-1 text-sm font-semibold md:col-span-2">Open Graph image URL
+                        <input class="rounded-lg border border-slate-300 px-3 py-2 font-normal" name="og_image" value="{record.og_image}" maxlength="2048">
+                    </label>
+                    <button class="rounded-lg bg-violet-600 px-5 py-3 font-bold text-white hover:bg-violet-700 md:col-span-2 md:justify-self-start" type="submit">Save metadata</button>
+                </form>
+
+                {if record.updated_at}
+                    <form class="mt-6 border-t border-slate-200 pt-6" method="post" action="/cms-akira-seo/delete">
+                        {csrf_field | raw}
+                        <input type="hidden" name="idempotency_key" value="{delete_idempotency_key}">
+                        <input type="hidden" name="entity_type" value="{entity_type}">
+                        <input type="hidden" name="entity_key" value="{entity_key}">
+                        <input type="hidden" name="expected_updated_at" value="{record.updated_at}">
+                        <button class="rounded-lg border border-red-300 px-5 py-2 font-bold text-red-700 hover:bg-red-50" type="submit">Delete metadata</button>
+                    </form>
+                {/if}
+            </section>
+        {/if}
+    </main>
+</body>
+</html>

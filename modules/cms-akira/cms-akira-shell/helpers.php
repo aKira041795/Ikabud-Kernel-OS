@@ -2,6 +2,26 @@
 
 declare(strict_types=1);
 
+function akiraShellSeedKernelProvenancePolicy(): void
+{
+    if (!class_exists(\Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::class)) {
+        return;
+    }
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
+        'policy_version' => 30,
+        'capability_id' => 'kernel.provenance.list@1',
+        'capability_version' => '1',
+        'provider' => 'kernel',
+        'caller_module' => 'cms-akira-shell',
+        'allowed_roles' => 'admin,administrator,superadmin',
+        'provider_activation_required' => false,
+        'requires_protocol' => 'v1',
+        'is_active' => true,
+    ]]);
+}
+
+akiraShellSeedKernelProvenancePolicy();
+
 function akiraShellEscape(mixed $value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -28,6 +48,52 @@ function akiraPublicContext(string $title, string $path, string $description = '
         'current_year' => date('Y'),
         'show_admin_bar' => is_array($user) && $user !== [],
     ];
+}
+
+/**
+ * Documented render-time defaults for the public behaviour projection. Core's
+ * cacSiteSettingsDefaults() is the source of truth whenever it is loaded; the
+ * literal fallback only keeps this file usable when loaded standalone.
+ *
+ * @return array<string,string>
+ */
+function akiraShellSettingDefaults(): array
+{
+    if (function_exists('cacSiteSettingsDefaults')) {
+        /** @var array<string,string> $defaults */
+        $defaults = cacSiteSettingsDefaults();
+        return $defaults;
+    }
+    return [
+        'public_posts_archive' => 'enabled',
+        'public_post_single' => 'enabled',
+        'public_archive_page_size' => '12',
+        'public_archive_sort' => 'newest',
+    ];
+}
+
+/**
+ * Read the public render-safe behaviour projection through Core. Values that
+ * are absent or blank fall back to the documented default, so a partial module
+ * outage never takes the existing public site down.
+ *
+ * @return array<string,string>
+ */
+function akiraPublicSiteSettings(): array
+{
+    $settings = akiraShellSettingDefaults();
+    try {
+        $result = akiraShellCall('akira.site.settings.public@1');
+        $stored = is_array($result) && ($result['ok'] ?? false) === true && is_array($result['settings'] ?? null)
+            ? $result['settings'] : [];
+        foreach ($settings as $key => $default) {
+            $value = $stored[$key] ?? null;
+            $settings[$key] = is_string($value) && trim($value) !== '' ? trim($value) : $default;
+        }
+    } catch (Throwable) {
+        // Keep the documented defaults when the provider is unavailable.
+    }
+    return $settings;
 }
 
 /**
@@ -80,17 +146,37 @@ function akiraPublicThemeRender(string $viewId, array $context): ?string
             && ($customizer['theme_slug'] ?? '') === $slug && is_array($customizer['values'] ?? null)
             ? $customizer['values'] : [];
         $settings = [];
+        $tokens = $definition->tokens;
         foreach ($definition->sectionNames() as $section) {
             $defaults = $definition->section($section)?->defaults ?? [];
             $overrides = is_array($persisted[$section] ?? null) ? $persisted[$section] : [];
-            $settings[$section] = array_merge($defaults, $overrides);
+            $resolved = $defaults;
+            foreach ($overrides as $key => $value) {
+                // Empty customizer fields mean "use the theme default". In
+                // particular, never let a blank become an empty CSS value.
+                if (is_scalar($value) && trim((string) $value) !== '') {
+                    $resolved[$key] = $value;
+                }
+            }
+            $settings[$section] = $resolved;
+
+            // Token controls use template-safe ids (color_primary) which map
+            // declaratively to CSS token ids (--color-primary). No theme-
+            // specific PHP map or persistence access is needed here.
+            foreach ($resolved as $key => $value) {
+                $tokenKey = isset($tokens[$key]) ? $key : '--' . str_replace('_', '-', (string) $key);
+                if (isset($tokens[$tokenKey]) && is_array($tokens[$tokenKey])
+                    && is_scalar($value) && trim((string) $value) !== '') {
+                    $tokens[$tokenKey]['default'] = $value;
+                }
+            }
         }
         $scope = \Ikabud\Kernel\Contracts\ThemeCustomizationScope::fromString('native_' . $slug);
         $themeContext = new \Ikabud\Kernel\Contracts\ThemeRenderContext(
             theme: $slug,
             scope: $scope,
             settings: $settings,
-            tokens: $definition->tokens,
+            tokens: $tokens,
             site: ['title' => 'CMS Akira', 'tagline' => 'Governed publishing on Ikabud', 'url' => '/'],
             navigation: ['primary' => [
                 ['href' => '/', 'label' => 'Home'],
@@ -178,6 +264,7 @@ function akiraShellPage(string $title, string $body, array $data = []): string
         $links = array_merge($links, [
             ['id' => 'compositions', 'route' => '/cms-akira-shell/compositions', 'label' => 'Compositions', 'order' => 40],
             ['id' => 'permissions', 'route' => '/cms-akira-shell/permissions', 'label' => 'Permissions', 'order' => 50],
+            ['id' => 'settings', 'route' => '/cms-akira-shell/settings', 'label' => 'Site settings', 'order' => 55],
             ['id' => 'users', 'route' => '/cms-akira-shell/users', 'label' => 'Users', 'order' => 60],
             ['id' => 'health', 'route' => '/cms-akira-shell/health', 'label' => 'Module health', 'order' => 70],
         ]);
@@ -235,6 +322,48 @@ function akiraShellEntityList(array $resolved): string
         'view' => 'table',
         'class' => 'akira-entity-list',
     ], ['base_url' => '', 'current_user_role' => (string) ((app()->user()['role'] ?? ''))]);
+}
+
+/** @param list<array<string,mixed>> $rows */
+function akiraShellModuleManager(array $rows): string
+{
+    $notice = (akiraShellQuery()['saved'] ?? '') === '1'
+        ? '<div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Module state updated.</div>' : '';
+    $html = '';
+    foreach ($rows as $row) {
+        $id = (string)($row['id'] ?? '');
+        if ($id === '') {
+            continue;
+        }
+        $installed = ($row['installed'] ?? false) === true;
+        $enabled = ($row['enabled'] ?? false) === true;
+        $profile = ($row['kind'] ?? '') === 'profile';
+        $required = ($row['required'] ?? false) === true;
+        $installedLabel = $installed ? 'Installed' : 'Not installed';
+        $enabledLabel = $enabled ? 'Enabled' : 'Disabled';
+        $action = '';
+        if (!$installed) {
+            $action = 'install';
+        } elseif (!$profile && !$required) {
+            $action = $enabled ? 'disable' : 'enable';
+        }
+        $button = $action === ''
+            ? '<span class="text-xs text-slate-400">' . ($required ? 'Required by entry module' : 'Bundle installed') . '</span>'
+            : '<form method="post" action="/cms-akira-shell/modules/' . rawurlencode($id) . '">' . akiraShellCsrfField()
+                . '<input type="hidden" name="action" value="' . $action . '"><input type="hidden" name="idempotency_key" value="module-' . bin2hex(random_bytes(10)) . '">'
+                . '<button type="submit" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">' . akiraShellEscape(ucfirst($action)) . '</button></form>';
+        $html .= '<div data-akira-module-row data-module-id="' . akiraShellEscape($id) . '" data-installed="' . ($installed ? '1' : '0') . '" data-enabled="' . ($enabled ? '1' : '0') . '" class="grid grid-cols-[minmax(0,1.5fr)_130px_130px_170px_auto] items-center gap-4 border-b border-slate-100 px-6 py-4 last:border-0">'
+            . '<span><strong class="block text-sm text-slate-900">' . akiraShellEscape((string)($row['name'] ?? $id)) . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($id) . '</code></span>'
+            . '<span class="text-sm text-slate-600">' . akiraShellEscape((string)($row['kind'] ?? 'module')) . '</span>'
+            . '<span class="text-xs font-semibold ' . ($installed ? 'text-emerald-700' : 'text-slate-400') . '">' . $installedLabel . '</span>'
+            . '<span><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . ($enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500') . '">' . $enabledLabel . '</span><small class="ml-2 text-slate-400">' . akiraShellEscape((string)($row['activation_state'] ?? '')) . '</small></span>'
+            . '<span class="flex justify-end">' . $button . '</span></div>';
+    }
+    if ($html === '') {
+        $html = '<p class="p-10 text-center text-sm text-slate-400">No Akira suite packages were discovered.</p>';
+    }
+    return $notice . '<p class="mb-5 text-sm text-slate-500">Installed state comes from the Kernel install ledger; enabled state comes from this tenant’s activation settings.</p>'
+        . '<section class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="grid grid-cols-[minmax(0,1.5fr)_130px_130px_170px_auto] gap-4 border-b border-slate-100 bg-slate-50 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span>Package</span><span>Kind</span><span>Install</span><span>Activation</span><span></span></div>' . $html . '</section>';
 }
 
 function akiraShellCsrfField(): string
@@ -404,6 +533,495 @@ function akiraShellWorkflowActions(string $slug, array $actions): string
         $html .= '<button type="submit" name="action" value="' . akiraShellEscape($name) . '" formaction="/cms-akira-shell/posts/' . rawurlencode($slug) . '/workflow" formmethod="post" class="w-full rounded-xl border border-akira-200 bg-akira-50 px-4 py-2.5 text-sm font-semibold text-akira-700 hover:bg-akira-100">' . akiraShellEscape($label) . '</button>';
     }
     return $html . '</div>';
+}
+
+/**
+ * Read the real workflow-run state through governed capabilities only. The shell
+ * owns no workflow tables: posts are enumerated with akira.post.admin.list@1,
+ * current lifecycle state with akira.workflow.evaluate@1, and run history with
+ * akira.workflow.runs@1.
+ *
+ * @return array{rows:list<array<string,mixed>>,run_total:int,post_total:int,runs_available:bool,error:string}
+ */
+function akiraShellWorkflowConsoleData(): array
+{
+    $result = akiraShellAdminPostList([
+        'filters' => ['include_unpublished' => true],
+        'limit' => 100,
+        'offset' => 0,
+        'sort_field' => 'created_at',
+        'sort_direction' => 'desc',
+    ]);
+    if (($result['authorization_denied'] ?? false) === true) {
+        return [
+            'rows' => [],
+            'run_total' => 0,
+            'post_total' => 0,
+            'runs_available' => false,
+            'error' => 'The active tenant policy denies the workflow console read.',
+        ];
+    }
+    $posts = is_array($result['rows'] ?? null) ? array_values(array_filter($result['rows'], 'is_array')) : [];
+    $rows = [];
+    $runTotal = 0;
+    $runsAvailable = true;
+    foreach ($posts as $post) {
+        $slug = trim((string) ($post['slug'] ?? ''));
+        if ($slug === '') {
+            continue;
+        }
+        $workflow = akiraShellWorkflow($slug);
+        $runs = akiraShellWorkflowRuns($slug);
+        $runsOk = ($runs['ok'] ?? false) === true;
+        $runsAvailable = $runsAvailable && $runsOk;
+        $projected = is_array($runs['runs'] ?? null) ? array_values(array_filter($runs['runs'], 'is_array')) : [];
+        $runTotal += count($projected);
+        $rows[] = [
+            'slug' => $slug,
+            'title' => (string) ($post['title'] ?? $slug),
+            'status' => (string) ($workflow['status'] ?? 'unavailable'),
+            'allowed_actions' => is_array($workflow['allowed_actions'] ?? null) ? $workflow['allowed_actions'] : [],
+            'runs' => $projected,
+            'runs_error' => $runsOk ? '' : (string) ($runs['error'] ?? 'Workflow run introspection unavailable.'),
+        ];
+    }
+    return [
+        'rows' => $rows,
+        'run_total' => $runTotal,
+        'post_total' => count($rows),
+        'runs_available' => $runsAvailable,
+        'error' => '',
+    ];
+}
+
+/** @return array<string,mixed> */
+function akiraShellWorkflowRuns(string $slug): array
+{
+    try {
+        $result = akiraShellCall('akira.workflow.runs@1', ['entity_type' => 'post', 'entity_key' => $slug]);
+        return is_array($result) ? $result : ['ok' => false, 'runs' => [], 'total' => 0, 'error' => 'Workflow run introspection unavailable.'];
+    } catch (Throwable $error) {
+        return ['ok' => false, 'runs' => [], 'total' => 0, 'error' => akiraShellRootErrorMessage($error)];
+    }
+}
+
+/** @param array{rows:list<array<string,mixed>>,run_total:int,post_total:int,runs_available:bool,error:string} $console */
+function akiraShellWorkflowConsoleHtml(array $console): string
+{
+    $rows = is_array($console['rows'] ?? null) ? $console['rows'] : [];
+    $runTotal = (int) ($console['run_total'] ?? 0);
+    $postTotal = (int) ($console['post_total'] ?? count($rows));
+    $runsAvailable = ($console['runs_available'] ?? true) === true;
+    $error = trim((string) ($console['error'] ?? ''));
+    $notice = (akiraShellQuery()['saved'] ?? '') === '1'
+        ? '<div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Workflow transition applied and re-read from the store.</div>' : '';
+    $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">' . akiraShellEscape($error) . '</div>';
+    $runsNote = $runsAvailable
+        ? '<p class="mb-5 text-sm text-slate-500">' . $postTotal . ' post' . ($postTotal === 1 ? '' : 's') . ' listed; ' . $runTotal . ' workflow run' . ($runTotal === 1 ? '' : 's') . ' recorded through <code>akira.workflow.runs@1</code>.</p>'
+        : '<p class="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">Workflow run introspection was unavailable for at least one subject; run counts below are not authoritative.</p>';
+    $emptyState = '<div data-akira-workflow-empty class="rounded-[26px] border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">No posts are available to review. An empty workflow queue is a real state, not an error.</div>';
+    if ($rows === []) {
+        return $notice . $errorHtml . $runsNote . $emptyState;
+    }
+
+    $body = '';
+    foreach ($rows as $row) {
+        $slug = (string) ($row['slug'] ?? '');
+        if ($slug === '') {
+            continue;
+        }
+        $status = (string) ($row['status'] ?? 'unavailable');
+        $actions = is_array($row['allowed_actions'] ?? null) ? $row['allowed_actions'] : [];
+        $runs = is_array($row['runs'] ?? null) ? $row['runs'] : [];
+        $runsError = trim((string) ($row['runs_error'] ?? ''));
+
+        $runsCell = '';
+        if ($runs === []) {
+            $runsCell = '<span data-akira-workflow-run-empty class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">No runs recorded</span>';
+        } else {
+            foreach ($runs as $run) {
+                $runId = (int) ($run['run_id'] ?? 0);
+                $runStatus = (string) ($run['status'] ?? '');
+                $started = trim((string) ($run['started_at'] ?? ($run['created_at'] ?? '')));
+                $runsCell .= '<span data-akira-workflow-run="' . $runId . '" class="mt-1 block text-xs text-slate-600">#' . $runId . ' · ' . akiraShellEscape($runStatus) . ($started !== '' ? ' · ' . akiraShellEscape($started) : '') . '</span>';
+            }
+        }
+        if ($runsError !== '') {
+            $runsCell .= '<span class="mt-1 block text-xs text-amber-700">' . akiraShellEscape($runsError) . '</span>';
+        }
+
+        $actionsCell = '';
+        if ($actions === []) {
+            $actionsCell = '<span class="text-xs text-slate-400">No action available</span>';
+        } else {
+            foreach ($actions as $action) {
+                $name = (string) ($action['action'] ?? '');
+                if ($name === '') {
+                    continue;
+                }
+                $label = (string) ($action['label'] ?? ucfirst($name));
+                $actionsCell .= '<form method="post" action="/cms-akira-shell/workflow/' . rawurlencode($slug) . '/transition" class="mt-1">' . akiraShellCsrfField()
+                    . '<input type="hidden" name="action" value="' . akiraShellEscape($name) . '">'
+                    . '<input type="hidden" name="expected_status" value="' . akiraShellEscape($status) . '">'
+                    . '<input type="hidden" name="idempotency_key" value="workflow-console-' . bin2hex(random_bytes(10)) . '">'
+                    . '<button type="submit" class="rounded-xl border border-akira-200 bg-akira-50 px-3 py-2 text-xs font-semibold text-akira-700 hover:bg-akira-100">' . akiraShellEscape($label) . '</button></form>';
+            }
+        }
+
+        $statusClass = match ($status) {
+            'published' => 'bg-emerald-100 text-emerald-700',
+            'review' => 'bg-amber-100 text-amber-700',
+            'approved' => 'bg-sky-100 text-sky-700',
+            default => 'bg-slate-100 text-slate-600',
+        };
+        $body .= '<tr data-akira-workflow-row="' . akiraShellEscape($slug) . '" class="border-b border-slate-100 align-top">'
+            . '<td class="px-5 py-4"><strong class="block text-sm text-slate-900">' . akiraShellEscape((string) ($row['title'] ?? $slug)) . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($slug) . '</code></td>'
+            . '<td class="px-5 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold ' . $statusClass . '">' . akiraShellEscape(ucfirst($status)) . '</span></td>'
+            . '<td class="px-5 py-4">' . $runsCell . '</td>'
+            . '<td class="px-5 py-4 text-right">' . $actionsCell . '</td></tr>';
+    }
+    if ($body === '') {
+        return $notice . $errorHtml . $runsNote . $emptyState;
+    }
+
+    return $notice . $errorHtml . $runsNote
+        . '<section class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th class="px-5 py-3">Post</th><th class="px-5 py-3">Current state</th><th class="px-5 py-3">Workflow runs</th><th class="px-5 py-3 text-right">Advance</th></tr></thead><tbody>' . $body . '</tbody></table></section>'
+        . '<p class="mt-4 text-xs text-slate-400">Current state is read through <code>akira.workflow.evaluate@1</code> and run history through <code>akira.workflow.runs@1</code>; this console never queries workflow tables directly.</p>';
+}
+
+/**
+ * Read the real search index state through governed capabilities only. The shell
+ * owns no search tables: the current index population and the matching documents
+ * are both read through akira.search.query@1.
+ *
+ * @return array<string,mixed>
+ */
+function akiraShellSearchData(string $term = '', int $page = 1): array
+{
+    $population = akiraShellSearchQuery(['entity_type' => 'post', 'page' => 1, 'limit' => 1]);
+    $populationOk = ($population['ok'] ?? false) === true;
+    $results = null;
+    if ($term !== '') {
+        $results = akiraShellSearchQuery([
+            'term' => $term, 'entity_type' => 'post', 'page' => $page, 'limit' => 25,
+        ]);
+    }
+    return [
+        'indexed_total' => $populationOk ? (int) ($population['total'] ?? 0) : 0,
+        'population_ok' => $populationOk,
+        'population_error' => $populationOk ? '' : (string) ($population['error'] ?? 'Search query unavailable.'),
+        'term' => $term,
+        'page' => $page,
+        'results' => is_array($results) ? $results : null,
+    ];
+}
+
+/** @param array<string,mixed> $payload
+ * @return array<string,mixed>
+ */
+function akiraShellSearchQuery(array $payload): array
+{
+    try {
+        $result = akiraShellCall('akira.search.query@1', $payload);
+        return is_array($result) ? $result : ['ok' => false, 'rows' => [], 'total' => 0, 'error' => 'Search query unavailable.'];
+    } catch (Throwable $error) {
+        return ['ok' => false, 'rows' => [], 'total' => 0, 'error' => akiraShellRootErrorMessage($error)];
+    }
+}
+
+/** @param array<string,mixed> $console */
+function akiraShellSearchHtml(array $console, string $error = ''): string
+{
+    $indexed = (int) ($console['indexed_total'] ?? 0);
+    $populationOk = ($console['population_ok'] ?? false) === true;
+    $populationError = trim((string) ($console['population_error'] ?? ''));
+    $term = (string) ($console['term'] ?? '');
+    $page = max(1, (int) ($console['page'] ?? 1));
+    $results = is_array($console['results'] ?? null) ? $console['results'] : null;
+
+    $notice = (akiraShellQuery()['rebuilt'] ?? '') === '1'
+        ? '<div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Search index rebuilt from published Posts and re-read from the store.</div>' : '';
+    $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">' . akiraShellEscape($error) . '</div>';
+
+    if (!$populationOk) {
+        $population = '<div role="alert" class="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">Index population could not be read through <code>akira.search.query@1</code>: ' . akiraShellEscape($populationError) . '</div>';
+    } elseif ($indexed === 0) {
+        $population = '<div data-akira-search-empty class="mb-5 rounded-[26px] border border-slate-200 bg-white p-8 text-center shadow-sm"><span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">0 documents indexed</span><p class="mt-3 text-sm text-slate-500">The tenant search index is empty. That is a real state, not an error. Rebuild the index from published Posts to populate it.</p></div>';
+    } else {
+        $population = '<div class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><span class="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">' . $indexed . ' document' . ($indexed === 1 ? '' : 's') . ' indexed</span><p class="mt-3 text-sm text-slate-500">Population is the live count returned by <code>akira.search.query@1</code> for this tenant, not a cached or assumed value.</p></div>';
+    }
+
+    $form = '<form method="get" action="/cms-akira-shell/search" class="mb-5 grid gap-3 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[1fr_auto]">'
+        . '<input type="search" name="q" value="' . akiraShellEscape($term) . '" placeholder="Search indexed documents…" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:border-akira-500 focus:outline-none">'
+        . '<button class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white" type="submit">Search</button></form>';
+
+    $rebuildForm = '<form method="post" action="/cms-akira-shell/search/rebuild" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Rebuild index</h2><p class="mt-1 text-sm text-slate-500">Deterministically re-indexes published Posts for this tenant through the governed <code>akira.search.rebuild@1</code> capability. This is an explicit, audited mutation and is never triggered by viewing this page.</p>'
+        . '<input type="hidden" name="q" value="' . akiraShellEscape($term) . '">'
+        . '<input type="hidden" name="idempotency_key" value="search-rebuild-' . bin2hex(random_bytes(10)) . '">'
+        . '<button type="submit" class="mt-4 rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white hover:bg-akira-700">Rebuild index now</button></form>';
+
+    $resultsHtml = $term !== '' ? akiraShellSearchResults($term, $page, $results) : '';
+
+    return $notice . $errorHtml . $population . $form . $resultsHtml . $rebuildForm
+        . '<p class="mt-4 text-xs text-slate-400">This console reads through <code>akira.search.query@1</code> and mutates only through <code>akira.search.rebuild@1</code>; it never queries the search table directly.</p>';
+}
+
+/** @param array<string,mixed>|null $results */
+function akiraShellSearchResults(string $term, int $page, ?array $results): string
+{
+    if ($results === null) {
+        return '';
+    }
+    if (($results['ok'] ?? false) !== true) {
+        return '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Search failed: ' . akiraShellEscape((string) ($results['error'] ?? 'query unavailable')) . '</div>';
+    }
+    $rows = is_array($results['rows'] ?? null) ? array_values(array_filter($results['rows'], 'is_array')) : [];
+    $total = (int) ($results['total'] ?? count($rows));
+    if ($rows === []) {
+        return '<div data-akira-search-no-results class="mb-5 rounded-[26px] border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 shadow-sm">No indexed documents match &ldquo;' . akiraShellEscape($term) . '&rdquo;. The query returned real state; try another term.</div>';
+    }
+    $body = '';
+    foreach ($rows as $row) {
+        $key = (string) ($row['document_key'] ?? '');
+        $body .= '<tr data-akira-search-row="' . akiraShellEscape($key) . '" class="border-b border-slate-100 last:border-0">'
+            . '<td class="px-5 py-4"><strong class="block text-sm text-slate-900">' . akiraShellEscape((string) ($row['title'] ?? $key)) . '</strong><code class="text-xs text-slate-400">' . akiraShellEscape($key) . '</code></td>'
+            . '<td class="px-5 py-4 text-sm text-slate-600">' . akiraShellEscape((string) ($row['summary'] ?? '')) . '</td>'
+            . '<td class="px-5 py-4"><span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">' . akiraShellEscape((string) ($row['status'] ?? '')) . '</span></td>'
+            . '<td class="px-5 py-4 text-xs text-slate-400">' . akiraShellEscape((string) ($row['indexed_at'] ?? '')) . '</td></tr>';
+    }
+    return '<section class="mb-5 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><div class="flex items-center justify-between border-b border-slate-100 px-5 py-3"><h2 class="font-bold text-slate-950">Results for &ldquo;' . akiraShellEscape($term) . '&rdquo;</h2><span class="rounded-full bg-akira-100 px-3 py-1 text-xs font-semibold text-akira-700">' . $total . ' match' . ($total === 1 ? '' : 'es') . '</span></div>'
+        . '<table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th class="px-5 py-3">Document</th><th class="px-5 py-3">Summary</th><th class="px-5 py-3">Status</th><th class="px-5 py-3">Indexed</th></tr></thead><tbody>' . $body . '</tbody></table></section>'
+        . akiraShellSearchPagination($term, $page, $total, 25);
+}
+
+function akiraShellSearchPagination(string $term, int $page, int $total, int $limit): string
+{
+    $pages = max(1, (int) ceil($total / max(1, $limit)));
+    if ($pages <= 1) {
+        return '';
+    }
+    $link = static fn (int $target): string => '/cms-akira-shell/search?' . http_build_query(['q' => $term, 'page' => $target]);
+    return '<nav class="mb-5 flex items-center justify-between text-sm"><span class="text-slate-500">Page ' . $page . ' of ' . $pages . '</span><div class="flex gap-2">'
+        . ($page > 1 ? '<a class="rounded-xl border bg-white px-4 py-2" href="' . akiraShellEscape($link($page - 1)) . '">Previous</a>' : '')
+        . ($page < $pages ? '<a class="rounded-xl border bg-white px-4 py-2" href="' . akiraShellEscape($link($page + 1)) . '">Next</a>' : '') . '</div></nav>';
+}
+
+/**
+ * The current request path exactly as the kernel routed it: decoded, without a
+ * query string, and without a trailing slash. Used only by the module not-found
+ * seam so redirect resolution is an exact match against the requested path.
+ */
+function akiraShellRequestPath(): string
+{
+    $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+    if (!is_string($path) || $path === '') {
+        $path = '/';
+    }
+    $path = rawurldecode($path);
+    $path = rtrim($path, '/');
+    return $path === '' ? '/' : $path;
+}
+
+/**
+ * Ask Core for the single stored target of an exact source match. A missing
+ * store, missing table or unavailable provider fails closed to the original
+ * 404 — never to a guessed or chained location.
+ */
+function akiraShellRedirectResolve(string $path): ?string
+{
+    if ($path === '' || strlen($path) > 255) {
+        return null;
+    }
+    try {
+        $result = akiraShellCall('akira.redirect.resolve@1', ['path' => $path]);
+    } catch (Throwable) {
+        return null;
+    }
+    if (!is_array($result) || ($result['ok'] ?? false) !== true) {
+        return null;
+    }
+    $target = $result['target'] ?? null;
+    return is_string($target) && $target !== '' ? $target : null;
+}
+
+/**
+ * Render the redirect console from the real stored rows. The explicit empty
+ * state is honest: zero rows is a real state, not an error. The form is the
+ * only write surface and every target it submits is re-validated by Core.
+ *
+ * @param list<array<string,mixed>> $rows
+ */
+function akiraShellRedirectsHtml(array $rows, string $notice = '', string $error = '', string $source = '', string $target = ''): string
+{
+    $errorHtml = $error === '' ? ''
+        : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Could not save:</strong> ' . akiraShellEscape($error) . '</div>';
+
+    $form = '<form method="post" action="/cms-akira-shell/redirects" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">'
+        . akiraShellCsrfField()
+        . '<input type="hidden" name="idempotency_key" value="akira-redirect-' . bin2hex(random_bytes(12)) . '">'
+        . '<h2 class="text-lg font-bold text-slate-950">Add a post-path redirect</h2>'
+        . '<p class="mt-1 text-sm text-slate-500">Maps one retired post path to one same-origin internal path. Resolution is exact-match and single-hop; a target that is itself another redirect is never followed. Absolute, protocol-relative and scheme-qualified targets are refused.</p>'
+        . '<label class="mt-5 block text-sm font-semibold text-slate-800" for="redirect-source">Source post path</label>'
+        . '<input id="redirect-source" name="source_path" value="' . akiraShellEscape($source) . '" placeholder="/posts/retired-slug" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm">'
+        . '<label class="mt-4 block text-sm font-semibold text-slate-800" for="redirect-target">Internal target path</label>'
+        . '<input id="redirect-target" name="target_path" value="' . akiraShellEscape($target) . '" placeholder="/posts/current-slug" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm">'
+        . '<button type="submit" class="mt-6 rounded-xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white">Save redirect</button></form>';
+
+    if ($rows === []) {
+        $table = '<div data-akira-redirect-empty class="rounded-[26px] border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 shadow-sm">No post-path redirects are stored for this tenant. That is a real state, not an error.</div>';
+    } else {
+        $body = '';
+        foreach ($rows as $row) {
+            $body .= '<tr data-akira-redirect-row="' . akiraShellEscape((string) ($row['source_path'] ?? '')) . '" class="border-b border-slate-100 last:border-0">'
+                . '<td class="px-5 py-4"><code class="text-sm text-slate-900">' . akiraShellEscape((string) ($row['source_path'] ?? '')) . '</code></td>'
+                . '<td class="px-5 py-4"><code class="text-sm text-akira-700">' . akiraShellEscape((string) ($row['target_path'] ?? '')) . '</code></td>'
+                . '<td class="px-5 py-4 text-xs text-slate-400">' . akiraShellEscape((string) ($row['updated_at'] ?? '')) . '</td></tr>';
+        }
+        $table = '<section class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th class="px-5 py-3">Source path</th><th class="px-5 py-3">Target path</th><th class="px-5 py-3">Updated</th></tr></thead><tbody>' . $body . '</tbody></table></section>';
+    }
+
+    return $notice . $errorHtml . $form . $table
+        . '<p class="mt-4 text-xs text-slate-400">Rows are read through <code>akira.redirect.list@1</code> and written only through <code>akira.redirect.create@1</code>; this console never queries the redirect table directly.</p>';
+}
+
+/**
+ * Read the real backup population from ModuleBackupService through the owning
+ * akira.backup.list@1 capability. The shell owns no filesystem path and no
+ * backup table; an empty result is reported as a real, honest state.
+ *
+ * @return array<string,mixed>
+ */
+function akiraShellBackupData(): array
+{
+    try {
+        $result = akiraShellCall('akira.backup.list@1', []);
+        if (!is_array($result) || ($result['ok'] ?? false) !== true) {
+            return [
+                'ok' => false, 'backups' => [], 'total' => 0,
+                'module_id' => 'cms-akira-core',
+                'error' => 'The kernel backup service could not be read.',
+            ];
+        }
+        $backups = [];
+        foreach (is_array($result['backups'] ?? null) ? $result['backups'] : [] as $row) {
+            if (is_array($row)) {
+                $backups[] = $row;
+            }
+        }
+        return [
+            'ok' => true,
+            'backups' => $backups,
+            'total' => (int) ($result['total'] ?? count($backups)),
+            'module_id' => (string) ($result['module_id'] ?? 'cms-akira-core'),
+            'error' => '',
+        ];
+    } catch (Throwable $error) {
+        return [
+            'ok' => false, 'backups' => [], 'total' => 0,
+            'module_id' => 'cms-akira-core',
+            'error' => akiraShellRootErrorMessage($error),
+        ];
+    }
+}
+
+function akiraShellFormatBytes(int $bytes): string
+{
+    if ($bytes < 1024) {
+        return $bytes . ' B';
+    }
+    if ($bytes < 1048576) {
+        return number_format($bytes / 1024, 1) . ' KB';
+    }
+    return number_format($bytes / 1048576, 2) . ' MB';
+}
+
+/** @param array<string,mixed> $export */
+function akiraShellExportPanelHtml(array $export): string
+{
+    if (($export['empty'] ?? false) === true) {
+        return '<div data-akira-export-empty class="mb-5 rounded-[26px] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900"><strong>Nothing to export.</strong> ' . akiraShellEscape((string) ($export['message'] ?? 'No posts exist to export.')) . '</div>';
+    }
+    if (($export['ok'] ?? false) !== true) {
+        return '<div data-akira-export-error role="alert" class="mb-5 rounded-[26px] border border-red-200 bg-red-50 p-6 text-sm text-red-700"><strong>Export failed.</strong> ' . akiraShellEscape((string) ($export['error'] ?? 'The export could not be produced.')) . '</div>';
+    }
+    $records = (int) ($export['record_count'] ?? 0);
+    $size = (int) ($export['size_bytes'] ?? 0);
+    $excerpt = (string) ($export['excerpt'] ?? '');
+    $truncated = ($export['excerpt_truncated'] ?? false) === true;
+    $filename = (string) ($export['filename'] ?? '');
+    return '<div data-akira-export-result class="mb-5 overflow-hidden rounded-[26px] border border-emerald-200 bg-white shadow-sm">'
+        . '<div class="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50 px-5 py-3"><strong class="text-sm text-emerald-800">Export produced and read back from KernelExport</strong>'
+        . '<span class="text-xs font-semibold text-emerald-700">' . $records . ' record' . ($records === 1 ? '' : 's') . ' &middot; ' . akiraShellEscape(akiraShellFormatBytes($size)) . '</span></div>'
+        . '<div class="px-5 py-4 text-xs text-slate-500"><code>' . akiraShellEscape($filename) . '</code>' . ($truncated ? ' — bounded excerpt, file larger than shown' : ' — full file shown') . '</div>'
+        . '<pre data-akira-export-excerpt class="max-h-80 overflow-auto border-t border-slate-100 bg-slate-950 px-5 py-4 text-xs leading-relaxed text-slate-100">' . akiraShellEscape($excerpt) . ($truncated ? "\n… (truncated)" : '') . '</pre></div>';
+}
+
+/**
+ * Render the backup and export console from real service state.
+ *
+ * @param array<string,mixed> $console
+ * @param array<string,mixed>|null $export
+ */
+function akiraShellBackupHtml(array $console, string $error = '', ?array $export = null): string
+{
+    $ok = ($console['ok'] ?? false) === true;
+    $backups = is_array($console['backups'] ?? null) ? array_values(array_filter($console['backups'], 'is_array')) : [];
+    $total = (int) ($console['total'] ?? count($backups));
+    $moduleId = (string) ($console['module_id'] ?? 'cms-akira-core');
+
+    $created = trim((string) (akiraShellQuery()['created'] ?? ''));
+    $notice = '';
+    if ($created !== '') {
+        $found = null;
+        foreach ($backups as $row) {
+            if (($row['file_name'] ?? '') === $created) {
+                $found = $row;
+                break;
+            }
+        }
+        if (is_array($found)) {
+            $notice = '<div data-akira-backup-created class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><strong>Backup created and read back from the service:</strong> <code>' . akiraShellEscape((string) $found['file_name']) . '</code> &middot; ' . akiraShellEscape(akiraShellFormatBytes((int) ($found['file_size_bytes'] ?? 0))) . ' &middot; ' . akiraShellEscape((string) ($found['created_at'] ?? '')) . '</div>';
+        } else {
+            $notice = '<div data-akira-backup-created-missing class="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">A backup was requested but <code>' . akiraShellEscape($created) . '</code> is not present in the service listing. No artifact is claimed.</div>';
+        }
+    }
+    $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">' . akiraShellEscape($error) . '</div>';
+
+    if (!$ok) {
+        $population = '<div role="alert" class="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">The backup listing could not be read from <code>ModuleBackupService</code>: ' . akiraShellEscape((string) ($console['error'] ?? 'unavailable')) . '</div>';
+    } elseif ($total === 0) {
+        $population = '<div data-akira-backup-empty class="mb-5 rounded-[26px] border border-slate-200 bg-white p-8 text-center shadow-sm"><span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">0 backups</span><p class="mt-3 text-sm text-slate-500">No backups exist for <code>' . akiraShellEscape($moduleId) . '</code>. That is the real state of the kernel backup store, not an error. Create one below.</p></div>';
+    } else {
+        $population = '<div class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm"><span class="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">' . $total . ' backup' . ($total === 1 ? '' : 's') . '</span><p class="mt-3 text-sm text-slate-500">Count and rows come from the live listing returned by <code>akira.backup.list@1</code>, which reads <code>ModuleBackupService</code> directly.</p></div>';
+    }
+
+    $rowsHtml = '';
+    foreach ($backups as $row) {
+        $fileName = (string) ($row['file_name'] ?? '');
+        $rowsHtml .= '<tr data-akira-backup-row="' . akiraShellEscape($fileName) . '" class="border-b border-slate-100 last:border-0">'
+            . '<td class="px-5 py-4"><code class="text-sm text-slate-800">' . akiraShellEscape($fileName) . '</code></td>'
+            . '<td class="px-5 py-4 text-sm text-slate-600">' . akiraShellEscape(akiraShellFormatBytes((int) ($row['file_size_bytes'] ?? 0))) . '</td>'
+            . '<td class="px-5 py-4 text-xs text-slate-400">' . akiraShellEscape((string) ($row['created_at'] ?? '')) . '</td></tr>';
+    }
+    $table = $rowsHtml === '' ? '' : '<section class="mb-5 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"><table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th class="px-5 py-3">Artifact</th><th class="px-5 py-3">Size</th><th class="px-5 py-3">Created</th></tr></thead><tbody>' . $rowsHtml . '</tbody></table></section>';
+
+    $createForm = '<form method="post" action="/cms-akira-shell/backups" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Create backup</h2><p class="mt-1 text-sm text-slate-500">Runs <code>ModuleBackupService</code> over the Akira Core tables for this tenant. This is an explicit, audited POST and is never triggered by viewing this page; the same idempotency key never creates two backups.</p>'
+        . '<label class="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500" for="backup-reason">Reason</label>'
+        . '<input id="backup-reason" name="reason" value="Console backup" maxlength="190" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm">'
+        . '<input type="hidden" name="idempotency_key" value="akira-backup-' . bin2hex(random_bytes(12)) . '">'
+        . '<button type="submit" class="mt-4 rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white hover:bg-akira-700">Create backup now</button></form>';
+
+    $exportForm = '<form method="post" action="/cms-akira-shell/exports" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Export posts (CSV)</h2><p class="mt-1 text-sm text-slate-500">Reads the tenant&rsquo;s posts through <code>akira.post.admin.list@1</code> and renders them through <code>KernelExport</code>. The excerpt below is read back from the produced file; the export is never triggered by a GET.</p>'
+        . '<input type="hidden" name="format" value="csv">'
+        . '<button type="submit" class="mt-4 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">Produce CSV export</button></form>';
+
+    $exportPanel = is_array($export) ? akiraShellExportPanelHtml($export) : '';
+
+    return $notice . $errorHtml . $population . $table . $exportPanel . $createForm . $exportForm
+        . '<p class="mt-4 text-xs text-slate-400">Backups are listed and created only through <code>akira.backup.list@1</code> and <code>akira.backup.create@1</code>; exports only through <code>akira.export.create@1</code>. This console never touches the filesystem, a table, or the destructive reset service.</p>';
 }
 
 /** @return array<string,mixed> */
@@ -1044,6 +1662,290 @@ function akiraShellMediaNotice(): string
         default => '',
     };
     return $message === '' ? '' : '<div role="status" class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">' . $message . '</div>';
+}
+
+/**
+ * @return array{rows:list<array<string,mixed>>,modules:list<string>,actions:list<string>,module:string,action:string,page:int,pages:int,total:int,unattributed_count:int}
+ */
+function akiraShellProvenanceSnapshot(string $module = '', string $action = '', int $page = 1): array
+{
+    $result = app()->cap()->call('kernel.provenance.list@1', [
+        'module' => $module,
+        'action' => $action,
+        'page' => max(1, $page),
+        'per_page' => 50,
+    ], [
+        'caller' => ['module' => 'cms-akira-shell', 'user' => app()->user()],
+        'mode' => 'first',
+    ]);
+    $result = is_array($result) ? $result : [];
+
+    return [
+        'rows' => array_values(array_filter((array) ($result['rows'] ?? []), 'is_array')),
+        'modules' => array_values(array_map('strval', (array) ($result['modules'] ?? []))),
+        'actions' => array_values(array_map('strval', (array) ($result['actions'] ?? []))),
+        'module' => $module,
+        'action' => $action,
+        'page' => max(1, (int) ($result['page'] ?? $page)),
+        'pages' => max(1, (int) ($result['pages'] ?? 1)),
+        'total' => max(0, (int) ($result['total'] ?? 0)),
+        'unattributed_count' => max(0, (int) ($result['unattributed_count'] ?? 0)),
+    ];
+}
+
+/** @param array<string,mixed> $row */
+function akiraShellProvenanceActorHtml(array $row): string
+{
+    $source = trim((string) ($row['actor_source'] ?? ''));
+    $kernelId = isset($row['actor_user_id']) ? (int) $row['actor_user_id'] : 0;
+    $moduleId = isset($row['actor_module_user_id']) ? (int) $row['actor_module_user_id'] : 0;
+    if ($kernelId > 0) {
+        $username = trim((string) ($row['username'] ?? ''));
+        $label = $username !== '' ? $username : 'kernel user #' . $kernelId;
+        return '<strong class="block text-slate-900">' . akiraShellEscape($label) . '</strong>'
+            . '<span class="text-xs text-slate-500">kernel · user #' . $kernelId . '</span>';
+    }
+    if ($moduleId > 0) {
+        return '<strong class="block text-slate-900">' . akiraShellEscape($source !== '' ? $source : 'module') . '</strong>'
+            . '<span class="text-xs text-slate-500">module user #' . $moduleId . '</span>';
+    }
+    $sourceLabel = $source !== '' ? $source : 'source missing (legacy row)';
+    return '<strong class="block text-red-800">Unattributed</strong>'
+        . '<span class="text-xs font-semibold text-red-700">' . akiraShellEscape($sourceLabel) . '</span>';
+}
+
+/** @param array{rows:list<array<string,mixed>>,modules:list<string>,actions:list<string>,module:string,action:string,page:int,pages:int,total:int,unattributed_count:int} $snapshot */
+function akiraShellProvenanceHtml(array $snapshot): string
+{
+    $option = static function (string $value, string $selected): string {
+        return '<option value="' . akiraShellEscape($value) . '"' . ($value === $selected ? ' selected' : '') . '>'
+            . akiraShellEscape($value) . '</option>';
+    };
+    $moduleOptions = '<option value="">All modules</option>';
+    foreach ($snapshot['modules'] as $value) {
+        $moduleOptions .= $option($value, $snapshot['module']);
+    }
+    $actionOptions = '<option value="">All actions</option>';
+    foreach ($snapshot['actions'] as $value) {
+        $actionOptions .= $option($value, $snapshot['action']);
+    }
+
+    $rows = '';
+    foreach ($snapshot['rows'] as $row) {
+        $entityType = trim((string) ($row['entity_type'] ?? ''));
+        $entityId = trim((string) ($row['entity_id'] ?? ''));
+        $entity = ($entityType !== '' ? $entityType : 'unspecified entity')
+            . ($entityId !== '' ? ' · ' . $entityId : '');
+        $rows .= '<tr class="border-b border-slate-100 align-top last:border-0" data-provenance-row>'
+            . '<td class="whitespace-nowrap p-4 text-xs text-slate-500">' . akiraShellEscape($row['created_at'] ?? '') . '</td>'
+            . '<td class="p-4">' . akiraShellProvenanceActorHtml($row) . '</td>'
+            . '<td class="p-4"><code class="text-xs font-semibold text-akira-700">' . akiraShellEscape($row['action'] ?? '') . '</code>'
+            . '<span class="mt-1 block text-xs text-slate-500">Recorded capability/action</span></td>'
+            . '<td class="p-4 text-sm"><strong class="block text-slate-800">' . akiraShellEscape($row['module'] ?? '') . '</strong>'
+            . '<span class="text-xs text-slate-500">' . akiraShellEscape($entity) . '</span></td></tr>';
+    }
+    if ($rows === '') {
+        $rows = '<tr><td colspan="4" class="p-10 text-center text-sm text-slate-500">No changes match these filters.</td></tr>';
+    }
+
+    $queryFor = static function (int $page) use ($snapshot): string {
+        return http_build_query(array_filter([
+            'module' => $snapshot['module'], 'action' => $snapshot['action'], 'page' => $page,
+        ], static fn (mixed $value): bool => $value !== ''));
+    };
+    $pagination = '<span>Page ' . $snapshot['page'] . ' of ' . $snapshot['pages'] . '</span><span class="flex gap-2">'
+        . ($snapshot['page'] > 1 ? '<a class="rounded-xl border bg-white px-3 py-2" href="?' . akiraShellEscape($queryFor($snapshot['page'] - 1)) . '">Previous</a>' : '')
+        . ($snapshot['page'] < $snapshot['pages'] ? '<a class="rounded-xl border bg-white px-3 py-2" href="?' . akiraShellEscape($queryFor($snapshot['page'] + 1)) . '">Next</a>' : '') . '</span>';
+    $unattributedClass = $snapshot['unattributed_count'] > 0
+        ? 'border-red-300 bg-red-50 text-red-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900';
+
+    return '<p class="mb-5 max-w-3xl text-sm text-slate-600">Read-only chronological audit trail. Actor identity remains distinct across Kernel users, module-owned users, and unattributed changes.</p>'
+        . '<section data-unattributed-count class="mb-5 rounded-2xl border p-5 ' . $unattributedClass . '"><span class="text-sm font-semibold uppercase tracking-wide">Unattributed changes</span>'
+        . '<strong class="mt-1 block text-4xl">' . $snapshot['unattributed_count'] . '</strong><p class="mt-1 text-sm">Rows with neither a Kernel user nor a module-owned user. These are never presented as a system actor.</p></section>'
+        . '<form method="get" class="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_1fr_auto]">'
+        . '<label class="text-sm font-semibold">Module<select name="module" class="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2 font-normal">' . $moduleOptions . '</select></label>'
+        . '<label class="text-sm font-semibold">Action<select name="action" class="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2 font-normal">' . $actionOptions . '</select></label>'
+        . '<button class="self-end rounded-xl bg-akira-600 px-5 py-2.5 text-sm font-semibold text-white">Filter</button></form>'
+        . '<div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm"><table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="p-4">Timestamp</th><th class="p-4">Actor / identification source</th><th class="p-4">Capability / action</th><th class="p-4">Module / entity</th></tr></thead><tbody>' . $rows . '</tbody></table></div>'
+        . '<nav aria-label="Provenance pagination" class="mt-4 flex items-center justify-between text-sm text-slate-600"><span>' . $snapshot['total'] . ' matching changes</span><span class="flex items-center gap-4">' . $pagination . '</span></nav>';
+}
+
+/** @return list<string> */
+function akiraShellAuthorityRoleSet(mixed $roles): array
+{
+    $values = is_array($roles) ? $roles : explode(',', (string) $roles);
+    $values = array_values(array_unique(array_filter(array_map(
+        static fn (mixed $role): string => trim((string) $role),
+        $values
+    ), static fn (string $role): bool => $role !== '')));
+    sort($values);
+    return $values;
+}
+
+/**
+ * Reconcile manifest declarations with effective policies and route authority.
+ *
+ * @param list<array<string,mixed>> $policyRows
+ * @param array<string,array<string,mixed>>|null $modules
+ * @return array{policies:list<array<string,mixed>>,deltas:list<array<string,mixed>>,undeclared_posts:list<array<string,string>>}
+ */
+function akiraShellAuthoritySnapshot(array $policyRows, ?array $modules = null): array
+{
+    $policies = [];
+    $byCapability = [];
+    foreach ($policyRows as $row) {
+        if (array_key_exists('is_active', $row) && (int) $row['is_active'] !== 1) {
+            continue;
+        }
+        $capability = trim((string) ($row['capability_id'] ?? ''));
+        if ($capability === '') {
+            continue;
+        }
+        $row['allowed_role_set'] = akiraShellAuthorityRoleSet($row['allowed_roles'] ?? '');
+        $policies[] = $row;
+        $byCapability[$capability] ??= $row;
+    }
+    usort($policies, static fn (array $a, array $b): int => [($a['capability_id'] ?? ''), ($a['provider'] ?? '')] <=> [($b['capability_id'] ?? ''), ($b['provider'] ?? '')]);
+
+    $modules ??= discoverModules();
+    ksort($modules);
+    $deltas = [];
+    $undeclared = [];
+    foreach ($modules as $moduleId => $manifest) {
+        $moduleId = (string) ($manifest['id'] ?? $moduleId);
+        if (($manifest['suite'] ?? '') !== 'cms-akira') {
+            continue;
+        }
+        $routeAuthority = is_array($manifest['capabilities']['routes'] ?? null)
+            ? $manifest['capabilities']['routes'] : [];
+        $contributions = is_array($manifest['admin_contributions'] ?? null)
+            ? $manifest['admin_contributions'] : [];
+        foreach ($contributions as $contribution) {
+            if (!is_array($contribution)) {
+                continue;
+            }
+            $location = trim((string) ($contribution['location'] ?? ''));
+            if ($location !== 'sidebar' && !str_starts_with($location, 'dashboard')) {
+                continue;
+            }
+            $route = trim((string) ($contribution['route'] ?? ''));
+            $capability = trim((string) ($contribution['capability'] ?? $contribution['render_capability'] ?? ''));
+            if ($capability === '' && $route !== '') {
+                $capability = trim((string) ($routeAuthority['GET ' . $route] ?? ''));
+            }
+            $declared = akiraShellAuthorityRoleSet($contribution['roles'] ?? []);
+            $policy = $capability !== '' ? ($byCapability[$capability] ?? null) : null;
+            $effective = is_array($policy) ? (array) $policy['allowed_role_set'] : [];
+            $onlyDeclared = array_values(array_diff($declared, $effective));
+            $onlyPolicy = array_values(array_diff($effective, $declared));
+            if ($capability === '') {
+                $status = 'route-undeclared';
+            } elseif (!is_array($policy)) {
+                $status = 'policy-missing';
+            } elseif ($onlyDeclared === [] && $onlyPolicy === []) {
+                $status = 'agreement';
+            } elseif ($onlyDeclared !== [] && $onlyPolicy !== []) {
+                $status = 'different';
+            } elseif ($onlyDeclared !== []) {
+                $status = 'wider';
+            } else {
+                $status = 'narrower';
+            }
+            $deltas[] = [
+                'module' => $moduleId,
+                'id' => (string) ($contribution['id'] ?? ''),
+                'location' => $location,
+                'route' => $route,
+                'capability' => $capability,
+                'declared_roles' => $declared,
+                'policy_roles' => $effective,
+                'declaration_only' => $onlyDeclared,
+                'policy_only' => $onlyPolicy,
+                'status' => $status,
+            ];
+        }
+
+        $modulePath = trim((string) ($manifest['_path'] ?? ''));
+        $routesFile = $modulePath !== '' ? $modulePath . '/routes.php' : '';
+        if ($routesFile === '' || !is_file($routesFile)) {
+            continue;
+        }
+        try {
+            $routes = require $routesFile;
+        } catch (Throwable) {
+            continue;
+        }
+        if (!is_array($routes)) {
+            continue;
+        }
+        foreach (is_array($routes['POST'] ?? null) ? $routes['POST'] : [] as $route => $handler) {
+            if (!array_key_exists('POST ' . $route, $routeAuthority)) {
+                $undeclared[] = ['module' => $moduleId, 'route' => (string) $route, 'handler' => (string) $handler];
+            }
+        }
+    }
+    usort($deltas, static fn (array $a, array $b): int => [$a['module'], $a['id']] <=> [$b['module'], $b['id']]);
+    usort($undeclared, static fn (array $a, array $b): int => [$a['module'], $a['route']] <=> [$b['module'], $b['route']]);
+
+    return ['policies' => $policies, 'deltas' => $deltas, 'undeclared_posts' => $undeclared];
+}
+
+/** @param array{policies:list<array<string,mixed>>,deltas:list<array<string,mixed>>,undeclared_posts:list<array<string,string>>} $snapshot */
+function akiraShellAuthorityHtml(array $snapshot): string
+{
+    $policyHtml = '';
+    foreach ($snapshot['policies'] as $row) {
+        $grant = strtolower(trim((string) ($row['grant_state'] ?? '')));
+        $grantClass = match ($grant) {
+            'granted' => 'border-emerald-300 bg-emerald-100 text-emerald-900',
+            'suspended' => 'border-amber-400 bg-amber-100 text-amber-950 ring-2 ring-amber-300',
+            'revoked' => 'border-red-500 bg-red-100 text-red-950 ring-2 ring-red-400',
+            default => 'border-slate-400 bg-slate-100 text-slate-900',
+        };
+        $policyHtml .= '<tr class="border-b border-slate-100 align-top"><td class="p-3"><code class="font-semibold text-akira-700">' . akiraShellEscape($row['capability_id'] ?? '') . '</code></td>'
+            . '<td class="p-3 text-xs">' . akiraShellEscape(implode(', ', (array) ($row['allowed_role_set'] ?? []))) . '</td>'
+            . '<td class="p-3 text-xs"><strong>' . akiraShellEscape($row['provider'] ?? '') . '</strong><br>caller: ' . akiraShellEscape(($row['caller_module'] ?? null) ?: 'any') . '</td>'
+            . '<td class="p-3 text-xs">' . akiraShellEscape($row['requires_protocol'] ?? '') . '</td>'
+            . '<td class="p-3 text-xs">v' . akiraShellEscape($row['policy_version'] ?? '') . '</td>'
+            . '<td class="p-3"><strong class="inline-flex rounded-full border px-2.5 py-1 text-xs uppercase tracking-wide ' . $grantClass . '">' . akiraShellEscape($grant !== '' ? $grant : 'unknown') . '</strong></td></tr>';
+    }
+    if ($policyHtml === '') {
+        $policyHtml = '<tr><td class="p-5 text-slate-500" colspan="6">No active Akira policy rows were returned.</td></tr>';
+    }
+
+    $deltaHtml = '';
+    foreach ($snapshot['deltas'] as $delta) {
+        $status = (string) $delta['status'];
+        $isMismatch = in_array($status, ['narrower', 'wider', 'different'], true);
+        $statusClass = match ($status) {
+            'agreement' => 'bg-emerald-100 text-emerald-800',
+            'narrower', 'wider', 'different' => 'bg-red-100 text-red-900 ring-2 ring-red-300',
+            default => 'bg-amber-100 text-amber-900 ring-2 ring-amber-300',
+        };
+        $detail = $isMismatch
+            ? 'declaration only: ' . (implode(', ', $delta['declaration_only']) ?: '—') . '; policy only: ' . (implode(', ', $delta['policy_only']) ?: '—')
+            : ($status === 'agreement' ? 'Role sets are identical.' : ($status === 'route-undeclared' ? 'Route has no GET capability declaration.' : 'No active policy row was returned.'));
+        $target = $delta['capability'] !== '' ? $delta['capability'] : $delta['route'];
+        $deltaHtml .= '<tr class="border-b border-slate-100 align-top"><td class="p-3"><strong>' . akiraShellEscape($delta['id']) . '</strong><br><span class="text-xs text-slate-500">' . akiraShellEscape($delta['module'] . ' · ' . $delta['location']) . '</span></td>'
+            . '<td class="p-3"><code class="text-xs">' . akiraShellEscape($target) . '</code></td><td class="p-3 text-xs">' . akiraShellEscape(implode(', ', $delta['declared_roles'])) . '</td>'
+            . '<td class="p-3 text-xs">' . akiraShellEscape(implode(', ', $delta['policy_roles'])) . '</td><td class="p-3"><strong class="inline-flex rounded-full px-2.5 py-1 text-xs uppercase ' . $statusClass . '">' . akiraShellEscape($status) . '</strong><p class="mt-2 max-w-md text-xs text-slate-500">' . akiraShellEscape($detail) . '</p></td></tr>';
+    }
+    if ($deltaHtml === '') {
+        $deltaHtml = '<tr><td class="p-5 text-slate-500" colspan="5">No sidebar or dashboard contributions were found.</td></tr>';
+    }
+
+    $undeclaredHtml = '';
+    foreach ($snapshot['undeclared_posts'] as $route) {
+        $undeclaredHtml .= '<li class="border-b border-amber-200 px-4 py-3 last:border-0"><strong>' . akiraShellEscape($route['module']) . '</strong> <code class="ml-2 text-xs">POST ' . akiraShellEscape($route['route']) . '</code><span class="block text-xs text-amber-800">' . akiraShellEscape($route['handler']) . '</span></li>';
+    }
+    if ($undeclaredHtml === '') {
+        $undeclaredHtml = '<li class="px-4 py-3 text-emerald-800">Every discovered POST route is declared.</li>';
+    }
+
+    return '<p class="mb-6 max-w-3xl text-sm text-slate-600">Read-only reconciliation of active policy, module declarations, and POST route authority. Nothing on this page changes policy or grant state.</p>'
+        . '<section class="mb-8"><h2 class="mb-3 text-xl font-bold text-slate-950">Effective active policies</h2><div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm"><table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="p-3">Capability</th><th class="p-3">Allowed roles</th><th class="p-3">Provider / caller</th><th class="p-3">Protocol</th><th class="p-3">Policy</th><th class="p-3">Grant state</th></tr></thead><tbody>' . $policyHtml . '</tbody></table></div></section>'
+        . '<section class="mb-8"><h2 class="mb-1 text-xl font-bold text-slate-950">Declaration vs policy</h2><p class="mb-3 text-sm text-slate-500">Red rows are role-set deltas; amber rows cannot yet be reconciled to active policy.</p><div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm"><table class="w-full text-left"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="p-3">Contribution</th><th class="p-3">Authority target</th><th class="p-3">Declared roles</th><th class="p-3">Policy roles</th><th class="p-3">Result</th></tr></thead><tbody>' . $deltaHtml . '</tbody></table></div></section>'
+        . '<section><h2 class="mb-1 text-xl font-bold text-slate-950">Undeclared POST routes</h2><p class="mb-3 text-sm text-slate-500">Routes present in routes.php but absent from capabilities.routes, grouped by owning module.</p><ul class="rounded-2xl border border-amber-300 bg-amber-50 shadow-sm">' . $undeclaredHtml . '</ul></section>';
 }
 
 /** @param list<array<string,mixed>> $rows */

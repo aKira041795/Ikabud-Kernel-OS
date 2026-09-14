@@ -648,6 +648,11 @@ function catThemeValidateCustomizerValues(string $slug, array $values): array
             if (!is_scalar($value) && $value !== null) {
                 throw new CatThemeException("Customizer field {$sectionId}.{$field} must be a scalar value.", 422);
             }
+            $tokenKey = '--' . str_replace('_', '-', (string) $field);
+            if (isset($definition->tokens[$tokenKey]) && is_scalar($value)
+                && preg_match('/[{};<>\x00-\x1F\x7F]/u', (string) $value) === 1) {
+                throw new CatThemeException("Customizer token {$sectionId}.{$field} contains unsafe CSS syntax.", 422);
+            }
         }
         $result = $provider->validate(new \Ikabud\Kernel\Contracts\ThemeCustomizationSubmission(
             $sectionId,

@@ -1,10 +1,34 @@
-{# Region: header.main — brand + primary nav. Static by design: no auth or
-   session access is permitted in themes, so no admin affordances here. #}
+{# Region: header.main — customizer token emission + brand + primary nav. #}
+<style data-akira-customizer>
+  :root{
+    --color-primary:{settings.design_colors.color_primary | esc_html};
+    --color-primary-dark:{settings.design_colors.color_primary_dark | esc_html};
+    --color-primary-soft:{settings.design_colors.color_primary_soft | esc_html};
+    --color-accent:{settings.design_colors.color_accent | esc_html};
+    --color-accent-deep:{settings.design_colors.color_accent_deep | esc_html};
+    --color-tertiary:{settings.design_colors.color_tertiary | esc_html};
+    --color-surface:{settings.design_colors.color_surface | esc_html};
+    --color-surface-raised:{settings.design_colors.color_surface_raised | esc_html};
+    --color-surface-low:{settings.design_colors.color_surface_low | esc_html};
+    --color-surface-container:{settings.design_colors.color_surface_container | esc_html};
+    --color-text:{settings.design_colors.color_text | esc_html};
+    --color-text-muted:{settings.design_colors.color_text_muted | esc_html};
+    --color-outline:{settings.design_colors.color_outline | esc_html};
+    --color-border:{settings.design_colors.color_border | esc_html};
+    --color-error:{settings.design_colors.color_error | esc_html};
+    --font-family:{settings.design_typography.font_family | esc_html};
+    --font-family-ui:{settings.design_typography.font_family_ui | esc_html};
+    --spacing-page:{settings.design_layout.spacing_page | esc_html};
+    --radius-card:{settings.design_layout.radius_card | esc_html};
+    --container-max:{settings.design_layout.container_max | esc_html};
+    --reading-width:{settings.design_layout.reading_width | esc_html};
+  }
+</style>
 <header class="site-header">
   <div class="site-header__inner container">
     <a class="site-brand" href="/">
       <span class="site-brand__mark" aria-hidden="true">A</span>
-      <span class="site-brand__name">Akira</span>
+      <span class="site-brand__name">{section_settings.brand | esc_html}</span>
     </a>
     <nav class="site-nav" aria-label="Primary">
       <a class="site-nav__link site-nav__link--active" href="/">Home</a>

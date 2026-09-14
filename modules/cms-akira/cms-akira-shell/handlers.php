@@ -13,6 +13,20 @@ function akiraPublicHome(array $params = []): void
 /** @param array<string,mixed> $params */
 function akiraPublicPostList(array $params = []): void
 {
+    // Render-time consumer: public_posts_archive controls whether the public
+    // archive exists. This is site behaviour, not theme presentation.
+    if (akiraPublicSiteSettings()['public_posts_archive'] === 'disabled') {
+        http_response_code(404);
+        echo app()->render('modules/cms-akira-shell/public/404.disyl',
+            akiraPublicContext('Posts archive unavailable', '/posts') + [
+                'not_found_heading' => 'Posts archive unavailable',
+                'not_found_message' => 'This site is not currently publishing a browsable posts archive.',
+                'not_found_link' => '/',
+                'not_found_link_label' => 'Return home',
+                'archive_disabled' => true,
+            ]);
+        return;
+    }
     akiraPublicRenderPostList(false);
 }
 
@@ -20,14 +34,19 @@ function akiraPublicRenderPostList(bool $home): void
 {
     $query = akiraShellQuery();
     $page = max(1, (int) ($query['page'] ?? 1));
-    $limit = $home ? 9 : 12;
+    // Render-time consumers: public_archive_page_size bounds how many stories
+    // /posts returns and public_archive_sort chooses its published_at order.
+    // The curated home page keeps its own fixed size and newest-first order.
+    $settings = akiraPublicSiteSettings();
+    $limit = $home ? 9 : max(1, min(50, (int) ($settings['public_archive_page_size'] ?? 12)));
+    $direction = !$home && ($settings['public_archive_sort'] ?? 'newest') === 'oldest' ? 'asc' : 'desc';
     // Deliberately omit include_unpublished: the entity capability then applies
     // its tenant-scoped status='published' boundary for every caller.
     $resolved = app()->entityViews()->resolve('post', 'list', [
         'limit' => $limit,
         'offset' => ($page - 1) * $limit,
         'sort_field' => 'published_at',
-        'sort_direction' => 'desc',
+        'sort_direction' => $direction,
     ]);
     $posts = is_array($resolved['rows'] ?? null) ? array_values(array_filter($resolved['rows'], 'is_array')) : [];
     $total = (int) ($resolved['total'] ?? count($posts));
@@ -51,6 +70,21 @@ function akiraPublicRenderPostList(bool $home): void
 /** @param array<string,mixed> $params */
 function akiraPublicPostSingle(array $params = []): void
 {
+    // Render-time consumer: public_post_single controls whether individual
+    // published stories are reachable at all. This is site behaviour, not
+    // theme presentation.
+    if (akiraPublicSiteSettings()['public_post_single'] === 'disabled') {
+        http_response_code(404);
+        echo app()->render('modules/cms-akira-shell/public/404.disyl',
+            akiraPublicContext('Post unavailable', '/posts') + [
+                'not_found_heading' => 'Post unavailable',
+                'not_found_message' => 'This site is not currently publishing individual stories.',
+                'not_found_link' => '/',
+                'not_found_link_label' => 'Return home',
+                'archive_disabled' => false,
+            ]);
+        return;
+    }
     $slug = trim((string) ($params['slug'] ?? ''));
     if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1) {
         akiraPublicNotFound();
@@ -73,8 +107,28 @@ function akiraPublicPostSingle(array $params = []): void
 
 function akiraPublicNotFound(): void
 {
+    // Module-level not-found seam. A retired post path may have a governed,
+    // exact-match, single-hop redirect. Resolution never recurses: the stored
+    // target is emitted verbatim even when it is itself another row's source,
+    // so chains and loops cannot form. A missing row (or an unavailable store)
+    // falls through to the unchanged 404 below.
+    $redirectTarget = akiraShellRedirectResolve(akiraShellRequestPath());
+    if ($redirectTarget !== null) {
+        if (function_exists('kernel_emit_redirect_header')) {
+            kernel_emit_redirect_header($redirectTarget, 301);
+        } else {
+            header('Location: ' . $redirectTarget, true, 301);
+        }
+        exit;
+    }
     http_response_code(404);
-    echo app()->render('modules/cms-akira-shell/public/404.disyl', akiraPublicContext('Post not found', ''));
+    echo app()->render('modules/cms-akira-shell/public/404.disyl', akiraPublicContext('Post not found', '') + [
+        'not_found_heading' => 'Post not found',
+        'not_found_message' => 'This story is unavailable or has not been published.',
+        'not_found_link' => '/posts',
+        'not_found_link_label' => 'Browse published posts',
+        'archive_disabled' => false,
+    ]);
 }
 
 function akiraShellAuthorize(): bool
@@ -693,6 +747,374 @@ function akiraShellCompositionEdit(array $params = []): void
 }
 
 /** @param array<string,mixed> $params */
+function akiraShellModules(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    try {
+        $result = akiraShellCall('akira.module.list@1');
+        $rows = is_array($result['rows'] ?? null) ? array_values(array_filter($result['rows'], 'is_array')) : [];
+        echo akiraShellPage('Modules & extensions', akiraShellModuleManager($rows), ['active' => 'modules']);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        echo akiraShellPage('Modules & extensions', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'modules']);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellSettings(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    try {
+        $result = akiraShellCall('akira.site.settings.get@1');
+        $settings = is_array($result['settings'] ?? null) ? $result['settings'] : [];
+        echo akiraShellPage('Site settings', akiraShellSettingsForm($settings), ['active' => 'settings']);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        echo akiraShellPage('Site settings', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'settings']);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellSettingsUpdate(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $idempotencyKey = trim((string) ($input['idempotency_key'] ?? ''));
+    unset($input['_token'], $input['idempotency_key']);
+    // Pass the complete submitted settings object to Core: silently filtering
+    // here would defeat Core's fail-closed unknown-key validation.
+    $settings = $input;
+    try {
+        akiraShellCall('akira.site.settings.update@1', [
+            'settings' => $settings,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+        akiraShellInvalidatePublicCache();
+        akiraShellRedirect('/cms-akira-shell/settings?saved=1');
+    } catch (Throwable $error) {
+        http_response_code(422);
+        echo akiraShellPage('Site settings', akiraShellSettingsForm($settings, akiraShellRootErrorMessage($error)), ['active' => 'settings']);
+    }
+}
+
+/** @param array<string,mixed> $settings */
+function akiraShellSettingsForm(array $settings, string $error = ''): string
+{
+    $effective = akiraShellSettingDefaults();
+    foreach ($effective as $key => $default) {
+        $value = $settings[$key] ?? null;
+        $effective[$key] = is_string($value) && trim($value) !== '' ? trim($value) : $default;
+    }
+    $archive = $effective['public_posts_archive'] === 'disabled' ? 'disabled' : 'enabled';
+    $single = $effective['public_post_single'] === 'disabled' ? 'disabled' : 'enabled';
+    $pageSize = $effective['public_archive_page_size'];
+    $sort = $effective['public_archive_sort'] === 'oldest' ? 'oldest' : 'newest';
+    $control = 'mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm';
+    $notice = (akiraShellQuery()['saved'] ?? '') === '1'
+        ? '<div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Site behaviour updated and the public page cache invalidated.</div>' : '';
+    $errorHtml = $error === '' ? ''
+        : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Could not save:</strong> ' . akiraShellEscape($error) . '</div>';
+    return $notice . $errorHtml
+        . '<form method="post" action="/cms-akira-shell/settings" class="max-w-3xl rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<input type="hidden" name="idempotency_key" value="site-settings-' . bin2hex(random_bytes(12)) . '">'
+        . '<h2 class="text-lg font-bold text-slate-950">Public publishing behaviour</h2><p class="mt-1 text-sm text-slate-500">Controls CMS Akira routes and publishing behaviour. Theme brand, colour, font, and layout remain in Theme Studio.</p>'
+        . '<label class="mt-6 block text-sm font-semibold text-slate-800" for="public-posts-archive">Public posts archive</label>'
+        . '<select id="public-posts-archive" name="public_posts_archive" class="' . $control . '">'
+        . '<option value="enabled"' . ($archive === 'enabled' ? ' selected' : '') . '>Enabled — /posts lists published stories</option>'
+        . '<option value="disabled"' . ($archive === 'disabled' ? ' selected' : '') . '>Disabled — /posts returns an unavailable page</option></select>'
+        . '<p class="mt-2 text-xs text-slate-500">Default: Enabled. A blank submission resets to this default.</p>'
+        . '<label class="mt-6 block text-sm font-semibold text-slate-800" for="public-post-single">Public single posts</label>'
+        . '<select id="public-post-single" name="public_post_single" class="' . $control . '">'
+        . '<option value="enabled"' . ($single === 'enabled' ? ' selected' : '') . '>Enabled — /posts/{slug} renders the story</option>'
+        . '<option value="disabled"' . ($single === 'disabled' ? ' selected' : '') . '>Disabled — /posts/{slug} returns an unavailable page</option></select>'
+        . '<p class="mt-2 text-xs text-slate-500">Default: Enabled. A blank submission resets to this default.</p>'
+        . '<label class="mt-6 block text-sm font-semibold text-slate-800" for="public-archive-page-size">Archive page size</label>'
+        . '<input id="public-archive-page-size" type="number" min="1" max="50" name="public_archive_page_size" value="' . akiraShellEscape($pageSize) . '" class="' . $control . '">'
+        . '<p class="mt-2 text-xs text-slate-500">How many stories /posts shows per page (1–50). Default: 12. A blank submission resets to this default.</p>'
+        . '<label class="mt-6 block text-sm font-semibold text-slate-800" for="public-archive-sort">Archive order</label>'
+        . '<select id="public-archive-sort" name="public_archive_sort" class="' . $control . '">'
+        . '<option value="newest"' . ($sort === 'newest' ? ' selected' : '') . '>Newest first — most recently published stories first</option>'
+        . '<option value="oldest"' . ($sort === 'oldest' ? ' selected' : '') . '>Oldest first — earliest published stories first</option></select>'
+        . '<p class="mt-2 text-xs text-slate-500">Default: Newest first. A blank submission resets to this default.</p>'
+        . '<button type="submit" class="mt-6 rounded-xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white">Save site behaviour</button></form>';
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellModuleManage(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $moduleId = trim((string)($params['module_id'] ?? ''));
+    $input = akiraShellInput();
+    try {
+        akiraShellCall('akira.module.manage@1', [
+            'module_id' => $moduleId,
+            'action' => trim((string)($input['action'] ?? '')),
+            'idempotency_key' => trim((string)($input['idempotency_key'] ?? '')),
+        ]);
+        akiraShellRedirect('/cms-akira-shell/modules?saved=1');
+    } catch (Throwable $error) {
+        http_response_code(422);
+        echo akiraShellPage('Modules & extensions', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'modules']);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellWorkflowConsole(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    try {
+        $console = akiraShellWorkflowConsoleData();
+        if (($console['error'] ?? '') !== '') {
+            http_response_code(403);
+        }
+        echo akiraShellPage('Workflow & approvals', akiraShellWorkflowConsoleHtml($console), ['active' => 'workflow']);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        echo akiraShellPage('Workflow & approvals', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'workflow']);
+    }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellWorkflowConsoleTransition(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $entityKey = trim((string) ($params['entity_key'] ?? ''));
+    $input = akiraShellInput();
+    if ($entityKey === '' || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $entityKey) !== 1) {
+        http_response_code(422);
+        echo akiraShellPage('Workflow & approvals', '<p role="alert">The workflow subject reference is invalid.</p>', ['active' => 'workflow']);
+        return;
+    }
+    try {
+        akiraShellCall('akira.workflow.transition@1', [
+            'entity_type' => 'post',
+            'entity_key' => $entityKey,
+            'action' => trim((string) ($input['action'] ?? '')),
+            'expected_status' => trim((string) ($input['expected_status'] ?? '')),
+            'idempotency_key' => trim((string) ($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ($input['idempotency_key'] ?? ''))),
+        ]);
+        akiraShellRedirect('/cms-akira-shell/workflow?saved=1');
+    } catch (Throwable $error) {
+        http_response_code(422);
+        echo akiraShellPage('Workflow & approvals', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'workflow']);
+    }
+}
+
+/**
+ * Search operations console. Reads the real tenant index population and matching
+ * documents through akira.search.query@1 only; the shell owns no search table.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellSearch(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    $query = akiraShellQuery();
+    $term = trim((string) ($query['q'] ?? ''));
+    if (mb_strlen($term) > 200) {
+        $term = mb_substr($term, 0, 200);
+    }
+    $page = max(1, (int) ($query['page'] ?? 1));
+    try {
+        $console = akiraShellSearchData($term, $page);
+        echo akiraShellPage('Search', akiraShellSearchHtml($console), ['active' => 'search']);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        echo akiraShellPage('Search', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'search']);
+    }
+}
+
+/**
+ * Explicit, audited rebuild. Never triggered by a GET page view. The handler
+ * dispatches the same akira.search.rebuild@1 capability declared on the route.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellSearchRebuild(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $term = trim((string) ($input['q'] ?? ''));
+    if (mb_strlen($term) > 200) {
+        $term = mb_substr($term, 0, 200);
+    }
+    $idempotencyKey = trim((string) ($input['idempotency_key'] ?? ''));
+    if ($idempotencyKey === '') {
+        $idempotencyKey = 'search-rebuild-' . bin2hex(random_bytes(10));
+    }
+    try {
+        akiraShellCall('akira.search.rebuild@1', ['idempotency_key' => $idempotencyKey]);
+        akiraShellRedirect('/cms-akira-shell/search?rebuilt=1' . ($term !== '' ? '&q=' . rawurlencode($term) : ''));
+    } catch (Throwable $error) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($error), 'authorization denied') ? 403 : 422);
+        $console = akiraShellSearchData($term, 1);
+        echo akiraShellPage('Search', akiraShellSearchHtml($console, akiraShellRootErrorMessage($error)), ['active' => 'search']);
+    }
+}
+
+/**
+ * Backup and export console. Lists the real backup population through
+ * akira.backup.list@1 only; the shell owns no path and no table.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellBackups(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    $console = akiraShellBackupData();
+    if (($console['ok'] ?? false) !== true) {
+        http_response_code(503);
+    }
+    echo akiraShellPage('Backup & export', akiraShellBackupHtml($console), ['active' => 'backups']);
+}
+
+/**
+ * Explicit, audited backup creation. Never triggered by a GET. The handler
+ * dispatches the same akira.backup.create@1 capability declared on the route.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellBackupCreate(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $key = trim((string) ($input['idempotency_key'] ?? ''));
+    if ($key === '') {
+        $key = 'akira-backup-' . bin2hex(random_bytes(12));
+    }
+    try {
+        $result = akiraShellCall('akira.backup.create@1', [
+            'reason' => trim((string) ($input['reason'] ?? 'Console backup')),
+            'idempotency_key' => $key,
+        ]);
+        $file = is_array($result) ? (string) ($result['file_name'] ?? '') : '';
+        akiraShellRedirect('/cms-akira-shell/backups' . ($file !== '' ? '?created=' . rawurlencode($file) : ''));
+    } catch (Throwable $error) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($error), 'authorization denied') ? 403 : 422);
+        $console = akiraShellBackupData();
+        echo akiraShellPage('Backup & export', akiraShellBackupHtml($console, akiraShellRootErrorMessage($error)), ['active' => 'backups']);
+    }
+}
+
+/**
+ * Explicit, audited export. Renders the produced excerpt read back from the
+ * export file. Never triggered by a GET.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellExportCreate(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    try {
+        $export = akiraShellCall('akira.export.create@1', [
+            'format' => trim((string) ($input['format'] ?? 'csv')),
+        ]);
+        $console = akiraShellBackupData();
+        echo akiraShellPage('Backup & export', akiraShellBackupHtml($console, '', is_array($export) ? $export : null), ['active' => 'backups']);
+    } catch (Throwable $error) {
+        http_response_code(422);
+        $console = akiraShellBackupData();
+        echo akiraShellPage('Backup & export', akiraShellBackupHtml($console, '', ['ok' => false, 'error' => akiraShellRootErrorMessage($error)]), ['active' => 'backups']);
+    }
+}
+
+/**
+ * Redirect console. Lists the real tenant redirect rows through the owning
+ * akira.redirect.list@1 capability only; the shell owns no table and no SQL.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellRedirects(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    try {
+        $result = akiraShellCall('akira.redirect.list@1');
+        $rows = is_array($result['rows'] ?? null) ? array_values(array_filter($result['rows'], 'is_array')) : [];
+        $notice = (akiraShellQuery()['saved'] ?? '') === '1'
+            ? '<div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Redirect saved and read back from the store.</div>'
+            : '';
+        echo akiraShellPage('Redirects', akiraShellRedirectsHtml($rows, $notice), ['active' => 'redirects']);
+    } catch (Throwable $error) {
+        http_response_code(503);
+        echo akiraShellPage('Redirects', '<p role="alert">' . akiraShellEscape(akiraShellRootErrorMessage($error)) . '</p>', ['active' => 'redirects']);
+    }
+}
+
+/**
+ * Explicit, audited redirect write. Never triggered by a GET. The handler
+ * dispatches the same akira.redirect.create@1 capability declared on the route.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellRedirectCreate(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $key = trim((string) ($input['idempotency_key'] ?? ''));
+    if ($key === '') {
+        $key = 'akira-redirect-' . bin2hex(random_bytes(12));
+    }
+    try {
+        akiraShellCall('akira.redirect.create@1', [
+            'source_path' => trim((string) ($input['source_path'] ?? '')),
+            'target_path' => trim((string) ($input['target_path'] ?? '')),
+            'idempotency_key' => $key,
+        ]);
+        akiraShellRedirect('/cms-akira-shell/redirects?saved=1');
+    } catch (Throwable $error) {
+        http_response_code(str_contains(akiraShellRootErrorMessage($error), 'authorization denied') ? 403 : 422);
+        $result = null;
+        try {
+            $result = akiraShellCall('akira.redirect.list@1');
+        } catch (Throwable) {
+            $result = null;
+        }
+        $rows = is_array($result['rows'] ?? null) ? array_values(array_filter($result['rows'], 'is_array')) : [];
+        echo akiraShellPage('Redirects', akiraShellRedirectsHtml(
+            $rows,
+            '',
+            akiraShellRootErrorMessage($error),
+            trim((string) ($input['source_path'] ?? '')),
+            trim((string) ($input['target_path'] ?? ''))
+        ), ['active' => 'redirects']);
+    }
+}
+
+/** @param array<string,mixed> $params */
 function akiraShellModuleHealth(array $params = []): void
 {
     if (!akiraShellAuthorizeAdmin()) {
@@ -1052,6 +1474,42 @@ function akiraShellMediaDelete(array $params = []): void
         http_response_code(str_contains(akiraShellRootErrorMessage($exception), 'authorization denied') ? 403 : 422);
         akiraShellMediaPage(akiraShellRootErrorMessage($exception));
     }
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellProvenance(array $params = []): void
+{
+    if (!akiraShellAuthorize()) {
+        return;
+    }
+
+    $query = akiraShellQuery();
+    $module = trim((string) ($query['module'] ?? ''));
+    $action = trim((string) ($query['action'] ?? ''));
+    $page = max(1, (int) ($query['page'] ?? 1));
+    try {
+        $snapshot = akiraShellProvenanceSnapshot($module, $action, $page);
+    } catch (\Ikabud\Kernel\Capabilities\CapabilityCallException) {
+        http_response_code(403);
+        echo akiraShellPage('Access denied', '<p>The Kernel provenance capability denies this read.</p>');
+        return;
+    }
+    echo akiraShellPage('Provenance', akiraShellProvenanceHtml($snapshot), ['active' => 'cms-akira-shell.provenance']);
+}
+
+/** @param array<string,mixed> $params */
+function akiraShellAuthority(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    $result = app()->cap()->call('akira.policy.list@1', [], [
+        'caller' => ['module' => 'cms-akira-shell', 'user' => app()->user()],
+        'mode' => 'first',
+    ]);
+    $rows = is_array($result) && is_array($result['rows'] ?? null) ? $result['rows'] : [];
+    $snapshot = akiraShellAuthoritySnapshot($rows);
+    echo akiraShellPage('Authority', akiraShellAuthorityHtml($snapshot), ['active' => 'cms-akira-shell.authority']);
 }
 
 /** @param array<string,mixed> $params */

@@ -96,7 +96,9 @@
         ],
         "routes": {
             "POST /api/v1/cms-akira-theme/customize": "akira.theme.customize@1",
-            "POST /cms-akira-theme/customize": "akira.theme.customize@1"
+            "POST /api/v1/cms-akira-theme/themes/{slug}/activate": "akira.theme.activate@1",
+            "POST /cms-akira-theme/customize": "akira.theme.customize@1",
+            "POST /cms-akira-theme/activate": "akira.theme.activate@1"
         },
         "depends": [
             "kernel.idempotency.hash@1",
@@ -117,7 +119,9 @@
             "label": "Theme Studio",
             "route": "/cms-akira-theme",
             "roles": [
-                "admin"
+                "admin",
+                "administrator",
+                "superadmin"
             ],
             "order": 5
         }

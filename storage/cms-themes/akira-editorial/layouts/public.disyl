@@ -14,11 +14,13 @@
       --color-surface-low:#f3f2ff; --color-surface-container:#ebedff;
       --color-text:#071747; --color-text-muted:#3e4947;
       --color-outline:#6e7977; --color-border:#bdc9c6; --color-error:#ba1a1a;
-      --font-serif:'Source Serif 4',Georgia,'Times New Roman',serif;
-      --font-ui:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-      --container:1120px; --reading:720px;
-      --gutter:1.25rem; --gutter-md:1.5rem; --gutter-lg:2rem;
-      --radius-sm:0.25rem; --radius:0.5rem; --radius-lg:0.75rem;
+      --font-family:'Source Serif 4',Georgia,'Times New Roman',serif;
+      --font-family-ui:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+      --font-serif:var(--font-family); --font-ui:var(--font-family-ui);
+      --container-max:1120px; --reading-width:720px;
+      --container:var(--container-max); --reading:var(--reading-width);
+      --spacing-page:1.25rem; --gutter:var(--spacing-page); --gutter-md:1.5rem; --gutter-lg:2rem;
+      --radius-card:0.75rem; --radius-sm:0.25rem; --radius:0.5rem; --radius-lg:var(--radius-card);
       --shadow-sm:0 1px 2px rgba(7,23,71,.06),0 1px 3px rgba(7,23,71,.04);
       --shadow-md:0 4px 12px rgba(7,23,71,.08),0 2px 4px rgba(7,23,71,.04);
     }

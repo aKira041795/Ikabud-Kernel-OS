@@ -91,6 +91,9 @@
                 "description": "Delete an Akira menu item as an idempotent admin mutation"
             }
         ],
+        "routes": {
+            "POST /cms-akira-navigation/menu/create": "akira.navigation.menu.create@1"
+        },
         "depends": [
             "kernel.idempotency.hash@1",
             "kernel.idempotency.claim@1",
@@ -101,5 +104,20 @@
     },
     "routes": true,
     "events": [],
-    "_enabled": false
+    "_enabled": false,
+    "admin_contributions": [
+        {
+            "id": "cms-akira-navigation.menus",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Navigation",
+            "route": "/cms-akira-navigation",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 6
+        }
+    ]
 }

@@ -75,6 +75,10 @@
                 "description": "Delete Akira SEO metadata as an idempotent admin mutation"
             }
         ],
+        "routes": {
+            "POST /cms-akira-seo/upsert": "akira.seo.upsert@1",
+            "POST /cms-akira-seo/delete": "akira.seo.delete@1"
+        },
         "depends": [
             "kernel.idempotency.hash@1",
             "kernel.idempotency.claim@1",
@@ -95,7 +99,25 @@
             "label": "Content health",
             "size": "medium",
             "order": 10,
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
             "render_capability": "akira.seo.content_health@1"
+        },
+        {
+            "id": "cms-akira-seo.metadata",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "SEO metadata",
+            "route": "/cms-akira-seo",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 7
         }
     ]
 }

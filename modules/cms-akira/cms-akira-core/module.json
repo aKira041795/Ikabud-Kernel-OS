@@ -2,7 +2,7 @@
     "id": "cms-akira-core",
     "name": "CMS Akira Core",
     "version": "1.0.0",
-    "description": "CMS Akira product core \u2014 authoritative host module for the cms-akira suite. Declares the suite's extension points and product identity.",
+    "description": "CMS Akira product core — authoritative host module for the cms-akira suite. Declares the suite's extension points and product identity.",
     "author": "Ikabud",
     "suite": "cms-akira",
     "kind": "product-core",
@@ -26,14 +26,16 @@
         "cms_akira_taxonomies",
         "cms_akira_content_types",
         "cms_akira_post_taxonomies",
-        "cms_akira_post_revisions"
+        "cms_akira_post_revisions",
+        "cms_akira_redirects"
     ],
     "reads_tables": [
         "cms_akira_posts",
         "cms_akira_taxonomies",
         "cms_akira_content_types",
         "cms_akira_post_taxonomies",
-        "cms_akira_post_revisions"
+        "cms_akira_post_revisions",
+        "cms_akira_redirects"
     ],
     "migrations": [
         "database/migrations/001_initial.sql",
@@ -42,7 +44,8 @@
         "database/migrations/004_create_taxonomies.sql",
         "database/migrations/005_create_content_types.sql",
         "database/migrations/006_create_post_taxonomies.sql",
-        "database/migrations/007_create_post_revisions.sql"
+        "database/migrations/007_create_post_revisions.sql",
+        "database/migrations/008_create_redirects.sql"
     ],
     "entities": {
         "post": {
@@ -110,6 +113,99 @@
                 ],
                 "requires_protocol": "v2",
                 "description": "Activate or deactivate a tenant user and invalidate their sessions"
+            },
+            {
+                "id": "akira.module.list@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "List Akira suite packages with installed and enabled state from the tenant stores"
+            },
+            {
+                "id": "akira.module.manage@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Install, enable, or disable an Akira suite package through the Kernel installer"
+            },
+            {
+                "id": "akira.site.settings.get@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Administrator-governed read of effective Akira site behaviour settings"
+            },
+            {
+                "id": "akira.site.settings.public@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Public render-safe projection of effective Akira site behaviour settings"
+            },
+            {
+                "id": "akira.site.settings.update@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Administrator-governed idempotent update of Akira site behaviour settings"
+            },
+            {
+                "id": "akira.backup.list@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Administrator-governed list of real ModuleBackupService backups for CMS Akira Core"
+            },
+            {
+                "id": "akira.backup.create@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Administrator-governed idempotent data-only backup through ModuleBackupService"
+            },
+            {
+                "id": "akira.export.create@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Administrator-governed audited post export through KernelExport"
+            },
+            {
+                "id": "akira.redirect.list@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Administrator-governed list of tenant post-path redirects read from the store"
+            },
+            {
+                "id": "akira.redirect.create@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Administrator-governed idempotent audited post-path redirect write with an open-redirect guard"
+            },
+            {
+                "id": "akira.redirect.resolve@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Public exact-match single-hop post-path redirect resolution for the module not-found seam"
             },
             {
                 "id": "akira.extension.widgets@1",
