@@ -76,18 +76,46 @@ const CLAIM_TYPES = [
 ];
 
 /**
- * The allowlist, as data rather than scattered conditionals. Each rule is an anchored pattern; the
- * `pure_test` screen additionally rejects `php tests/<file>.php` when the file may bootstrap the app.
- * The security boundary is the whole table, so it can be read in one place and refused consistently.
- * @var list<array{pattern:string,screen?:string}>
+ * Environment every Python shape runs under. `PYTHONDONTWRITEBYTECODE=1` stops import-time `.pyc`,
+ * and `PYTHONPYCACHEPREFIX` redirects `py_compile`'s deliberate bytecode outside the repository
+ * (`py_compile` writes regardless of the former). `{TMPDIR}` is resolved at execution time, because a
+ * `const` cannot call sys_get_temp_dir(). Together they keep a verification from creating any new
+ * path the scope gate can see.
+ * @var array<string,string>
+ */
+const PYTHON_SHAPE_ENV = [
+    'PYTHONDONTWRITEBYTECODE' => '1',
+    'PYTHONPYCACHEPREFIX' => '{TMPDIR}/ai-run-pycache',
+];
+
+/**
+ * The allowlist, as data rather than scattered conditionals. Each rule is an anchored pattern plus
+ * the executable (`exec`) that runs it; the `pure_test` and `bridge_test` screens additionally refuse
+ * a named test file that may bootstrap the app or that does not exist. The security boundary is the
+ * whole table, so it can be read in one place and refused consistently.
+ *
+ * The Python entries are the subject's native evidence shapes (slice C). They are deliberately no
+ * broader than the evidence needs: `py_compile` is a syntax check, `unittest` is bounded to this
+ * repository's own `tests.*` package and a `test_*` module name, and the file test is bounded to
+ * `tools/harpp-bridge/tests/<name>.py` and screened for existence. There is deliberately NO rule for
+ * `python3 -c "..."` or a bare `python3 <file>`: inline code is arbitrary execution (the Python form
+ * of the B-F1 vacuity hole) and must never become executable evidence.
+ * @var list<array{pattern:string,exec:string,screen?:string,env?:array<string,string>}>
  */
 const COMMAND_ALLOWLIST = [
-    ['pattern' => '/^php\s+tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.php$/', 'screen' => 'pure_test'],
-    ['pattern' => '/^php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php$/'],
-    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php$/'],
-    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--json$/'],
-    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--live-only$/'],
-    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md$/'],
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.php$/', 'screen' => 'pure_test'],
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php$/'],
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php$/'],
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--json$/'],
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--live-only$/'],
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md$/'],
+    // Python syntax check: an existing or missing path is fine; `..` is refused globally above.
+    ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+-m\s+py_compile\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.py$/'],
+    // Python module test: bounded to this repository's own `tests.*` package and `test_*` module name,
+    // so `python3 -m unittest os` cannot name an importable module with side effects.
+    ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+-m\s+unittest\s+tests\.(?:[A-Za-z_][A-Za-z0-9_]*\.)*test_[A-Za-z0-9_]*$/'],
+    // Python file test: screened for existence exactly as `pure_test` screens the PHP suite.
+    ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+tools\/harpp-bridge\/tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.py$/', 'screen' => 'bridge_test'],
 ];
 
 /**
@@ -271,8 +299,13 @@ surface, so only these exact shapes run, with a per-command timeout and no shell
   php tests/<file>.php            (the file must be pure: no bootstrap, no MODE_INTEGRATION)
   php -l <file>.php
   php tools/ai-contract-lint.php [--json|--live-only|--contract=<file>.md]
-Anything else — chaining, arguments outside the shape, other interpreters — is refused with
-reason `command_not_allowlisted`.
+  python3 -m py_compile <file>.py
+  python3 -m unittest tests.<dotted.test_module>
+  python3 tools/harpp-bridge/tests/<file>.py    (the file must exist)
+The Python shapes run with PYTHONDONTWRITEBYTECODE=1 and an external PYTHONPYCACHEPREFIX, so they
+leave no bytecode in the tree. Anything else — chaining, `python3 -c "..."` inline code, a bare
+`python3 <file>`, arguments outside the shape, other interpreters — is refused with reason
+`command_not_allowlisted`.
 
 Exit codes: 0 ok; 2 malformed input or contract; 3 the --gate/commit-check found a
             silent/failed/abandoned/running run, or verify found a CONTRADICTED claim.
@@ -1035,6 +1068,22 @@ function classifyCommand(string $command): ?string
     ) {
         return 'LINT_RESULT';
     }
+    if (
+        preg_match('/^python3\s+-m\s+unittest\b/', $command) === 1
+        || preg_match('/^python3\s+tools\/harpp-bridge\/tests\/[^\s]+\.py\b/', $command) === 1
+    ) {
+        return 'TEST_RESULT';
+    }
+    if (preg_match('/^python3\s+-m\s+py_compile\b/', $command) === 1) {
+        return 'LINT_RESULT';
+    }
+    if (preg_match('/^python3\b/', $command) === 1) {
+        // Every other python3 invocation is still recognised, so it becomes an explicit refusal
+        // rather than an ignored line. This is the `python3 -c "..."` inline-code shape. Recognising
+        // a command never authorises it: COMMAND_ALLOWLIST is the only thing that permits execution,
+        // and it contains no inline-code rule.
+        return 'LINT_RESULT';
+    }
     return null;
 }
 
@@ -1049,43 +1098,83 @@ function testFileIsPure(string $relativePath): bool
     return !str_contains($content, 'MODE_INTEGRATION') && !str_contains($content, 'bootstrap.php');
 }
 
-/** The allowlist. Only these exact command shapes may be executed; everything else is refused. */
-function commandIsAllowlisted(string $command): bool
+/**
+ * The first allowlist rule a command matches, with its capture groups, or null. This is the single
+ * place the table is interpreted: `commandIsAllowlisted()` and `argvForCommand()` both read this
+ * verdict, so the executable a command runs can never disagree with the rule that permitted it.
+ *
+ * @return array{pattern:string,exec:string,screen?:string,env?:array<string,string>,matches:list<string>}|null
+ */
+function matchingAllowlistRule(string $command): ?array
 {
     $command = trim($command);
     if ($command === '' || str_contains($command, '..')) {
-        return false;
+        return null;
     }
     foreach (COMMAND_ALLOWLIST as $rule) {
         if (preg_match($rule['pattern'], $command, $matches) !== 1) {
             continue;
         }
-        if (($rule['screen'] ?? null) === 'pure_test') {
-            return testFileIsPure('tests/' . $matches[1] . '.php');
+        $screen = $rule['screen'] ?? null;
+        if ($screen === 'pure_test' && !testFileIsPure('tests/' . $matches[1] . '.php')) {
+            return null;
         }
-        return true;
+        if ($screen === 'bridge_test' && !is_file(dirname(__DIR__) . '/tools/harpp-bridge/tests/' . $matches[1] . '.py')) {
+            return null;
+        }
+        return $rule + ['matches' => $matches];
     }
-    return false;
+    return null;
+}
+
+/** The allowlist. Only these exact command shapes may be executed; everything else is refused. */
+function commandIsAllowlisted(string $command): bool
+{
+    return matchingAllowlistRule($command) !== null;
 }
 
 /**
  * A declared command is executed as an argv array with bypass_shell, so chaining operators can never
- * be interpreted. Only allowlisted `php ...` commands reach here.
+ * be interpreted. The executable is taken from the matched allowlist rule, never from the command
+ * text: the rule fixes which binary runs before the command is split into arguments. A command that
+ * matches no rule returns null and is never executed.
  *
  * @return list<string>|null
  */
 function argvForCommand(string $command): ?array
 {
-    $command = trim($command);
-    if (!str_starts_with($command, 'php ')) {
+    $rule = matchingAllowlistRule($command);
+    $exec = $rule === null ? null : ($rule['exec'] ?? null);
+    if (!is_string($exec) || $exec === '') {
         return null;
     }
-    $parts = preg_split('/\s+/', substr($command, 4)) ?: [];
-    if ($parts === [] || $parts[0] === '') {
-        return null;
+    // The anchored pattern guarantees the first token is this rule's fixed executable word; it is
+    // dropped and the rule's `exec` is substituted, so the command text can never choose the binary.
+    $parts = preg_split('/\s+/', trim($command)) ?: [];
+    array_shift($parts);
+    array_unshift($parts, $exec);
+    return array_values(array_filter($parts, static fn (string $part): bool => $part !== ''));
+}
+
+/**
+ * Environment overrides declared by the matched rule. The `{TMPDIR}` token resolves to the system
+ * temporary directory, so the Python shapes can redirect bytecode outside the repository.
+ *
+ * @return array<string,string>
+ */
+function environmentForCommand(string $command): array
+{
+    $rule = matchingAllowlistRule($command);
+    if ($rule === null || !is_array($rule['env'] ?? null)) {
+        return [];
     }
-    array_unshift($parts, PHP_BINARY);
-    return $parts;
+    $environment = [];
+    foreach ($rule['env'] as $name => $value) {
+        if (is_string($name) && is_string($value)) {
+            $environment[$name] = str_replace('{TMPDIR}', sys_get_temp_dir(), $value);
+        }
+    }
+    return $environment;
 }
 
 /**
@@ -1374,19 +1463,26 @@ function extractClaims(string $text, string $source, string $runId, int &$sequen
 
 /**
  * Execute an argv array directly, with no shell, under a wall-clock timeout. The tree is observed,
- * never rewritten.
+ * never rewritten. A non-empty `$environment` is merged over the inherited environment (so PATH and
+ * friends survive) and is how a rule redirects Python bytecode out of the repository.
  *
  * @param list<string> $argv
+ * @param array<string,string> $environment
  * @return array{exit_code:?int,output:string,timed_out:bool}
  */
-function executeArgv(array $argv, string $cwd, int $timeoutSeconds): array
+function executeArgv(array $argv, string $cwd, int $timeoutSeconds, array $environment = []): array
 {
     if (!function_exists('proc_open')) {
         return ['exit_code' => null, 'output' => 'proc_open unavailable', 'timed_out' => false];
     }
     $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
     $pipes = [];
-    $process = @proc_open($argv, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
+    $processEnv = null;
+    if ($environment !== []) {
+        $inherited = getenv();
+        $processEnv = array_merge(is_array($inherited) ? $inherited : [], $environment);
+    }
+    $process = @proc_open($argv, $descriptors, $pipes, $cwd, $processEnv, ['bypass_shell' => true]);
     if (!is_resource($process)) {
         return ['exit_code' => null, 'output' => 'proc_open failed', 'timed_out' => false];
     }
@@ -1834,7 +1930,7 @@ function commandVerify(array $options, bool $json, int $timeoutSeconds): int
             continue;
         }
         $attempted++;
-        $execution = executeArgv($argv, dirname(__DIR__), $timeoutSeconds);
+        $execution = executeArgv($argv, dirname(__DIR__), $timeoutSeconds, environmentForCommand($command));
         if ($execution['timed_out']) {
             $verification['reason'] = 'timeout';
             $verification['observed_exit'] = null;

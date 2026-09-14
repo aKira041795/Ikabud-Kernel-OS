@@ -114,6 +114,38 @@
                 "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
             ],
             "trust_surface_files_changed_by_route": false
+        },
+        {
+            "id": "TSA-0005",
+            "reason": "Allowlist extended to the subject's native evidence shapes (python3 -m py_compile; bounded python3 -m unittest tests.test_*; screened bridge file test) under the existing discipline -- argv now derives the executable from the matched rule. Owner decision: 'A is approved' (CD-33).",
+            "director_decision": "CD-33",
+            "acting_context": {
+                "provider": null,
+                "model": null,
+                "session_id": null,
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-14T07:47:00+00:00",
+            "trust_surface_hash": "9139f93c68776c77add7aa2e1e5f5b58fe4f2516448d018b4b3b269dd484c457",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+                "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "ead4152cd9ed508d8572fcf898a29bf32f95f5fb75bf6ebc928e111b92cef2dc",
+                "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+                "tools/ai-run.php": "9b7367fed2e9c83d6e6ab87866f888de524ffd36d5f9acdfcd3ff10cef24cf55",
+                "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+            },
+            "supersedes_hashes": [
+                "0b1957d16ee273120e5d6dbce66b352b85db1ff1c00e1d779ed6a6d7a1103fd9",
+                "2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764",
+                "7b84a2daec6a02a61c96ab8466d7cb363d62bb7aeea8580956a9a7b9ba097175",
+                "ac235c5bbab3ea0124dfa9ea1800497c51c44aa5d6f0fef765275d0f003edd9c",
+                "dfb4c3a61c18fb8922f2468064bc0baf21a673454b7ba030611a03eeea6d71cb",
+                "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
+            ],
+            "trust_surface_files_changed_by_route": false
         }
     ]
 }

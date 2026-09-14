@@ -1515,3 +1515,51 @@ is not a ledger, and the whole point of the last three slices is that the record
 **Authority:** diagnosed by the Chair; resolved with the existing mechanism rather than a new one; no director
 decision required beyond CD-28's authorisation of the work.
 **Owner intervention:** not required.
+
+## CD-33 — The HARPP test is blocked by the verifier's blindness, and CD-22 already named the fix
+
+**Committed and pushed:** `8b35373` (harness guardrail) and `58888a5` (harpp-bridge), push confirmed by
+`ls-remote` matching `rev-parse HEAD` rather than assumed.
+
+**The project stops at S5, and for exactly the reason CD-22 anticipated:**
+
+```
+PROJECT harpp-gen4 remaining=8
+  S2 done · S3 done · S6 done · S4 done
+  S5 blocked
+STOP before dispatch: slice S5 is blocked: claims were not all RE_DERIVED: UNVERIFIED
+```
+
+S5's report declares its evidence as Python (`python3 -m py_compile … PASS`); the verifier's command allowlist
+speaks only three PHP shapes. **The work is done, independently reviewed, and committed (`58888a5`) — the block is
+the verifier's blindness, not the work's quality.**
+
+**This is the case CD-22 exists for, and the resolution it prescribed.** Letting the run through would have been
+"an exception to *verification*, decided after the red result". The correct move is the opposite: **widen the
+verifier at the source, by director authority, before the run that needs it** — data allowlist, argv, no shell,
+timeouts, refuse-unknown, plus a refusal test extended to the new shape. Then re-queue S5 through the recorded
+`retry` path and let it prove itself. The exception lands on the **envelope** (the verifier now speaks the
+subject's language), and it is decided **outside and before** the run.
+
+**Honest note on ordering.** This is a *third* trust-surface change in the same day — authorised under CD-28, but
+the frequency is itself the finding: **a verifier that only understands one language will keep blocking correct
+work in every other one**, and each block is a fresh authorisation. Widening the allowlist once, with the same
+discipline as the existing shapes, is cheaper than a per-language exception and is the general fix rather than the
+third instance of a specific one.
+
+**Not done and why.** S5 cannot be marked done: `assertRunReDerived()` gates the transition, and a slice cannot be
+completed because its *evidence format* is unrecognised. Acknowledging the block would record it honestly but would
+not let the loop progress, since the slice would simply re-block on re-dispatch.
+
+**The next slice, and it is also the HARPP test:** extend the command allowlist to the subject's native shapes,
+then `retry` S5 and run the loop — which exercises the whole new machinery end to end (director-authorised
+trust-surface change, the scope gate against a live slice, the ladder if the slice fails, and the amend route).
+
+**Authority:** CD-22 (envelope exceptions), CD-28 (authorisation of the closing work); recorded by the Chair.
+**Owner intervention:** the owner is informed that the HARPP test needs this one slice, and that S5's work is
+already verified and committed either way.
+
+**Owner decision, 2026-09-14:** *"A is approved"* — the allowlist extension proceeds. Recorded **before** the work,
+not after (CD-22's razor). This authorises the third and intended-final trust-surface change: the verifier learns
+the subject's native evidence shapes, under the same discipline as the existing three (argv, no shell, timeouts,
+refuse-unknown, refusal test extended). After it lands, the S5 re-queue is the HARPP test itself.

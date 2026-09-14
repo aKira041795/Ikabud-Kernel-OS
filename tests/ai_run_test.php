@@ -71,6 +71,60 @@ function aiRunDetail(array $run): string
     return "command: {$run['command']}\nexit: {$run['code']}\noutput:\n{$run['output']}";
 }
 
+/** Capture `git status --porcelain` from the repository root, verbatim, without a shell. */
+function aiRunGitPorcelain(string $root): string
+{
+    if (!function_exists('proc_open')) {
+        return '';
+    }
+    $pipes = [];
+    $process = proc_open(
+        ['git', 'status', '--porcelain=v1'],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes,
+        $root,
+        null,
+        ['bypass_shell' => true]
+    );
+    if (!is_resource($process)) {
+        return '';
+    }
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($process);
+    return (string) $stdout;
+}
+
+/**
+ * Sorted in-repo bytecode paths under tests/ and tools/. `git status` never shows these (`.gitignore`
+ * hides `__pycache__/`), so this scan is what makes a stray `.pyc` visible to the assertion.
+ *
+ * @return list<string>
+ */
+function aiRunPycFiles(string $root): array
+{
+    $found = [];
+    foreach (['tests', 'tools'] as $sub) {
+        $base = $root . '/' . $sub;
+        if (!is_dir($base)) {
+            continue;
+        }
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if ($file instanceof SplFileInfo && $file->isFile() && strtolower($file->getExtension()) === 'pyc') {
+                $found[] = substr($file->getPathname(), strlen($root) + 1);
+            }
+        }
+    }
+    sort($found, SORT_STRING);
+    return $found;
+}
+
 /** Read the persisted status field of a run record. */
 function aiRunStatus(string $runsDir, string $id): string
 {
@@ -580,6 +634,98 @@ $h->test(
     'binding: ' . json_encode($verifyOkBinding) . '; record: ' . json_encode(is_array($verifyOkRecord) ? ($verifyOkRecord['claim_verification'] ?? null) : null)
 );
 
+// ── R8b: the verifier executes the subject's native Python evidence (slice C) ────────────────────
+// The Python shapes are data in COMMAND_ALLOWLIST. These cases prove the shape is not merely
+// permitted but executable, and that execution leaves the tree exactly as it found it.
+
+$pythonRealReport = $fixture . '/verify-python-real.md';
+// tests/poc_polyglot_wire_test.py is a real repository file with no pre-existing .pyc, so a stray
+// py_compile bytecode artefact is visible to the scan below rather than hidden behind a same path.
+file_put_contents($pythonRealReport, <<<'MD'
+# Python native-evidence fixture
+$ python3 -m py_compile tests/poc_polyglot_wire_test.py
+exit 0
+MD);
+$pythonGitBefore = aiRunGitPorcelain($h->basePath());
+$pythonPycBefore = aiRunPycFiles($h->basePath());
+$run(array_merge($startArgs('verify-python-real'), ["--report={$pythonRealReport}"]));
+$run(['finish', '--id=verify-python-real', '--exit=0']);
+$verifyPython = $run(['verify', '--run=verify-python-real', '--json']);
+$pythonGitAfter = aiRunGitPorcelain($h->basePath());
+$pythonPycAfter = aiRunPycFiles($h->basePath());
+$verifyPythonData = json_decode($verifyPython['output'], true);
+$verifyPythonClaims = is_array($verifyPythonData['claims'] ?? null) ? $verifyPythonData['claims'] : [];
+$verifyPythonClaim = is_array($verifyPythonClaims[0] ?? null) ? $verifyPythonClaims[0] : [];
+$verifyPythonVerification = is_array($verifyPythonClaim['verification'] ?? null) ? $verifyPythonClaim['verification'] : [];
+$h->test(
+    '26a. a real python3 -m py_compile command is executed and re-derives to RE_DERIVED',
+    $verifyPython['code'] === 0
+        && ($verifyPythonClaim['status'] ?? null) === 'RE_DERIVED'
+        && ($verifyPythonClaim['type'] ?? null) === 'LINT_RESULT'
+        && ($verifyPythonVerification['method'] ?? null) === 'independent_execution'
+        && ($verifyPythonVerification['verifier'] ?? null) === 'deterministic'
+        && ($verifyPythonVerification['observed_exit'] ?? null) === 0,
+    aiRunDetail($verifyPython)
+);
+$h->test(
+    '26b. a python verification leaves the working tree unchanged (git status and bytecode)',
+    $pythonGitBefore === $pythonGitAfter && $pythonPycBefore === $pythonPycAfter,
+    'git unchanged: ' . ($pythonGitBefore === $pythonGitAfter ? 'yes' : 'no')
+        . '; bytecode unchanged: ' . ($pythonPycBefore === $pythonPycAfter ? 'yes' : 'no')
+        . '; pyc before=' . json_encode($pythonPycBefore) . ' after=' . json_encode($pythonPycAfter)
+);
+
+// The module shape is bounded to this repository's own `tests.test_*` package. Running it against a
+// deliberately non-existent module proves the rule executes (a removed rule would refuse before
+// execution) while causing no side effects; the empty claim means it is never recorded as verified.
+$pythonModuleReport = $fixture . '/verify-python-module.md';
+file_put_contents($pythonModuleReport, "# Python module-shape fixture\n\$ python3 -m unittest tests.test_no_such_module_xyz\n");
+$run(array_merge($startArgs('verify-python-module'), ["--report={$pythonModuleReport}"]));
+$run(['finish', '--id=verify-python-module', '--exit=0']);
+$verifyPythonModule = $run(['verify', '--run=verify-python-module', '--json']);
+$verifyPythonModuleData = json_decode($verifyPythonModule['output'], true);
+$verifyPythonModuleClaims = is_array($verifyPythonModuleData['claims'] ?? null) ? $verifyPythonModuleData['claims'] : [];
+$verifyPythonModuleClaim = is_array($verifyPythonModuleClaims[0] ?? null) ? $verifyPythonModuleClaims[0] : [];
+$verifyPythonModuleVerification = is_array($verifyPythonModuleClaim['verification'] ?? null) ? $verifyPythonModuleClaim['verification'] : [];
+$h->test(
+    '26c. the bounded unittest shape is allowlisted and executed, not refused',
+    ($verifyPythonModuleClaim['type'] ?? null) === 'TEST_RESULT'
+        && ($verifyPythonModuleVerification['method'] ?? null) === 'independent_execution'
+        && ($verifyPythonModuleVerification['observed_exit'] ?? null) === 1,
+    aiRunDetail($verifyPythonModule)
+);
+
+// The file-test shape carries an existence screen. A name that does not exist must be refused before
+// execution; a screen-less rule would have attempted to run the missing file instead.
+$pythonMissingReport = $fixture . '/verify-python-missing-file.md';
+file_put_contents($pythonMissingReport, "# Python file-test fixture\n\$ python3 tools/harpp-bridge/tests/no_such_test_xyz.py\nexit 0\n");
+$run(array_merge($startArgs('verify-python-missing'), ["--report={$pythonMissingReport}"]));
+$run(['finish', '--id=verify-python-missing', '--exit=0']);
+$verifyPythonMissing = $run(['verify', '--run=verify-python-missing', '--json']);
+$verifyPythonMissingData = json_decode($verifyPythonMissing['output'], true);
+$verifyPythonMissingClaims = is_array($verifyPythonMissingData['claims'] ?? null) ? $verifyPythonMissingData['claims'] : [];
+$verifyPythonMissingClaim = is_array($verifyPythonMissingClaims[0] ?? null) ? $verifyPythonMissingClaims[0] : [];
+$verifyPythonMissingVerification = is_array($verifyPythonMissingClaim['verification'] ?? null) ? $verifyPythonMissingClaim['verification'] : [];
+$h->test(
+    '26d. the file-test shape refuses a missing file through its existence screen',
+    ($verifyPythonMissingClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($verifyPythonMissingVerification['reason'] ?? null) === 'command_not_allowlisted'
+        && ($verifyPythonMissingVerification['method'] ?? null) === null
+        && !is_file($h->basePath() . '/tools/harpp-bridge/tests/no_such_test_xyz.py'),
+    aiRunDetail($verifyPythonMissing)
+);
+
+// The file-test rule itself is data in the table: prove it is declared (with the screen) so removing
+// the rule is a test failure, even though the shape is not executed here against the live suite.
+$aiRunToolSource = (string) file_get_contents($tool);
+$h->test(
+    '26e. the file-test shape is declared in the allowlist with its existence screen',
+    str_contains($aiRunToolSource, "'screen' => 'bridge_test'")
+        && str_contains($aiRunToolSource, 'harpp-bridge')
+        && str_contains($aiRunToolSource, 'python3'),
+    'tool declares bridge_test screen: ' . (str_contains($aiRunToolSource, "'screen' => 'bridge_test'") ? 'yes' : 'no')
+);
+
 $contradictReport = $fixture . '/verify-bad.md';
 file_put_contents($contradictReport, <<<'MD'
 # Contradiction fixture
@@ -623,6 +769,42 @@ $h->test(
         && str_contains($verifyRefuse['output'], 'command_not_allowlisted'),
     'sentinel exists: ' . (is_file($sentinel) ? 'yes' : 'no') . "\n" . aiRunDetail($verifyRefuse)
 );
+
+// ── R8c: the refusal path, extended to the native shapes ────────────────────────────────────────
+// A refusal that still executes is the worst outcome, so every case below shares one sentinel file:
+// the command names it, and after every refusal it must still not exist. `python3 -c` is the point
+// of AC3: inline code is arbitrary execution, i.e. the Python form of the B-F1 vacuity hole (where a
+// report could advance a job with `verify="true"`). It is not a shape this verifier may run.
+$pythonSentinel = $fixture . '/verify-python-refused-sentinel';
+$pythonRefusals = [
+    'chained-and' => 'python3 -m py_compile tools/harpp-bridge/harpp_wake.py && touch ' . $pythonSentinel,
+    'traversal' => 'python3 -m py_compile ../../etc/passwd',
+    'inline-code' => 'python3 -c "import os; os.system(\'touch ' . $pythonSentinel . '\')"',
+    'module-os' => 'python3 -m unittest os',
+    'bare-file' => 'python3 evil.py',
+    'chained-pipe' => 'python3 -m py_compile tools/harpp-bridge/harpp_wake.py | tee ' . $pythonSentinel,
+];
+foreach ($pythonRefusals as $pythonLabel => $pythonCommand) {
+    $pythonRunId = 'refuse-python-' . $pythonLabel;
+    $pythonReport = $fixture . '/verify-' . $pythonRunId . '.md';
+    file_put_contents($pythonReport, "# Python refusal fixture — {$pythonLabel}\n\$ " . $pythonCommand . "\nexit 0\n");
+    $run(array_merge($startArgs($pythonRunId), ["--report={$pythonReport}"]));
+    $run(['finish', '--id=' . $pythonRunId, '--exit=0']);
+    $pythonResult = $run(['verify', '--run=' . $pythonRunId, '--json']);
+    $pythonData = json_decode($pythonResult['output'], true);
+    $pythonClaims = is_array($pythonData['claims'] ?? null) ? $pythonData['claims'] : [];
+    $pythonClaim = is_array($pythonClaims[0] ?? null) ? $pythonClaims[0] : [];
+    $pythonVerification = is_array($pythonClaim['verification'] ?? null) ? $pythonClaim['verification'] : [];
+    $h->test(
+        '29-' . $pythonLabel . '. python refusal (' . $pythonLabel . '): refused and not executed',
+        ($pythonClaim['status'] ?? null) === 'UNVERIFIED'
+            && ($pythonVerification['reason'] ?? null) === 'command_not_allowlisted'
+            && ($pythonVerification['method'] ?? null) === null
+            && ($pythonVerification['observed_exit'] ?? null) === null
+            && !is_file($pythonSentinel),
+        'sentinel exists: ' . (is_file($pythonSentinel) ? 'yes' : 'no') . "\n" . aiRunDetail($pythonResult)
+    );
+}
 
 $browserReport = $fixture . '/verify-browser.md';
 file_put_contents($browserReport, <<<'MD'

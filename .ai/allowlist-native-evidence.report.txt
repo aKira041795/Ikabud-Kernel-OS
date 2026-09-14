@@ -1,0 +1,314 @@
+SLICE C — the verifier learns the subject's language
+project: harness-guardrail · report path: .ai/allowlist-native-evidence.report.txt
+lane: deepseek/deepseek-v4-flash · repo: /var/www/html/ikabudsix
+
+Files changed (only the two the contract names):
+  tools/ai-run.php        — COMMAND_ALLOWLIST extended as data; argvForCommand()/executeArgv() generalised
+  tests/ai_run_test.php   — D2 refusal cases, D3 real re-derivation, AC4 tree/bytecode proof
+
+Nothing was committed, staged or pushed. Slice S5, .ai/projects/ and tools/harpp-bridge/ were not touched.
+
+================================================================================
+CLAIM 0 (FIRST CLAIM) — rule 1 refuses this contract, and that refusal is expected
+================================================================================
+CLAIM: `plan` exits 2 with "the trust surface is not contract-authorisable"; rule 1 is intact
+COMMAND: php tools/ai-autonomy.php plan --json --contract=.ai/allowlist-native-evidence.contract.md --decisions-dir=.ai/decisions
+OBSERVED:
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-run.php' reaches 'tools/ai-run.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+
+The contract is refused precisely because it names the trust surface. That is the
+behaviour CD-21 rule 1 requires; it was NOT weakened to make anything plannable.
+
+================================================================================
+D1 — the native evidence shapes, as data
+================================================================================
+CLAIM: the allowlist is still one table; the Python shapes are new entries, not branching logic
+COMMAND: grep -n "const COMMAND_ALLOWLIST\|exec' =>\|screen' =>" tools/ai-run.php
+OBSERVED:
+105:const COMMAND_ALLOWLIST = [
+106:    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.php$/', 'screen' => 'pure_test'],
+107:    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php$/'],
+108:    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php$/'],
+109:    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--json$/'],
+110:    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--live-only$/'],
+111:    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md$/'],
+112:    // Python syntax check: an existing or missing path is fine; `..` is refused globally above.
+113:    ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+-m\s+py_compile\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.py$/'],
+114:    // Python module test: bounded to this repository's own `tests.*` package and `test_*` module name,
+115:    // so `python3 -m unittest os` cannot name an importable module with side effects.
+116:    ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+-m\s+unittest\s+tests\.(?:[A-Za-z_][A-Za-z0-9_]*\.)*test_[A-Za-z0-9_]*$/'],
+117:    // Python file test: screened for existence exactly as `pure_test` screens the PHP suite.
+118:    ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+tools\/harpp-bridge\/tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.py$/', 'screen' => 'bridge_test'],
+119:];
+
+Every Python rule is anchored (`^...$`), charset-restricted, and refuses `..` (the global guard in
+matchingAllowlistRule() rejects any `..` before the table is consulted). The module test is bounded to
+this repository's own `tests.*` package with a `test_*` leaf, so `python3 -m unittest os` cannot name
+an arbitrary importable module. The file test carries a `bridge_test` existence screen.
+
+CLAIM: argvForCommand() generalises without loosening — the executable comes from the matched rule
+COMMAND: sed -n '/^function argvForCommand/,/^}/p' tools/ai-run.php
+OBSERVED:
+function argvForCommand(string $command): ?array
+{
+    $rule = matchingAllowlistRule($command);
+    $exec = $rule === null ? null : ($rule['exec'] ?? null);
+    if (!is_string($exec) || $exec === '') {
+        return null;
+    }
+    // The anchored pattern guarantees the first token is this rule's fixed executable word; it is
+    // dropped and the rule's `exec` is substituted, so the command text can never choose the binary.
+    $parts = preg_split('/\s+/', trim($command)) ?: [];
+    array_shift($parts);
+    array_unshift($parts, $exec);
+    return array_values(array_filter($parts, static fn (string $part): bool => $part !== ''));
+}
+(exit 0)
+
+Non-vacuity of the generalisation: commandIsAllowlisted() and argvForCommand() now read the SAME
+verdict from the SAME single table interpreter (matchingAllowlistRule()). There is no code path in
+which a command is permitted but argv[0] is taken from the command text: argv[0] is always $exec from
+the rule, and $argv is null whenever the rule is null (so nothing is executed). The command text only
+supplies arguments after its first token is discarded. Reverting this generalisation to the old
+`str_starts_with($command, 'php ')` makes test 26a and 26c fail because the Python shapes no longer
+reach execution.
+
+================================================================================
+D2 — the refusal path, extended; a refusal that executes is the worst outcome
+================================================================================
+CLAIM: all six D2 forms are refused, never executed, and the sentinel file does not exist afterwards
+COMMAND: (each fixture run through `verify`; full transcript below)
+          php tools/ai-run.php start ... ; php tools/ai-run.php finish ... ; php tools/ai-run.php verify --run=<id> --json
+OBSERVED:
+COMMAND: python3 -m py_compile tools/harpp-bridge/harpp_wake.py && touch /tmp/sliceC-d2/verify-python-refused-sentinel
+  d2-chain       status=UNVERIFIED  reason=command_not_allowlisted  method=NULL observed_exit=NULL
+COMMAND: python3 -m py_compile ../../etc/passwd
+  d2-traverse    status=UNVERIFIED  reason=command_not_allowlisted  method=NULL observed_exit=NULL
+COMMAND: python3 -c "import os; os.system('touch /tmp/sliceC-d2/verify-python-refused-sentinel')"
+  d2-inline      status=UNVERIFIED  reason=command_not_allowlisted  method=NULL observed_exit=NULL
+COMMAND: python3 -m unittest os
+  d2-unittest-os status=UNVERIFIED  reason=command_not_allowlisted  method=NULL observed_exit=NULL
+COMMAND: python3 evil.py
+  d2-evil        status=UNVERIFIED  reason=command_not_allowlisted  method=NULL observed_exit=NULL
+COMMAND: python3 -m py_compile tools/harpp-bridge/harpp_wake.py | tee /tmp/sliceC-d2/verify-python-refused-sentinel
+  d2-pipe        status=UNVERIFIED  reason=command_not_allowlisted  method=NULL observed_exit=NULL
+=== ls -la /tmp/sliceC-d2/verify-python-refused-sentinel ===
+ls: cannot access '/tmp/sliceC-d2/verify-python-refused-sentinel': No such file or directory
+sentinel-exists=no
+
+Inside the suite the same six cases are asserted as 29-chained-and, 29-traversal, 29-inline-code,
+29-module-os, 29-bare-file and 29-chained-pipe, all asserting status UNVERIFIED, reason
+command_not_allowlisted, method null, observed_exit null, and the sentinel absent.
+
+================================================================================
+AC3 — `python3 -c` is refused because inline code is arbitrary execution (B-F1)
+================================================================================
+CLAIM: there is no inline-code shape; the refusal is deliberate and documented in the code
+COMMAND: sed -n '/inline-code shape/,+2p' tools/ai-run.php
+OBSERVED:
+        // Every other python3 invocation is still recognised, so it becomes an explicit refusal
+        // rather than an ignored line. This is the `python3 -c "..."` inline-code shape. Recognising
+        // a command never authorises it: COMMAND_ALLOWLIST is the only thing that permits execution,
+        // and it contains no inline-code rule.
+(exit 0)
+
+`python3 -c "…"` can express arbitrary code, and arbitrary "verification" is the Python form of the
+vacuity hole already logged as B-F1 (where a report could advance a job with `verify="true"`). A
+verifier that can run arbitrary code is not a verifier, so the shape is refused and the refusal is
+asserted by test 29-inline-code (sentinel absent).
+
+================================================================================
+D3 — exactly one real re-derivation (not merely a regex that matched)
+================================================================================
+CLAIM: a real python3 -m py_compile command is allowlisted, EXECUTES, and the claim reaches RE_DERIVED
+COMMAND:
+$ python3 -m py_compile tests/poc_polyglot_wire_test.py
+exit 0
+OBSERVED (via `php tools/ai-run.php verify --run=ac4-python --json --runs-dir=/tmp/sliceC-ac4/runs`):
+status=RE_DERIVED method=independent_execution observed_exit=0
+EXIT=0
+
+The claim type is LINT_RESULT and claimReDerivable() is true; verification.method is
+independent_execution and verifier is deterministic. This is execution of a real repository file
+(tests/poc_polyglot_wire_test.py, chosen because it has no pre-existing .pyc, so a stray bytecode
+artefact is visible rather than hidden behind an existing path). Suite assertion: test 26a.
+
+The bounded unittest shape is also proven to reach execution (test 26c) harmlessly, by naming a
+deliberately non-existent `tests.test_no_such_module_xyz`; a removed rule would refuse before
+execution and the assertion would fail. The file-test shape's existence screen is proven by test 26d
+(a missing file is refused before execution) and its declaration by test 26e.
+
+================================================================================
+AC4 — a Python verification leaves the working tree unchanged (proof, not reasoning)
+================================================================================
+CLAIM: `git status --porcelain` before and after a Python verification is IDENTICAL, and no in-repo
+       `__pycache__`/`*.pyc` is created (`py_compile` ignores PYTHONDONTWRITEBYTECODE, so
+       PYTHONPYCACHEPREFIX redirects its bytecode outside the repository)
+COMMAND:
+git status --porcelain > /tmp/sliceC-ac4/status-before.txt
+php tools/ai-run.php start --contract=/tmp/sliceC-ac4/contract.md --lane=ac4 --name=ac4-python --report=/tmp/sliceC-ac4/report.md --runs-dir=/tmp/sliceC-ac4/runs
+php tools/ai-run.php finish --id=ac4-python --exit=0 --runs-dir=/tmp/sliceC-ac4/runs
+php tools/ai-run.php verify --run=ac4-python --json --runs-dir=/tmp/sliceC-ac4/runs
+git status --porcelain > /tmp/sliceC-ac4/status-after.txt
+diff /tmp/sliceC-ac4/status-before.txt /tmp/sliceC-ac4/status-after.txt
+OBSERVED:
+status=RE_DERIVED method=independent_execution observed_exit=0
+=== diff before/after (empty means identical) ===
+IDENTICAL
+=== ls -la tests/__pycache__ ===
+ls: cannot access 'tests/__pycache__': No such file or directory
+=== pyc for poc in repo ===
+(no output)
+=== pyc written to external prefix ===
+/tmp/ai-run-pycache/var/www/html/ikabudsix/tests/poc_polyglot_wire_test.cpython-312.pyc
+
+The bytecode went to the external PYTHONPYCACHEPREFIX, not the tree. The scope gate reads
+`git status --porcelain=v1 -z --untracked-files=all`, which does not list ignored paths; even so,
+no new path exists at all. Suite assertion: test 26b. Reverting just PYTHONPYCACHEPREFIX makes 26b
+fail with `after=[... "tests/__pycache__/poc_polyglot_wire_test.cpython-312.pyc" ...]` (observed in
+the revert experiment, AC6).
+
+================================================================================
+AC5 — all five suites pass, zero skips, existing behaviours unchanged
+================================================================================
+CLAIM: the five named suites pass with zero skips
+COMMAND: php tests/ai_run_test.php ; php tests/ai_autonomy_test.php ; php tests/ai_project_test.php ; php tests/ai_loop_test.php ; php tests/ai_contract_lint_test.php
+OBSERVED:
+=== ai_run_test ===
+  60/60 passed
+  Assertions: 60
+  Suite: ai-run
+EXIT=0
+=== ai_autonomy_test ===
+  59/59 passed
+  Assertions: 59
+  Suite: ai-autonomy
+EXIT=0
+=== ai_project_test ===
+  18/18 passed
+  Assertions: 18
+  Suite: ai-project
+EXIT=0
+=== ai_loop_test ===
+  17/17 passed
+  Assertions: 17
+  Suite: ai-loop
+EXIT=0
+=== ai_contract_lint_test ===
+  3/3 passed
+  Assertions: 3
+  Suite: ai-contract-lint
+EXIT=0
+
+No suite printed "skipped".
+
+CLAIM: rule 1 still refuses covering scopes while docs/ is accepted
+COMMAND: plan on the four scope fixtures (tools/, tools/ai-*.php, **/*.php, docs/)
+OBSERVED:
+### scope-1 (tools/) ###
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools' reaches 'tools/ai-run.php'; entry 'tools' reaches 'tools/ai-autonomy.php'; entry 'tools' reaches 'tools/ai-project.php'; entry 'tools' reaches 'tools/ai-loop.php'; entry 'tools' reaches 'tools/ai-contract-lint.php'; entry 'tools' reaches 'tools/harpp-bridge/harpp_wake.py' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+### scope-2 (tools/ai-*.php) ###
+ERROR: ... entry 'tools/ai-*.php' reaches 'tools/ai-run.php'; ... — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+### scope-3 (**/*.php) ###
+ERROR: ... entry '**/*.php' reaches 'tools/ai-run.php'; ... reaches 'kernel/Workbench/Development/DevelopmentTaskContract.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+### scope-4 (docs/) ###
+{"envelope":{"objective":"Prove the verifier trust surface is not contract-authorisable.","contract_revision":"5987bd77e8335c15","allowed_scope":[{"path":"docs","kind":"directory"}],...}}
+EXIT=0
+
+CLAIM: check on tools/ai-run.php escalates L4/exit 3; a benign in-scope path records L2/exit 0
+COMMAND:
+php tools/ai-autonomy.php check "modify the verifier" --path=tools/ai-run.php --contract=/tmp/sliceC-ac5/trust-scope.md
+php tools/ai-autonomy.php check "update the fixture notes" --path=docs/guardrail-notes.md --contract=/tmp/sliceC-ac5/safety.md
+OBSERVED:
+VERDICT: ESCALATE
+level: L4
+action: modify the verifier
+paths:
+  - tools/ai-run.php
+reasons:
+  - path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT=3
+--
+VERDICT: RECORD
+level: L2
+action: update the fixture notes
+paths:
+  - docs/guardrail-notes.md
+reasons:
+  - path 'docs/guardrail-notes.md' matched 'docs' by directory prefix
+EXIT=0
+
+CLAIM: the loop still blocks an out-of-scope write and advances an in-scope run
+COMMAND: php tests/ai_loop_test.php
+OBSERVED (excerpt):
+  ✅ 9. an out-of-scope write blocks the slice, ledger and event stream
+  ✅ 10. an all-in-scope changed-path delta advances (positive control)
+EXIT=0
+
+================================================================================
+AC6 — every new assertion fails when its fix is reverted
+================================================================================
+Each revert was applied to tools/ai-run.php, the suite was run, and the file was restored from a
+byte-identical backup. Observed failures:
+
+  Revert A: skip every python3 rule in matchingAllowlistRule().
+    Fails: 26a (python3 -m py_compile no longer RE_DERIVED) and 26c (unittest shape refused).
+    Observed: "❌ 26a. ... RE_DERIVED", "❌ 26c. ... allowlisted and executed, not refused" — 58/60.
+
+  Revert B: drop `PYTHONPYCACHEPREFIX` (keep PYTHONDONTWRITEBYTECODE).
+    Fails: 26b.
+    Observed: "git unchanged: yes; bytecode unchanged: no; ... after=[\"tests/__pycache__/poc_polyglot_wire_test.cpython-312.pyc\", ...]" — 59/60.
+    (This is why the AC4 assertion scans for .pyc instead of trusting git status: git ignores __pycache__.)
+
+  Revert C: change the file-test rule's screen from 'bridge_test' to a non-existent screen.
+    Fails: 26d (missing file is no longer refused by the screen) and 26e (screen no longer declared).
+    Observed: "❌ 26d. ... existence screen", "❌ 26e. ... tool declares bridge_test screen: no" — 58/60.
+
+  Revert D: insert a naive `python3 -c` allowlist rule (the thing AC3 forbids).
+    Fails: 29-inline-code (method is no longer null — it attempted execution).
+    Observed: "❌ 29-inline-code. python refusal (inline-code): refused and not executed" — 59/60.
+
+  Revert E: remove the `^python3\b` catch-all classification.
+    Fails: 29-inline-code and 29-bare-file (the lines are no longer recognised as commands, so no
+    refusal can be recorded against them).
+    Observed: "❌ 29-inline-code ...", "❌ 29-bare-file ..." — 58/60.
+
+  The AC4 `git status` half is intentionally paired with the bytecode scan above. Reverting the
+  bytecode fix does not move `git status` (because __pycache__ is gitignored); the sensitive
+  assertion is the .pyc scan. The git-status assertion is the one the contract asks for and proves
+  the scope gate's view is unchanged.
+
+================================================================================
+Other architectural constraints
+================================================================================
+- Timeout: the new shapes run through the same executeArgv() call as the PHP shapes, so they use the
+  verify command's single `--timeout` bound (default 120s). No shape has a weaker or absent bound.
+- No new runtime dependency: PHP stdlib only, Python stdlib only; the tool remains zero-dependency and
+  still requires only DevelopmentTaskContract.php.
+- PHP 8.3-compatible: the new code uses only `str_contains`, `preg_split`, `getenv`, `array_merge`,
+  `str_replace` and `proc_open` with `bypass_shell`; no 8.4+/8.5-only syntax.
+- Exit codes unchanged: 0/2/3/4 are untouched; verify still returns EXIT_GATE only on CONTRADICTED.
+- Refusing `..`, `;`, `&&`, `|`, backticks and `$(…)`: `..` is refused globally in
+  matchingAllowlistRule(); the other operators are refused because every pattern is anchored `^…$`, and
+  the command is executed as an argv array with `bypass_shell => true`, so no shell is ever involved.
+
+================================================================================
+Non-vacuity summary
+================================================================================
+- D1: three new data rules, no new branch beside the table; argv[0] always comes from the matched
+  rule's `exec`.
+- D2: six attacks refused, none executed, sentinel absent (ls pasted above).
+- AC3: `python3 -c` refused with the reason stated in code (arbitrary execution / B-F1).
+- D3: a real file compiled and the claim RE_DERIVED (not just a regex match).
+- AC4: git status identical and no in-repo bytecode; external pycache prefix proven.
+- AC5: 60/60, 59/59, 18/18, 17/17, 3/3, zero skips; rule 1, scope plan, check and loop behaviours
+  all hold exactly.
+- AC6: each revert and the assertion it breaks are listed above.
+
+Forbidden changes untouched: phpstan.neon, phpstan-baseline.neon, .github/workflows/, scripts/,
+modules/, tools/harpp-bridge/, .ai/projects/. No commit, stage or push.

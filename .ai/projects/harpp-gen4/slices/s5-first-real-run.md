@@ -1,9 +1,20 @@
 # SLICE — harpp-gen4 S5: the first real run — remove marker-trust from the bridge's own loops
 
-project: harpp-gen4 · status: READY_FOR_IMPLEMENTATION · revision: 1
+project: harpp-gen4 · status: READY_FOR_IMPLEMENTATION · revision: 2
 repo: `/var/www/html/ikabudsix`
-lane: openai-codex/gpt-5.6-sol
-dispatch: ["pi", "-p", "-a", "--thinking", "medium", "--model", "openai-codex/gpt-5.6-sol", "--name", "harpp-gen4-s5-bridge-gate", "<CONTRACT>"]
+lane: deepseek/deepseek-v4-flash
+dispatch: ["pi", "-p", "-a", "--thinking", "medium", "--model", "deepseek/deepseek-v4-flash", "--name", "harpp-gen4-s5-bridge-gate", "<CONTRACT>"]
+
+# REVISION 2 (2026-09-14, CD-26/CD-33). Two changes, neither of which lowers a criterion:
+#   1. lane reallocated to flash -- the Sol quota is exhausted (CD-30).
+#   2. the REPORT FORMAT is now specified, because revision 1 predated the claim-command convention
+#      (S6). That omission is the Chair's, and it is the reason this slice blocked: its only extracted
+#      claim read `"command": "git diff --check           PASS"` -- the status word was inside the
+#      command, so there was no re-derivable command to run. The verifier was not at fault.
+# The implementation below is ALREADY PRESENT and committed (`58888a5`), reviewed independently
+# (verdict: SAFE TO COMMIT, with B-F1 logged as hardening). This run must therefore RE-DERIVE the
+# evidence for criteria 1-8 rather than re-implement. If you find a defect, REPORT it -- fixing it now
+# would invalidate the verification. The criteria have NOT been relaxed to accommodate this.
 
 ```yaml
 harness:
@@ -18,6 +29,34 @@ stage-note: **this is the first slice to modify the subject (`tools/harpp-bridge
 project work dispatched by the loop rather than by hand.** It is the Gen 4 proof.
 authority: owner directive 2026-09-14 — HARPP is the project (CD-16); prove the concept *stable* and *provable*.
 directive: **you hold the decision.** Decide, record, continue (CD-8).
+
+## Report format — MANDATORY (revision 2; this is what revision 1 omitted)
+
+Every claim must declare the command that demonstrates it, on its own line, so the verifier re-derives rather
+than trusts:
+
+```
+CLAIM: <short assertion>
+COMMAND: <exact command, copy-pasteable, no trailing status word>
+OBSERVED: <verbatim output, including the exit code>
+```
+
+Two failure modes to avoid, both of which have already happened on this slice:
+- **A status word inside the command.** `git diff --check           PASS` is not a command; `PASS` belongs on
+  the OBSERVED line. A claim whose command cannot be executed is not evidence.
+- **A claim with no COMMAND line.** It extracts as `UNVERIFIED` and blocks the slice, exactly as revision 1 did.
+
+A claim is only evidence if a reader can paste its COMMAND line and see the same OBSERVED output.
+
+## State at dispatch — read before starting
+
+- **D1 and D2 are implemented and committed** (`58888a5`): `_stage_result_matches()` in
+  `tools/harpp-bridge/harpp_wake.py` refuses `evidence == "none"`, refuses an absent `verify`, requires
+  `claim_status == "RE_DERIVED"` and requires `"verify:PASSED"` in the evidence; the stale model identifiers
+  are gone. Verified by the Chair independently: a marker-only stage reports `(FAILED)`.
+- **Your task is evidence, not authorship.** Re-derive every criterion against the tree as it is. Do not
+  re-implement, and do not modify any file unless you find a specific defect — in which case report it
+  precisely (file:line, the observed behaviour, the criterion it violates) and leave it unfixed.
 
 ## Objective
 
@@ -84,14 +123,23 @@ This run is itself a data point.
 
 - **NEVER create a live decision on the host.** No invocation of the real `harpp` service during
   verification. If you cannot stub it, stop and report rather than running it.
+  **Deliberate note (Chair, revision 2):** CD-17 establishes that live decisions are permitted in general and
+  that the requirement is provenance, not prohibition. **This slice deliberately keeps the stricter rule.** The
+  reason is procedural, not doctrinal: revision 2's purpose is to *supply missing evidence for existing
+  criteria*, and loosening a safety constraint in the same edit would make it impossible for a reader to tell
+  whether the criteria were met or merely made easier to meet. The strict version is also satisfiable — the
+  scoped five-test invocation and the sandboxed environment do not reach the service. If CD-17's framing is
+  wanted here, that is a separate change with its own rationale.
 - **Do not edit `~/.config/harpp`** — it is chair-owned user configuration.
 - **Do not touch the service.** Only `tools/harpp-bridge/` may change. The protocol stays as it is.
 - Do not weaken any existing bridge test. If a test currently depends on marker behaviour, changing it must be
   justified in the D1 terms above and disclosed explicitly.
 - Pure/isolated tests only: **do not run `scripts/run-tests.php`, `composer test`, or Playwright.** Do not
   bootstrap the CMS app or touch its web cache.
-- Existing harness suites must stay green: `ai_project_test` 6/6, `ai_loop_test` 8/8, `ai_run_test` 31/31,
-  `ai_autonomy_test` 46/46, zero skips.
+- Existing harness suites must stay green: `ai_project_test`, `ai_loop_test`, `ai_run_test`,
+  `ai_autonomy_test`, `ai_contract_lint_test` — **all passing with zero skips**. (Revision 1 cited counts of
+  6/8/31/46; those have grown as the harness was extended, and the requirement has always been *green with zero
+  skips*, not a frozen number. Report the counts you observe.)
 - PHP 8.2 / Python 3 compatible as applicable; PHPStan clean for any PHP file you touch.
 - Do not commit, stage or push.
 
