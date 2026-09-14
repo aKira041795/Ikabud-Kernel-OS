@@ -511,3 +511,42 @@ after the fact and the count is kept even when unflattering; and an independent 
 **Authority:** Chair, IN-CONTRACT; the assessment is advisory and was adopted deliberately, including its
 refusals.
 **Owner intervention:** the assessment was commissioned by the owner; no decision required.
+
+## CD-16 — Owner decision: the HARPP bridge is developed in-tree (superseding a normative rule)
+
+**Issue:** the owner directed *"copy harpp in this workspace as is and develop it"*, with HARPP as the Gen 4
+project. This **conflicts with a written rule** in `.github/instructions/ai-autonomy-escalation.instructions.md`:
+*"HARPP is the external director service, found through `PATH`: never vendor it and never use a hardcoded CLI
+path."* A rule may be changed by its owner, but it must not be changed silently.
+
+**Options:**
+- A. Refuse on the grounds of the vendoring prohibition.
+- B. Copy it and leave the rule as written — a contradiction in the record.
+- C. Copy it, then amend the rule to distinguish the **service** (external, never vendored) from the
+  **bridge/client** (our code, now in-tree), recording the change.
+
+**Chosen:** C.
+**Reason:** the prohibition exists so the harness cannot drift from a live external service or pin its CLI to
+one machine's path. That intent is preserved by distinguishing the two artefacts: the **service** stays
+external and reached via `PATH`; the **bridge** — workflows, CLI, client and tests — is our code and belongs
+where it can be developed under the same governance as everything else. A is over-literal about a rule whose
+purpose is not violated; B is the failure mode this whole session has been correcting.
+
+**Reconnaissance before copying (no secrets left behind):** 1.8 MB, 51 files, 39 tracked in its own repo; the
+only junk was `__pycache__`; **no `.env`, no config files** — the live secrets live in the chair-owned
+user-level `~/.config/harpp/config.json`, which was not copied and must not be edited by repo agents; the two
+`*.example.json` files contain placeholder hosts only. Copied as-is to `tools/harpp-bridge/` (39 files,
+832 KB); `pi` is a directory, not a binary.
+
+**Consequences, recorded rather than assumed:**
+1. The harness's `PATH` still resolves `harpp` to the external copy. **That switch has not been made** and must
+   be made deliberately (user-level config, not by a repo agent) — until then two copies exist, and the
+   in-tree one is the development home while the external one is what runs.
+2. The in-tree copy becomes the source of truth for bridge development; divergence between the two is now a
+   real risk and is the honest cost of this decision.
+3. `.ai/projects/harpp-gen4/project.md` was revised to **revision 2**: slice S1 (repo parameterisation) is
+   **withdrawn** — the subject is in-tree, so cross-tree transport is no longer needed — and the original
+   reasoning is retained as history rather than deleted. Plans may change; the record of why does not.
+**Authority:** owner directive, 2026-09-14. Policy amended to match; no escalation required because you are the
+source of the rule being changed.
+**Owner intervention:** given and implemented.

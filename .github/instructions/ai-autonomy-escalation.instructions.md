@@ -344,7 +344,12 @@ L0–L3 proceed unattended. The phase chain is a HARPP workflow manifest with bo
 
 ## Director channel (HARPP)
 
-HARPP is the external director service, found through `PATH`: never vendor it and never use a hardcoded CLI path. An L4 is filed with `harpp decision submit`, or with `harpp_submit_decision` when an agent is inside VS Code with the MCP server attached. The `decision_key` is exactly the local `decision_id`. The director answers remotely through `harpp watch`, `harpp decision list`, and `harpp decision decide`; the harness closes the lifecycle with `harpp decision ack` then `harpp decision apply`.
+HARPP is the external director service, reached through `PATH`: the **service** is never vendored and its CLI
+path is never hardcoded. **Owner decision 2026-09-14 (CD-16): the bridge/client code is now developed in-tree
+at `tools/harpp-bridge/`** — it is our code, copied in as-is and revised here. The distinction is deliberate:
+*service* = external, reached over the network via `PATH`; *bridge* = the client, workflows and CLI that talk
+to it, now a first-class part of this repository. Do not point the harness at the in-tree copy until that
+switch is made deliberately, and do not edit the chair-owned `~/.config/harpp` configuration. An L4 is filed with `harpp decision submit`, or with `harpp_submit_decision` when an agent is inside VS Code with the MCP server attached. The `decision_key` is exactly the local `decision_id`. The director answers remotely through `harpp watch`, `harpp decision list`, and `harpp decision decide`; the harness closes the lifecycle with `harpp decision ack` then `harpp decision apply`.
 
 There is one server-side queue and two clients, with no duplicate decision store. Inside VS Code use MCP tools `harpp_submit_decision`, `harpp_list_decisions`, `harpp_get_decision`, `harpp_acknowledge_decision`, `harpp_apply_decision`, `harpp_send_message`, and `harpp_post_status`. Outside an editor use `harpp decision submit|list|view|decide|ack|apply`, `harpp msg send`, and `harpp watch`. Both surfaces identify the same row by `decision_key`.
 
