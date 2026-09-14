@@ -8,9 +8,14 @@ $basePath = dirname(__DIR__);
 
 require_once $basePath . '/vendor/autoload.php';
 
-define('BASE_PATH', $basePath);
-define('KERNEL_PATH', $basePath . '/kernel');
-define('STORAGE_PATH', $basePath . '/storage');
+if (!defined('BASE_PATH')) { define('BASE_PATH', $basePath); }
+if (!defined('KERNEL_PATH')) { define('KERNEL_PATH', $basePath . '/kernel'); }
+if (!defined('STORAGE_PATH')) { define('STORAGE_PATH', $basePath . '/storage'); }
+
+// The renderer emits a POST form only when it can obtain a CSRF token, and it fails closed
+// otherwise (asserted separately below). This test therefore needs a real application context
+// so `app()->csrfField()` is available; without it no form is rendered at all.
+require_once $basePath . '/bootstrap.php';
 
 spl_autoload_register(static function (string $class): void {
     $kernelPrefix = 'Ikabud\\Kernel\\';
@@ -98,6 +103,24 @@ t('renders hidden scalar row inputs for second row context', str_contains($html,
 t('does not render non-scalar row data as hidden input', !str_contains($html, 'name="meta"'));
 t('renders submit button label', str_contains($html, '<button type="submit"') && str_contains($html, 'Archive Row</button>'));
 t('renders POST confirmation handler', str_contains($html, 'onsubmit="return confirm(') && str_contains($html, 'Archive this row?'));
+
+// ── CSRF regression guard ────────────────────────────────────────────────────────────────
+// The renderer previously guarded token emission on `csrf_token()` and `entity_csrf_token()`.
+// Neither function exists anywhere in this repository (the real helper is camelCase
+// `csrfToken()`), so both guards were permanently false and EVERY POST form shipped without a
+// token -- either unprotected, or unusable with a 419. These assertions fail for that code.
+t('POST form carries a CSRF token', str_contains($html, 'name="_token"'), 'no _token in rendered form');
+t(
+    'every POST form carries exactly one token',
+    substr_count($html, '<form method="post"') === substr_count($html, 'name="_token"'),
+    'forms=' . substr_count($html, '<form method="post"') . ' tokens=' . substr_count($html, 'name="_token"'),
+);
+
+t('the token value is non-empty', (bool) preg_match('/name="_token" value="[^"]+"/', $html), 'empty token value');
+
+$rendererSource = (string) @file_get_contents(KERNEL_PATH . '/EntityContext/DefaultEntityRenderer.php');
+t('renderer no longer guards on non-existent csrf_token()', !str_contains($rendererSource, "function_exists('csrf_token')"));
+t('renderer no longer guards on non-existent entity_csrf_token()', !str_contains($rendererSource, "function_exists('entity_csrf_token')"));
 
 $appLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
 $errorLog = @file_get_contents(STORAGE_PATH . '/logs/error.log') ?: '';

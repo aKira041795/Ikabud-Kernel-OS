@@ -211,6 +211,23 @@ final class CapabilityBus implements CapabilityBusContract
             }
         }
 
+        // ── Activation Before Participation (P1.3 / B1) ─────────────────
+        // This is a SEPARATE gate from policy authorisation. A provider whose
+        // module is resolved-and-inactive for the tenant is refused with the
+        // distinct reason `module_not_activated`; an unresolvable activation
+        // state is allowed and logged (fail-safe). See applyActivationGate().
+        $activation = $this->applyActivationGate($capabilityId, $providers, $caller, $options);
+        $providers = $activation['providers'];
+        if (empty($providers)) {
+            if ($activation['refused'] !== []) {
+                $refusedProvider = (string) array_key_first($activation['refused']);
+                $this->logDenied($capabilityId, $caller, 'module_not_activated');
+                throw new CapabilityCallException('module_not_activated', $capabilityId, $provider ?? $refusedProvider);
+            }
+            $this->logDenied($capabilityId, $caller, 'authorization_registry');
+            throw new CapabilityNotFoundException("No permitted capability providers for: {$capabilityId}");
+        }
+
         $providers = $this->applyAuthorizationRegistry($capabilityId, $providers, $caller, $options, $provider);
         if (empty($providers)) {
             $this->logDenied($capabilityId, $caller, 'authorization_registry');
@@ -327,6 +344,17 @@ final class CapabilityBus implements CapabilityBusContract
             }
         }
 
+        // Activation gate (separate from policy authorisation). A resolved-and-
+        // inactive module is reported as `module_not_activated`; unresolvable
+        // activation state is allowed and logged.
+        $activation = $this->applyActivationGate($capabilityId, $providers, $caller, $options);
+        $providers = $activation['providers'];
+        if (empty($providers)) {
+            return array_merge($decision, [
+                'reason' => $activation['refused'] !== [] ? 'module_not_activated' : 'capability_not_found',
+            ]);
+        }
+
         [$registry, $authorityScope, $scopeFailureReason] = $this->authorizationRegistry($options, $caller);
         if (!$authorityScope instanceof AuthorityScope) {
             return array_merge($decision, ['reason' => $scopeFailureReason]);
@@ -368,7 +396,7 @@ final class CapabilityBus implements CapabilityBusContract
                 'caller_module' => $callerModule,
                 'actor_role' => $actorRole,
                 'tenant_id' => (string)$decision['tenant_id'],
-                'provider_activation' => $providerId === 'kernel' || !function_exists('moduleIsActive') || moduleIsActive($providerId),
+                'provider_activation' => $this->providerActivationForPolicy($providerId, (string)$decision['tenant_id']),
                 'dispatch_protocol' => $dispatchProtocol,
                 'explicit_provider' => $explicitProvider,
             ]);
@@ -385,6 +413,101 @@ final class CapabilityBus implements CapabilityBusContract
         }
 
         return array_merge($decision, ['reason' => $lastReason]);
+    }
+
+    /**
+     * Activation Before Participation gate (P1.3 / B1).
+     *
+     * Kept separate from applyPolicy()/authorization so the refusal reason is
+     * distinguishable in logs (`module_not_activated` never masquerades as a
+     * policy `role_not_allowed` / `disabled_caller` / `caller_policy`).
+     *
+     * Kernel providers are always active. A non-kernel provider is:
+     *   - kept when its module is active for the resolved tenant;
+     *   - dropped (recorded in `refused`) when the tenant is resolved and the
+     *     module is inactive;
+     *   - kept and recorded in `unresolved` when activation state cannot be
+     *     resolved — fail-safe, allow and log.
+     *
+     * @param array<int, array<string, mixed>> $providers
+     * @param array<string, mixed> $caller
+     * @param array<string, mixed> $options
+     * @return array{providers: array<int, array<string, mixed>>, refused: array<string, string>, unresolved: array<string, string>}
+     */
+    private function applyActivationGate(string $capabilityId, array $providers, array $caller, array $options): array
+    {
+        $kept = [];
+        $refused = [];
+        $unresolved = [];
+
+        $tenantId = (int) $this->resolveTenantId($options);
+
+        foreach ($providers as $provider) {
+            $providerId = (string) ($provider['provider'] ?? '');
+            if ($providerId === '' || $providerId === 'kernel') {
+                $kept[] = $provider;
+                continue;
+            }
+
+            $state = function_exists('moduleActivationState')
+                ? moduleActivationState($providerId, $tenantId > 0 ? $tenantId : null)
+                : 'unresolved';
+
+            if ($state === 'active') {
+                $kept[] = $provider;
+                continue;
+            }
+
+            if ($state === 'inactive') {
+                $refused[$providerId] = 'module_not_activated';
+                if (function_exists('write_log')) {
+                    write_log('module_not_activated', 'warning', [
+                        'capability_id' => $capabilityId,
+                        'provider' => $providerId,
+                        'caller_module' => $caller['module'] ?? null,
+                        'tenant_id' => $tenantId > 0 ? $tenantId : null,
+                        'reason' => 'module_not_activated',
+                    ]);
+                }
+                continue;
+            }
+
+            // unresolved → fail-safe: allow, but make the missing proof visible.
+            $unresolved[$providerId] = 'module_activation_unresolved';
+            if (function_exists('write_log')) {
+                write_log('module_activation_unresolved', 'warning', [
+                    'capability_id' => $capabilityId,
+                    'provider' => $providerId,
+                    'caller_module' => $caller['module'] ?? null,
+                    'tenant_id' => $tenantId > 0 ? $tenantId : null,
+                    'reason' => 'module_activation_unresolved',
+                ]);
+            }
+            $kept[] = $provider;
+        }
+
+        return ['providers' => $kept, 'refused' => $refused, 'unresolved' => $unresolved];
+    }
+
+    /**
+     * Policy-layer activation input for `provider_activation_required`.
+     *
+     * Returns true when the provider is kernel, when activation cannot be
+     * evaluated (fail-safe), or when the module is active/unresolved. Only a
+     * resolved-inactive module returns false. The dedicated activation gate
+     * normally refuses that provider before this point; this keeps the policy
+     * layer internally consistent for any direct caller.
+     */
+    private function providerActivationForPolicy(string $providerId, string $tenantId): bool
+    {
+        if ($providerId === 'kernel') {
+            return true;
+        }
+        if (!function_exists('moduleActivationState')) {
+            return true;
+        }
+        $tenant = is_numeric($tenantId) ? (int) $tenantId : 0;
+        return moduleActivationState($providerId, $tenant > 0 ? $tenant : null) !== 'inactive';
     }
 
     /**
@@ -506,20 +629,12 @@ final class CapabilityBus implements CapabilityBusContract
             }
 
             // ── Activation Before Participation ────────────────────────
-            // The kernel invariant: a provider module that has not been
-            // explicitly activated for the current tenant MUST NOT serve
-            // capability calls.  Kernel providers are always active.
-            // See moduleIsActive() in src/helpers/module-registry.php.
-            if ($pid !== 'kernel' && function_exists('moduleIsActive') && !moduleIsActive($pid)) {
-                if (function_exists('write_log')) {
-                    write_log("Capability provider '{$pid}' skipped — module not active for tenant", 'warning', [
-                        'capability_id' => $capabilityId,
-                        'provider' => $pid,
-                        'caller_module' => $callerModule,
-                    ]);
-                }
-                continue;
-            }
+            // Activation is enforced by the dedicated applyActivationGate()
+            // stage, kept deliberately separate from this provider-selection /
+            // caller-policy method so the refusal reason stays distinguishable
+            // (`module_not_activated` vs `caller_policy`). Do not re-add a
+            // moduleIsActive() skip here: a boolean cannot represent the
+            // fail-safe "unresolved → allow" case.
 
             // ── Declaration Before Integration ──────────────────────
             // A provider may require that callers explicitly declare an
@@ -620,7 +735,7 @@ final class CapabilityBus implements CapabilityBusContract
                 'caller_module' => (string)($caller['module'] ?? ''),
                 'actor_role' => is_array($caller['user'] ?? null) ? (string)($caller['user']['role'] ?? '') : '',
                 'tenant_id' => $tenantId,
-                'provider_activation' => $providerId === 'kernel' || !function_exists('moduleIsActive') || moduleIsActive($providerId),
+                'provider_activation' => $this->providerActivationForPolicy($providerId, $tenantId),
                 // Protocol is derived from trusted provider metadata/configuration, never caller options.
                 // A v2 policy therefore cannot be bypassed by claiming v2 at the call site.
                 'dispatch_protocol' => $dispatchProtocol,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ikabud\Kernel\Services;
 
 use Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry;
+use Ikabud\Kernel\Database\KernelPDO;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -169,33 +170,35 @@ final class ModuleInstallService
                     ? _readTenantModuleSettingsSingle($member, $tenantId, $tenantDb)
                     : [];
                 $activationBefore[$member] = (bool)($settings['_module_enabled'] ?? false);
-                tenantSetModuleActivationState($tenantDb, $tenantId, [$member], false, $generation, true);
+                $this->activationWrite($tenantDb, $tenantId, [$member], false, $generation, true);
                 $stagedMembers[] = $member;
                 $this->step($generationId, $member, 'activation', 'staged');
             }
 
-            $this->controlDb->beginTransaction();
-            try {
-                $this->failIfRequested($options, 'entry_write');
-                if ($entry !== null) {
-                    $stmt = $this->controlDb->prepare('UPDATE kernel_tenants SET entry_module_id = :entry, updated_at = NOW() WHERE id = :tenant AND status = \'active\'');
-                    $stmt->execute([':entry' => $entry, ':tenant' => $tenantId]);
-                    if ($stmt->rowCount() !== 1) {
-                        throw new RuntimeException('Entry module write lost its active-tenant compare-and-set.');
+            $this->kernelControlOperation(function () use ($entry, $tenantId, $generationId, $options): void {
+                $this->controlDb->beginTransaction();
+                try {
+                    $this->failIfRequested($options, 'entry_write');
+                    if ($entry !== null) {
+                        $stmt = $this->controlDb->prepare('UPDATE kernel_tenants SET entry_module_id = :entry, updated_at = NOW() WHERE id = :tenant AND status = \'active\'');
+                        $stmt->execute([':entry' => $entry, ':tenant' => $tenantId]);
+                        if ($stmt->rowCount() !== 1) {
+                            throw new RuntimeException('Entry module write lost its active-tenant compare-and-set.');
+                        }
                     }
+                    $stmt = $this->controlDb->prepare("UPDATE kernel_module_install_generations SET status = 'active', committed_at = NOW(), error_message = NULL, updated_at = NOW() WHERE id = :id");
+                    $stmt->execute([':id' => $generationId]);
+                    $this->controlDb->commit();
+                } catch (Throwable $e) {
+                    if ($this->controlDb->inTransaction()) {
+                        $this->controlDb->rollBack();
+                    }
+                    throw $e;
                 }
-                $stmt = $this->controlDb->prepare("UPDATE kernel_module_install_generations SET status = 'active', committed_at = NOW(), error_message = NULL, updated_at = NOW() WHERE id = :id");
-                $stmt->execute([':id' => $generationId]);
-                $this->controlDb->commit();
-            } catch (Throwable $e) {
-                if ($this->controlDb->inTransaction()) {
-                    $this->controlDb->rollBack();
-                }
-                throw $e;
-            }
+            });
 
             foreach ($members as $member) {
-                tenantSetModuleActivationState($tenantDb, $tenantId, [$member], true, $generation, false);
+                $this->activationWrite($tenantDb, $tenantId, [$member], true, $generation, false);
                 $this->step($generationId, $member, 'activation', 'complete');
             }
             $this->prune($tenantId);
@@ -209,15 +212,17 @@ final class ModuleInstallService
             if ($tenantDb instanceof PDO) {
                 foreach ($stagedMembers as $member) {
                     try {
-                        tenantSetModuleActivationState($tenantDb, $tenantId, [$member], (bool)($activationBefore[$member] ?? false), null, false);
+                        $this->activationWrite($tenantDb, $tenantId, [$member], (bool)($activationBefore[$member] ?? false), null, false);
                     } catch (Throwable) {
                     }
                 }
             }
             if ($generationId > 0) {
                 try {
-                    $stmt = $this->controlDb->prepare('UPDATE kernel_tenants SET entry_module_id = :entry, updated_at = NOW() WHERE id = :tenant AND status = \'active\'');
-                    $stmt->execute([':entry' => $previousEntry, ':tenant' => $tenantId]);
+                    $this->kernelControlOperation(function () use ($previousEntry, $tenantId): void {
+                        $stmt = $this->controlDb->prepare('UPDATE kernel_tenants SET entry_module_id = :entry, updated_at = NOW() WHERE id = :tenant AND status = \'active\'');
+                        $stmt->execute([':entry' => $previousEntry, ':tenant' => $tenantId]);
+                    });
                 } catch (Throwable) {
                 }
                 $this->state($generationId, $failed, $e->getMessage());
@@ -246,12 +251,116 @@ final class ModuleInstallService
             if (!$db instanceof PDO) {
                 throw new RuntimeException('Tenant PDO is unavailable.');
             }
-            tenantSetModuleActivationState($db, $tenantId, $moduleIds, false);
+            $this->activationWrite($db, $tenantId, $moduleIds, false);
             if (in_array('cms-akira-shell', $moduleIds, true)) {
-                $stmt = $this->controlDb->prepare("UPDATE kernel_tenants SET entry_module_id = NULL, updated_at = NOW() WHERE id = :tenant AND entry_module_id = 'cms-akira-shell'");
-                $stmt->execute([':tenant' => $tenantId]);
+                $this->kernelControlOperation(function () use ($tenantId): void {
+                    $stmt = $this->controlDb->prepare("UPDATE kernel_tenants SET entry_module_id = NULL, updated_at = NOW() WHERE id = :tenant AND entry_module_id = 'cms-akira-shell'");
+                    $stmt->execute([':tenant' => $tenantId]);
+                });
             }
             return ['ok' => true, 'data_preserved' => true];
+        } finally {
+            $this->releaseLock($tenantId);
+        }
+    }
+
+    /**
+     * Return suite package state from the install ledger and tenant activation
+     * store. Manifests supply identity only; they never supply enabled state.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function suiteState(int $tenantId, string $suite): array
+    {
+        if ($tenantId <= 0 || $suite === '') {
+            throw new RuntimeException('A tenant and suite are required.');
+        }
+        $tenant = $this->tenant($tenantId);
+        if ($tenant === null) {
+            throw new RuntimeException('Tenant not found.');
+        }
+        $modules = ($this->moduleResolver)();
+        $installed = $this->kernelControlOperation(function () use ($tenantId): array {
+            $stmt = $this->controlDb->prepare(
+                "SELECT g.selection_id, s.module_id FROM kernel_module_install_generations g "
+                . "LEFT JOIN kernel_module_install_steps s ON s.install_generation_id = g.id "
+                . "WHERE g.tenant_id = :tenant AND g.status = 'active'"
+            );
+            $stmt->execute([':tenant' => $tenantId]);
+            $ids = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                foreach (['selection_id', 'module_id'] as $key) {
+                    $id = trim((string)($row[$key] ?? ''));
+                    if ($id !== '') {
+                        $ids[$id] = true;
+                    }
+                }
+            }
+            return $ids;
+        });
+        $entry = trim((string)($tenant['entry_module_id'] ?? ''));
+        $required = $entry !== '' && isset($modules[$entry]) ? array_fill_keys($this->resolveClosure($entry, $modules, []), true) : [];
+        $rows = [];
+        $tenantDb = ($this->tenantPdoResolver)($tenantId);
+        if (!$tenantDb instanceof PDO) {
+            throw new RuntimeException('Tenant PDO is unavailable.');
+        }
+        foreach ($modules as $moduleId => $manifest) {
+            if (($manifest['suite'] ?? '') !== $suite) {
+                continue;
+            }
+            $settings = $this->kernelControlOperation(
+                static fn (): array => function_exists('_readTenantModuleSettingsSingle')
+                    ? _readTenantModuleSettingsSingle((string)$moduleId, $tenantId, $tenantDb) : []
+            );
+            $hasActivation = array_key_exists('_module_enabled', $settings);
+            $rows[] = [
+                'id' => (string)$moduleId,
+                'name' => (string)($manifest['name'] ?? $moduleId),
+                'kind' => (string)($manifest['kind'] ?? 'module'),
+                'version' => (string)($manifest['version'] ?? ''),
+                'present' => true,
+                'installed' => $hasActivation || isset($installed[$moduleId]),
+                'enabled' => $hasActivation && $settings['_module_enabled'] === true,
+                'activation_state' => (string)($settings['_module_activation_state'] ?? ''),
+                'required' => isset($required[$moduleId]),
+            ];
+        }
+        usort($rows, static fn (array $a, array $b): int => [$a['kind'] === 'profile' ? 1 : 0, $a['name']] <=> [$b['kind'] === 'profile' ? 1 : 0, $b['name']]);
+        return $rows;
+    }
+
+    /** @return array<string,mixed> */
+    public function setEnabled(int $tenantId, string $moduleId, bool $enabled): array
+    {
+        $modules = ($this->moduleResolver)();
+        if ($tenantId <= 0 || !isset($modules[$moduleId]) || ($modules[$moduleId]['suite'] ?? '') !== 'cms-akira') {
+            throw new RuntimeException('Unknown Akira module.');
+        }
+        if (($modules[$moduleId]['kind'] ?? '') === 'profile') {
+            throw new RuntimeException('Profiles are install selections, not runtime modules.');
+        }
+        if (!$this->acquireLock($tenantId, 10)) {
+            return ['ok' => false, 'error' => 'Another install or activation change is in progress.'];
+        }
+        try {
+            $tenant = $this->tenant($tenantId);
+            if ($tenant === null || strtolower((string)$tenant['status']) !== 'active') {
+                throw new RuntimeException('Activation requires an existing active tenant.');
+            }
+            if (!$enabled) {
+                $entry = trim((string)($tenant['entry_module_id'] ?? ''));
+                $required = $entry !== '' && isset($modules[$entry]) ? $this->resolveClosure($entry, $modules, []) : [];
+                if (in_array($moduleId, $required, true)) {
+                    throw new RuntimeException('An entry-module dependency cannot be disabled.');
+                }
+            }
+            $db = ($this->tenantPdoResolver)($tenantId);
+            if (!$db instanceof PDO) {
+                throw new RuntimeException('Tenant PDO is unavailable.');
+            }
+            $this->activationToggleWrite($db, $tenantId, $moduleId, $enabled);
+            return ['ok' => true, 'module_id' => $moduleId, 'enabled' => $enabled];
         } finally {
             $this->releaseLock($tenantId);
         }
@@ -300,32 +409,38 @@ final class ModuleInstallService
     /** @return array<string,mixed>|null */
     private function tenant(int $tenantId): ?array
     {
-        $stmt = $this->controlDb->prepare('SELECT id, status, entry_module_id FROM kernel_tenants WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $tenantId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return is_array($row) ? $row : null;
+        return $this->kernelControlOperation(function () use ($tenantId): ?array {
+            $stmt = $this->controlDb->prepare('SELECT id, status, entry_module_id FROM kernel_tenants WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $tenantId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return is_array($row) ? $row : null;
+        });
     }
 
     /** @return array<string,mixed>|null */
     private function generation(int $tenantId, string $generation): ?array
     {
-        $stmt = $this->controlDb->prepare('SELECT id, status FROM kernel_module_install_generations WHERE tenant_id = :tenant AND install_generation = :generation LIMIT 1');
-        $stmt->execute([':tenant' => $tenantId, ':generation' => $generation]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return is_array($row) ? $row : null;
+        return $this->kernelControlOperation(function () use ($tenantId, $generation): ?array {
+            $stmt = $this->controlDb->prepare('SELECT id, status FROM kernel_module_install_generations WHERE tenant_id = :tenant AND install_generation = :generation LIMIT 1');
+            $stmt->execute([':tenant' => $tenantId, ':generation' => $generation]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return is_array($row) ? $row : null;
+        });
     }
 
     private function createOrResetGeneration(int $tenantId, string $generation, string $selection, ?string $entry, ?string $previous): int
     {
         $row = $this->generation($tenantId, $generation);
-        if (is_array($row)) {
-            $stmt = $this->controlDb->prepare("UPDATE kernel_module_install_generations SET selection_id = :selection, entry_module_id = :entry, previous_entry_module_id = :previous, status = 'install_requested', error_message = NULL, committed_at = NULL, updated_at = NOW() WHERE id = :id");
-            $stmt->execute([':selection' => $selection, ':entry' => $entry, ':previous' => $previous, ':id' => $row['id']]);
-            return (int)$row['id'];
-        }
-        $stmt = $this->controlDb->prepare("INSERT INTO kernel_module_install_generations (tenant_id, install_generation, selection_id, entry_module_id, previous_entry_module_id, status) VALUES (:tenant, :generation, :selection, :entry, :previous, 'install_requested')");
-        $stmt->execute([':tenant' => $tenantId, ':generation' => $generation, ':selection' => $selection, ':entry' => $entry, ':previous' => $previous]);
-        return (int)$this->controlDb->lastInsertId();
+        return $this->kernelControlOperation(function () use ($row, $tenantId, $generation, $selection, $entry, $previous): int {
+            if (is_array($row)) {
+                $stmt = $this->controlDb->prepare("UPDATE kernel_module_install_generations SET selection_id = :selection, entry_module_id = :entry, previous_entry_module_id = :previous, status = 'install_requested', error_message = NULL, committed_at = NULL, updated_at = NOW() WHERE id = :id");
+                $stmt->execute([':selection' => $selection, ':entry' => $entry, ':previous' => $previous, ':id' => $row['id']]);
+                return (int)$row['id'];
+            }
+            $stmt = $this->controlDb->prepare("INSERT INTO kernel_module_install_generations (tenant_id, install_generation, selection_id, entry_module_id, previous_entry_module_id, status) VALUES (:tenant, :generation, :selection, :entry, :previous, 'install_requested')");
+            $stmt->execute([':tenant' => $tenantId, ':generation' => $generation, ':selection' => $selection, ':entry' => $entry, ':previous' => $previous]);
+            return (int)$this->controlDb->lastInsertId();
+        });
     }
 
     private function state(int $id, string $state, ?string $error = null): void
@@ -333,8 +448,10 @@ final class ModuleInstallService
         if ($id <= 0) {
             return;
         }
-        $stmt = $this->controlDb->prepare('UPDATE kernel_module_install_generations SET status = :status, error_message = :error, updated_at = NOW() WHERE id = :id');
-        $stmt->execute([':status' => $state, ':error' => $error, ':id' => $id]);
+        $this->kernelControlOperation(function () use ($id, $state, $error): void {
+            $stmt = $this->controlDb->prepare('UPDATE kernel_module_install_generations SET status = :status, error_message = :error, updated_at = NOW() WHERE id = :id');
+            $stmt->execute([':status' => $state, ':error' => $error, ':id' => $id]);
+        });
     }
 
     private function currentState(int $id): string
@@ -342,9 +459,11 @@ final class ModuleInstallService
         if ($id <= 0) {
             return 'dependencies_resolving';
         }
-        $stmt = $this->controlDb->prepare('SELECT status FROM kernel_module_install_generations WHERE id = :id');
-        $stmt->execute([':id' => $id]);
-        return (string)($stmt->fetchColumn() ?: 'dependencies_resolving');
+        return $this->kernelControlOperation(function () use ($id): string {
+            $stmt = $this->controlDb->prepare('SELECT status FROM kernel_module_install_generations WHERE id = :id');
+            $stmt->execute([':id' => $id]);
+            return (string)($stmt->fetchColumn() ?: 'dependencies_resolving');
+        });
     }
 
     private function failureState(string $state): string
@@ -363,16 +482,20 @@ final class ModuleInstallService
         $sql = 'INSERT INTO kernel_module_install_steps (install_generation_id, module_id, step_name, status, detail_json, started_at, completed_at) '
             . 'VALUES (:generation, :module, :step, :status, :detail, NOW(), IF(:complete = 1, NOW(), NULL)) '
             . 'ON DUPLICATE KEY UPDATE status = VALUES(status), detail_json = VALUES(detail_json), completed_at = VALUES(completed_at)';
-        $stmt = $this->controlDb->prepare($sql);
-        $stmt->execute([':generation' => $generationId, ':module' => $module, ':step' => $step, ':status' => $status, ':detail' => json_encode($detail), ':complete' => in_array($status, ['complete', 'staged'], true) ? 1 : 0]);
+        $this->kernelControlOperation(function () use ($sql, $generationId, $module, $step, $status, $detail): void {
+            $stmt = $this->controlDb->prepare($sql);
+            $stmt->execute([':generation' => $generationId, ':module' => $module, ':step' => $step, ':status' => $status, ':detail' => json_encode($detail), ':complete' => in_array($status, ['complete', 'staged'], true) ? 1 : 0]);
+        });
     }
 
     /** @return string[] */
     private function memberIds(int $generationId): array
     {
-        $stmt = $this->controlDb->prepare('SELECT DISTINCT module_id FROM kernel_module_install_steps WHERE install_generation_id = :id ORDER BY module_id');
-        $stmt->execute([':id' => $generationId]);
-        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        return $this->kernelControlOperation(function () use ($generationId): array {
+            $stmt = $this->controlDb->prepare('SELECT DISTINCT module_id FROM kernel_module_install_steps WHERE install_generation_id = :id ORDER BY module_id');
+            $stmt->execute([':id' => $generationId]);
+            return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        });
     }
 
     private function acquireLock(int $tenantId, int $timeout): bool
@@ -416,8 +539,46 @@ final class ModuleInstallService
         // Keep all in-flight rows and the ten newest terminal generations;
         // terminal rows older than 30 days beyond that operational window go.
         $sql = "DELETE FROM kernel_module_install_generations WHERE tenant_id = :tenant AND status IN ('active','failed_dependencies_resolving','failed_migrations_running','failed_policy_seeding','failed_activation_writing') AND updated_at < DATE_SUB(NOW(), INTERVAL 30 DAY) AND id NOT IN (SELECT id FROM (SELECT id FROM kernel_module_install_generations WHERE tenant_id = :tenant2 ORDER BY id DESC LIMIT 10) retained)";
-        $stmt = $this->controlDb->prepare($sql);
-        $stmt->execute([':tenant' => $tenantId, ':tenant2' => $tenantId]);
+        $this->kernelControlOperation(function () use ($sql, $tenantId): void {
+            $stmt = $this->controlDb->prepare($sql);
+            $stmt->execute([':tenant' => $tenantId, ':tenant2' => $tenantId]);
+        });
+    }
+
+    /**
+     * CD-001: this is the only escalation seam in the installer. It is called
+     * only around this service's control-table reads/writes and activation-store
+     * writes. Dependency resolution, policy seeders, and especially module
+     * migration callbacks execute outside this scope.
+     */
+    private function kernelControlOperation(callable $operation): mixed
+    {
+        KernelPDO::kernelEscalationEnter();
+        try {
+            return $operation();
+        } finally {
+            KernelPDO::kernelEscalationLeave();
+        }
+    }
+
+    /** @param string[] $moduleIds */
+    private function activationWrite(PDO $db, int $tenantId, array $moduleIds, bool $enabled, ?string $generation = null, bool $staged = false): void
+    {
+        $this->kernelControlOperation(static function () use ($db, $tenantId, $moduleIds, $enabled, $generation, $staged): void {
+            tenantSetModuleActivationState($db, $tenantId, $moduleIds, $enabled, $generation, $staged);
+        });
+    }
+
+    /** Toggle only live activation keys; install-generation provenance is untouched. */
+    private function activationToggleWrite(PDO $db, int $tenantId, string $moduleId, bool $enabled): void
+    {
+        $this->kernelControlOperation(static function () use ($db, $tenantId, $moduleId, $enabled): void {
+            $enabledSaved = tenantWriteModuleSetting($db, $tenantId, $moduleId, '_module_enabled', $enabled);
+            $stateSaved = tenantWriteModuleSetting($db, $tenantId, $moduleId, '_module_activation_state', $enabled ? 'committed' : 'inactive');
+            if (!$enabledSaved || !$stateSaved) {
+                throw new RuntimeException('Tenant module activation could not be persisted.');
+            }
+        });
     }
 
     private function nullable(string $value): ?string

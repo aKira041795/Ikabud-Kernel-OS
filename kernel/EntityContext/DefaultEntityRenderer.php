@@ -697,6 +697,33 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
     // ── Actions ────────────────────────────────────────────────────
 
+    /**
+     * The CSRF hidden input for renderer-emitted forms, or '' when no token can be obtained.
+     *
+     * Callers MUST treat '' as fail-closed and omit the form. A state-changing control without a
+     * token is either unprotected (if the endpoint does not enforce) or permanently broken with a
+     * 419 (if it does) -- neither is acceptable, so the control is withheld instead.
+     *
+     * The previous implementation guarded on `csrf_token()` and `entity_csrf_token()`. Neither
+     * function exists anywhere in this repository (the real helper is the camelCase `csrfToken()`
+     * on the application), so both guards were always false and the token was never emitted.
+     */
+    private function csrfHiddenInput(): string
+    {
+        if (!function_exists('app')) {
+            return '';
+        }
+        try {
+            $app = app();
+            if ($app === null || !method_exists($app, 'csrfField')) {
+                return '';
+            }
+            return trim((string) $app->csrfField());
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
     private function renderRowActions(RowRenderContext $ctx): string
     {
         if (empty($ctx->actions)) {
@@ -768,16 +795,10 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 $onSubmit = $confirmMsg !== ''
                     ? ' onsubmit="return confirm(' . htmlspecialchars(json_encode($confirmMsg), ENT_QUOTES, 'UTF-8') . ')"'
                     : '';
-                $csrfInput = '';
-                if (function_exists('csrf_token')) {
-                    $csrfValue = htmlspecialchars((string)\csrf_token(), ENT_QUOTES, 'UTF-8');
-                    $csrfInput = '<input type="hidden" name="_token" value="' . $csrfValue . '">';
-                }
-                if (function_exists('entity_csrf_token')) {
-                    $moduleCsrf = htmlspecialchars((string)\entity_csrf_token(), ENT_QUOTES, 'UTF-8');
-                    if ($moduleCsrf !== '') {
-                        $csrfInput = '<input type="hidden" name="_token" value="' . $moduleCsrf . '">';
-                    }
+                $csrfInput = $this->csrfHiddenInput();
+                if ($csrfInput === '') {
+                    // Fail closed: emit no action rather than an unprotected or always-419 form.
+                    continue;
                 }
 
                 $hiddenInputs = '<input type="hidden" name="id" value="' . $safeId . '">';
@@ -1087,10 +1108,10 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
     private function renderEntityBulkBar(array $bulkActions, string $bulkActionUrl, string $listId, string $use): string
     {
-        $csrfInput = '';
-        if (function_exists('csrf_token')) {
-            $csrfValue = htmlspecialchars((string)\csrf_token(), ENT_QUOTES, 'UTF-8');
-            $csrfInput = '<input type="hidden" name="_token" value="' . $csrfValue . '">';
+        $csrfInput = $this->csrfHiddenInput();
+        if ($csrfInput === '') {
+            // Fail closed: no token, so no bulk POST form at all.
+            return '';
         }
         $safeUrl = htmlspecialchars($bulkActionUrl, ENT_QUOTES, 'UTF-8');
         $buttons = '';

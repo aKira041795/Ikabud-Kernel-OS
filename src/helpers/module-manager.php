@@ -1312,6 +1312,11 @@ function preloadAllTenantModuleSettings(): void
 function invalidateTenantModuleSettingsCache(): void
 {
     kernel_request_context_delete('_tenant_module_settings_cache');
+    // Invalidate the per-process activation-state memo used by capability
+    // dispatch (see moduleActivationState()). Activation toggles inside one
+    // process (tests, install) must be observed immediately.
+    $GLOBALS['_kernel_module_activation_generation'] =
+        (int) ($GLOBALS['_kernel_module_activation_generation'] ?? 0) + 1;
 }
 
 /**
