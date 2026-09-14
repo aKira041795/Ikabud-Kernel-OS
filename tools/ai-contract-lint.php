@@ -8,15 +8,24 @@ declare(strict_types=1);
  *
  * Read-only. For every `.ai/*.contract.md` it reports whether the kernel
  * parser accepts the contract, whether it carries a `harness:` reference
- * block, whether any forbidden-scope entry looks like prose masquerading as
- * a path, and its declared status/class.
+ * block, whether any `## Forbidden changes` bullet is prose masquerading as a
+ * path (a "phantom"), and its declared status/class.
  *
  * Parsing is delegated to `tools/ai-autonomy.php plan --json`; the kernel
- * parser is never re-implemented here. The only local parsing is the
- * phantom heuristic, which by design reads the driver's `forbidden_scope`.
+ * parser is never re-implemented here. After the scope-path fix every bullet
+ * is represented exactly once — a scope path in `forbidden_scope` or a
+ * verbatim rule in `forbidden_rules` — so a phantom is simply a raw bullet the
+ * parser could not bind to a path, i.e. an entry in `forbidden_rules`. A
+ * trailing-slash directory arrives as `kind: directory` and is never a
+ * phantom; the old bug was testing the normalised path instead of the bullet.
+ *
+ * Usage:
+ *   php tools/ai-contract-lint.php [--json] [--live-only]
+ *   php tools/ai-contract-lint.php --contract=PATH [--json]
  *
  * Exit codes:
- *   0  every `live` contract parses and has no phantoms
+ *   0  every `live` contract parses and has no phantoms (or the single
+ *      `--contract=` target parses with no phantoms)
  *   3  a `live` contract fails to parse and/or has phantoms
  *   2  usage error
  */
@@ -39,7 +48,7 @@ function repoRoot(): string
 /**
  * Run the driver's `plan --json` for one contract.
  *
- * @return array{code:int,forbidden:list<array{path:string,kind:string}>}
+ * @return array{code:int,forbidden:list<array{path:string,kind:string}>,rules:list<string>}
  */
 function planContract(string $root, string $relativeContract): array
 {
@@ -62,7 +71,7 @@ function planContract(string $root, string $relativeContract): array
     );
 
     if (!is_resource($process)) {
-        return ['code' => 127, 'forbidden' => []];
+        return ['code' => 127, 'forbidden' => [], 'rules' => []];
     }
 
     fclose($pipes[0]);
@@ -75,6 +84,7 @@ function planContract(string $root, string $relativeContract): array
     $code = proc_close($process);
 
     $forbidden = [];
+    $rules = [];
     if ($stdout !== false && trim($stdout) !== '') {
         $decoded = json_decode($stdout, true);
         if (is_array($decoded)) {
@@ -86,10 +96,18 @@ function planContract(string $root, string $relativeContract): array
                     }
                 }
             }
+            $ruleEntries = $decoded['envelope']['forbidden_rules'] ?? null;
+            if (is_array($ruleEntries)) {
+                foreach ($ruleEntries as $rule) {
+                    if (is_string($rule) && $rule !== '') {
+                        $rules[] = $rule;
+                    }
+                }
+            }
         }
     }
 
-    return ['code' => $code, 'forbidden' => $forbidden];
+    return ['code' => $code, 'forbidden' => $forbidden, 'rules' => $rules];
 }
 
 /**
@@ -164,10 +182,17 @@ function rawForbiddenTokens(string $markdown): array
     return $tokens;
 }
 
-/** A "single bare word with no `/` or `.`" is the prose-as-path signature. */
+/**
+ * The prose-as-path signature, applied to a raw fallback token: a token that
+ * cannot be a scope path under the parser's own grammar. A token with a
+ * trailing slash is a directory and can never be a phantom. A bare single word
+ * is path-like and is bound as a file entry by the parser, so the fallback does
+ * not invent a phantom for it either — the driver's `plan` warnings cover
+ * suspicious-but-parseable entries.
+ */
 function isPhantom(string $token): bool
 {
-    return preg_match('/^[A-Za-z0-9_-]+$/', $token) === 1;
+    return $token === '' || preg_match('#^[A-Za-z0-9_./*?\[\]{}\-]+$#', $token) !== 1;
 }
 
 /**
@@ -205,6 +230,69 @@ function classify(?string $status, bool $placeholder): string
 }
 
 /**
+ * Analyse one contract file.
+ *
+ * @return array<string,mixed>
+ */
+function analyseContract(string $root, string $file, string $relative): array
+{
+    $markdown = (string) @file_get_contents($file);
+
+    $plan = planContract($root, $relative);
+    $parseOk = $plan['code'] === 0;
+
+    $phantoms = phantomEntries($markdown, $parseOk, $plan['rules']);
+
+    $status = extractStatus($markdown);
+
+    return [
+        'name' => basename($file, '.contract.md'),
+        'file' => $relative,
+        'parse' => $parseOk,
+        'parse_exit' => $plan['code'],
+        'harness_ref' => hasHarnessReference($markdown),
+        'phantoms' => count($phantoms),
+        'phantom_entries' => $phantoms,
+        'status' => $status['value'],
+        'status_label' => $status['value'] === null ? 'none' : ($status['placeholder'] ? 'PLACEHOLDER' : $status['value']),
+        'placeholder' => $status['placeholder'],
+        'class' => classify($status['value'], $status['placeholder']),
+    ];
+}
+
+/**
+ * The phantom set for one contract.
+ *
+ * Primary path (the contract parses): the parser is the single source of truth
+ * for the path/rule partition. `forbidden_rules` carries, verbatim, exactly the
+ * raw bullets whose first token was not path-like — a bullet that cannot be
+ * bound to a path entry. Scope paths (kind file|directory|glob) are never
+ * phantoms, so `kernel/` and `tests/` are no longer misreported.
+ *
+ * Fallback path (the driver rejects the contract): only contracts with no
+ * parsed envelope reach this branch — 46 of the corpus at the time of writing.
+ * There is no partition to consult, so it applies the same grammar to the raw
+ * `## Forbidden changes` first tokens: a token that cannot be a scope path is a
+ * phantom. A trailing slash survives in the raw token and can never be a
+ * phantom. The two paths run on disjoint inputs (primary only for parseable
+ * contracts, fallback only for rejected ones), so they can never disagree about
+ * the same contract.
+ *
+ * @param list<string> $rules
+ * @return list<string>
+ */
+function phantomEntries(string $markdown, bool $parseOk, array $rules): array
+{
+    if ($parseOk) {
+        return array_values(array_unique($rules));
+    }
+
+    $tokens = rawForbiddenTokens($markdown);
+
+    return array_values(array_unique(array_filter($tokens, 'isPhantom')));
+}
+
+/**
  * @return list<array<string,mixed>>
  */
 function collectContracts(string $root): array
@@ -214,35 +302,7 @@ function collectContracts(string $root): array
 
     $contracts = [];
     foreach ($files as $file) {
-        $relative = '.ai/' . basename($file);
-        $markdown = (string) @file_get_contents($file);
-
-        $plan = planContract($root, $relative);
-        $parseOk = $plan['code'] === 0;
-
-        if ($parseOk) {
-            $tokens = array_map(static fn (array $e): string => $e['path'], $plan['forbidden']);
-        } else {
-            $tokens = rawForbiddenTokens($markdown);
-        }
-
-        $phantoms = array_values(array_unique(array_filter($tokens, 'isPhantom')));
-
-        $status = extractStatus($markdown);
-
-        $contracts[] = [
-            'name' => basename($file, '.contract.md'),
-            'file' => $relative,
-            'parse' => $parseOk,
-            'parse_exit' => $plan['code'],
-            'harness_ref' => hasHarnessReference($markdown),
-            'phantoms' => count($phantoms),
-            'phantom_entries' => $phantoms,
-            'status' => $status['value'],
-            'status_label' => $status['value'] === null ? 'none' : ($status['placeholder'] ? 'PLACEHOLDER' : $status['value']),
-            'placeholder' => $status['placeholder'],
-            'class' => classify($status['value'], $status['placeholder']),
-        ];
+        $contracts[] = analyseContract($root, $file, '.ai/' . basename($file));
     }
 
     return $contracts;
@@ -293,7 +353,7 @@ function summarize(array $contracts): array
 function usageError(string $message): int
 {
     fwrite(STDERR, "ERROR: {$message}\n");
-    fwrite(STDERR, "usage: php tools/ai-contract-lint.php [--json] [--live-only]\n");
+    fwrite(STDERR, "usage: php tools/ai-contract-lint.php [--json] [--live-only] [--contract=PATH]\n");
     return EXIT_USAGE;
 }
 
@@ -338,18 +398,45 @@ function main(): int
     $args = array_slice($_SERVER['argv'], 1);
     $json = false;
     $liveOnly = false;
+    $single = null;
 
     foreach ($args as $arg) {
         if ($arg === '--json') {
             $json = true;
         } elseif ($arg === '--live-only') {
             $liveOnly = true;
+        } elseif (str_starts_with($arg, '--contract=')) {
+            $single = substr($arg, strlen('--contract='));
         } else {
             return usageError("unknown argument '{$arg}'");
         }
     }
 
     $root = repoRoot();
+
+    // Single-contract mode exists so the phantom rule can be self-tested against
+    // fixtures outside `.ai/` without polluting the corpus. It exits on the one
+    // contract's own parse/phantom result.
+    if ($single !== null) {
+        $file = is_file($single) ? $single : $root . '/' . ltrim($single, '/');
+        if (!is_file($file)) {
+            return usageError("contract '{$single}' not found");
+        }
+        $relative = str_starts_with($file, $root . '/') ? substr($file, strlen($root) + 1) : $file;
+        $contract = analyseContract($root, $file, $relative);
+        if ($json) {
+            fwrite(STDOUT, json_encode([
+                'contracts' => [$contract],
+                'summary' => summarize([$contract]),
+                'live_only' => false,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+        } else {
+            printTable([$contract]);
+        }
+
+        return ($contract['parse'] && $contract['phantoms'] === 0) ? EXIT_OK : EXIT_LIVE_FAILURE;
+    }
+
     $contracts = collectContracts($root);
     $summary = summarize($contracts);
 

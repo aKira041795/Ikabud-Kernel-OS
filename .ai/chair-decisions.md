@@ -137,3 +137,137 @@ doctrine asks for — escalation was not required because the decision was in-co
 one-line Chair action.
 **Authority:** Chair, IN-CONTRACT.
 **Owner intervention:** not required.
+
+## CD-7 — The conformance lint's phantom rule produces only false positives (fold into the parser slice)
+
+**Issue:** verifying Slice A's own deliverable, `tools/ai-contract-lint.php` reported `phantoms=1 [kernel]`
+against **both** of this session's contracts. Reading the rule (`isPhantom`, applied at
+`tools/ai-contract-lint.php:229` to the driver's normalised `forbidden_scope`) explains it:
+
+- the driver strips a trailing slash, so the legitimate prohibition `kernel/` arrives as `kernel`;
+- a bare-word test (no `/` and no `.`) then labels it a phantom.
+
+So **every single-segment directory prohibition** (`kernel/`, `tests/`) is misreported. Worse, the primary
+path can never detect the defect it was written for: a genuine phantom such as `` `git add` `` is *dropped by
+the kernel parser*, so it is absent from `forbidden_scope` entirely, and only the raw-text fallback (`:125`)
+can see it. The rule is unsound in both directions — it misses the true positives and invents false ones.
+
+**Options:**
+- A. Patch the lint's heuristic now (accept the trailing slash, use the driver's `kind`).
+- B. Fold the lint correction into the deferred kernel-parser slice (step 4 of the approved plan).
+- C. Record as a known limitation and change nothing.
+
+**Chosen:** B.
+**Reason:** the lint and the parser share one semantic defect — *what counts as a path in `Forbidden
+changes`* — so fixing both in one slice keeps a single source of truth for that question. A would leave the
+two halves disagreeing while the parser still widens `.ai/*.contract.md` to the whole `.ai` directory; C
+leaves a tool whose phantom findings the owner would reasonably act on. The harness-discipline rule applies
+directly: *a check that reports the product is broken must first be proven sound* — this one was not, and it
+must not be trusted until it is.
+**Also recorded:** the driver-side D8 warnings are unaffected and remain trustworthy, because they compare
+forbidden bullets against parsed entries rather than re-testing normalised paths.
+**Authority:** Chair, IN-CONTRACT.
+**Owner intervention:** not required.
+
+## CD-8 — Decidability is authority: a diagnosed blocker must be answered, not escalated
+
+**Owner directive (2026-09-14, verbatim):** *"if the model, using the harness, can identify the problem and
+provides options, therefore it can answer the issues that surfaced, therefore it is allowed to redefine the
+context within the scope (to avoid drifting)… my goals and objective for harpp and the harness, regardless
+if HARPP or VSCODE is used, is a self reviewing, healing, decisive process. I, as the director, creative,
+conceptualizer need not be bogged down with decisions the harness can do."*
+
+**Context — the reported case this responds to.** A slice was authorised to align `cms-akira-builder`'s admin
+role gate with the core's canonical tier so a Playwright spec could reach its acceptance line. The executor
+found the gate in **three** places, fixed all three, and proved the fix live (the page no longer renders
+*"Error: Administrator role required."*). It then found **four independent impossibilities** in
+`tests/browser/akira-builder-admin.spec.ts` — all introduced by the one commit that created it (`a6c76f5`) —
+fixed three of them, correctly diagnosed the fourth (the spec clicks `button:has-text("+ heading")` while the
+active theme exposes only `hero/richtext/card-grid/quote/cta`, and the control renders `+ Add <label>`), and
+**stopped**, reasoning that choosing the block flow would be *authoring* a test rather than repairing one.
+
+**Finding: that stop was a system defect, not diligence.** Two of the four defects were *provable* from
+`file:line` (the panel is selected from `boot.mode`, so `"Composition editor"` cannot appear on the list
+route; the suite's only relative `goto` resolved against a `baseURL` that `.env` points at the kernel host).
+The fourth was equally decidable — the theme's real block list is queryable. Every option was enumerable,
+which by the owner's rule means the decision was IN-CONTRACT.
+
+**The deeper problem was a documentation gap.** The policy *already* made this an illegitimate stop:
+`UNCERTAINTY` with obligations remaining returns exit `3` from `stop-report`, and "ambiguity is not an
+escalation condition" is stated explicitly. The rule failed because it never named the excuse actually used —
+*"I would be authoring it, not repairing it"* — so the executor did not recognise itself in the prohibition.
+A rule that cannot be recognised at the moment of decision does not bind.
+
+**Options considered:**
+- A. Record the stop as correct — rewriting a spec is a different role's work.
+- B. Add the options test and the verification-repair carve-out to the policy, then apply it to this case.
+- C. Leave the policy and simply instruct the executor to continue.
+
+**Chosen:** B.
+**Reason:** C fixes one run and leaves the rule unrecognisable for the next one; A contradicts the owner's
+doctrine. B makes the boundary checkable — *"can I state the problem and enumerate the options? then decide"* —
+names the excuse so the next executor recognises it, and keeps the one guardrail that prevents the carve-out
+from becoming permission to tune tests green: a repaired check must assert the **same user-observable
+outcome**, and a defect in the *product* must be recorded rather than absorbed into an assertion. The owner's
+doctrine and the existing absolute prohibitions are compatible on exactly that line: **repair** a verification,
+never **weaken** one; authorization and security semantics stay contract-relative L4.
+**Applied immediately:** the spec rewrite is dispatched under this rule with the block-flow choice left to
+the executor (`.ai/builder-spec-truth.contract.md`).
+**Authority:** owner directive, 2026-09-14.
+**Owner intervention:** required and given (this is the directive itself).
+
+## CD-9 — A slice died mid-flight: verify the residue, finish the gap, produce the control
+
+**Issue:** the parser slice (`.ai/scope-path-semantics.contract.md`) was dispatched, then the run vanished —
+**0-byte log**, no report, no evidence — while leaving edited files behind, including
+`kernel/Workbench/Development/DevelopmentTaskContract.php`, the parser that governs every one of the 64
+contracts in the corpus. A partial, unreported change to the most cross-cutting file in the harness is the
+worst possible residue to find.
+
+**Options:**
+- A. Revert the residue and re-dispatch the slice from scratch.
+- B. Re-dispatch to finish and report.
+- C. Verify the residue deterministically, complete the one missing deliverable, and produce the control
+  evidence myself.
+
+**Chosen:** C.
+**Reason:** the doctrine's own ordering — deterministic tools first, never spend a model on what software can
+answer. The residue was provably coherent (all three files syntax-clean, harness suite **46/46**, corpus
+phantoms **13 → 4**, parse failures **unchanged at 31**), so A would have discarded correct work and B would
+have paid a full model round to finish one discriminator plus evidence a script can produce. The remaining
+question — *did any contract silently gain authorisation?* — is decidable by comparison, not by judgement.
+
+**What was already correct (retained):** the glob rule — `` `.ai/*.contract.md` `` now parses as
+`kind: glob` instead of widening to directory `.ai`; and legitimate single-segment directory prohibitions
+(`kernel/`, `tests/`) are no longer misreported as phantoms.
+
+**What was missing, and now fixed:**
+- **P1 was not implemented.** The parser routed non-path bullets to `kind: rule` only when the token failed
+  the charset `^[A-Za-z0-9_./*?\[\]{}\-]+$` — but that class **admits bare letters**, so a prose bullet
+  beginning with a single word passed as a path. Measured: `never stage anything without asking first` became
+  `{"path":"never","kind":"file"}` with an empty `forbidden_rules`. Only backticked prose (which contains a
+  space) reached the rule branch. Fixed by making the discriminator honest: a backticked token is an
+  author-marked path; an **unmarked** first word is a path only if it carries a path signal (`/`, `.`, glob)
+  or stands alone. Now: `forbidden_scope` holds the four real paths, and
+  `forbidden_rules: ["never stage anything without asking first"]`.
+- **P4 had no evidence.** The slice ended before producing it; the chair produced it.
+
+**P4 — corpus control (64 contracts, HEAD parser vs working parser):** `both_fail=46`, `unchanged=16`,
+`changed=2`, `only_before_ok=0`, `only_after_ok=0`. **No contract gained authorisation, and no contract's
+parseability changed.** Both differences are explained:
+1. `ai-autonomy-remote-shape-repair` — removed the bogus forbidden path `this|file` (prose whose first word
+   was the word *this*); it is now retained as an advisory rule. A prohibition moved from an unenforceable
+   nonsense path to an honest advisory bucket.
+2. `playwright-rate-limit-cap` — allowed scope **narrowed** from directory `tests/browser` to the glob
+   `tests/browser/*.spec.ts`. Tightening, not widening.
+
+**Residual obligation flagged:** because (2) narrows a **live** contract, resuming
+`playwright-rate-limit-cap` could now hit an out-of-scope denial for a nested file under `tests/browser`.
+Recorded here rather than silently absorbed; that contract should be re-measured before its next run.
+
+**Harness observation:** a slice that dies leaves no report, and an unreported partial change to a
+cross-cutting file defeats the evidence model. The 0-byte log also means stdout was never flushed, so
+"the run failed" and "the run produced nothing" are indistinguishable after the fact. Verification of the
+tree — not the absence of a report — is what established the true state.
+**Authority:** Chair, IN-CONTRACT (completing work already diagnosed and diagnosed in hand).
+**Owner intervention:** not required.

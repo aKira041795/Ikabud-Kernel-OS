@@ -69,8 +69,10 @@ final class DevelopmentTaskContract
             );
         }
 
-        $allowed = self::parseScopeBullets($sections['Files likely affected'], 'allowed');
-        $forbidden = self::parseScopeBullets($sections['Forbidden changes'], 'forbidden');
+        $allowed = self::parseBullets($sections['Files likely affected'], 'allowed')['scope'];
+        $forbiddenResult = self::parseBullets($sections['Forbidden changes'], 'forbidden');
+        $forbidden = $forbiddenResult['scope'];
+        $forbiddenRules = $forbiddenResult['rules'];
 
         // Optional "Baseline" heading: explicitly declared pre-existing working-tree
         // changes that must remain as-is and are NOT task scope (e.g. dirty .github
@@ -78,7 +80,7 @@ final class DevelopmentTaskContract
         // baseline from Git at import time.
         $baseline = [];
         if (isset($sections['Baseline']) && trim($sections['Baseline']) !== '') {
-            $baseline = self::parseScopeBullets($sections['Baseline'], 'baseline');
+            $baseline = self::parseBullets($sections['Baseline'], 'baseline')['scope'];
         }
 
         $parsed = [
@@ -87,7 +89,7 @@ final class DevelopmentTaskContract
             'acceptance' => self::bulletLines($sections['Acceptance criteria']),
             'required_tests' => self::bulletLines($sections['Required tests']),
             'risks' => self::bulletLines($sections['Risks']),
-            'forbidden_rules' => self::bulletLines($sections['Forbidden changes']),
+            'forbidden_rules' => $forbiddenRules,
             'allowed_scope' => $allowed,
             'forbidden_scope' => $forbidden,
             'baseline_scope' => $baseline,
@@ -148,9 +150,9 @@ final class DevelopmentTaskContract
     }
 
     /**
-     * Normalize a repository-relative path. Rejects traversal, absolute paths and
-     * ambiguous glob patterns (glob only on the basename collapses to a directory
-     * prefix; anything else fails closed).
+     * Normalize a repository-relative path. Rejects traversal and absolute
+     * paths; glob metacharacters are preserved for the caller to classify as
+     * `kind: glob` rather than being widened to a parent directory.
      */
     public static function normalizePath(string $path): string
     {
@@ -172,13 +174,34 @@ final class DevelopmentTaskContract
         return $path;
     }
 
-    /** @return array{ok:bool,reason:string,path:string,kind:string} */
+    /**
+     * Parse one bullet into a scope entry or, for `forbidden` bullets only, a
+     * verbatim rule.
+     *
+     * A bullet whose first token is path-like becomes a scope entry with kind
+     * `file`, `directory` or `glob`. A glob is kept verbatim as a `glob` entry —
+     * it is never widened to its parent directory, so a file-pattern prohibition
+     * cannot forbid a whole tree. A forbidden bullet whose first token is not
+     * path-like — or whose unmarked first word carries no path signal while the
+     * bullet continues as prose — is returned as kind `rule` carrying the raw
+     * text; the caller retains it so no bullet is ever dropped.
+     *
+     * @return array{ok:bool,reason:string,path:string,kind:string}
+     */
     public static function parseScopeEntry(string $raw, string $scopeKind): array
     {
         // Extract the first backtick-quoted token, else the first whitespace token.
+        // How the token was marked matters. An author who wraps a token in backticks is
+        // naming a path even when the word alone looks like prose (`kernel/`,
+        // `phpstan.neon`). An unmarked first word is a path only when it carries a path
+        // signal or stands alone; otherwise it is prose whose first word merely happens
+        // to be a bare word ("never stage anything without asking"), and binding that to
+        // path `never` would enforce nothing while looking enforced.
+        $backticked = false;
         $token = '';
         if (preg_match('/`([^`]+)`/', $raw, $m) === 1) {
             $token = $m[1];
+            $backticked = true;
         } else {
             $token = preg_split('/\s+/', trim($raw))[0] ?? '';
         }
@@ -190,58 +213,67 @@ final class DevelopmentTaskContract
 
         $wasDirectory = str_ends_with($token, '/');
         $isGlob = preg_match('/[*?\[\]{}]/', $token) === 1;
-        if ($isGlob) {
-            // Collapse a basename-only glob (e.g. dir/*.md) to its directory prefix.
-            if (preg_match('#^(.+)/[^/]*[*?\[\]{}][^/]*$#', $token, $g) === 1) {
-                $token = $g[1];
-                $wasDirectory = true;
-            } else {
-                return ['ok' => false, 'reason' => "ambiguous glob pattern: {$token}", 'path' => $token, 'kind' => 'file'];
-            }
-        }
 
-        // Prose is not a path. Forbidden prose is retained as a rule; allowed scope
-        // entries must be path-like or the import fails closed.
-        if (!preg_match('#^[A-Za-z0-9_./\-]+$#', $token)) {
+        // Prose is not a path. A forbidden bullet that is not path-like is retained
+        // verbatim as a rule; an allowed scope entry must be a path or the import fails
+        // closed. Glob metacharacters are part of the path grammar so a glob token
+        // survives here and is classified below.
+        $tokenIsPathShaped = preg_match('#^[A-Za-z0-9_./*?\[\]{}\-]+$#', $token) === 1;
+        $hasPathSignal = $isGlob
+            || str_contains($token, '/')
+            || str_contains($token, '.');
+        $bulletHasTrailingWords = trim((string) preg_replace('/^\S+/', '', trim($raw))) !== '';
+        $looksLikeProse = !$tokenIsPathShaped
+            || (!$backticked && $bulletHasTrailingWords && !$hasPathSignal);
+
+        if ($looksLikeProse) {
             if ($scopeKind === 'forbidden') {
                 return ['ok' => false, 'reason' => 'non-path forbidden statement', 'path' => $token, 'kind' => 'rule'];
             }
-            return ['ok' => false, 'reason' => 'allowed scope entry is not a path', 'path' => $token, 'kind' => 'file'];
+            return ['ok' => false, 'reason' => 'allowed scope entry is not a path', 'path' => $token, 'kind' => $isGlob ? 'glob' : 'file'];
         }
 
         try {
             $token = self::normalizePath($token);
         } catch (\InvalidArgumentException $e) {
-            return ['ok' => false, 'reason' => $e->getMessage(), 'path' => $token, 'kind' => 'file'];
+            return ['ok' => false, 'reason' => $e->getMessage(), 'path' => $token, 'kind' => $isGlob ? 'glob' : 'file'];
+        }
+
+        if ($isGlob) {
+            return ['ok' => true, 'reason' => '', 'path' => $token, 'kind' => 'glob'];
         }
 
         return ['ok' => true, 'reason' => '', 'path' => $token, 'kind' => $wasDirectory ? 'directory' : 'file'];
     }
 
     /**
-     * Build normalized scope entries from a section's bullet list.
+     * Partition a section's bullets into path scope entries and, for the
+     * forbidden section only, non-path rules. Every bullet lands in exactly one
+     * bucket, so bullets-in == paths + rules; nothing is dropped silently.
      *
-     * @param list<string> $lines
-     * @return list<array{path:string,kind:string}>
+     * @return array{scope:list<array{path:string,kind:string}>,rules:list<string>}
      */
-    private static function parseScopeBullets(string $section, string $scopeKind): array
+    private static function parseBullets(string $section, string $scopeKind): array
     {
-        $entries = [];
+        $scope = [];
+        $rules = [];
         foreach (self::bulletLines($section) as $line) {
             $parsed = self::parseScopeEntry($line, $scopeKind);
             if (!$parsed['ok']) {
-                // Prose forbidden rules are not path scope; non-path allowed lines fail closed.
+                // Prose forbidden rules are retained, never dropped. A non-path
+                // allowed line still fails the import closed.
                 if ($scopeKind === 'forbidden' && $parsed['kind'] === 'rule') {
+                    $rules[] = $line;
                     continue;
                 }
                 throw new \InvalidArgumentException(
                     "Architecture import rejected: invalid {$scopeKind} scope entry '{$line}': {$parsed['reason']}"
                 );
             }
-            $entries[] = ['path' => $parsed['path'], 'kind' => $parsed['kind']];
+            $scope[] = ['path' => $parsed['path'], 'kind' => $parsed['kind']];
         }
 
-        return $entries;
+        return ['scope' => $scope, 'rules' => $rules];
     }
 
     /**
@@ -256,7 +288,7 @@ final class DevelopmentTaskContract
         foreach ($entries as $entry) {
             $path = (string) ($entry['path'] ?? '');
             $kind = (string) ($entry['kind'] ?? 'file');
-            if (!in_array($kind, ['file', 'directory', 'rule'], true)) {
+            if (!in_array($kind, ['file', 'directory', 'glob', 'rule'], true)) {
                 throw new \InvalidArgumentException("Invalid {$scopeKind} scope kind: {$kind}");
             }
             $out[] = ['path' => $path, 'kind' => $kind];

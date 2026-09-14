@@ -66,6 +66,64 @@ contract would require changing or violating it (`CONTRACT_BLOCKED`).
 
 The contract defines the destination; the plan is disposable.
 
+## Decidability is authority — the options test
+
+The Chair must ask one question before stopping: *do I have enough information to choose?* If it can
+**state the problem and enumerate the options**, the answer is yes — and it must choose.
+
+> **The options test.** The ability to produce two or more concrete options, with their effects, is
+> itself the evidence that a decision is IN-CONTRACT. A question the Chair can answer *with options* is
+> a question the Chair answers.
+
+Consequences:
+
+- **A stop is a defect when the Chair could have enumerated the options.** Recording a decision costs
+  nothing; stopping costs the director's attention and turns settled work back into a queue. The
+  director's scarce resource is attention for *business and conceptual* judgment, not for confirming what
+  the harness already worked out.
+- **Redefining the plan, the context, or the decomposition inside the objective is not drift.** It is the
+  Chair's job, and it is how drift is *avoided*: a plan redrawn against measured reality stays on the
+  objective, while a stalled plan invites improvised scope to get moving again.
+- **Deferral is reserved for CONTRACT-BREACH** — scope, authority, security, schema, a new dependency, or
+  an acceptance criterion unreachable without widening scope. Everything else is decided, recorded, and
+  continued.
+
+### Verification is not exempt
+
+A check that cannot pass is a defect in the check as much as in the code, and repairing it is inside the
+Chair's authority. Correcting an assertion that is **provably impossible** against the shipped artifact is
+**repair, not authorship**, and needs no escalation. Required evidence: the assertion, the artifact fact
+that contradicts it with `file:line`, and why it cannot hold as written.
+
+The corrected check must still assert the **same user-observable outcome**. A repair preserves the
+journey and moves the assertion onto reality — it never lowers what the journey proves.
+
+| Legitimate repair | Prohibited |
+|---|---|
+| an assertion that cannot hold, corrected with evidence | tuning assertions until green |
+| a journey re-expressed against the UI that actually shipped | deleting, skipping, or disabling the journey |
+| an assertion pointed at the route that truly renders the thing | asserting something weaker to obtain a pass |
+
+**One guardrail, because it is the difference between repair and collusion:** if the *product* is wrong
+rather than the assertion, that is a product finding — record it and continue. Never adjust a check to
+agree with a defect in silence, and never let a green suite imply a journey works when it does not.
+
+### Named anti-patterns (each is a defect, not diligence)
+
+- **"I would be authoring it, not repairing it."** The ambiguity excuse in a more respectable costume.
+  When the correct behaviour is decidable from the artifact, the artifact is the authority. Repair it.
+- **"This belongs to a different role / needs its own contract."** Role separation governs *who holds
+  which responsibility across a programme*, not whether the Chair may finish work it has already
+  diagnosed. If the contract's objective is reachable and the facts are in hand, finish it.
+- **"The specialist lane is capped."** Reallocation, not escalation (see CD-5).
+- **"I found four problems; I fixed three."** A partially diagnosed defect is fully decidable once the
+  fourth is also diagnosed. Diagnosing a blocker and stopping anyway is the worst of both: all the cost,
+  none of the outcome.
+
+These extend, and do not soften, the absolute prohibitions. A verification may be *repaired*; it may never
+be *weakened* to obtain a pass. Authorization and security semantics remain contract-relative L4: aligning
+a role check with a canonical tier is an authority change, not a verification repair.
+
 ## Drift, defined against the contract
 
 Drift is **not** "the harness made a decision the owner did not personally specify" — that is

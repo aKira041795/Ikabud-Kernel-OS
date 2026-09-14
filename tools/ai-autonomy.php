@@ -394,22 +394,19 @@ function contractHasHarnessReference(string $markdown): bool
 }
 
 /**
- * Forbidden bullets the parser could not bind to a path (its prose rules are retained but not
- * enforced as scope). Detect driver-side; the kernel parser is never changed here.
+ * Forbidden bullets the parser could not bind to a path. After the parser fix
+ * every bullet is represented exactly once: as a scope path in `forbidden_scope`
+ * or, when its first token is not path-like, verbatim in `forbidden_rules`.
+ * The rules bucket is therefore the exact set of prohibitions that cannot be
+ * enforced as path scope; it is surfaced here so a prohibition is never silent.
+ * The D8 warning is a backstop, not a routine message.
  *
  * @param array<string,mixed> $contract
  * @return list<string>
  */
 function droppedForbiddenRules(array $contract): array
 {
-    $rules = (array) ($contract['forbidden_rules'] ?? []);
-    if (count((array) ($contract['forbidden_scope'] ?? [])) >= count($rules)) { return []; }
-    $dropped = [];
-    foreach ($rules as $rule) {
-        $parsed = DevelopmentTaskContract::parseScopeEntry((string) $rule, 'forbidden');
-        if (!$parsed['ok']) { $dropped[] = (string) $rule; }
-    }
-    return $dropped;
+    return array_values(array_map('strval', (array) ($contract['forbidden_rules'] ?? [])));
 }
 
 /**
@@ -490,6 +487,7 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
 {
     $pending = count(array_filter(decisions($directory), static fn (array $i): bool => !isset($i['resolution'])));
     $allowed = (array) $contract['allowed_scope']; $forbidden = (array) $contract['forbidden_scope'];
+    $forbiddenRules = array_values(array_map('strval', (array) ($contract['forbidden_rules'] ?? [])));
     $phases = ['architect     tools/ai-task "<task>" -> tools/pi-arch-debate.py | tools/pi-arch-review.sh -> .ai/current-task.md',
         "implement     pi --print --approve '<contract>'", 'review        pi-arch-review.sh / Code Reviewer lane; CHANGES_REQUIRED returns to implement',
         'release-gate  php ikabud workbench:task:record --stage=release-gate --result=... --envelope=...'];
@@ -507,7 +505,7 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
     $markdown = @file_get_contents($contractPath);
     $warnings = planWarnings($contract, $markdown === false ? '' : $markdown);
     if ($json) {
-        fwrite(STDOUT, encodeJson(['envelope' => ['objective' => $contract['objective'], 'contract_revision' => DevelopmentTaskContract::revisionId($contract), 'allowed_scope' => $allowed, 'forbidden_scope' => $forbidden], 'phases' => $phases, 'absolute_prohibitions' => absoluteProhibitions(), 'contract_relative_l4' => contractRelativeTriggers(), 'chair_decisions' => chairDecisions(), 'deterministic_first' => deterministicFirst(), 'model_policy' => modelPolicy(), 'model_tiers' => modelTiers(), 'decisions_dir' => $directory, 'pending' => $pending, 'warnings' => $warnings, 'l4_taxonomy' => l4Taxonomy()]) . "\n");
+        fwrite(STDOUT, encodeJson(['envelope' => ['objective' => $contract['objective'], 'contract_revision' => DevelopmentTaskContract::revisionId($contract), 'allowed_scope' => $allowed, 'forbidden_scope' => $forbidden, 'forbidden_rules' => $forbiddenRules], 'phases' => $phases, 'absolute_prohibitions' => absoluteProhibitions(), 'contract_relative_l4' => contractRelativeTriggers(), 'chair_decisions' => chairDecisions(), 'deterministic_first' => deterministicFirst(), 'model_policy' => modelPolicy(), 'model_tiers' => modelTiers(), 'decisions_dir' => $directory, 'pending' => $pending, 'warnings' => $warnings, 'l4_taxonomy' => l4Taxonomy()]) . "\n");
         return EXIT_OK;
     }
     foreach ($warnings as $warning) { fwrite(STDOUT, "WARN {$warning}\n"); }
@@ -515,6 +513,8 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
     foreach ($allowed as $entry) { fwrite(STDOUT, "  - {$entry['path']} ({$entry['kind']})\n"); }
     fwrite(STDOUT, 'forbidden scope (' . count($forbidden) . "):\n");
     foreach ($forbidden as $entry) { fwrite(STDOUT, "  - {$entry['path']} ({$entry['kind']})\n"); }
+    fwrite(STDOUT, 'forbidden rules (' . count($forbiddenRules) . ") — not enforceable as path scope; restate in Architectural constraints to bind:\n");
+    foreach ($forbiddenRules as $rule) { fwrite(STDOUT, "  - {$rule}\n"); }
     fwrite(STDOUT, "phases (run unattended; only a contract-relative L4 stops the run):\n"); foreach ($phases as $phase) { fwrite(STDOUT, "  {$phase}\n"); }
     fwrite(STDOUT, "ABSOLUTE prohibitions (no contract can authorise; no escalation can obtain permission):\n"); foreach (absoluteProhibitions() as $trigger) { fwrite(STDOUT, "  - {$trigger}\n"); }
     fwrite(STDOUT, "contract-relative L4 (escalate ONLY if the contract does not authorise it):\n"); foreach (contractRelativeTriggers() as $trigger) { fwrite(STDOUT, "  - {$trigger}\n"); }
@@ -528,6 +528,14 @@ function commandPlan(array $contract, string $contractPath, string $directory, b
 /** @param array{path:string,kind:string} $entry */
 function pathMatches(string $path, array $entry): bool
 {
+    // A glob is matched as a glob against the normalised path. `kind: glob`
+    // never collapses to its parent directory, so a file-pattern prohibition
+    // binds exactly the files it names and not the whole tree. FNM_PATHNAME
+    // keeps `*` from crossing a directory separator when the platform defines it.
+    if ($entry['kind'] === 'glob') {
+        return fnmatch($entry['path'], $path, defined('FNM_PATHNAME') ? FNM_PATHNAME : 0);
+    }
+
     return $entry['kind'] === 'file' ? $path === $entry['path'] : $path === $entry['path'] || str_starts_with($path, $entry['path'] . '/');
 }
 
