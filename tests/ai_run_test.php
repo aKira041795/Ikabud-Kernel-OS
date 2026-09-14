@@ -150,7 +150,7 @@ Exercise the run ledger without touching a real slice.
 ## Architectural constraints
 - none
 ## Files likely affected
-- `tools/ai-run.php` — the tool under test
+- `docs/run-ledger.md` — benign ledger scope
 - `tests/` — the suite
 ## Acceptance criteria
 - classification is recorded, not inferred
@@ -189,6 +189,33 @@ $h->test(
         && (int) ($record['allowed_count'] ?? 0) === 2
         && (int) ($record['forbidden_count'] ?? 0) === 1,
     'record: ' . json_encode($record, JSON_UNESCAPED_SLASHES)
+);
+$h->test(
+    '3a. start records the trust-surface anchor (aggregate + seven files)',
+    is_array($record)
+        && preg_match('/^[0-9a-f]{64}$/', (string) ($record['trust_surface_hash'] ?? '')) === 1
+        && is_array($record['trust_surface_files'] ?? null)
+        && count($record['trust_surface_files']) === 7
+        && in_array('tools/ai-run.php', array_keys($record['trust_surface_files']), true),
+    'record: ' . json_encode($record, JSON_UNESCAPED_SLASHES)
+);
+$h->test(
+    '3b. start captures the dispatch-time changed-path baseline',
+    is_array($record) && is_array($record['scope_baseline_paths'] ?? null) && is_array($record['scope_ignored_paths'] ?? null),
+    'record: ' . json_encode($record, JSON_UNESCAPED_SLASHES)
+);
+
+$directorContract = $fixture . '/director-contract.md';
+file_put_contents($directorContract, str_replace('`docs/run-ledger.md` — benign ledger scope', '`tools/ai-run.php` — director-authorised verifier work', $contractText));
+$directorMissing = $run(['start', "--contract={$directorContract}", '--lane=fixture', '--name=director-missing']);
+$directorStarted = $run(['start', "--contract={$directorContract}", '--lane=fixture', '--name=director-ok', '--director-decision=CD-28']);
+$directorRecord = aiRunRecord($runs, 'director-ok');
+$h->test(
+    '3c. verifier work requires a real director decision and records its reference',
+    $directorMissing['code'] === 3 && $directorStarted['code'] === 0
+        && ($directorRecord['director_authorisation']['decision_ref'] ?? null) === 'CD-28'
+        && ($directorRecord['director_authorisation']['required_for_trust_surface'] ?? null) === true,
+    aiRunDetail($directorMissing) . "\n---\n" . aiRunDetail($directorStarted) . "\nrecord=" . json_encode($directorRecord, JSON_UNESCAPED_SLASHES)
 );
 $statusRun = $run(['status', '--json']);
 $statusData = json_decode($statusRun['output'], true);
@@ -468,6 +495,54 @@ $h->test(
     aiRunDetail($ccAbandonedResult)
 );
 
+$ccBroken = $fixture . '/cc-broken';
+mkdir($ccBroken, 0777, true);
+file_put_contents($ccBroken . '/broken.json', '{not valid json');
+$ccBrokenResult = $commitCheck($ccBroken);
+$h->test(
+    '25a. commit-check: a malformed record is NOT ELIGIBLE and names the file (D3)',
+    $ccBrokenResult['code'] === 3
+        && str_contains($ccBrokenResult['output'], 'NOT ELIGIBLE')
+        && str_contains($ccBrokenResult['output'], 'broken.json')
+        && str_contains($ccBrokenResult['output'], 'unreadable'),
+    aiRunDetail($ccBrokenResult)
+);
+
+$ccTrust = $fixture . '/cc-trust';
+mkdir($ccTrust, 0777, true);
+aiRunLedger($tool, $freshRun('cc-trust', $ccTrust));
+file_put_contents($fixture . '/cc-trust.log', "1/1 passed\n");
+aiRunLedger($tool, ['finish', '--id=cc-trust', '--exit=0', "--log={$fixture}/cc-trust.log", "--runs-dir={$ccTrust}"]);
+$trustRecordPath = $ccTrust . '/cc-trust.json';
+$trustRecord = json_decode((string) file_get_contents($trustRecordPath), true);
+$trustRecord['trust_surface_files']['tools/ai-run.php'] = str_repeat('0', 64);
+$trustRecord['trust_surface_hash'] = str_repeat('1', 64);
+file_put_contents($trustRecordPath, json_encode($trustRecord, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+$ccTrustResult = $commitCheck($ccTrust);
+$h->test(
+    '25b. commit-check: a trust-surface hash mismatch blocks and names the file (D2)',
+    $ccTrustResult['code'] === 3
+        && str_contains($ccTrustResult['output'], 'trust_surface_mismatch')
+        && str_contains($ccTrustResult['output'], 'tools/ai-run.php'),
+    aiRunDetail($ccTrustResult)
+);
+
+$ccLegacy = $fixture . '/cc-legacy';
+mkdir($ccLegacy, 0777, true);
+aiRunLedger($tool, $freshRun('cc-legacy', $ccLegacy));
+file_put_contents($fixture . '/cc-legacy.log', "1/1 passed\n");
+aiRunLedger($tool, ['finish', '--id=cc-legacy', '--exit=0', "--log={$fixture}/cc-legacy.log", "--runs-dir={$ccLegacy}"]);
+$legacyPath = $ccLegacy . '/cc-legacy.json';
+$legacyRecord = json_decode((string) file_get_contents($legacyPath), true);
+unset($legacyRecord['trust_surface_hash'], $legacyRecord['trust_surface_files']);
+file_put_contents($legacyPath, json_encode($legacyRecord, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+$ccLegacyResult = $commitCheck($ccLegacy);
+$h->test(
+    '25c. commit-check: a legacy record without a trust-surface hash is not blocked',
+    $ccLegacyResult['code'] === 0 && str_contains($ccLegacyResult['output'], 'ELIGIBLE'),
+    aiRunDetail($ccLegacyResult)
+);
+
 // ── R8: verify re-derives by execution ─────────────────────────────────────────────────────────
 $h->section('verify: re-derive by execution and bind evidence to the revision');
 
@@ -662,6 +737,73 @@ $h->test(
         && (str_contains($impureContent, $impureBootstrapMarker) || str_contains($impureContent, $impureIntegrationMarker)),
     aiRunDetail($impureVerify)
 );
+
+// ── R10: runner artefact usage and one-run acknowledged blocks ─────────────────────────────────
+$h->section('runner usage is artefact-derived; blocked history is acknowledged, never rewritten');
+$usageRuns = $fixture . '/usage-runs';
+mkdir($usageRuns, 0777, true);
+$session = $fixture . '/runner-session.jsonl';
+$sessionId = 'fixture-session';
+file_put_contents($session, json_encode(['type' => 'session', 'version' => 3, 'id' => $sessionId, 'timestamp' => date(DATE_ATOM)]) . "\n");
+$oldEnv = [];
+foreach (['PI_SESSION_ID', 'PI_SESSION_FILE', 'PI_PROVIDER', 'PI_MODEL'] as $name) { $oldEnv[$name] = getenv($name); }
+putenv('PI_SESSION_ID=' . $sessionId); putenv('PI_SESSION_FILE=' . $session); putenv('PI_PROVIDER=fixture'); putenv('PI_MODEL=model');
+$usageStart = aiRunLedger($tool, ['start', "--contract={$contract}", '--lane=fixture/model', '--name=usage-bound', "--runs-dir={$usageRuns}"]);
+file_put_contents($session, json_encode(['type' => 'message', 'timestamp' => date(DATE_ATOM), 'message' => [
+    'role' => 'assistant', 'usage' => ['input' => 11, 'output' => 7, 'cacheRead' => 3, 'cacheWrite' => 0,
+        'reasoning' => 2, 'totalTokens' => 21, 'cost' => ['input' => 0.01, 'output' => 0.02, 'cacheRead' => 0.003, 'cacheWrite' => 0, 'total' => 0.033]],
+]]) . "\n", FILE_APPEND);
+file_put_contents($fixture . '/usage.log', "1/1 passed\n");
+$usageFinish = aiRunLedger($tool, ['finish', '--id=usage-bound', '--exit=0', "--log={$fixture}/usage.log", "--runs-dir={$usageRuns}"]);
+foreach ($oldEnv as $name => $value) { putenv($value === false ? $name : $name . '=' . $value); }
+$usageRecord = aiRunRecord($usageRuns, 'usage-bound');
+$h->test('35. run binds the exposed runner session and derives exact tokens/cost from its JSONL', $usageStart['code'] === 0 && $usageFinish['code'] === 0
+    && ($usageRecord['runner_session']['session_id'] ?? null) === $sessionId
+    && ($usageRecord['usage']['total_tokens'] ?? null) === 21
+    && ($usageRecord['usage']['cost_usd'] ?? null) === 0.033
+    && ($usageRecord['usage']['source'] ?? null) === 'bound_pi_session_jsonl'
+    && array_key_exists('usage_unavailable_reason', (array) $usageRecord) && $usageRecord['usage_unavailable_reason'] === null,
+    aiRunDetail($usageStart) . "\n" . aiRunDetail($usageFinish) . "\nrecord=" . json_encode($usageRecord, JSON_UNESCAPED_SLASHES));
+
+$unboundRuns = $fixture . '/unbound-runs'; mkdir($unboundRuns, 0777, true);
+$unboundStart = aiRunLedger($tool, ['start', "--contract={$contract}", '--lane=no-such-lane', '--name=usage-null', "--runs-dir={$unboundRuns}"]);
+$unboundRecord = aiRunRecord($unboundRuns, 'usage-null');
+$h->test('36. absent runner usage is explicit null with a reason, never a figure', $unboundStart['code'] === 0
+    && array_key_exists('usage', (array) $unboundRecord) && $unboundRecord['usage'] === null
+    && is_string($unboundRecord['usage_unavailable_reason'] ?? null), json_encode($unboundRecord, JSON_UNESCAPED_SLASHES));
+
+$ackRuns = $fixture . '/ack-runs'; mkdir($ackRuns, 0777, true);
+$blockedRecord = ['id' => 'slice-a-block', 'status' => 'blocked', 'started_at' => date(DATE_ATOM), 'finished_at' => date(DATE_ATOM),
+    'pid' => 0, 'scope_conformance' => ['ok' => false, 'offending' => [['path' => 'tools/ai-run.php', 'reasons' => ['baseline unavailable']]]]];
+file_put_contents($ackRuns . '/slice-a-block.json', json_encode($blockedRecord, JSON_PRETTY_PRINT) . "\n");
+$blockReason = 'baseline unavailable — acknowledged verbatim';
+$ackMissing = aiRunLedger($tool, ['commit-check', '--acknowledge-block=slice-a-block', '--reason=' . $blockReason, "--runs-dir={$ackRuns}"]);
+$beforeAck = (string) file_get_contents($ackRuns . '/slice-a-block.json');
+$ackOk = aiRunLedger($tool, ['commit-check', '--acknowledge-block=slice-a-block', '--reason=' . $blockReason,
+    '--director-decision=CD-29', "--runs-dir={$ackRuns}"]);
+$afterAck = (string) file_get_contents($ackRuns . '/slice-a-block.json');
+$ackDocument = json_decode((string) file_get_contents($ackRuns . '/.acknowledged-blocks.v1'), true);
+$ack = is_array($ackDocument['acknowledgements'][0] ?? null) ? $ackDocument['acknowledgements'][0] : [];
+$h->test('37. acknowledgement refuses without a resolvable director decision (exit 3)', $ackMissing['code'] === 3 && str_contains($ackMissing['output'], 'director-decision'), aiRunDetail($ackMissing));
+$h->test('38. one blocked run is acknowledged verbatim and commit-check becomes eligible', $ackOk['code'] === 0
+    && str_contains($ackOk['output'], 'ACKNOWLEDGED BLOCK') && str_contains($ackOk['output'], 'ELIGIBLE')
+    && ($ack['block_reason'] ?? null) === $blockReason && ($ack['director_decision'] ?? null) === 'CD-29'
+    && is_string($ack['acknowledged_at'] ?? null), aiRunDetail($ackOk) . "\nack=" . json_encode($ack, JSON_UNESCAPED_SLASHES));
+$h->test('39. acknowledgement does not mutate status, scope conformance, or any run-record byte', $beforeAck === $afterAck
+    && (json_decode($afterAck, true)['status'] ?? null) === 'blocked'
+    && (json_decode($afterAck, true)['scope_conformance']['ok'] ?? null) === false, 'before_sha=' . hash('sha256', $beforeAck) . ' after_sha=' . hash('sha256', $afterAck));
+$ackAgain = aiRunLedger($tool, ['commit-check', '--acknowledge-block=slice-a-block', '--reason=again', '--director-decision=CD-29', "--runs-dir={$ackRuns}"]);
+$h->test('40. a named blocked run can be acknowledged only once', $ackAgain['code'] === 3 && str_contains($ackAgain['output'], 'already acknowledged once'), aiRunDetail($ackAgain));
+file_put_contents($ackRuns . '/new-block.json', json_encode(array_merge($blockedRecord, ['id' => 'new-block'])) . "\n");
+$newBlock = aiRunLedger($tool, ['commit-check', "--runs-dir={$ackRuns}"]);
+$h->test('41. a new blocked run blocks again; acknowledgement is not a general unblock', $newBlock['code'] === 3
+    && str_contains($newBlock['output'], 'new-block') && !str_contains($newBlock['output'], 'BLOCK  slice-a-block'), aiRunDetail($newBlock));
+
+$liveAckRuns = $fixture . '/live-ack-runs'; mkdir($liveAckRuns, 0777, true);
+file_put_contents($liveAckRuns . '/live.json', json_encode(['id' => 'live', 'status' => 'running', 'started_at' => date(DATE_ATOM),
+    'pid' => getmypid(), 'scope_conformance' => ['ok' => false]]) . "\n");
+$liveAck = aiRunLedger($tool, ['commit-check', '--acknowledge-block=live', '--reason=not finished', '--director-decision=CD-29', "--runs-dir={$liveAckRuns}"]);
+$h->test('42. a still-running run cannot be acknowledged (exit 3)', $liveAck['code'] === 3 && str_contains($liveAck['output'], 'still running'), aiRunDetail($liveAck));
 
 aiRunRemoveFixture($fixture);
 $h->done();

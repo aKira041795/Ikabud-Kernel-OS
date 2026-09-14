@@ -3,6 +3,10 @@
 
 declare(strict_types=1);
 
+use Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract;
+
+require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskContract.php';
+
 /**
  * Project accounting for the autonomy harness. Project markdown is the source of
  * slice order and acceptance obligations; state.json records only transitions.
@@ -245,15 +249,67 @@ function writeProjectJson(string $path, array $value): void
     }
 }
 
-/** Assert independently persisted ledger evidence before a done transition. */
-function assertRunReDerived(string $runsDir, string $runId): void
+/** The current git HEAD, or null when git cannot answer. */
+function currentGitRev(): ?string
+{
+    $pipes = [];
+    $process = proc_open(['git', 'rev-parse', 'HEAD'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__), null, ['bypass_shell' => true]);
+    if (!is_resource($process)) { return null; }
+    $out = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($process);
+    $rev = trim((string) $out);
+    return preg_match('/^[0-9a-f]{40}$/', $rev) === 1 ? $rev : null;
+}
+
+/**
+ * Assert independently persisted ledger evidence before a done transition.
+ *
+ * Binding, not merely well-formedness (mirrors harpp-bridge/harpp_wake.py:_stage_result_matches(),
+ * which already pins workflow_id, stage_name and schema_version):
+ *   - the record's own `id` must equal the run asked for, so a sibling file cannot be substituted;
+ *   - the contract revision recorded at `start` must equal the slice contract's current revision, so
+ *     evidence produced against a different contract cannot complete this slice;
+ *   - the verification record's contract revision (when present) must agree with the start record;
+ *   - the recorded `rev` must equal current HEAD; a dirty tree additionally requires the run's
+ *     passing dispatch-baseline scope record, so concurrent pre-existing work does not false-block
+ *     while an unaccounted dirty tree is still refused.
+ *
+ * A missing binding field is a refusal: it cannot be shown to describe this run, this contract and
+ * this tree.
+ */
+function assertRunReDerived(string $runsDir, string $runId, ?string $expectedContractRevision = null): void
 {
     $path = rtrim($runsDir, '/') . '/' . $runId . '.json';
     $record = json_decode((string) @file_get_contents($path), true);
-    if (!is_array($record) || ($record['status'] ?? null) !== 'completed') {
-        throw new RuntimeException("done refused: run {$runId} is missing or not completed");
+    if (!is_array($record) || ($record['id'] ?? null) !== $runId || ($record['status'] ?? null) !== 'completed') {
+        throw new RuntimeException("done refused: run {$runId} is missing, foreign, or not completed");
     }
-    $results = $record['claim_verification']['results'] ?? null;
+    $recordedContract = $record['contract_revision'] ?? null;
+    if (!is_string($recordedContract) || $recordedContract === '') {
+        throw new RuntimeException("done refused: run {$runId} records no contract revision to bind");
+    }
+    if ($expectedContractRevision === null || $recordedContract !== $expectedContractRevision) {
+        throw new RuntimeException("done refused: run {$runId} was started against contract revision " . $recordedContract . ', expected ' . ($expectedContractRevision ?? 'an unreadable slice contract'));
+    }
+    $verification = is_array($record['claim_verification'] ?? null) ? $record['claim_verification'] : [];
+    $verifiedContract = $verification['contract_revision'] ?? null;
+    if ($verifiedContract !== null && $verifiedContract !== $recordedContract) {
+        throw new RuntimeException("done refused: run {$runId} verification binds contract revision " . (is_string($verifiedContract) ? $verifiedContract : 'invalid') . " but the run started at {$recordedContract}");
+    }
+    $recordedRev = $verification['rev'] ?? null;
+    $currentRev = currentGitRev();
+    if (!is_string($recordedRev) || $recordedRev === '' || $currentRev === null || $recordedRev !== $currentRev) {
+        throw new RuntimeException("done refused: run {$runId} records rev " . (is_string($recordedRev) && $recordedRev !== '' ? $recordedRev : 'missing') . ', current HEAD is ' . ($currentRev ?? 'unavailable') . '; the evidence does not describe this tree');
+    }
+    if (($verification['dirty'] ?? null) !== false) {
+        $scopeConformance = is_array($record['scope_conformance'] ?? null) ? $record['scope_conformance'] : [];
+        if (($scopeConformance['ok'] ?? false) !== true) {
+            throw new RuntimeException("done refused: run {$runId} records a dirty tree without a passing dispatch-baseline scope-conformance record");
+        }
+    }
+    $results = $verification['results'] ?? null;
     if (!is_array($results) || $results === []) {
         throw new RuntimeException("done refused: run {$runId} has no verified claims");
     }
@@ -279,7 +335,7 @@ function transitionProject(array $project, string $sliceId, string $target, ?str
         throw new InvalidArgumentException("unknown slice '{$sliceId}'");
     }
     $current = (string) $slice['state'];
-    $allowed = $current === 'pending' ? ['running', 'blocked'] : ($current === 'running' ? ['done', 'blocked'] : []);
+    $allowed = $current === 'pending' ? ['running', 'blocked'] : ($current === 'running' ? ['running', 'done', 'blocked'] : []);
     if (!in_array($target, $allowed, true)) {
         throw new RuntimeException("transition refused: {$sliceId} {$current} -> {$target}");
     }
@@ -287,7 +343,19 @@ function transitionProject(array $project, string $sliceId, string $target, ?str
         throw new InvalidArgumentException("transition {$target} requires a safe --run id");
     }
     if ($target === 'done') {
-        assertRunReDerived($runsDir, $runId);
+        $expectedContractRevision = null;
+        $contractPath = $slice['contract'] ?? null;
+        if (is_string($contractPath) && is_file($contractPath)) {
+            $markdown = @file_get_contents($contractPath);
+            if ($markdown !== false && $markdown !== '') {
+                try {
+                    $expectedContractRevision = DevelopmentTaskContract::revisionId(DevelopmentTaskContract::parseCurrentTaskMarkdown($markdown));
+                } catch (InvalidArgumentException) {
+                    $expectedContractRevision = null;
+                }
+            }
+        }
+        assertRunReDerived($runsDir, $runId, $expectedContractRevision);
     }
     if ($target === 'blocked') {
         if ($reason === null || trim($reason) === '') {
@@ -446,7 +514,7 @@ function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFi
     $dispatched = array_keys($sliceRuns);
     sort($dispatched);
 
-    $statuses = ['completed' => 0, 'silent' => 0, 'failed' => 0, 'abandoned' => 0, 'running' => 0, 'other' => 0];
+    $statuses = ['completed' => 0, 'silent' => 0, 'failed' => 0, 'abandoned' => 0, 'blocked' => 0, 'running' => 0, 'other' => 0];
     $lanes = [];
     foreach ($matched as $record) {
         $status = is_string($record['status'] ?? null) ? $record['status'] : 'other';
@@ -534,6 +602,7 @@ function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFi
 
     $tokens = null;
     $cost = null;
+    $usageByRun = [];
     if ($matched === []) {
         $reasons['tokens_total'] = $reasons['cost_usd'] = 'no run records match this project';
     } else {
@@ -542,6 +611,13 @@ function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFi
         $missing = null;
         foreach ($matched as $id => $record) {
             $usage = $record['usage'] ?? null;
+            $binding = is_array($record['runner_session'] ?? null) ? $record['runner_session'] : null;
+            $usageByRun[$id] = [
+                'session_id' => is_array($binding) ? ($binding['session_id'] ?? null) : null,
+                'usage' => is_array($usage) ? $usage : null,
+                'unavailable_reason' => is_array($usage) ? null : (is_string($record['usage_unavailable_reason'] ?? null)
+                    ? $record['usage_unavailable_reason'] : 'run record predates runner usage binding'),
+            ];
             if (!is_array($usage) || !is_numeric($usage['total_tokens'] ?? null) || !is_numeric($usage['cost_usd'] ?? null)) {
                 $missing ??= $id;
                 continue;
@@ -550,9 +626,8 @@ function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFi
             $costSum += (float) $usage['cost_usd'];
         }
         if ($missing !== null) {
-            $reasons['tokens_total'] = $reasons['cost_usd'] =
-                "run {$missing} carries no usage block; pi exposes per-message usage and cost in its session "
-                . 'jsonl, but the run ledger binds no session to a run, so a complete per-project figure is not derivable';
+            $reason = (string) ($usageByRun[$missing]['unavailable_reason'] ?? 'usage artefact unavailable');
+            $reasons['tokens_total'] = $reasons['cost_usd'] = "run {$missing}: {$reason}; project totals are null, not estimated";
         } else {
             $tokens = $tokenSum;
             $cost = round($costSum, 6);
@@ -587,9 +662,21 @@ function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFi
         $chairErrors = count($errorsJson['errors']);
     }
 
-    $reasons['contract_violations'] =
-        "the ledger records each run's declared envelope (allowed_count/forbidden_count) but no changed-path "
-        . 'artefact, so a scope diff cannot be derived';
+    $contractViolations = null;
+    $scopeMissing = null;
+    $violationCount = 0;
+    foreach ($matched as $id => $record) {
+        $scope = $record['scope_conformance'] ?? null;
+        if (!is_array($scope) || !is_bool($scope['ok'] ?? null)) { $scopeMissing ??= $id; continue; }
+        if ($scope['ok'] === false) { $violationCount++; }
+    }
+    if ($matched === []) {
+        $reasons['contract_violations'] = 'no run records match this project';
+    } elseif ($scopeMissing !== null) {
+        $reasons['contract_violations'] = "run {$scopeMissing} predates changed-path scope conformance; the total is not derivable";
+    } else {
+        $contractViolations = $violationCount;
+    }
 
     $minutes = null;
     $minutesPath = rtrim((string) $project['path'], '/') . '/director-minutes.json';
@@ -629,9 +716,10 @@ function deriveMetrics(array $project, string $runsDir, string $chairDecisionsFi
             'chair_decisions' => $chairDecisions,
             'chair_decisions_incorrect' => $chairErrors,
             'chair_errors' => $errorIds,
-            'contract_violations' => null,
+            'contract_violations' => $contractViolations,
             'cost_usd' => $cost,
             'tokens_total' => $tokens,
+            'usage_by_run' => $usageByRun,
             'director_minutes' => $minutes,
         ],
         'unavailable' => $reasons,
@@ -695,7 +783,9 @@ function renderMetricsTable(string $id, array $metrics, array $unavailable): str
             ? ' — ' . ($unavailable['chair_decisions_incorrect'] ?? 'not derivable')
             : ' (' . implode(', ', $metrics['chair_errors']) . ')')
         . "\n";
-    $out .= $pad('contract violations') . ' null — ' . ($unavailable['contract_violations'] ?? 'not derivable') . "\n";
+    $out .= $pad('contract violations') . ' ' . ($metrics['contract_violations'] === null
+        ? 'null — ' . ($unavailable['contract_violations'] ?? 'not derivable')
+        : formatMetric($metrics['contract_violations'])) . "\n";
     $out .= $pad('cost (usd)') . ' ' . ($metrics['cost_usd'] === null
         ? 'null — ' . ($unavailable['cost_usd'] ?? 'not derivable')
         : formatMetric($metrics['cost_usd'])) . "\n";

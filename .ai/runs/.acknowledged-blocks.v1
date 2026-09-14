@@ -1,0 +1,32 @@
+{
+    "schema": "ark.ai-block-acknowledgements.v1",
+    "acknowledgements": [
+        {
+            "run_id": "guardrail-scope-integrity",
+            "block_reason": "STRUCTURAL: this run created the dispatch-baseline feature it could not itself have, so no baseline could exist and conformance was unprovable. Verified independently by the Chair: covering scopes refused, director route functional, suites 59/41/16/3/11 zero skips, rule 1 held against its own contract.",
+            "director_decision": "CD-29",
+            "acknowledged_at": "2026-09-14T07:16:43+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47"
+        },
+        {
+            "run_id": "guardrail-ladder-cost-flash",
+            "block_reason": "FALSE-POSITIVE CLASSES: (1) .ai/guardrail-ladder-cost-flash.log is the Chair's own dispatch log, not executor output; (2) tests/ai_loop_test.php was EXTENDED 6->15 assertions (172 insertions, 2 deletions, both fixture-string updates), not weakened. Ladder verified via suite tests 12-16.",
+            "director_decision": "CD-31",
+            "acknowledged_at": "2026-09-14T07:16:43+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "7257ee6926affeb9bb227abcf2623cc3bd74873e83b830574573879ded43c504"
+        },
+        {
+            "run_id": "guardrail-ladder-cost-verify",
+            "block_reason": "SOLE OFFENDER IS THE CHAIR'S OWN DISPATCH LOG: .ai/guardrail-ladder-cost-verify.log is my redirect, not executor output. The executor modified no tracked file (verified: git status shows no changes in tools/ or tests/). Root cause of the repeat: I omitted --log at start, so the log was never declared as a run artefact. CD-31 identified this fix and I failed to apply it.",
+            "director_decision": "CD-31",
+            "acknowledged_at": "2026-09-14T07:23:28+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "9163c2728340c1aa6688692c7d745ad5a3ea6c3810aab8d9c4df49a3a646b597"
+        }
+    ]
+}

@@ -34,7 +34,9 @@ require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskCo
  *
  * Usage:
  *   php tools/ai-run.php start  --contract=PATH --lane=MODEL --name=ID [--log=PATH] [--report=PATH]
- *                               [--pid=N] [--runs-dir=DIR] [--json]
+ *                               [--pid=N] [--director-decision=REF] [--predecessor=ID]
+ *                               [--repair-level=L1|L2|L3] [--approach-change=TEXT]
+ *                               [--previous-failure=TEXT] [--runs-dir=DIR] [--json]
  *   php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH]
  *                               [--runs-dir=DIR] [--json]
  *   php tools/ai-run.php status [--runs-dir=DIR] [--json] [--gate]
@@ -53,9 +55,9 @@ const EXIT_USAGE = 2;
 const EXIT_GATE = 3;
 const DEFAULT_RUNS_DIR = '.ai/runs';
 /** @var list<string> */
-const RUN_STATUSES = ['running', 'completed', 'silent', 'failed', 'abandoned'];
+const RUN_STATUSES = ['running', 'completed', 'silent', 'failed', 'abandoned', 'blocked'];
 /** @var list<string> */
-const GATE_STATUSES = ['silent', 'failed', 'abandoned'];
+const GATE_STATUSES = ['silent', 'failed', 'abandoned', 'blocked'];
 
 /**
  * Claim types recognised from a report, each with an honest re-derivability by a pure deterministic
@@ -88,22 +90,135 @@ const COMMAND_ALLOWLIST = [
     ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md$/'],
 ];
 
+/**
+ * The verifier trust surface, mirroring tools/ai-autonomy.php:trustSurfacePaths().
+ *
+ * It is enumerated here because the ledger computes the integrity hash without importing the driver
+ * (both files define the same top-level constants and helper functions, so requiring one from the
+ * other is a fatal redeclaration). The two lists are pinned together by tests/ai_run_test.php and
+ * tests/ai_autonomy_test.php; any drift is a test failure. Amendments to this list are director-only
+ * (CD-21 rule 4, owner directive 2026-09-14): the Chair may propose, never perform.
+ *
+ * @return list<string>
+ */
+function trustSurfacePaths(): array
+{
+    return [
+        'tools/ai-run.php',
+        'tools/ai-autonomy.php',
+        'tools/ai-project.php',
+        'tools/ai-loop.php',
+        'tools/ai-contract-lint.php',
+        'kernel/Workbench/Development/DevelopmentTaskContract.php',
+        'tools/harpp-bridge/harpp_wake.py',
+    ];
+}
+
+/**
+ * SHA-256 of the trust-surface files, sorted by path and concatenated. Per-file digests are returned
+ * too, so commit-check can name the file(s) whose hash moved rather than only reporting an opaque
+ * aggregate mismatch. A file that cannot be read yields a null digest for that entry and a null
+ * aggregate: missing integrity input is recorded as unavailable, never silently hashed as empty.
+ *
+ * @return array{hash:?string,files:array<string,?string>}
+ */
+function trustSurfaceDigest(): array
+{
+    $root = dirname(__DIR__);
+    $paths = trustSurfacePaths();
+    sort($paths, SORT_STRING);
+    $concat = '';
+    $files = [];
+    $complete = true;
+    foreach ($paths as $path) {
+        $content = @file_get_contents($root . '/' . $path);
+        if ($content === false) {
+            $files[$path] = null;
+            $complete = false;
+            continue;
+        }
+        $files[$path] = hash('sha256', $content);
+        $concat .= $content;
+    }
+
+    return ['hash' => $complete ? hash('sha256', $concat) : null, 'files' => $files];
+}
+
+/**
+ * The trust-surface files whose digest moved since the run recorded it, or null when the record
+ * cannot be checked (an older ledger record) or already agrees.
+ *
+ * A run started before this integrity check existed carries no `trust_surface_hash`. That is NOT a
+ * block: refusing historical runs would make the gate unusable, so a missing or `unavailable` hash
+ * is skipped. Every record written from now on carries the hash, so the trade-off is bounded and
+ * deliberate. A hash that IS present and does not match the current trust surface is a silent
+ * widening of the verifier under the evidence, and blocks.
+ *
+ * @param array<string,mixed> $record
+ * @return list<string>|null
+ */
+function trustSurfaceMismatch(array $record): ?array
+{
+    $recordedHash = $record['trust_surface_hash'] ?? null;
+    if (!is_string($recordedHash) || $recordedHash === '' || $recordedHash === 'unavailable') {
+        return null;
+    }
+    $current = trustSurfaceDigest();
+    if (is_string($current['hash']) && authorisedTrustSurfaceTransition($recordedHash, $current['hash'])) {
+        return null;
+    }
+    $recordedFiles = is_array($record['trust_surface_files'] ?? null) ? $record['trust_surface_files'] : [];
+    $changed = [];
+    foreach (trustSurfacePaths() as $path) {
+        if (($recordedFiles[$path] ?? null) !== ($current['files'][$path] ?? null)) {
+            $changed[] = $path;
+        }
+    }
+    $aggregateMoved = $current['hash'] === null || !hash_equals($recordedHash, (string) $current['hash']);
+    if ($aggregateMoved && $changed === []) {
+        $changed[] = '(aggregate)';
+    }
+    if (!$aggregateMoved && $changed === []) {
+        return null;
+    }
+
+    return array_values(array_unique($changed));
+}
+
+/** A director route may authorise one visible old-hash -> recorded-new-hash transition. */
+function authorisedTrustSurfaceTransition(string $from, string $to): bool
+{
+    $document = json_decode((string) @file_get_contents(dirname(__DIR__) . '/.ai/trust-surface-amendments.json'), true);
+    foreach (is_array($document) && is_array($document['amendments'] ?? null) ? $document['amendments'] : [] as $item) {
+        if (!is_array($item) || ($item['trust_surface_hash'] ?? null) !== $to) { continue; }
+        if (in_array($from, is_array($item['supersedes_hashes'] ?? null) ? $item['supersedes_hashes'] : [], true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** Print command help and contractual exit codes. */
 function usage(): void
 {
     fwrite(STDOUT, <<<'TXT'
 Usage:
   php tools/ai-run.php start  --contract=PATH --lane=MODEL --name=ID [--log=PATH] [--report=PATH]
-                              [--pid=N] [--runs-dir=DIR] [--json]
-                              Record the run before it starts. Writes <runs-dir>/<ID>.json with the
-                              contract revision, scope counts, lane, pid, log, started_at, status=running.
+                              [--pid=N] [--director-decision=REF] [--predecessor=ID]
+                              [--repair-level=L1|L2|L3] [--approach-change=TEXT]
+                              [--previous-failure=TEXT] [--runs-dir=DIR] [--json]
+                              Record the run before it starts, including the changed-path baseline.
+                              A contract covering the verifier requires a real recorded director
+                              decision; its reference is persisted in the ledger.
 
   php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH]
                               [--runs-dir=DIR] [--json]
-                              Record the exit code observed by the dispatcher and classify:
-                                exit != 0                         -> failed
-                                exit == 0, no report/log content  -> silent
-                                exit == 0, with report/log content-> completed
+                              Record the exit code observed by the dispatcher, compare changed paths
+                              against the dispatch baseline and contract envelope, and classify:
+                                scope violation                    -> blocked (exit 3)
+                                exit != 0                          -> failed
+                                exit == 0, no report/log content   -> silent
+                                exit == 0, with report/log content -> completed
                               This is only meaningful because the DISPATCHER runs `finish` in the shell
                               that observed the exit code; a self-reported code with no dispatcher is
                               theatre.
@@ -126,7 +241,10 @@ Usage:
                               bound. Every claim starts UNVERIFIED; `verify` re-derives by execution.
 
   php tools/ai-run.php commit-check [--runs-dir=DIR] [--json]
+                              [--acknowledge-block=RUN --reason=TEXT --director-decision=REF]
                               Decide commit eligibility from the ledger, not from how the tree looks.
+                              The acknowledgement route records one director-attributed blocked run
+                              once in a separate append-only artefact. It never mutates the run.
                               Exits 0 only when every recorded run is `completed` (or there are no
                               runs); exits 3 and names each run that is running, silent, failed or
                               abandoned. Cheap and read-only: it performs only the reconciliation
@@ -374,6 +492,196 @@ function humanAge(int $seconds): string
     return intdiv($seconds, 86400) . 'd' . intdiv($seconds % 86400, 3600) . 'h';
 }
 
+/** Resolve run authorisation against the repository's real decision records. */
+function runDirectorDecisionExists(string $reference): bool
+{
+    $reference = trim($reference);
+    if ($reference === '' || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $reference) !== 1) { return false; }
+    $chair = @file_get_contents(dirname(__DIR__) . '/.ai/chair-decisions.md');
+    if ($chair !== false && preg_match('/^##\s+' . preg_quote($reference, '/') . '\b/m', $chair) === 1) { return true; }
+    $raw = @file_get_contents(dirname(__DIR__) . '/.ai/decisions/' . $reference . '.json');
+    $decision = $raw === false ? null : json_decode($raw, true);
+    return is_array($decision) && ($decision['decision_id'] ?? null) === $reference
+        && ($decision['schema'] ?? null) === 'ark.workbench-development-decision-request.v1';
+}
+
+/**
+ * Bind a run only to a session the runner actually exposes. A parent Pi session is not attributed
+ * to a different lane: absence or mismatch is explicit rather than guessed.
+ *
+ * @return array{binding:?array<string,string>,reason:?string}
+ */
+function exposedRunnerSession(string $lane): array
+{
+    $id = getenv('PI_SESSION_ID');
+    $file = getenv('PI_SESSION_FILE');
+    $provider = getenv('PI_PROVIDER');
+    $model = getenv('PI_MODEL');
+    if (!is_string($id) || $id === '' || !is_string($file) || $file === '') {
+        return ['binding' => null, 'reason' => 'runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact'];
+    }
+    $exposedLane = (is_string($provider) && $provider !== '' ? $provider . '/' : '') . (is_string($model) ? $model : '');
+    if ($exposedLane === '' || ($lane !== $exposedLane && $lane !== $model)) {
+        return ['binding' => null, 'reason' => "exposed Pi session belongs to lane {$exposedLane}, not run lane {$lane}"];
+    }
+    if (!is_file($file)) {
+        return ['binding' => null, 'reason' => "runner exposed session artefact '{$file}', but it is not readable"];
+    }
+    return ['binding' => ['session_id' => $id, 'session_file' => $file, 'provider' => (string) $provider, 'model' => (string) $model], 'reason' => null];
+}
+
+/**
+ * Sum only usage objects actually present in the bound JSONL during this run. No pricing table,
+ * interpolation, wall-clock conversion or placeholder is permitted.
+ *
+ * @param array<string,mixed> $record
+ * @return array{usage:?array<string,mixed>,reason:?string}
+ */
+function usageFromBoundSession(array $record, string $finishedAt): array
+{
+    $binding = $record['runner_session'] ?? null;
+    if (!is_array($binding) || !is_string($binding['session_file'] ?? null) || !is_string($binding['session_id'] ?? null)) {
+        return ['usage' => null, 'reason' => is_string($record['usage_unavailable_reason'] ?? null)
+            ? $record['usage_unavailable_reason'] : 'run carries no bound runner session artefact'];
+    }
+    $handle = @fopen($binding['session_file'], 'rb');
+    if (!is_resource($handle)) {
+        return ['usage' => null, 'reason' => "bound runner session artefact '{$binding['session_file']}' cannot be read"];
+    }
+    $start = strtotime((string) ($record['started_at'] ?? ''));
+    $finish = strtotime($finishedAt);
+    $sessionSeen = false;
+    $messages = 0;
+    $totals = ['input_tokens' => 0, 'output_tokens' => 0, 'cache_read_tokens' => 0, 'cache_write_tokens' => 0, 'reasoning_tokens' => 0, 'total_tokens' => 0, 'cost_usd' => 0.0];
+    while (($line = fgets($handle)) !== false) {
+        $row = json_decode($line, true);
+        if (!is_array($row)) { continue; }
+        if (($row['type'] ?? null) === 'session' && ($row['id'] ?? null) === $binding['session_id']) { $sessionSeen = true; }
+        $at = is_string($row['timestamp'] ?? null) ? strtotime($row['timestamp']) : false;
+        if ($at === false || $start === false || $finish === false || $at < $start || $at > $finish) { continue; }
+        $usage = is_array($row['message']['usage'] ?? null) ? $row['message']['usage'] : null;
+        $cost = is_array($usage['cost'] ?? null) ? $usage['cost'] : null;
+        if ($usage === null || $cost === null || !is_numeric($usage['totalTokens'] ?? null) || !is_numeric($cost['total'] ?? null)) { continue; }
+        $messages++;
+        $totals['input_tokens'] += (int) ($usage['input'] ?? 0);
+        $totals['output_tokens'] += (int) ($usage['output'] ?? 0);
+        $totals['cache_read_tokens'] += (int) ($usage['cacheRead'] ?? 0);
+        $totals['cache_write_tokens'] += (int) ($usage['cacheWrite'] ?? 0);
+        $totals['reasoning_tokens'] += (int) ($usage['reasoning'] ?? 0);
+        $totals['total_tokens'] += (int) $usage['totalTokens'];
+        $totals['cost_usd'] += (float) $cost['total'];
+    }
+    fclose($handle);
+    if (!$sessionSeen) { return ['usage' => null, 'reason' => 'bound session id does not match the session artefact header']; }
+    if ($messages === 0) { return ['usage' => null, 'reason' => 'bound session artefact exposes no usage messages within the run interval']; }
+    $totals['cost_usd'] = round($totals['cost_usd'], 9);
+    return ['usage' => array_merge($totals, [
+        'messages' => $messages,
+        'source' => 'bound_pi_session_jsonl',
+        'session_id' => $binding['session_id'],
+        'session_file' => $binding['session_file'],
+    ]), 'reason' => null];
+}
+
+/** Ask plan's rule-3 implementation rather than copying its trust-surface matcher into the ledger. */
+function contractRequiresDirector(string $contractPath): bool
+{
+    $run = executeArgv([PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php', 'plan', '--json', '--contract=' . $contractPath], dirname(__DIR__), 20);
+    if (!$run['timed_out'] && $run['exit_code'] === 0) { return false; }
+    if (!$run['timed_out'] && $run['exit_code'] === EXIT_USAGE && str_contains($run['output'], 'trust surface')) { return true; }
+    throw new InvalidArgumentException("contract '{$contractPath}' could not pass the autonomy plan check: " . trim($run['output']));
+}
+
+/** @return array{ok:bool,paths:list<string>,error:?string} */
+function workingTreeChangedPaths(): array
+{
+    $run = executeArgv(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=all'], dirname(__DIR__), 20);
+    if ($run['timed_out'] || $run['exit_code'] !== 0) {
+        return ['ok' => false, 'paths' => [], 'error' => trim($run['output']) ?: 'git status unavailable'];
+    }
+    $parts = explode("\0", $run['output']);
+    $paths = [];
+    for ($i = 0; $i < count($parts); $i++) {
+        $item = $parts[$i];
+        if ($item === '') { continue; }
+        if (strlen($item) < 4) {
+            return ['ok' => false, 'paths' => [], 'error' => 'ambiguous git status entry'];
+        }
+        $status = substr($item, 0, 2);
+        $path = substr($item, 3);
+        if ($path === '') { return ['ok' => false, 'paths' => [], 'error' => 'empty git status path']; }
+        $paths[] = $path;
+        if (str_contains($status, 'R') || str_contains($status, 'C')) {
+            $old = $parts[++$i] ?? '';
+            if ($old === '') { return ['ok' => false, 'paths' => [], 'error' => 'ambiguous git rename/copy entry']; }
+            $paths[] = $old;
+        }
+    }
+    sort($paths, SORT_STRING);
+    return ['ok' => true, 'paths' => array_values(array_unique($paths)), 'error' => null];
+}
+
+/** @param list<string> $paths @return array<string,string> */
+function changedPathFingerprints(array $paths): array
+{
+    $root = dirname(__DIR__); $result = [];
+    foreach ($paths as $path) {
+        $absolute = $root . '/' . $path;
+        if (is_link($absolute)) { $result[$path] = 'symlink:' . (string) readlink($absolute); }
+        elseif (is_file($absolute)) { $hash = hash_file('sha256', $absolute); $result[$path] = is_string($hash) ? 'file:' . $hash : 'unreadable'; }
+        elseif (is_dir($absolute)) { $result[$path] = 'directory'; }
+        else { $result[$path] = 'absent'; }
+    }
+    return $result;
+}
+
+function repositoryRelativePath(?string $path): ?string
+{
+    if ($path === null || trim($path) === '') { return null; }
+    $root = str_replace('\\', '/', dirname(__DIR__));
+    $candidate = str_replace('\\', '/', $path);
+    if (str_starts_with($candidate, $root . '/')) { $candidate = substr($candidate, strlen($root) + 1); }
+    elseif (str_starts_with($candidate, '/')) { return null; }
+    $candidate = preg_replace('#^\./+#', '', $candidate) ?? $candidate;
+    return $candidate !== '' && !str_contains($candidate, '../') ? $candidate : null;
+}
+
+/**
+ * Evaluate changed paths by invoking `check`; this guarantees A-F2 uses the exact envelope and
+ * taxonomy matcher used by interactive checks, including trust-surface directory/glob semantics.
+ *
+ * @param list<string> $paths
+ * @return array{ok:bool,checked:list<string>,offending:list<array{path:string,reasons:list<string>}>}
+ */
+function scopeConformance(string $contract, string $expectedRevision, array $paths): array
+{
+    try {
+        $finishContract = loadContract($contract);
+        $finishRevision = DevelopmentTaskContract::revisionId($finishContract);
+    } catch (InvalidArgumentException $e) {
+        return ['ok' => false, 'checked' => $paths, 'offending' => [['path' => $contract, 'reasons' => ['dispatch contract cannot be re-read: ' . $e->getMessage()]]]];
+    }
+    if (!hash_equals($expectedRevision, $finishRevision)) {
+        return ['ok' => false, 'checked' => $paths, 'offending' => [['path' => $contract, 'reasons' => ["contract revision moved after dispatch: expected {$expectedRevision}, observed {$finishRevision}"]]]];
+    }
+
+    $offending = [];
+    foreach ($paths as $path) {
+        $run = executeArgv([
+            PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php', 'check', 'run changed path',
+            '--path=' . $path, '--contract=' . $contract, '--json',
+        ], dirname(__DIR__), 20);
+        $payload = json_decode($run['output'], true);
+        if ($run['timed_out'] || $run['exit_code'] !== 0 || !is_array($payload) || ($payload['verdict'] ?? null) === 'ESCALATE') {
+            $reasons = is_array($payload) && is_array($payload['reasons'] ?? null)
+                ? array_values(array_map('strval', $payload['reasons']))
+                : [trim($run['output']) ?: 'scope check unavailable'];
+            $offending[] = ['path' => $path, 'reasons' => $reasons];
+        }
+    }
+    return ['ok' => $offending === [], 'checked' => $paths, 'offending' => $offending];
+}
+
 /**
  * @param array<string,list<string>> $options
  */
@@ -388,10 +696,51 @@ function commandStart(array $options, bool $json): int
 
     $contractPath = requiredValue(option($options, 'contract'), 'contract');
     $parsed = loadContract($contractPath);
+    $directorDecision = trim((string) option($options, 'director-decision', ''));
+    $requiresDirector = contractRequiresDirector($contractPath);
+    if (($requiresDirector && $directorDecision === '') || ($directorDecision !== '' && !runDirectorDecisionExists($directorDecision))) {
+        fwrite(STDOUT, "REFUSED: this run requires --director-decision naming a decision recorded in .ai/decisions/ or .ai/chair-decisions.md\n");
+        return EXIT_GATE;
+    }
+    $baseline = workingTreeChangedPaths();
+    if (!$baseline['ok']) {
+        fwrite(STDOUT, 'REFUSED: dispatch baseline could not be captured: ' . $baseline['error'] . "\n");
+        return EXIT_GATE;
+    }
     $log = option($options, 'log');
     $report = option($options, 'report');
     $pidRaw = option($options, 'pid');
     $pid = $pidRaw === null ? defaultLivenessPid() : intValue($pidRaw, 'pid');
+    $ignored = array_values(array_unique(array_filter([
+        repositoryRelativePath($path), repositoryRelativePath($log), repositoryRelativePath($report),
+    ], static fn (?string $item): bool => $item !== null)));
+
+    $lane = requiredValue(option($options, 'lane'), 'lane');
+    $predecessor = option($options, 'predecessor');
+    $repairLevel = option($options, 'repair-level');
+    $approachChange = option($options, 'approach-change');
+    $previousFailure = option($options, 'previous-failure');
+    if ($predecessor !== null) {
+        $predecessor = validateRunId($predecessor);
+        $prior = loadRecord($runsDir, $predecessor);
+        $priorStatus = (string) ($prior['status'] ?? '');
+        $verificationFailed = false;
+        foreach (is_array($prior['claim_verification']['results'] ?? null) ? $prior['claim_verification']['results'] : [] as $claim) {
+            if (!is_array($claim) || ($claim['status'] ?? null) !== 'RE_DERIVED') { $verificationFailed = true; break; }
+        }
+        if (!in_array($priorStatus, ['failed', 'silent'], true) && !($priorStatus === 'completed' && $verificationFailed)) {
+            throw new InvalidArgumentException("predecessor run '{$predecessor}' is not a finished failure");
+        }
+        if (!in_array($repairLevel, ['L1', 'L2', 'L3'], true) || $approachChange === null || trim($approachChange) === '' || $previousFailure === null || trim($previousFailure) === '') {
+            throw new InvalidArgumentException('a repair successor requires --repair-level=L1|L2|L3, --approach-change and --previous-failure');
+        }
+        if (($prior['contract_revision'] ?? null) !== DevelopmentTaskContract::revisionId($parsed)) {
+            throw new InvalidArgumentException('repair successor refused: the contract revision/envelope moved');
+        }
+    } elseif ($repairLevel !== null || $approachChange !== null || $previousFailure !== null) {
+        throw new InvalidArgumentException('repair metadata requires --predecessor');
+    }
+    $session = exposedRunnerSession($lane);
 
     $record = [
         'id' => $id,
@@ -399,13 +748,36 @@ function commandStart(array $options, bool $json): int
         'contract_revision' => DevelopmentTaskContract::revisionId($parsed),
         'allowed_count' => count((array) ($parsed['allowed_scope'] ?? [])),
         'forbidden_count' => count((array) ($parsed['forbidden_scope'] ?? [])),
-        'lane' => requiredValue(option($options, 'lane'), 'lane'),
+        'lane' => $lane,
         'started_at' => date(DATE_ATOM),
         'pid' => $pid,
         'log' => $log,
         'report' => $report,
         'status' => 'running',
+        'scope_baseline_paths' => $baseline['paths'],
+        'scope_baseline_fingerprints' => changedPathFingerprints($baseline['paths']),
+        'scope_ignored_paths' => $ignored,
+        'predecessor_run_id' => $predecessor,
+        'repair' => $predecessor === null ? null : [
+            'level' => $repairLevel,
+            'approach_change' => $approachChange,
+            'previous_failure' => $previousFailure,
+        ],
+        'runner_session' => $session['binding'],
+        'usage' => null,
+        'usage_unavailable_reason' => $session['reason'] ?? 'bound session usage is captured from the artefact at finish',
+        'director_authorisation' => $directorDecision === '' ? null : [
+            'decision_ref' => $directorDecision,
+            'recorded_at' => date(DATE_ATOM),
+            'required_for_trust_surface' => $requiresDirector,
+        ],
     ];
+    // Bind the evidence to the verifier that produced it: if the trust surface widens after this
+    // point, commit-check names the file(s) whose hash moved and blocks. Recorded before the run so
+    // the binding is a pre-commitment, not a post-hoc rationalisation.
+    $trustSurface = trustSurfaceDigest();
+    $record['trust_surface_hash'] = $trustSurface['hash'] ?? 'unavailable';
+    $record['trust_surface_files'] = $trustSurface['files'];
     writeRecord($path, $record);
 
     if ($json) {
@@ -417,6 +789,9 @@ function commandStart(array $options, bool $json): int
     fwrite(STDOUT, "  scope:     {$record['allowed_count']} allowed, {$record['forbidden_count']} forbidden\n");
     fwrite(STDOUT, "  lane:      {$record['lane']}\n");
     fwrite(STDOUT, "  pid:       {$pid}\n");
+    fwrite(STDOUT, "  baseline:  " . count($baseline['paths']) . " changed path(s) at dispatch\n");
+    fwrite(STDOUT, "  director:  " . ($directorDecision === '' ? '(not required)' : $directorDecision) . "\n");
+    fwrite(STDOUT, "  trust:     " . ($trustSurface['hash'] ?? 'unavailable') . "\n");
     fwrite(STDOUT, "  log:       " . ($log ?? '(none)') . "\n");
     fwrite(STDOUT, "  record:    {$path}\n");
     return EXIT_OK;
@@ -437,27 +812,72 @@ function commandFinish(array $options, bool $json): int
     $logBytes = fileBytes($log);
     $reportBytes = fileBytes($report);
 
+    $current = workingTreeChangedPaths();
+    $baseline = is_array($record['scope_baseline_paths'] ?? null) ? array_values(array_map('strval', $record['scope_baseline_paths'])) : null;
+    $ignored = is_array($record['scope_ignored_paths'] ?? null) ? array_values(array_map('strval', $record['scope_ignored_paths'])) : [];
+    if (!$current['ok'] || $baseline === null) {
+        $detail = !$current['ok'] ? (string) $current['error'] : 'run has no dispatch-time changed-path baseline';
+        $conformance = ['ok' => false, 'checked' => [], 'offending' => [['path' => '(working-tree)', 'reasons' => [$detail]]]];
+        $delta = [];
+    } else {
+        $delta = array_values(array_unique(array_merge(array_diff($current['paths'], $baseline), array_diff($baseline, $current['paths']))));
+        $baselineFingerprints = is_array($record['scope_baseline_fingerprints'] ?? null) ? $record['scope_baseline_fingerprints'] : [];
+        $currentFingerprints = changedPathFingerprints($current['paths']);
+        foreach (array_intersect($baseline, $current['paths']) as $existingPath) {
+            if (array_key_exists($existingPath, $baselineFingerprints)
+                && ($baselineFingerprints[$existingPath] ?? null) !== ($currentFingerprints[$existingPath] ?? null)) {
+                $delta[] = $existingPath;
+            }
+        }
+        $delta = array_values(array_diff(array_unique($delta), $ignored));
+        sort($delta, SORT_STRING);
+        $conformance = scopeConformance(
+            (string) ($record['contract'] ?? ''),
+            (string) ($record['contract_revision'] ?? ''),
+            $delta
+        );
+    }
+
     $record['finished_at'] = date(DATE_ATOM);
     $record['exit_code'] = $exitCode;
     $record['log_bytes'] = $logBytes;
     $record['report_bytes'] = $reportBytes;
-    $record['status'] = classifyRun($exitCode, $logBytes, $reportBytes);
+    $record['scope_finish_paths'] = $current['paths'];
+    $record['scope_delta_paths'] = $delta;
+    $record['scope_conformance'] = $conformance;
+    $record['status'] = $conformance['ok'] ? classifyRun($exitCode, $logBytes, $reportBytes) : 'blocked';
+    $usage = usageFromBoundSession($record, (string) $record['finished_at']);
+    $record['usage'] = $usage['usage'];
+    $record['usage_unavailable_reason'] = $usage['reason'];
+    $evidenceParts = [];
+    foreach ([$report, $log] as $evidencePath) {
+        if (is_string($evidencePath) && is_file($evidencePath) && fileBytes($evidencePath) > 0) {
+            $digest = hash_file('sha256', $evidencePath);
+            if (is_string($digest)) { $evidenceParts[] = $digest; }
+        }
+    }
+    $record['evidence_fingerprint'] = $evidenceParts === [] ? null : hash('sha256', implode('|', $evidenceParts));
+    $record['evidence_unavailable_reason'] = $evidenceParts === [] ? 'runner produced no report or log content' : null;
     writeRecord(recordPath($runsDir, $id), $record);
 
     if ($json) {
         fwrite(STDOUT, encodeJson($record) . "\n");
-        return EXIT_OK;
+        return $conformance['ok'] ? EXIT_OK : EXIT_GATE;
     }
     fwrite(STDOUT, "RUN {$id} finished: {$record['status']}\n");
     fwrite(STDOUT, "  exit:      {$exitCode}\n");
     fwrite(STDOUT, "  log:       {$logBytes} bytes" . ($log !== null ? " ({$log})" : '') . "\n");
     fwrite(STDOUT, "  report:    {$reportBytes} bytes" . ($report !== null ? " ({$report})" : '') . "\n");
+    fwrite(STDOUT, "  scope:     " . ($conformance['ok'] ? 'OK' : 'BLOCKED') . ' delta=' . count($delta) . "\n");
+    foreach ($conformance['offending'] as $offence) {
+        fwrite(STDOUT, "  OFFENDING {$offence['path']}: " . implode('; ', $offence['reasons']) . "\n");
+    }
     if ($record['status'] === 'silent') {
         fwrite(STDOUT, "  NOTE: exit 0 and no report after the process exited — a silent run. The work may be\n");
         fwrite(STDOUT, "        real; the evidence is not. This is recorded, not inferred: `finish` runs after the\n");
         fwrite(STDOUT, "        process exited, so its log has been flushed. Never classify from a log read mid-run.\n");
     }
-    return EXIT_OK;
+    return $conformance['ok'] ? EXIT_OK : EXIT_GATE;
 }
 
 /**
@@ -1140,6 +1560,84 @@ function commandClaims(array $options, bool $json): int
     return EXIT_OK;
 }
 
+/** @return array{schema:string,acknowledgements:list<array<string,mixed>>} */
+function loadBlockAcknowledgements(string $runsDir): array
+{
+    $path = runsDirOf($runsDir) . '/.acknowledged-blocks.v1';
+    if (!is_file($path)) { return ['schema' => 'ark.ai-block-acknowledgements.v1', 'acknowledgements' => []]; }
+    $value = json_decode((string) @file_get_contents($path), true);
+    if (!is_array($value) || ($value['schema'] ?? null) !== 'ark.ai-block-acknowledgements.v1' || !is_array($value['acknowledgements'] ?? null)) {
+        throw new InvalidArgumentException("block acknowledgement artefact '{$path}' is malformed");
+    }
+    return $value;
+}
+
+/** @param array{schema:string,acknowledgements:list<array<string,mixed>>} $document */
+function writeBlockAcknowledgements(string $runsDir, array $document): void
+{
+    writeRecord(runsDirOf($runsDir) . '/.acknowledged-blocks.v1', $document);
+}
+
+/**
+ * Record one exceptional, director-attributed acknowledgement outside the immutable run record.
+ * The block remains a block; commit-check merely recognises this one named historical exception.
+ *
+ * @param array<string,list<string>> $options
+ */
+function acknowledgeBlock(array $options): int
+{
+    $runsDir = runsDirOf(option($options, 'runs-dir'));
+    $id = validateRunId(requiredValue(option($options, 'acknowledge-block'), 'acknowledge-block'));
+    $decision = trim((string) option($options, 'director-decision', ''));
+    if (!runDirectorDecisionExists($decision)) {
+        fwrite(STDOUT, "REFUSED: --director-decision must resolve to a recorded decision in .ai/decisions/ or .ai/chair-decisions.md\n");
+        return EXIT_GATE;
+    }
+    $reason = requiredValue(option($options, 'reason'), 'reason');
+    $loaded = loadAllRuns($runsDir);
+    $run = null;
+    foreach ($loaded['runs'] as $candidate) {
+        if (($candidate['id'] ?? null) === $id) { $run = $candidate; break; }
+    }
+    if (!is_array($run)) { throw new InvalidArgumentException("run '{$id}' has no readable record"); }
+    if (($run['status'] ?? null) === 'running') {
+        fwrite(STDOUT, "REFUSED: run {$id} is still running; a live run cannot be acknowledged as a historical block\n");
+        return EXIT_GATE;
+    }
+    if (($run['status'] ?? null) !== 'blocked' || ($run['scope_conformance']['ok'] ?? null) !== false) {
+        fwrite(STDOUT, "REFUSED: run {$id} is not a finished scope-conformance block\n");
+        return EXIT_GATE;
+    }
+    $document = loadBlockAcknowledgements($runsDir);
+    foreach ($document['acknowledgements'] as $item) {
+        if (is_array($item) && ($item['run_id'] ?? null) === $id) {
+            fwrite(STDOUT, "REFUSED: blocked run {$id} was already acknowledged once\n");
+            return EXIT_GATE;
+        }
+    }
+    $recordPath = recordPath($runsDir, $id);
+    $before = hash_file('sha256', $recordPath);
+    $ack = [
+        'run_id' => $id,
+        'block_reason' => $reason,
+        'director_decision' => $decision,
+        'acknowledged_at' => date(DATE_ATOM),
+        'run_status_observed' => 'blocked',
+        'scope_conformance_ok_observed' => false,
+        'run_record_sha256' => $before,
+    ];
+    $document['acknowledgements'][] = $ack;
+    writeBlockAcknowledgements($runsDir, $document);
+    $after = hash_file('sha256', $recordPath);
+    if (!is_string($before) || !is_string($after) || !hash_equals($before, $after)) {
+        throw new InvalidArgumentException("run '{$id}' changed while its block was acknowledged");
+    }
+    fwrite(STDOUT, "ACKNOWLEDGED BLOCK {$id}\n");
+    fwrite(STDOUT, "  reason:   {$reason}\n  decision: {$decision}\n  recorded: {$ack['acknowledged_at']}\n");
+    fwrite(STDOUT, "  immutable: status=blocked scope_conformance.ok=false sha256={$after}\n");
+    return EXIT_OK;
+}
+
 /**
  * Commit eligibility is decided by the ledger, not by how the tree looks. A running run is writing to
  * the tree right now; a silent, failed or abandoned run never produced a final state. Only when every
@@ -1150,7 +1648,23 @@ function commandClaims(array $options, bool $json): int
 function commandCommitCheck(array $options, bool $json): int
 {
     $runsDir = runsDirOf(option($options, 'runs-dir'));
+    if (option($options, 'acknowledge-block') !== null) {
+        $acknowledged = acknowledgeBlock($options);
+        if ($acknowledged !== EXIT_OK) { return $acknowledged; }
+    } elseif (option($options, 'reason') !== null || option($options, 'director-decision') !== null) {
+        throw new InvalidArgumentException('--reason and --director-decision require --acknowledge-block');
+    }
     $loaded = loadAllRuns($runsDir);
+    $ackDocument = loadBlockAcknowledgements($runsDir);
+    $acknowledgedIds = [];
+    foreach ($ackDocument['acknowledgements'] as $ack) {
+        if (is_array($ack) && is_string($ack['run_id'] ?? null)) { $acknowledgedIds[$ack['run_id']] = true; }
+    }
+    $successors = [];
+    foreach ($loaded['runs'] as $candidate) {
+        $prior = $candidate['predecessor_run_id'] ?? null;
+        if (is_string($prior) && $prior !== '') { $successors[$prior][] = (string) ($candidate['id'] ?? ''); }
+    }
     $now = time();
     $blocking = [];
     $total = 0;
@@ -1158,7 +1672,25 @@ function commandCommitCheck(array $options, bool $json): int
         $total++;
         $decorated = decorateRun($run, $now);
         $status = (string) ($decorated['status'] ?? 'unknown');
+        if ($status === 'blocked' && isset($acknowledgedIds[(string) ($decorated['id'] ?? '')])) {
+            continue;
+        }
+        if (in_array($status, ['failed', 'silent'], true) && isset($successors[(string) ($decorated['id'] ?? '')])) {
+            // The immutable failed attempt remains evidence; its linked successor now carries the
+            // gate. If that chain is unfinished, its tip still blocks.
+            continue;
+        }
         if ($status === 'completed') {
+            $changed = trustSurfaceMismatch($decorated);
+            if ($changed !== null) {
+                $blocking[] = [
+                    'id' => (string) ($decorated['id'] ?? 'unknown'),
+                    'status' => 'trust_surface_mismatch',
+                    'pid' => (int) ($decorated['pid'] ?? 0),
+                    'age' => (string) ($decorated['age'] ?? '0s'),
+                    'changed' => $changed,
+                ];
+            }
             continue;
         }
         $blocking[] = [
@@ -1166,6 +1698,20 @@ function commandCommitCheck(array $options, bool $json): int
             'status' => $status,
             'pid' => (int) ($decorated['pid'] ?? 0),
             'age' => (string) ($decorated['age'] ?? '0s'),
+            'changed' => [],
+        ];
+    }
+    // An unreadable or malformed record cannot be shown to be non-blocking, so it is blocking. The
+    // previous behaviour dropped it from the gate with only a stderr warning, so a corrupt record
+    // (or a deliberately planted one) made commit-check report ELIGIBLE while a real run was
+    // in-flight. Naming the file is what makes the block actionable.
+    foreach ($loaded['errors'] as $file) {
+        $blocking[] = [
+            'id' => basename((string) $file),
+            'status' => 'unreadable',
+            'pid' => 0,
+            'age' => '0s',
+            'changed' => [],
         ];
     }
 
@@ -1188,7 +1734,8 @@ function commandCommitCheck(array $options, bool $json): int
         } else {
             fwrite(STDOUT, "  NOT ELIGIBLE — committing now would capture a non-final state; " . count($blocking) . " run(s) are not completed\n");
             foreach ($blocking as $item) {
-                fwrite(STDOUT, "  BLOCK  {$item['id']}  {$item['status']}  age={$item['age']}  pid={$item['pid']}\n");
+                $changed = is_array($item['changed'] ?? null) && $item['changed'] !== [] ? '  changed=' . implode(',', $item['changed']) : '';
+                fwrite(STDOUT, "  BLOCK  {$item['id']}  {$item['status']}  age={$item['age']}  pid={$item['pid']}{$changed}\n");
             }
         }
         foreach ($loaded['errors'] as $error) {
@@ -1317,9 +1864,13 @@ function commandVerify(array $options, bool $json, int $timeoutSeconds): int
         $results[] = $claim;
     }
 
-    // Evidence binds to the revision it was verified against, so it cannot silently drift.
+    // Evidence binds to the revision it was verified against, so it cannot silently drift. The
+    // contract revision recorded at `start` is carried into the verification record so the two
+    // cannot be swapped independently: a later replay against a different contract revision is
+    // refused by the `done` gate even if the results themselves look valid.
     $record['claim_verification'] = [
         'verified_at' => date(DATE_ATOM),
+        'contract_revision' => is_string($record['contract_revision'] ?? null) ? $record['contract_revision'] : null,
         'rev' => $binding['rev'],
         'dirty' => $binding['dirty'],
         'results' => $results,
@@ -1404,7 +1955,7 @@ function main(): int
     $parsed = parseArguments($args);
 
     if ($command === 'start') {
-        validateArgumentNames($parsed, ['contract', 'lane', 'name', 'log', 'report', 'pid', 'runs-dir'], ['json']);
+        validateArgumentNames($parsed, ['contract', 'lane', 'name', 'log', 'report', 'pid', 'director-decision', 'predecessor', 'repair-level', 'approach-change', 'previous-failure', 'runs-dir'], ['json']);
         return commandStart($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'finish') {
@@ -1416,7 +1967,7 @@ function main(): int
         return commandClaims($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'commit-check') {
-        validateArgumentNames($parsed, ['runs-dir'], ['json']);
+        validateArgumentNames($parsed, ['runs-dir', 'acknowledge-block', 'reason', 'director-decision'], ['json']);
         return commandCommitCheck($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'verify') {

@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/harness/TestHarness.php';
+require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskContract.php';
+
+use Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract;
 
 $h = new TestHarness('ai-project', TestHarness::MODE_PURE);
 $h->fingerprint('tools/ai-project.php');
@@ -49,6 +52,53 @@ function removeProjectFixture(string $path): void
     @rmdir($path);
 }
 
+/** The current git HEAD, or null when git cannot answer. */
+function projectGitRev(): ?string
+{
+    $pipes = [];
+    $process = proc_open(['git', 'rev-parse', 'HEAD'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__), null, ['bypass_shell' => true]);
+    if (!is_resource($process)) {
+        return null;
+    }
+    $out = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($process);
+    $rev = trim((string) $out);
+    return preg_match('/^[0-9a-f]{40}$/', $rev) === 1 ? $rev : null;
+}
+
+/**
+ * Build a ledger record fully bound to the fixture slice contract and the current HEAD, so the
+ * done gate reaches the assertion under test rather than refusing at an earlier binding check.
+ *
+ * @param array<string,mixed> $overrides
+ */
+function projectBoundRecord(string $id, string $sliceContractPath, array $overrides = []): string
+{
+    $markdown = (string) file_get_contents($sliceContractPath);
+    $revision = DevelopmentTaskContract::revisionId(DevelopmentTaskContract::parseCurrentTaskMarkdown($markdown));
+    $record = [
+        'id' => $id,
+        'status' => 'completed',
+        'contract_revision' => $revision,
+        'claim_verification' => [
+            'contract_revision' => $revision,
+            'rev' => projectGitRev(),
+            'dirty' => false,
+            'results' => [['status' => 'RE_DERIVED']],
+        ],
+    ];
+    foreach ($overrides as $key => $value) {
+        if ($key === 'claim_verification' && is_array($value)) {
+            $record['claim_verification'] = array_merge($record['claim_verification'], $value);
+        } else {
+            $record[$key] = $value;
+        }
+    }
+    return (string) json_encode($record);
+}
+
 $base = sys_get_temp_dir() . '/ikabud-ai-project-' . bin2hex(random_bytes(5));
 $projects = $base . '/projects';
 $runs = $base . '/runs';
@@ -64,11 +114,12 @@ $next = projectTestRun(array_merge(['next'], $common));
 $h->test('2. next returns the first ordered slice', $next['code'] === 0 && str_contains($next['output'], 'NEXT S1'), $next['output']);
 
 $h->section('Done requires independently re-derived claims');
-file_put_contents($runs . '/bad.json', json_encode(['id' => 'bad', 'status' => 'completed', 'claim_verification' => ['results' => [['status' => 'UNVERIFIED']]]]));
+$badRecordPath = $projects . '/fixture/slices/s1.md';
+file_put_contents($runs . '/bad.json', projectBoundRecord('bad', $badRecordPath, ['claim_verification' => ['results' => [['status' => 'UNVERIFIED']]]]));
 projectTestRun(array_merge(['transition', '--slice=S1', '--state=running', '--run=bad'], $common));
 $badDone = projectTestRun(array_merge(['transition', '--slice=S1', '--state=done', '--run=bad'], $common));
 $h->test('3. UNVERIFIED claims cannot mark a slice done', $badDone['code'] === 3 && str_contains($badDone['output'], 'UNVERIFIED'), $badDone['output']);
-file_put_contents($runs . '/good.json', json_encode(['id' => 'good', 'status' => 'completed', 'claim_verification' => ['results' => [['status' => 'RE_DERIVED']]]]));
+file_put_contents($runs . '/good.json', projectBoundRecord('good', $badRecordPath));
 // Recreate to avoid weakening the state machine after the deliberate refusal.
 removeProjectFixture($projects . '/fixture');
 projectFixture($projects);
@@ -127,6 +178,73 @@ $h->test(
     $doneRetry['code'] === 3 && str_contains($doneRetry['output'], 'not blocked'),
     $doneRetry['output']
 );
+
+$h->section('Done binds evidence to the run, the contract revision and the tree (D4)');
+$boundRuns = $base . '/bound-runs';
+mkdir($boundRuns, 0777, true);
+$boundCommon = ['--project=fixture', '--projects-dir=' . $projects, '--runs-dir=' . $boundRuns];
+$sliceContract = $projects . '/fixture/slices/s1.md';
+$resetFixture = static function () use ($projects): void {
+    removeProjectFixture($projects . '/fixture');
+    projectFixture($projects);
+};
+
+$resetFixture();
+file_put_contents($boundRuns . '/foreign.json', projectBoundRecord('other-run', $sliceContract));
+projectTestRun(array_merge(['transition', '--slice=S1', '--state=running', '--run=foreign'], $boundCommon));
+$foreignDone = projectTestRun(array_merge(['transition', '--slice=S1', '--state=done', '--run=foreign'], $boundCommon));
+$h->test('12. a foreign run record (internal id != run id) is refused', $foreignDone['code'] === 3 && str_contains($foreignDone['output'], 'foreign'), $foreignDone['output']);
+
+$resetFixture();
+file_put_contents($boundRuns . '/stale.json', projectBoundRecord('stale', $sliceContract, ['claim_verification' => ['rev' => str_repeat('0', 40)]]));
+projectTestRun(array_merge(['transition', '--slice=S1', '--state=running', '--run=stale'], $boundCommon));
+$staleDone = projectTestRun(array_merge(['transition', '--slice=S1', '--state=done', '--run=stale'], $boundCommon));
+$h->test('13. a stale revision is refused', $staleDone['code'] === 3 && str_contains($staleDone['output'], 'current HEAD'), $staleDone['output']);
+
+$resetFixture();
+file_put_contents($boundRuns . '/dirty.json', projectBoundRecord('dirty', $sliceContract, ['claim_verification' => ['dirty' => true]]));
+projectTestRun(array_merge(['transition', '--slice=S1', '--state=running', '--run=dirty'], $boundCommon));
+$dirtyDone = projectTestRun(array_merge(['transition', '--slice=S1', '--state=done', '--run=dirty'], $boundCommon));
+$h->test('14. a dirty-tree verification is refused', $dirtyDone['code'] === 3 && str_contains($dirtyDone['output'], 'dirty'), $dirtyDone['output']);
+
+$resetFixture();
+file_put_contents($boundRuns . '/wrong-contract.json', projectBoundRecord('wrong-contract', $sliceContract, ['contract_revision' => 'deadbeefdeadbeef', 'claim_verification' => ['contract_revision' => 'deadbeefdeadbeef']]));
+projectTestRun(array_merge(['transition', '--slice=S1', '--state=running', '--run=wrong-contract'], $boundCommon));
+$wrongContractDone = projectTestRun(array_merge(['transition', '--slice=S1', '--state=done', '--run=wrong-contract'], $boundCommon));
+$h->test('15. a stale contract revision is refused', $wrongContractDone['code'] === 3 && str_contains($wrongContractDone['output'], 'contract revision'), $wrongContractDone['output']);
+
+$resetFixture();
+file_put_contents($boundRuns . '/bound.json', projectBoundRecord('bound', $sliceContract));
+projectTestRun(array_merge(['transition', '--slice=S1', '--state=running', '--run=bound'], $boundCommon));
+$boundDone = projectTestRun(array_merge(['transition', '--slice=S1', '--state=done', '--run=bound'], $boundCommon));
+$h->test('16. a fully bound record is accepted (positive control)', $boundDone['code'] === 0, $boundDone['output']);
+
+$h->section('Metrics derive usage from bound run artefacts without estimation');
+$metricsProjects = $base . '/metrics-projects'; $metricsRuns = $base . '/metrics-runs';
+mkdir($metricsProjects, 0777, true); mkdir($metricsRuns, 0777, true); projectFixture($metricsProjects, 'metrics');
+$metricsContract = $metricsProjects . '/metrics/slices/s1.md';
+$usage = ['total_tokens' => 321, 'cost_usd' => 0.045, 'source' => 'bound_pi_session_jsonl', 'session_id' => 'session-321'];
+file_put_contents($metricsRuns . '/usage.json', json_encode(['id' => 'usage', 'contract' => $metricsContract, 'status' => 'completed',
+    'lane' => 'fixture/model', 'started_at' => '2026-09-14T01:00:00+00:00', 'finished_at' => '2026-09-14T01:00:03+00:00',
+    'scope_conformance' => ['ok' => true], 'runner_session' => ['session_id' => 'session-321', 'session_file' => '/artefact/session.jsonl'],
+    'usage' => $usage]) . "\n");
+$metrics = projectTestRun(['metrics', '--project=metrics', '--projects-dir=' . $metricsProjects, '--runs-dir=' . $metricsRuns, '--json']);
+$metricsData = json_decode($metrics['output'], true); $metricValues = is_array($metricsData['metrics'] ?? null) ? $metricsData['metrics'] : [];
+$h->test('17. metrics reports exact artefact tokens/cost and the run-session binding', $metrics['code'] === 0
+    && ($metricValues['tokens_total'] ?? null) === 321 && ($metricValues['cost_usd'] ?? null) === 0.045
+    && ($metricValues['usage_by_run']['usage']['session_id'] ?? null) === 'session-321'
+    && ($metricValues['usage_by_run']['usage']['usage']['source'] ?? null) === 'bound_pi_session_jsonl', $metrics['output']);
+file_put_contents($metricsRuns . '/usage.json', json_encode(['id' => 'usage', 'contract' => $metricsContract, 'status' => 'completed',
+    'lane' => 'fixture/model', 'started_at' => '2026-09-14T01:00:00+00:00', 'finished_at' => '2026-09-14T01:00:03+00:00',
+    'scope_conformance' => ['ok' => true], 'runner_session' => null, 'usage' => null,
+    'usage_unavailable_reason' => 'runner exposed no usage artefact']) . "\n");
+$nullMetrics = projectTestRun(['metrics', '--project=metrics', '--projects-dir=' . $metricsProjects, '--runs-dir=' . $metricsRuns, '--json']);
+$nullData = json_decode($nullMetrics['output'], true);
+$h->test('18. metrics keeps missing usage null and states the artefact reason', $nullMetrics['code'] === 0
+    && array_key_exists('tokens_total', (array) ($nullData['metrics'] ?? [])) && $nullData['metrics']['tokens_total'] === null
+    && $nullData['metrics']['cost_usd'] === null
+    && str_contains((string) ($nullData['unavailable']['tokens_total'] ?? ''), 'runner exposed no usage artefact')
+    && str_contains((string) ($nullData['unavailable']['tokens_total'] ?? ''), 'not estimated'), $nullMetrics['output']);
 
 removeProjectFixture($base);
 $h->done();

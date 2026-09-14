@@ -15,6 +15,96 @@ const DEFAULT_CONTRACT = '.ai/current-task.md';
 const DEFAULT_DECISIONS_DIR = '.ai/decisions';
 
 /**
+ * The verifier trust surface: the enumerated files whose modification could silently change what
+ * the harness proves. This list is the single source of truth for the trust-surface prohibition and
+ * for the integrity hash recorded by the run ledger (tools/ai-run.php mirrors it; the two are pinned
+ * together by tests/ai_autonomy_test.php and tests/ai_run_test.php).
+ *
+ * CONSTITUTING CHANGE — owner directive 2026-09-14 ("a strict guardrail that you as chair cannot
+ * break"). This matcher was added ONCE, by the Chair, under that explicit directive, to close the
+ * verified fail-open in which a valid contract could list the verifier in `allowed_scope` and thereby
+ * legitimise editing it (CD-23: `check "widen the command allowlist…" --path=tools/ai-run.php`
+ * returned RECORD/L2/exit 0, while the same action aimed at `phpstan.neon` returned ESCALATE/L4).
+ *
+ * This exception is NOT a precedent and cannot be cited as one. Once this matcher is mechanically
+ * effective, any further change to the trust surface requires the director: the Chair may propose,
+ * it may not perform. Amendments to this list are director-only.
+ *
+ * @return list<string>
+ */
+function trustSurfacePaths(): array
+{
+    return [
+        'tools/ai-run.php',
+        'tools/ai-autonomy.php',
+        'tools/ai-project.php',
+        'tools/ai-loop.php',
+        'tools/ai-contract-lint.php',
+        'kernel/Workbench/Development/DevelopmentTaskContract.php',
+        'tools/harpp-bridge/harpp_wake.py',
+    ];
+}
+
+/**
+ * Does one normalized path touch the trust surface?
+ *
+ * Ambiguity resolves toward protection, never toward the executor's preferred reading:
+ *   - an exact trust-surface file matches;
+ *   - a directory that covers a trust-surface file matches (`tools/` covers `tools/ai-run.php`);
+ *   - a glob that could match a trust-surface file matches (`tools/*.php`, `tools/*`);
+ *   - an unresolved or trust-surface-resolving symlink matches.
+ */
+function isTrustSurfacePath(string $path): bool
+{
+    return trustSurfaceCoverage($path) !== [];
+}
+
+/**
+ * Trust-surface files reached by a scope claim. This is deliberately a coverage test rather than an
+ * exact-path test: directories and globs are capabilities over every path they can denote. A broken
+ * symlink cannot be resolved and therefore fails closed as reaching the whole protected surface.
+ *
+ * @return list<string>
+ */
+function trustSurfaceCoverage(string $path): array
+{
+    $path = trim($path, " \t\n\r\0\x0B`\"'");
+    $path = preg_replace('#^\./+#', '', $path) ?? $path;
+    $path = rtrim($path, '/');
+    if ($path === '' || $path === '.') { return []; }
+
+    $reached = [];
+    foreach (trustSurfacePaths() as $trust) {
+        if (preg_match('/[*?\[\]{}]/', $path) === 1) {
+            // The unflagged form is intentionally conservative: `*` may cross `/`, so a broad
+            // claim such as `**/*.php` cannot evade the protection through matcher semantics.
+            if (fnmatch($path, $trust) || fnmatch($path, $trust, defined('FNM_PATHNAME') ? FNM_PATHNAME : 0)) {
+                $reached[] = $trust;
+            }
+        } elseif ($path === $trust || str_starts_with($trust, $path . '/')) {
+            $reached[] = $trust;
+        }
+    }
+
+    $root = dirname(__DIR__);
+    $absolute = $root . '/' . $path;
+    if (is_link($absolute)) {
+        $target = realpath($absolute);
+        if ($target === false) {
+            return trustSurfacePaths();
+        }
+        foreach (trustSurfacePaths() as $trust) {
+            $resolved = realpath($root . '/' . $trust);
+            if ($resolved !== false && ($target === $resolved || str_starts_with($resolved, rtrim($target, '/') . '/'))) {
+                $reached[] = $trust;
+            }
+        }
+    }
+
+    return array_values(array_unique($reached));
+}
+
+/**
  * The single source of truth for L4 policy. Each entry is either a contract-relative trigger
  * (groundable in the contract) or an absolute prohibition (unauthorisable by any contract; no
  * escalation can obtain permission). Path-decidable entries carry matcher keys that enforcement
@@ -39,6 +129,10 @@ function l4Taxonomy(): array
         ['reason' => 'auth, authorisation, policy or security weakening', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['authority']],
         ['reason' => 'disabling, skipping, deleting or weakening an existing test or gate to get a pass', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['existing_test', 'gate_config']],
         ['reason' => 'editing a quality-gate baseline', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['gate_baseline']],
+        // CONSTITUTING CHANGE — owner directive 2026-09-14 ("a strict guardrail that you as chair cannot
+        // break"). Added ONCE, by the Chair, to make the verifier trust surface contract-unreachable.
+        // Not a precedent: subsequent amendments are director-only (see trustSurfacePaths()).
+        ['reason' => 'modifying the verifier trust surface', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['trust_surface']],
         ['reason' => 'deleting audit data or falsifying provenance', 'class' => 'absolute', 'decidable' => false, 'matchers' => []],
         ['reason' => 'silent non-delivery to the director', 'class' => 'absolute', 'decidable' => false, 'matchers' => []],
     ];
@@ -242,6 +336,9 @@ Usage:
   php tools/ai-autonomy.php defer --retry=DECISION_ID [--contract=PATH] [--decisions-dir=DIR]
   php tools/ai-autonomy.php resume <decision-id> (--choose=OPTION_ID|--from-harpp) [--decisions-dir=DIR]
   php tools/ai-autonomy.php status [--decisions-dir=DIR] [--remote] [--state=STATE] [--json]
+  php tools/ai-autonomy.php trust-surface amend --reason=TEXT --director-decision=REF
+                                  Validate and record an authorised amendment and current hash;
+                                  never edits a trust-surface file. Missing/unrecorded decision exits 3.
   php tools/ai-autonomy.php notify --type=PROGRESS|DECISION_REQUIRED|BLOCKED|RELEASE_READY|FAILED --body=TEXT
                                   [--conversation=N] [--title=TEXT]
   php tools/ai-autonomy.php models [--json]
@@ -348,6 +445,128 @@ function runProcess(array $command): array
     $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
     fclose($pipes[1]); fclose($pipes[2]);
     return ['code' => proc_close($process), 'stdout' => $stdout === false ? '' : trim($stdout), 'stderr' => $stderr === false ? '' : trim($stderr)];
+}
+
+/** @return array{hash:?string,files:array<string,?string>} */
+function trustSurfaceDigest(): array
+{
+    $paths = trustSurfacePaths();
+    sort($paths, SORT_STRING);
+    $files = [];
+    $contents = '';
+    $complete = true;
+    foreach ($paths as $path) {
+        $content = @file_get_contents(dirname(__DIR__) . '/' . $path);
+        if ($content === false) {
+            $files[$path] = null;
+            $complete = false;
+            continue;
+        }
+        $files[$path] = hash('sha256', $content);
+        $contents .= $content;
+    }
+    return ['hash' => $complete ? hash('sha256', $contents) : null, 'files' => $files];
+}
+
+/** Resolve a named decision against the two repository decision records. */
+function directorDecisionExists(string $reference, string $decisionsDir, string $chairDecisions): bool
+{
+    $reference = trim($reference);
+    if ($reference === '' || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $reference) !== 1) { return false; }
+    $chair = @file_get_contents($chairDecisions);
+    if ($chair !== false && preg_match('/^##\s+' . preg_quote($reference, '/') . '\b/m', $chair) === 1) { return true; }
+
+    $json = @file_get_contents(rtrim($decisionsDir, '/') . '/' . $reference . '.json');
+    $decision = $json === false ? null : json_decode($json, true);
+    return is_array($decision)
+        && ($decision['decision_id'] ?? null) === $reference
+        && ($decision['schema'] ?? null) === 'ark.workbench-development-decision-request.v1';
+}
+
+/** @return list<string> */
+function supersededTrustSurfaceHashes(string $runsDir, string $amendmentsFile): array
+{
+    $hashes = [];
+    foreach (glob(rtrim($runsDir, '/') . '/*.json') ?: [] as $file) {
+        $record = json_decode((string) @file_get_contents($file), true);
+        $hash = is_array($record) ? ($record['trust_surface_hash'] ?? null) : null;
+        if (is_string($hash) && preg_match('/^[0-9a-f]{64}$/', $hash) === 1) { $hashes[] = $hash; }
+    }
+    $prior = json_decode((string) @file_get_contents($amendmentsFile), true);
+    foreach (is_array($prior) && is_array($prior['amendments'] ?? null) ? $prior['amendments'] : [] as $item) {
+        $hash = is_array($item) ? ($item['trust_surface_hash'] ?? null) : null;
+        if (is_string($hash) && preg_match('/^[0-9a-f]{64}$/', $hash) === 1) { $hashes[] = $hash; }
+    }
+    sort($hashes, SORT_STRING);
+    return array_values(array_unique($hashes));
+}
+
+/**
+ * Record a director-attributed trust-surface amendment and its resulting digest.
+ *
+ * Honest limit: this cannot prove that an authorisation is genuine; no code can. It guarantees that
+ * every accepted amendment is visible, attributed, and tied to a named recorded decision. The route
+ * records and re-hashes only. It never edits a trust-surface file.
+ *
+ * @param array<string,list<string>> $options
+ */
+function commandTrustSurfaceAmend(array $options): int
+{
+    $reference = trim((string) option($options, 'director-decision', ''));
+    $decisionsDir = option($options, 'decisions-dir', DEFAULT_DECISIONS_DIR) ?? DEFAULT_DECISIONS_DIR;
+    $chairDecisions = option($options, 'chair-decisions', '.ai/chair-decisions.md') ?? '.ai/chair-decisions.md';
+    if (!directorDecisionExists($reference, $decisionsDir, $chairDecisions)) {
+        fwrite(STDOUT, "REFUSED: --director-decision must name a recorded decision in {$decisionsDir}/ or a ## CD-<n> heading in {$chairDecisions}\n");
+        fwrite(STDOUT, "Obtain and record the director's decision, then retry trust-surface amend. No trust-surface file was changed.\n");
+        return EXIT_ESCALATE;
+    }
+    $reason = requiredValue(option($options, 'reason'), 'reason');
+    $amendmentsFile = option($options, 'amendments-file', '.ai/trust-surface-amendments.json') ?? '.ai/trust-surface-amendments.json';
+    $runsDir = option($options, 'runs-dir', '.ai/runs') ?? '.ai/runs';
+    $digest = trustSurfaceDigest();
+    if ($digest['hash'] === null) {
+        throw new InvalidArgumentException('trust-surface amendment refused: one or more trust-surface files cannot be read');
+    }
+
+    $document = ['schema' => 'ikabud.trust-surface-amendments.v1', 'amendments' => []];
+    if (is_file($amendmentsFile)) {
+        $loaded = json_decode((string) @file_get_contents($amendmentsFile), true);
+        if (!is_array($loaded) || ($loaded['schema'] ?? null) !== $document['schema'] || !is_array($loaded['amendments'] ?? null)) {
+            throw new InvalidArgumentException("amendment record '{$amendmentsFile}' is malformed");
+        }
+        $document = $loaded;
+    }
+    $sequence = count($document['amendments']) + 1;
+    $record = [
+        'id' => 'TSA-' . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT),
+        'reason' => trim($reason),
+        'director_decision' => $reference,
+        'acting_context' => [
+            'provider' => getenv('PI_PROVIDER') ?: null,
+            'model' => getenv('PI_MODEL') ?: null,
+            'session_id' => getenv('PI_SESSION_ID') ?: null,
+            'user' => getenv('USER') ?: null,
+            'working_directory' => getcwd() ?: null,
+        ],
+        'recorded_at' => date(DATE_ATOM),
+        'trust_surface_hash' => $digest['hash'],
+        'trust_surface_files' => $digest['files'],
+        'supersedes_hashes' => supersededTrustSurfaceHashes($runsDir, $amendmentsFile),
+        'trust_surface_files_changed_by_route' => false,
+    ];
+    $document['amendments'][] = $record;
+    $dir = dirname($amendmentsFile);
+    if (!is_dir($dir) && !@mkdir($dir, 0777, true) && !is_dir($dir)) {
+        throw new InvalidArgumentException("amendment record directory '{$dir}' cannot be created");
+    }
+    if (@file_put_contents($amendmentsFile, encodeJson($document, true) . "\n", LOCK_EX) === false) {
+        throw new InvalidArgumentException("amendment record '{$amendmentsFile}' cannot be written");
+    }
+
+    fwrite(STDOUT, "TRUST-SURFACE AMENDMENT RECORDED {$record['id']}\n");
+    fwrite(STDOUT, "  decision: {$reference}\n  reason:   {$record['reason']}\n  recorded: {$record['recorded_at']}\n  hash:     {$record['trust_surface_hash']}\n");
+    fwrite(STDOUT, "  record:   {$amendmentsFile}\nNO TRUST-SURFACE FILE WAS CHANGED BY THIS ROUTE; it only validated, recorded and re-hashed.\n");
+    return EXIT_OK;
 }
 
 /** Locate HARPP through PATH, never through a hardcoded path. */
@@ -482,9 +701,88 @@ function workflowManifest(array $contract, string $contractPath): array
     return ['title' => 'Ikabud governed autonomy loop', 'stages' => $stages];
 }
 
+/**
+ * Allowed or baseline scope claims that cover the verifier. Rule 3 is about consequence, not syntax:
+ * naming `tools/`, `tools/ai-*.php`, or an even broader glob grants the same capability as naming the
+ * protected file exactly, so all are refused. The reached path is retained for an actionable error.
+ *
+ * @param array<string,mixed> $contract
+ * @return list<array{entry:string,path:string}>
+ */
+function planTrustSurfaceViolations(array $contract): array
+{
+    $violations = [];
+    $scope = array_merge((array) ($contract['allowed_scope'] ?? []), (array) ($contract['baseline_scope'] ?? []));
+    foreach ($scope as $entry) {
+        if (!is_array($entry)) { continue; }
+        $claim = (string) ($entry['path'] ?? '');
+        // Derive this prohibition through the taxonomy rather than maintaining a second policy list.
+        if (trustSurfaceMatches([$claim]) === []) { continue; }
+        foreach (trustSurfaceCoverage($claim) as $reached) {
+            $violations[$claim . '|' . $reached] = ['entry' => $claim, 'path' => $reached];
+        }
+    }
+    return array_values($violations);
+}
+
+/**
+ * Trust-surface paths explicitly named by free-text action prose. Only path-shaped tokens are
+ * considered — a token containing a directory separator, or a filename that exactly matches a
+ * trust-surface basename. A bare word is not promoted into a path claim.
+ *
+ * @return list<string>
+ */
+function trustSurfaceMentions(string $action): array
+{
+    $mentions = [];
+    if (preg_match_all('~[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.*?\[\]{}\-]+)+~', $action, $matches) !== false) {
+        foreach ($matches[0] as $token) {
+            $candidate = rtrim(trim($token, "`\"',;:"), '/');
+            if ($candidate !== '' && isTrustSurfacePath($candidate)) {
+                $mentions[] = $candidate;
+            }
+        }
+    }
+    foreach (trustSurfacePaths() as $trust) {
+        $base = basename($trust);
+        if (preg_match('~(?<![A-Za-z0-9_.\-])' . preg_quote($base, '~') . '(?![A-Za-z0-9_.\-])~', $action) === 1) {
+            $mentions[] = $trust;
+        }
+    }
+    return array_values(array_unique($mentions));
+}
+
+/**
+ * Absolute trust-surface matches for candidates derived from action text. The reason and class come
+ * from l4Taxonomy(), so the action-text path cannot drift from the single policy list.
+ *
+ * @param list<string> $candidates
+ * @return list<array{reason:string,class:string,path:string,matcher:string}>
+ */
+function trustSurfaceMatches(array $candidates): array
+{
+    $matches = [];
+    foreach (l4Taxonomy() as $entry) {
+        if (($entry['class'] ?? '') !== 'absolute' || !in_array('trust_surface', (array) ($entry['matchers'] ?? []), true)) {
+            continue;
+        }
+        foreach ($candidates as $candidate) {
+            if (isTrustSurfacePath($candidate)) {
+                $matches[] = ['reason' => (string) $entry['reason'], 'class' => 'absolute', 'path' => $candidate, 'matcher' => 'trust_surface'];
+            }
+        }
+    }
+    return $matches;
+}
+
 /** @param array<string,mixed> $contract */
 function commandPlan(array $contract, string $contractPath, string $directory, bool $json, ?string $manifestPath, bool $manifestStdout): int
 {
+    $trustViolations = planTrustSurfaceViolations($contract);
+    if ($trustViolations !== []) {
+        $details = array_map(static fn (array $item): string => "entry '{$item['entry']}' reaches '{$item['path']}'", $trustViolations);
+        throw new InvalidArgumentException('contract names the verifier trust surface in its scope and is refused: ' . implode('; ', $details) . ' — the trust surface is not contract-authorisable (owner directive 2026-09-14)');
+    }
     $pending = count(array_filter(decisions($directory), static fn (array $i): bool => !isset($i['resolution'])));
     $allowed = (array) $contract['allowed_scope']; $forbidden = (array) $contract['forbidden_scope'];
     $forbiddenRules = array_values(array_map('strval', (array) ($contract['forbidden_rules'] ?? [])));
@@ -568,6 +866,7 @@ function taxonomyMatcherMatches(string $matcher, string $path): bool
         'existing_test' => isExistingTestPath($path),
         'gate_config' => isGateConfigPath($path),
         'gate_baseline' => preg_match('#(^|/)phpstan-baseline\.neon$#', $path) === 1,
+        'trust_surface' => isTrustSurfacePath($path),
         default => false,
     };
 }
@@ -652,7 +951,10 @@ function commandCheck(array $contract, string $action, array $paths, string $lev
         }
     }
     if ($resolved !== 'L4') {
-        $matches = sensitiveMatches($paths);
+        $matches = array_merge(sensitiveMatches($paths), trustSurfaceMatches(trustSurfaceMentions($action)));
+        $unique = [];
+        foreach ($matches as $match) { $unique[$match['matcher'] . '|' . $match['path']] = $match; }
+        $matches = array_values($unique);
         $absolute = array_values(array_filter($matches, static fn (array $match): bool => $match['class'] === 'absolute'));
         if ($absolute !== []) {
             $resolved = 'L4';
@@ -910,8 +1212,13 @@ function main(): int
 {
     $args = $_SERVER['argv']; array_shift($args);
     if ($args === [] || in_array('--help', $args, true)) { usage(); return EXIT_OK; }
-    $command = array_shift($args); if (!in_array($command, ['plan', 'check', 'defer', 'resume', 'status', 'notify', 'models', 'stop-report'], true)) { throw new InvalidArgumentException("unknown command '{$command}'"); }
+    $command = array_shift($args); if (!in_array($command, ['plan', 'check', 'defer', 'resume', 'status', 'notify', 'models', 'stop-report', 'trust-surface'], true)) { throw new InvalidArgumentException("unknown command '{$command}'"); }
     $p = parseArguments($args);
+    if ($command === 'trust-surface') {
+        validateArgumentNames($p, ['reason', 'director-decision', 'decisions-dir', 'chair-decisions', 'amendments-file', 'runs-dir'], []);
+        if ($p['positionals'] !== ['amend']) { throw new InvalidArgumentException('trust-surface requires the subcommand amend'); }
+        return commandTrustSurfaceAmend($p['options']);
+    }
     if ($command === 'stop-report') {
         validateArgumentNames($p, ['remaining', 'stop-reason'], ['json']);
         if ($p['positionals'] !== []) { throw new InvalidArgumentException("offending argument: '{$p['positionals'][0]}'"); }

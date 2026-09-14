@@ -55,13 +55,39 @@ function lintDetail(array $run): string
     return "command: {$run['command']}\nexit: {$run['code']}\noutput:\n{$run['output']}";
 }
 
+/**
+ * Run the driver's plan directly. The lint reduces a refusal to `parse: false`, so this observes the
+ * refusal reason (the trust-surface rule) that the lint's exit-code-only view cannot distinguish
+ * from a parse regression.
+ *
+ * @param list<string> $arguments
+ * @return array{code:int,output:string,command:string}
+ */
+function lintPlanRun(array $arguments): array
+{
+    $command = array_merge([PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php'], $arguments);
+    $rendered = implode(' ', array_map('escapeshellarg', $command));
+    $pipes = [];
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__), null, ['bypass_shell' => true]);
+    if (!is_resource($process)) {
+        return ['code' => 127, 'output' => 'proc_open failed', 'command' => $rendered];
+    }
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+
+    return ['code' => proc_close($process), 'output' => trim(($stdout === false ? '' : $stdout) . ($stderr === false ? '' : $stderr)), 'command' => $rendered];
+}
+
 /** Build a parseable contract fixture. @param list<string> $forbidden */
 function lintFixtureMarkdown(array $forbidden): string
 {
     return "# CONTRACT — lint fixture\n"
         . "## Objective\nLint phantom fixture.\n"
         . "## Architectural constraints\n- none\n"
-        . "## Files likely affected\n- `tools/` — safe work\n"
+        . "## Files likely affected\n- `docs/` — safe work\n"
         . "## Acceptance criteria\n- ok\n"
         . "## Required tests\n- `php -l tools/ai-contract-lint.php`\n"
         . "## Risks\n- none\n"
@@ -109,10 +135,16 @@ foreach (is_array($corpus['contracts'] ?? null) ? $corpus['contracts'] : [] as $
         break;
     }
 }
+// This historical contract names the verifier trust surface in `Files likely affected`. Under CD-21
+// rule 1 (owner directive 2026-09-14) the driver now refuses it outright (exit 2), so the lint's
+// `parse` is false for the intended reason rather than a parser regression. Directory-only
+// prohibitions still yield 0 phantoms through the raw-bullet fallback.
+$scopeRefusal = lintPlanRun(['plan', '--json', '--contract=.ai/scope-path-semantics.contract.md']);
 $h->test(
-    '3. corpus lint parses every contract and the fixed rule gives 0 phantoms for directory-only prohibitions',
-    $corpusOk && is_array($scopePath) && $scopePath['parse'] === true && $scopePath['phantoms'] === 0,
-    'exit=' . $corpusRun['code'] . ' summary=' . json_encode($corpus['summary'] ?? null) . ' scope-path=' . json_encode($scopePath)
+    '3. corpus lint keeps directory-only prohibitions phantom-free; a trust-surface contract is refused',
+    $corpusOk && is_array($scopePath) && $scopePath['parse'] === false && $scopePath['phantoms'] === 0
+        && $scopeRefusal['code'] === 2 && str_contains($scopeRefusal['output'], 'not contract-authorisable'),
+    'exit=' . $corpusRun['code'] . ' summary=' . json_encode($corpus['summary'] ?? null) . ' scope-path=' . json_encode($scopePath) . "\nrefusal:\n" . lintDetail($scopeRefusal)
 );
 
 @unlink($legit);

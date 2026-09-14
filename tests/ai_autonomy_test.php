@@ -88,9 +88,9 @@ $contractText = <<<'MD'
 ## Objective
 Exercise bounded autonomy without widening its fixture scope.
 ## Architectural constraints
-- Keep all fixture edits under tools/.
+- Keep fixture edits within the declared paths.
 ## Files likely affected
-- `tools/` — fixture scope
+- `tools/migrations/` — fixture scope
 - `README.fixture.md` — fixture file
 ## Acceptance criteria
 - DDL migration is explicitly approved for this fixture.
@@ -218,7 +218,8 @@ Prove the absolute prohibition floor.
 - `.github/workflows/` — CI
 - `tests/` — tests
 - `modules/cms-akira/cms-akira-core/tests/` — module tests
-- `tools/` — safe work
+- `tools/migrations/` — safe work
+- `docs/` — ordinary safe work
 - `composer.json` — dependency
 - `package.json` — dependency
 - `modules/cms-akira/cms-akira-core/module.json` — manifest
@@ -266,14 +267,18 @@ $h->test('27. plan --json emits the ten-key projection with expected types', $pl
 
 $taxonomy = is_array($plan) && is_array($plan['l4_taxonomy'] ?? null) ? $plan['l4_taxonomy'] : [];
 $matcherProbe = ['ddl' => 'tools/migrations/probe.sql', 'dependency' => 'composer.json', 'module_manifest' => 'modules/cms-akira/cms-akira-core/module.json',
-    'authority' => 'kernel/Capabilities/Probe.php', 'existing_test' => 'tests/entity_fallback_test.php', 'gate_config' => 'phpstan.neon', 'gate_baseline' => 'phpstan-baseline.neon'];
+    'authority' => 'kernel/Capabilities/Probe.php', 'existing_test' => 'tests/entity_fallback_test.php', 'gate_config' => 'phpstan.neon', 'gate_baseline' => 'phpstan-baseline.neon',
+    'trust_surface' => 'tools/ai-run.php'];
+$taxonomyTrustContract = $fixture . '/taxonomy-trust-contract.md';
+file_put_contents($taxonomyTrustContract, str_replace('`docs/` — ordinary safe work', '`tools/ai-run.php` — taxonomy trust probe', $safetyContractText));
 $taxonomyFailures = []; $decidableEntries = 0;
 foreach ($taxonomy as $entry) {
     if (!is_array($entry) || ($entry['decidable'] ?? false) !== true) { continue; }
     $decidableEntries++;
     foreach ((array) ($entry['matchers'] ?? []) as $matcher) {
         if (!isset($matcherProbe[$matcher])) { $taxonomyFailures[] = "no probe for {$matcher}"; continue; }
-        $probe = $run(['check', 'taxonomy probe', "--path={$matcherProbe[$matcher]}", "--contract={$safetyContract}"]);
+        $probeContract = $matcher === 'trust_surface' ? $taxonomyTrustContract : $safetyContract;
+        $probe = $run(['check', 'taxonomy probe', "--path={$matcherProbe[$matcher]}", "--contract={$probeContract}"]);
         if ($probe['code'] !== 3 || !str_contains($probe['output'], (string) $entry['reason'])) {
             $taxonomyFailures[] = "{$matcher}: exit {$probe['code']} reason=" . (str_contains($probe['output'], (string) $entry['reason']) ? 'present' : 'absent');
         }
@@ -316,7 +321,7 @@ Show the harness block is detected.
 ## Architectural constraints
 - none
 ## Files likely affected
-- `tools/` — safe work
+- `docs/` — safe work
 ## Acceptance criteria
 - ok
 ## Required tests
@@ -344,7 +349,7 @@ Show a dropped forbidden bullet.
 ## Architectural constraints
 - none
 ## Files likely affected
-- `tools/` — safe work
+- `docs/` — safe work
 ## Acceptance criteria
 - ok
 ## Required tests
@@ -387,6 +392,116 @@ $intersectWarnings = is_array($intersectData) ? implode("\n", (array) $intersect
 $intersectCheck = $run(['check', 'edit the referenced contract', '--path=.ai/ai-autonomy-harness.contract.md', "--contract={$intersectContract}"]);
 $h->test('38. plan warns on an allowed/forbidden intersection naming both entries', $intersectRun['code'] === 0 && str_contains($intersectWarnings, 'intersects') && str_contains($intersectWarnings, '.ai/ai-autonomy-harness.contract.md') && str_contains($intersectWarnings, 'forbidden'), runDetail($intersectRun));
 $h->test('39. check still applies fail-closed precedence to the forbidden entry', $intersectCheck['code'] === 3 && str_contains($intersectCheck['output'], 'forbidden'), runDetail($intersectCheck));
+
+$h->section('The verifier trust surface is contract-unreachable (CD-21 rule 1)');
+$trustPaths = ['tools/ai-run.php', 'tools/ai-autonomy.php', 'tools/ai-project.php', 'tools/ai-loop.php',
+    'tools/ai-contract-lint.php', 'kernel/Workbench/Development/DevelopmentTaskContract.php',
+    'tools/harpp-bridge/harpp_wake.py'];
+$trustContractText = <<<'MD'
+# CONTRACT — trust surface refusal fixture
+## Objective
+Prove the verifier trust surface is not contract-authorisable.
+## Architectural constraints
+- none
+## Files likely affected
+- `tools/ai-run.php` — the verifier
+## Acceptance criteria
+- refused
+## Required tests
+- `php -l tools/ai-run.php`
+## Risks
+- none
+## Forbidden changes
+- `forbidden/` — never touch
+MD;
+$trustScopeContractText = <<<'MD'
+# CONTRACT — trust scope fixture
+## Objective
+Name the whole trust surface to prove check still refuses it inside allowed scope.
+## Architectural constraints
+- none
+## Files likely affected
+- `tools/ai-run.php`
+- `tools/ai-autonomy.php`
+- `tools/ai-project.php`
+- `tools/ai-loop.php`
+- `tools/ai-contract-lint.php`
+- `kernel/Workbench/Development/DevelopmentTaskContract.php`
+- `tools/harpp-bridge/harpp_wake.py`
+- `tools/` — a directory capability over the verifier
+- `tools/*.php` — an in-scope glob that could match a trust-surface file
+- `**/*.php` — a broad in-scope glob that reaches the verifier
+## Acceptance criteria
+- checked
+## Required tests
+- `php -l tools/ai-run.php`
+## Risks
+- none
+## Forbidden changes
+- `forbidden/` — never touch
+MD;
+$trustContract = $fixture . '/trust-contract.md';
+$trustScopeContract = $fixture . '/trust-scope-contract.md';
+file_put_contents($trustContract, $trustContractText);
+file_put_contents($trustScopeContract, $trustScopeContractText);
+$trustPlan = $run(['plan', '--json', "--contract={$trustContract}", "--decisions-dir={$decisions}"]);
+$h->test('40. plan refuses a contract that names a trust-surface path, naming it', $trustPlan['code'] === 2 && str_contains($trustPlan['output'], 'tools/ai-run.php') && str_contains($trustPlan['output'], 'not contract-authorisable'), runDetail($trustPlan));
+$trustPlanAll = $run(['plan', '--json', "--contract={$trustScopeContract}", "--decisions-dir={$decisions}"]);
+$h->test('40a. plan refuses a contract naming several trust-surface paths', $trustPlanAll['code'] === 2 && str_contains($trustPlanAll['output'], 'tools/ai-loop.php') && str_contains($trustPlanAll['output'], 'harpp_wake.py'), runDetail($trustPlanAll));
+
+$trustEscalations = [];
+foreach ($trustPaths as $trustPath) {
+    $probe = $run(['check', 'modify the verifier', "--path={$trustPath}", "--contract={$trustScopeContract}"]);
+    if ($probe['code'] !== 3 || !str_contains($probe['output'], 'VERDICT: ESCALATE') || !str_contains($probe['output'], 'absolute prohibition')) {
+        $trustEscalations[] = "{$trustPath}: exit {$probe['code']}";
+    }
+}
+$h->test('41. every enumerated trust-surface path escalates even when the contract allows it', $trustEscalations === [], 'failures=' . encodeForDetail($trustEscalations));
+$trustActionOnly = $run(['check', 'edit tools/ai-run.php to widen the allowlist', "--contract={$trustScopeContract}"]);
+$h->test('42. action text naming the verifier escalates without a --path', $trustActionOnly['code'] === 3 && str_contains($trustActionOnly['output'], 'VERDICT: ESCALATE') && str_contains($trustActionOnly['output'], 'trust surface'), runDetail($trustActionOnly));
+$trustGlob = $run(['check', 'edit every php tool', '--path=tools/*.php', "--contract={$trustScopeContract}"]);
+$h->test('43. a glob that could match a trust-surface file fails closed', $trustGlob['code'] === 3 && str_contains($trustGlob['output'], 'VERDICT: ESCALATE') && str_contains($trustGlob['output'], 'trust surface'), runDetail($trustGlob));
+$trustDirectory = $run(['check', 'change the tools directory', '--path=tools/', "--contract={$trustScopeContract}"]);
+$trustBroadGlob = $run(['check', 'change broad PHP scope', '--path=**/*.php', "--contract={$trustScopeContract}"]);
+$h->test('43a. check escalates directory and broad-glob capabilities that cover the trust surface', $trustDirectory['code'] === 3
+    && $trustBroadGlob['code'] === 3 && str_contains($trustDirectory['output'], 'trust surface') && str_contains($trustBroadGlob['output'], 'trust surface'), runDetail($trustDirectory) . "\n---\n" . runDetail($trustBroadGlob));
+$ordinaryProbe = $run(['check', 'update the fixture notes', '--path=docs/guardrail-notes.md', "--contract={$safetyContract}"]);
+$h->test('44. an ordinary in-scope path still records (non-vacuity guard)', $ordinaryProbe['code'] === 0 && str_contains($ordinaryProbe['output'], 'VERDICT: RECORD') && str_contains($ordinaryProbe['output'], 'level: L2'), runDetail($ordinaryProbe));
+
+$scopeFixture = static function (string $path) use ($fixture, $trustContractText): string {
+    $file = $fixture . '/scope-' . substr(hash('sha256', $path), 0, 8) . '.md';
+    file_put_contents($file, str_replace('`tools/ai-run.php` — the verifier', '`' . $path . '` — coverage probe', $trustContractText));
+    return $file;
+};
+$broadScopePlan = $run(['plan', '--json', '--contract=' . $scopeFixture('tools/'), "--decisions-dir={$decisions}"]);
+$toolGlobPlan = $run(['plan', '--json', '--contract=' . $scopeFixture('tools/ai-*.php'), "--decisions-dir={$decisions}"]);
+$globalGlobPlan = $run(['plan', '--json', '--contract=' . $scopeFixture('**/*.php'), "--decisions-dir={$decisions}"]);
+$docsPlan = $run(['plan', '--json', '--contract=' . $scopeFixture('docs/'), "--decisions-dir={$decisions}"]);
+$h->test('45. directory scope covering the verifier is refused and names a reached path', $broadScopePlan['code'] === 2 && str_contains($broadScopePlan['output'], "entry 'tools'") && str_contains($broadScopePlan['output'], 'tools/ai-run.php'), runDetail($broadScopePlan));
+$h->test('46. tool glob covering the verifier is refused', $toolGlobPlan['code'] === 2 && str_contains($toolGlobPlan['output'], "entry 'tools/ai-*.php'") && str_contains($toolGlobPlan['output'], 'tools/ai-run.php'), runDetail($toolGlobPlan));
+$h->test('47. broad PHP glob covering the verifier is refused', $globalGlobPlan['code'] === 2 && str_contains($globalGlobPlan['output'], "entry '**/*.php'") && str_contains($globalGlobPlan['output'], 'tools/ai-run.php'), runDetail($globalGlobPlan));
+$h->test('48. docs directory remains plannable (positive control)', $docsPlan['code'] === 0 && !str_contains($docsPlan['output'], 'ERROR: contract names the verifier trust surface'), runDetail($docsPlan));
+if (getenv('AI_AUTONOMY_SHOW_SCOPE_PROOFS') === '1') {
+    foreach (['tools/' => $broadScopePlan, 'tools/ai-*.php' => $toolGlobPlan, '**/*.php' => $globalGlobPlan, 'docs/' => $docsPlan] as $scope => $proof) {
+        fwrite(STDOUT, "PLAN_SCOPE_PROOF {$scope} internal_exit={$proof['code']}\n{$proof['output']}\nPLAN_SCOPE_PROOF_END\n");
+    }
+}
+
+$chairFixture = $fixture . '/chair-decisions.md';
+$amendmentsFixture = $fixture . '/trust-surface-amendments.json';
+file_put_contents($chairFixture, "# Decisions\n\n## CD-99 — fixture director decision\n\nApproved.\n");
+$amendMissing = $run(['trust-surface', 'amend', '--reason=fixture', "--chair-decisions={$chairFixture}", "--decisions-dir={$decisions}", "--amendments-file={$amendmentsFixture}"]);
+$amendUnknown = $run(['trust-surface', 'amend', '--reason=fixture', '--director-decision=CD-404', "--chair-decisions={$chairFixture}", "--decisions-dir={$decisions}", "--amendments-file={$amendmentsFixture}"]);
+$amendOk = $run(['trust-surface', 'amend', '--reason=fixture route proof', '--director-decision=CD-99', "--chair-decisions={$chairFixture}", "--decisions-dir={$decisions}", "--amendments-file={$amendmentsFixture}"]);
+$amendmentDocument = json_decode((string) @file_get_contents($amendmentsFixture), true);
+$amendment = is_array($amendmentDocument) && is_array($amendmentDocument['amendments'][0] ?? null) ? $amendmentDocument['amendments'][0] : [];
+$h->test('49. trust-surface amend refuses absent and unknown decisions with exit 3', $amendMissing['code'] === 3 && $amendUnknown['code'] === 3 && str_contains($amendMissing['output'], 'No trust-surface file was changed'), runDetail($amendMissing) . "\n---\n" . runDetail($amendUnknown));
+$h->test('50. trust-surface amend records reason, real decision, context, timestamp and hash without editing the surface', $amendOk['code'] === 0
+    && ($amendment['reason'] ?? null) === 'fixture route proof' && ($amendment['director_decision'] ?? null) === 'CD-99'
+    && is_array($amendment['acting_context'] ?? null) && is_string($amendment['recorded_at'] ?? null)
+    && preg_match('/^[0-9a-f]{64}$/', (string) ($amendment['trust_surface_hash'] ?? '')) === 1
+    && ($amendment['trust_surface_files_changed_by_route'] ?? null) === false
+    && str_contains($amendOk['output'], 'NO TRUST-SURFACE FILE WAS CHANGED'), runDetail($amendOk) . "\nrecord=" . encodeForDetail($amendment));
 
 removeFixture($fixture);
 $h->done();

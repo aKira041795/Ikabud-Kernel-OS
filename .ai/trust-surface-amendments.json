@@ -1,0 +1,119 @@
+{
+    "schema": "ikabud.trust-surface-amendments.v1",
+    "amendments": [
+        {
+            "id": "TSA-0001",
+            "reason": "Close final bootstrap: scope coverage, director ledger provenance, and A-F2 dispatch-baseline gate",
+            "director_decision": "CD-28",
+            "acting_context": {
+                "provider": "openai-codex",
+                "model": "gpt-5.6-sol",
+                "session_id": "01a09e8b-e00e-7388-ad40-59b3850bcb4e",
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-14T06:30:54+00:00",
+            "trust_surface_hash": "2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+                "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "a5ce19d2a05772e90747b5636fa287c31eba35adf11b7396af80f0b8ece21438",
+                "tools/ai-project.php": "94e8d84cc278912db487c45b0e5265ab62243a5bf5fa2a96527b6191316c3039",
+                "tools/ai-run.php": "d02b16504cdd729f20d7b268c067aacbd89646ac173fe469039800af955f367b",
+                "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+            },
+            "supersedes_hashes": [
+                "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
+            ],
+            "trust_surface_files_changed_by_route": false
+        },
+        {
+            "id": "TSA-0002",
+            "reason": "Final re-hash after binding A-F2 to the dispatch contract revision",
+            "director_decision": "CD-28",
+            "acting_context": {
+                "provider": "openai-codex",
+                "model": "gpt-5.6-sol",
+                "session_id": "01a09e8b-e00e-7388-ad40-59b3850bcb4e",
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-14T06:33:44+00:00",
+            "trust_surface_hash": "7b84a2daec6a02a61c96ab8466d7cb363d62bb7aeea8580956a9a7b9ba097175",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+                "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "a5ce19d2a05772e90747b5636fa287c31eba35adf11b7396af80f0b8ece21438",
+                "tools/ai-project.php": "94e8d84cc278912db487c45b0e5265ab62243a5bf5fa2a96527b6191316c3039",
+                "tools/ai-run.php": "0e1e8cb9624342648f90b29c7c252aaf83d3e32d71452f0ca832adfbd64252ca",
+                "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+            },
+            "supersedes_hashes": [
+                "2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764",
+                "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
+            ],
+            "trust_surface_files_changed_by_route": false
+        },
+        {
+            "id": "TSA-0003",
+            "reason": "Final re-hash after forwarding director provenance through ai-loop",
+            "director_decision": "CD-28",
+            "acting_context": {
+                "provider": "openai-codex",
+                "model": "gpt-5.6-sol",
+                "session_id": "01a09e8b-e00e-7388-ad40-59b3850bcb4e",
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-14T06:40:06+00:00",
+            "trust_surface_hash": "0b1957d16ee273120e5d6dbce66b352b85db1ff1c00e1d779ed6a6d7a1103fd9",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+                "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "21fb89fec18636d41b19e08c570c32e2cf0cc99c1cd1498f131b8b4f002b2338",
+                "tools/ai-project.php": "94e8d84cc278912db487c45b0e5265ab62243a5bf5fa2a96527b6191316c3039",
+                "tools/ai-run.php": "0e1e8cb9624342648f90b29c7c252aaf83d3e32d71452f0ca832adfbd64252ca",
+                "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+            },
+            "supersedes_hashes": [
+                "2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764",
+                "7b84a2daec6a02a61c96ab8466d7cb363d62bb7aeea8580956a9a7b9ba097175",
+                "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
+            ],
+            "trust_surface_files_changed_by_route": false
+        },
+        {
+            "id": "TSA-0004",
+            "reason": "Final re-hash after documenting dirty-tree scope-conformance semantics",
+            "director_decision": "CD-28",
+            "acting_context": {
+                "provider": "openai-codex",
+                "model": "gpt-5.6-sol",
+                "session_id": "01a09e8b-e00e-7388-ad40-59b3850bcb4e",
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-14T06:41:19+00:00",
+            "trust_surface_hash": "ac235c5bbab3ea0124dfa9ea1800497c51c44aa5d6f0fef765275d0f003edd9c",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+                "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "21fb89fec18636d41b19e08c570c32e2cf0cc99c1cd1498f131b8b4f002b2338",
+                "tools/ai-project.php": "6a6db641f13dc4b9a12611cff3d25d025a66149fb932ea43a8175ad3d75f592e",
+                "tools/ai-run.php": "0e1e8cb9624342648f90b29c7c252aaf83d3e32d71452f0ca832adfbd64252ca",
+                "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+            },
+            "supersedes_hashes": [
+                "0b1957d16ee273120e5d6dbce66b352b85db1ff1c00e1d779ed6a6d7a1103fd9",
+                "2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764",
+                "7b84a2daec6a02a61c96ab8466d7cb363d62bb7aeea8580956a9a7b9ba097175",
+                "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
+            ],
+            "trust_surface_files_changed_by_route": false
+        }
+    ]
+}
