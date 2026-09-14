@@ -1720,3 +1720,52 @@ comparison, with **two guards that are the whole design**: a declared harness ar
 trust-surface path or lie inside `forbidden_scope`, and the declaration must be made **at `start`, never at
 `finish`** — because an artefact declared after the evidence exists is not a declaration, it is an exemption
 shaped to fit what the run happened to touch.
+
+## CD-38 — The HARPP test: a real project completes through all four rules, unattended
+
+**Result** (`311a480`, pushed):
+
+```
+PLAN S5 lane=deepseek/deepseek-v4-flash
+COMMIT-CHECK before S5: exit=0
+LEDGER start / LEDGER finish … status=completed
+SCOPE OK delta=1                     <- the executor's delta, harness writes excluded
+CLAIMS extracted=7
+VERIFY statuses=RE_DERIVED x7        <- including both python3 -m py_compile claims
+ADVANCE S5: all claims RE_DERIVED
+PROJECT COMPLETE harpp-gen4         <- remaining=0  (S2, S3, S6, S4, S5 all done)
+```
+
+**This closes the gap CD-26 named.** Until today, every result the Chair could certify was a **STOP** — S5
+blocking, A-F1 refusing, D3 blocking, D4 refusing a foreign record. **The advance had never been demonstrated
+end to end.** It now has been, with both gates visible in the event stream: evidence re-derived by execution,
+scope conformance proven, project complete.
+
+**CD-25 invariant 3 held in practice.** Completion was established by `7/7 RE_DERIVED` plus proven scope
+conformance — **not** asserted. The machinery reached the conclusion, and the Chair's opinion had no standing
+over the verifier at any point in the chain.
+
+**Honest bounds on the claim, stated so it is not over-read:**
+- **One slice under the full guardrail set.** S5 ran with all four rules, A-F2, the ladder and declared
+  artefacts. S2/S3/S6/S4 advanced earlier under weaker guardrails, so *five done slices* is not *five
+  slices proven under today's rules*.
+- **Repeatability is still unmeasured.** The plan's bar was ≥2 consecutive unattended slices under the current
+  rules. The sample is one. Completion of a project is not the same evidence as a streak.
+- **B-F1 remains open** — a vacuous verifier (`verify="true"`) still advances a job on the Python side. It is
+  the last hole of the "no error signal" class, and it is the one that would restore false confidence rather
+  than merely inconvenience: CD-26's `fail-safe proven / succeed-safe not` line now reads *succeed-safe
+  demonstrated once, still with one vacuity path open*.
+- **CD-36's disposition mechanism** (repair / acknowledge / escalate as recorded state) is designed, not built.
+- **Cost figures remain unproduced** even though the derivation path exists.
+
+**The pattern worth keeping, and it is the real finding of the day:** **every** trust-surface change (five of
+them) was caused by the harness discovering that **its own mechanics were under-specified** — the allowlist
+spoke one language, the loop could not carry an authorisation, the scope gate blamed the harness for its own
+writes, a comment could declare a slice, a verifier defined by *file* boundaries over-triggers. **Not one was
+caused by a defect in the work the harness was judging.** The guardrail held; the plumbing around it kept
+failing. That is the better of the two possible failure modes, and it is also the honest answer to whether the
+architecture is sound: the invariant is sound, and its *definition* is still partly prose-shaped — which is
+why five authorisations were needed rather than one.
+
+**Authority:** owner decision ("A is approved", CD-37) for the repair; result verified by the Chair.
+**Owner intervention:** not required.
