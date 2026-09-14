@@ -1,0 +1,86 @@
+{
+    "schema": "ark.ai-project-metrics.v1",
+    "project": "gen4-r1",
+    "generated_at": "2026-09-14T16:17:27+00:00",
+    "tool_written": true,
+    "source": "derived from .ai/runs/*.json matched to this project, the project slice table, chair-decisions.md headings, chair-errors.json and director-minutes.json; no model judgement, no estimation",
+    "metrics": {
+        "slices_dispatched": 1,
+        "slices_completed": 1,
+        "slices_dispatched_ids": [
+            "S1"
+        ],
+        "slices_completed_ids": [
+            "S1"
+        ],
+        "runs_by_status": {
+            "completed": 5,
+            "silent": 0,
+            "failed": 0,
+            "abandoned": 0,
+            "blocked": 0,
+            "running": 0,
+            "other": 0
+        },
+        "lane_distribution": {
+            "deepseek/deepseek-v4-flash": 5
+        },
+        "wall_clock_seconds_by_slice": {
+            "S1": 2223
+        },
+        "wall_clock_seconds_total": 2223,
+        "claim_outcomes": {
+            "RE_DERIVED": 7,
+            "CONTRADICTED": 0,
+            "UNVERIFIED": 5,
+            "other": 0
+        },
+        "chair_decisions": 45,
+        "chair_decisions_incorrect": 7,
+        "chair_errors": [
+            "CE-01",
+            "CE-02",
+            "CE-03",
+            "CE-04",
+            "CE-05",
+            "CE-06",
+            "CE-07"
+        ],
+        "contract_violations": 0,
+        "cost_usd": null,
+        "tokens_total": null,
+        "usage_by_run": {
+            "gen4-r1-s1-20260914153917-4ff23f": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914160024-b44be7": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914160412-87ff12": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914160753-631a86": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914161207-dae802": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            }
+        },
+        "director_minutes": null
+    },
+    "unavailable": {
+        "cost_usd": "run gen4-r1-s1-20260914153917-4ff23f: runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact; project totals are null, not estimated",
+        "tokens_total": "run gen4-r1-s1-20260914153917-4ff23f: runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact; project totals are null, not estimated",
+        "director_minutes": "director-minutes.json is absent; the director has not logged any minutes (not zero)"
+    }
+}

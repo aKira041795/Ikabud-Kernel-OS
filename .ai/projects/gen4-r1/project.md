@@ -65,8 +65,8 @@ would measure the harness against itself, which is the one thing this project mu
 
 | id | slice | source | status |
 |---|---|---|---|
-| **S1** | the stale `runs_by_status` assertion in the metrics suite | CD-41 (left red for want of authority) | pending |
-| later | further slices, drawn from the programme briefs | programme briefs | pending |
+| **S1** | the stale `runs_by_status` assertion in the metrics suite | CD-41 (left red for want of authority) | **done** — advanced on the 4th attempt, commit `02a4559` |
+| **S2** | declare the last two undeclared write routes (both in `gui-settings`), 45/47 → 47/47 | `docs/architecture/akira-beyond-the-cms.md` §P2, via `.ai/authority-route-coverage-akira.contract.md` | pending |
 
 **Do not write a placeholder slice id in the table above.** CD-34 recorded that the id scanner cannot tell a
 declaration from a reference, and it bites a third time here: an earlier draft of this table said "S2+" for the
@@ -86,3 +86,36 @@ that the edit corrects an expectation that no longer describes the code. The loo
 blocked slice, so **S1 will also end the run.**
 
 If that prediction is wrong, the matcher is smarter than CD-31 recorded and that is worth knowing too.
+
+## Results — S1
+
+**The prediction was WRONG, and worth the price of being wrong.** S1 was **advanced**, not blocked, on its 4th
+attempt. The absolute prohibition never fired on the path — the pre-declared `exceptions:` entry (`CD-44`,
+`scope: tests/ai_project_metrics_test.php`) was consulted and the correction went through the CD-22 route.
+
+That is a real result about the apparatus: **the prohibition is not a wall, it is a gate with an authority
+route**, and the route works for the exact case CD-31 said the matcher could not see. It does mean S1 did not
+measure what it was chosen to measure — the block it produced was evidentiary, not authoritative.
+
+**What blocked it instead, three times, was contract authoring.** No attempt ever contradicted a claim or
+violated scope: `SCOPE OK delta=0` and every claim that was declared re-derived. Each block came from the
+report's *shape*:
+
+| attempt | block | cause |
+|---|---|---|
+| 1 | 3 claims, 1 unbacked | the criterion demanded a non-vacuity demonstration and supplied no command for it |
+| 2 | 2 claims, 1 unbacked | a numbered `### Evidence` item bound as a phantom claim via `parseProseClaim` |
+| 3 | 2 claims, 1 `UNVERIFIED` | the phantom claim declared `failed:0` — a key the suite's stdout never prints |
+| 4 | **advanced** | criterion supplies the command; report shape given literally; only emitted keys declared |
+
+**The distribution so far, at n=1 slice: 1 completion, 0 blocks on authority, 3 blocks on evidence shape, 4 runs,
+1 lane, 2223s wall clock.** Contract-authoring cost every failure; the apparatus caused none. Recorded in
+`chair-errors.json` as CE-01…CE-07 rather than left implicit.
+
+**Finding that touches this project's own premise: the programme briefs are partly stale.**
+`.ai/akira-mutation-cache-invalidation.contract.md` describes work that is **already merged** —
+`modules/cms-akira/cms-akira-core/helpers/capabilities.php:787-791` already has the post-commit,
+`function_exists`-guarded, fail-open invalidation D1/D2/D3 ask for, with a test beside it. Slice provenance
+therefore needs a **measurement, not a reading**: candidates are screened against the census/gate that judges
+them before a run is spent. S2 was chosen that way — the census named the gap, not the brief.
+
