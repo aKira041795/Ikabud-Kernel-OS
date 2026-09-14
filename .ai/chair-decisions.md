@@ -396,3 +396,40 @@ for the first time (green, above); and the rule sharpened — **read the whole r
 have not.**
 **Authority:** Chair, IN-CONTRACT (self-correction).
 **Owner intervention:** not required.
+
+## CD-13 — Independent review returned PASS_WITH_CHANGES; priorities reordered, one new weakness accepted
+
+**Issue:** the evaluation brief was reviewed by an independent senior engineer. Verdict:
+`PASS_WITH_CHANGES`, central claim **partially supported** — full support correctly withheld because semantic
+verification and independent claim re-derivation do not yet exist. The review supplied one weakness we had not
+listed and reordered the next three priorities.
+
+**Options:**
+- A. Treat the review as advisory and continue with the existing plan (claim re-derivation first).
+- B. Accept the reorder (commit safety first) and the added weakness, then proceed to claim re-derivation.
+- C. Implement everything the review suggests at once, including semantic scope.
+
+**Chosen:** B.
+**Reason:** the reviewer's P0 argument is that a five-line problem with a demonstrated failure is cheaper to
+close than the verification stage it sits in front of — and the failure already occurred here (CD-11: a commit
+made during a live run captured a non-final state). C was refused explicitly by the review: *"do not answer
+semantic scope with an AI semantic-security layer — you will recreate another probabilistic authority layer"*;
+semantics are to be pushed **downward** into executable invariants instead. The review's most valuable single
+contribution is the weakness we did not list.**
+
+**New weakness accepted — interpretive drift (§3.9 of the brief):** the Chair can become both the interpreter
+of the contract and the judge of its own compliance (*"this is not really a new kernel primitive"*). No gate
+detects it, and escaping it by escalating ambiguity would undo the autonomy breakthrough. Mitigation adopted:
+**significant interpretations become durable claims — decide now, audit later** — recorded with question,
+interpretation, basis and reversibility so a later review can challenge the reading without blocking progress.
+CD-6, CD-10 and CD-12 are instances of this applied after the fact; it is now to be applied as the decision is
+made.
+
+**Also adopted:** recorded state outranks inferred state (the state machine owns the lifecycle); claims become
+first-class objects with a `UNVERIFIED` / `RE_DERIVED` / `CONTRADICTED` status, where the harness must know and
+say which claim types are independently re-derivable and must never present a non-re-derivable claim as
+verified; evidence binds to an exact revision and dirty-state; the release gate consumes re-derived claims
+rather than executor prose; and the priority order is now **commit eligibility → claim re-derivation → corpus
+retrofit**.
+**Authority:** Chair, IN-CONTRACT; the review is advisory and its findings are adopted deliberately.
+**Owner intervention:** the review was commissioned by the owner; no decision required.

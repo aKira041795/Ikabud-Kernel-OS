@@ -413,6 +413,110 @@ Unlisted weaknesses I found:
 
 ---
 
+### 3.9 Interpretive drift — **supplied by the independent reviewer**, and the sharpest gap listed here
+
+The Chair can become **both the interpreter of the contract and the judge of whether its own interpretation
+complied with it.**
+
+```
+Contract:  "Do not introduce a new kernel primitive."
+Chair:     "This is not really a new primitive; it is merely a helper abstraction."
+Chair proceeds. Everything passes.
+```
+
+This is not malice; it is interpretive drift, and no automated gate in this harness detects it — the tripwire
+sees a path inside `allowed_scope` and has no view of the reasoning. Escalating the ambiguity to the director
+would undo the autonomy breakthrough (the options test exists precisely so the Chair decides), so the
+mitigation is **not** to stop:
+
+> **Significant Chair interpretations become durable claims — decide now, audit later.**
+
+An interpretation that materially affects whether the contract was satisfied is recorded with the question,
+the interpretation, its basis (ADRs, existing contracts) and whether it is reversible — so a later review can
+challenge the reading without blocking routine progress. CD-6, CD-10 and CD-12 are all instances of this
+pattern applied after the fact; it should be applied *as the decision is made*.
+
+### 3.10 Semantic scope is the next governance problem after verification
+
+The tripwire knows **where** an executor writes, not **what the change means**. An allowed file can contain
+`if ($authorized || true) {` — path enforcement says in-scope, semantics say catastrophic.
+
+The reviewer's explicit guidance, which we accept: **do not answer this with an AI semantic-security layer**
+— that would recreate a probabilistic authority layer inside the one place that must be deterministic.
+Instead, push the important semantics *downward* into executable invariants:
+
+```
+AUTHORITY INVARIANT
+a request from an unauthorised actor -> handler invocation count == 0
+```
+
+Then it does not matter whether the executor changed one line or thirty files: the invariant fails. This is
+this repository's own stack — architectural prose → contract → lint → test → runtime enforcement — and the
+more of it that moves downward, the less the Chair needs to *understand* every diff.
+
+---
+
+## 7. Review disposition — independent review of 2026-09-14
+
+**Verdict returned:** `PASS_WITH_CHANGES` · central claim **partially supported, approaching supported**.
+Full support was withheld, correctly, because semantic verification and independent claim re-derivation do
+not yet exist. This section records what is accepted and what changes as a result.
+
+### 7.1 Accepted without change
+
+- The autonomy model is now **falsifiable machinery rather than instructions asking an AI to behave** — the
+authority ladder, the options test, and C4 (an illegitimate stop returns non-zero) were singled out.
+- **C2 is the most important engineering result** in the document: a subordinate contract cannot authorise
+what its superior withheld. Authority inheritance is correct.
+- **C3 is essential and was not an afterthought** — demonstrating that legitimate new regression tests remain
+possible is what stops the safety floor from making autonomy useless.
+- The glossary definition of the Chair is to be kept verbatim: *"the delegated project authority beneath the
+contract; decides, records, continues."*
+- The culture of §0 — *treat every claim in §2 as false until you reproduce it* — is to be preserved.
+
+### 7.2 Accepted and adopted
+
+1. **Priority reordered: commit safety is now P0, not P1.** The reviewer's reasoning is that it is a small fix
+   with large consequence, and the failure already happened in this session (a commit made during a live run,
+   CD-11). Commit eligibility becomes **deterministic**: a run that is `running`, `silent`, `failed` or
+   `abandoned` makes committing *forbidden*; only a `completed` run whose evidence exists and whose tree
+   matches the evaluated state is commit-eligible.
+2. **A principle is formalised**: *recorded state outranks inferred state, and observable evidence validates
+   recorded state.* The state machine owns the lifecycle; `no stdout → dead`, `process found → healthy` and
+   `exit 0 → successful` are *observations*, not states. The ledger is where this principle now lives.
+3. **Claims become first-class objects** rather than prose parsed out of a report: a claim id, the run it
+   belongs to, its type, the command that would re-derive it, the executor's asserted values, the
+   verification method and observed values, and a status — `UNVERIFIED`, `RE_DERIVED`, or `CONTRADICTED`.
+   Claim types include test result, lint result, file scope, contract conformance, browser journey and
+   artifact hash. **Some claims are independently re-derivable and some are not; the harness must know and
+   say which**, and a claim that cannot be re-derived must never be displayed as if it had been verified.
+4. **Evidence binds to an exact tree.** Verification records the revision and whether the working tree was
+   dirty at verification time, so long-lived evidence cannot silently drift from the code it describes.
+5. **The release gate consumes re-derived claims, not executor prose.**
+
+### 7.3 Explicitly deferred, with the reviewer's reasoning
+
+- **Corpus retrofit stays third and stays just-in-time.** *"Fabricating an authority envelope from legacy
+  material could accidentally grant permissions that were never approved."* This matches why bulk retrofit was
+  rejected (CD-2).
+- **No new major feature** until independent verification works. The instruction is to get one stage right
+  rather than widen the surface.
+- **No AI semantic-security detection** (see §3.10).
+
+### 7.4 Where this puts the system
+
+The reviewer framed the evolution as: HARPP 1 remote execution → 2 bounded autonomy → 3 contract-governed
+Chair → **4 evidence-bearing autonomy (here)** → 5 independent verification → 6 longitudinal validation.
+
+> The proposition being approached is no longer *"can AI complete my project without bothering me?"* but
+> **"can an inexpensive AI system complete bounded engineering work while producing enough independent
+> evidence that I need not trust the AI that did it?"**
+
+That is the objective this document is written against, and §3.1 remains the honest statement of the distance
+remaining.
+
+---
+
 ## Appendix A — Where things live
 
 ```
