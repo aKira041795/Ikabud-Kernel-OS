@@ -464,3 +464,50 @@ family, one repository, no browser or performance claims), and verification is s
 forced. §3.1 of the brief was updated from "does not exist" to "exists, partially" accordingly.
 **Authority:** Chair, IN-CONTRACT.
 **Owner intervention:** not required.
+
+## CD-15 — Adopted positioning and measurement programme; and the rule that the harness must not grade itself
+
+**Issue:** an external landscape assessment (2026-09-14) placed HARPP honestly in the 2026 coding-agent field:
+**not ahead as a coding agent**, but attempting a different layer — contract-governed autonomous project
+completion. It recommended no new orchestration, and one next milestone: exercise independent verification
+across many slices and **measure** the result.
+
+**Options:**
+- A. Treat the assessment as endorsing current direction; continue feature work.
+- B. Adopt the position and the measurement programme, add no capability surface, and record the metrics the
+  programme requires — including a binding rule that the harness may not be the source of its own metrics.
+- C. Defer measurement until the harness is more mature.
+
+**Chosen:** B.
+**Reason:** C is how a system becomes unfalsifiable — the empirical base is four slices, one session, one
+repository, one operator, and adding machinery before exercising it widens the surface while the evidence stays
+thin. A misreads the assessment: it explicitly withholds any superiority claim and warns against a
+self-validating experiment. B is the only option that produces a result which could be **negative**, which is
+what makes it worth running. The metrics that judge the harness would otherwise be collected and reported by
+the harness itself, so the adoption carries an added constraint of the Chair's own: **derive metrics from
+artefacts, never self-report; the director logs director-minutes; incorrect Chair decisions are adjudicated
+after the fact and the count is kept even when unflattering; and an independent reviewer sample-audits.**
+
+**Adopted:**
+
+1. **Position, stated as a claim that could be wrong:** HARPP explores whether delegated authority, explicit
+   contracts, cheap heterogeneous executors and independently re-derived evidence can produce reliable
+   autonomous engineering at materially lower total cost and director attention than a single strong agent.
+   **There is no evidence yet that it is better than existing systems, and any drift into claiming otherwise
+   is to be corrected against this record.**
+2. **Do not compete on coding ability, UX, sandboxing or context handling.** Use mature harnesses as
+   executors; executor replaceability is an architectural property, not a temporary arrangement.
+3. **No new capability surface** until independent verification is exercised end to end on real slices
+   (consistent with CD-13). Corpus retrofit stays third and stays just-in-time (CD-2).
+4. **The next milestone is measurement:** 10–20 complete bounded slices across different executors, recording
+   completion without director intervention, Chair decisions per slice, **incorrect** Chair decisions, contract
+   violations, repair cycles, claim-verification failures, cost, tokens, wall-clock and director minutes —
+   then running the same jobs directly with a single agent and comparing. HARPP may lose; that is an
+   acceptable and useful result.
+5. **Artefact requirement on every slice:** a slice that does not leave what the metric table needs cannot be
+   counted later. Cost and token capture do not exist yet and are the first gap the programme exposes.
+
+**Recorded in:** `docs/architecture/harpp-positioning-and-measurement-plan.md`.
+**Authority:** Chair, IN-CONTRACT; the assessment is advisory and was adopted deliberately, including its
+refusals.
+**Owner intervention:** the assessment was commissioned by the owner; no decision required.
