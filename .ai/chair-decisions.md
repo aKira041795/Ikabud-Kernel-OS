@@ -216,13 +216,14 @@ the executor (`.ai/builder-spec-truth.contract.md`).
 **Authority:** owner directive, 2026-09-14.
 **Owner intervention:** required and given (this is the directive itself).
 
-## CD-9 — A slice died mid-flight: verify the residue, finish the gap, produce the control
+## CD-9 — A slice finished unreported: verify the residue, finish the gap, produce the control
 
-**Issue:** the parser slice (`.ai/scope-path-semantics.contract.md`) was dispatched, then the run vanished —
-**0-byte log**, no report, no evidence — while leaving edited files behind, including
-`kernel/Workbench/Development/DevelopmentTaskContract.php`, the parser that governs every one of the 64
-contracts in the corpus. A partial, unreported change to the most cross-cutting file in the harness is the
-worst possible residue to find.
+**Issue:** the parser slice (`.ai/scope-path-semantics.contract.md`) was dispatched and modified exactly the
+right files — including `kernel/Workbench/Development/DevelopmentTaskContract.php`, the parser that governs
+every one of the 64 contracts in the corpus — but produced **no report and no evidence**: its log is 0 bytes
+and it exited `slice_exit=0`. **A run that succeeds silently is as blind as a run that fails.** Unreported
+changes to the most cross-cutting file in the harness cannot be accepted on trust, so the residue had to be
+verified independently regardless of how the run ended.
 
 **Options:**
 - A. Revert the residue and re-dispatch the slice from scratch.
@@ -265,9 +266,52 @@ parseability changed.** Both differences are explained:
 `playwright-rate-limit-cap` could now hit an out-of-scope denial for a nested file under `tests/browser`.
 Recorded here rather than silently absorbed; that contract should be re-measured before its next run.
 
-**Harness observation:** a slice that dies leaves no report, and an unreported partial change to a
-cross-cutting file defeats the evidence model. The 0-byte log also means stdout was never flushed, so
-"the run failed" and "the run produced nothing" are indistinguishable after the fact. Verification of the
-tree — not the absence of a report — is what established the true state.
+**Harness observation (corrected once the terminal reported `slice_exit=0`):** I first read the 0-byte log as
+"the run died", and reported that to the director. That was wrong twice over — this run **completed
+successfully**, and a second dispatch I also described as dead was in fact **still running**. Both errors came
+from unreliable signals: **log size is not a completion signal** (pi can exit 0 having written nothing to
+stdout), and `pgrep -f "pi -p"` is not a liveness signal (the run executes inside a `lean-ctx -c` wrapper, so
+the pattern either misses it or matches the checking command itself).
+**Rule: the terminal's completion notification carries the exit code — wait for it and treat it as the only
+authoritative run state.** Verification of the tree still establishes what a run actually did; never the
+presence or absence of a report.
 **Authority:** Chair, IN-CONTRACT (completing work already diagnosed and diagnosed in hand).
+**Owner intervention:** not required.
+
+## CD-10 — The spec rewrite: accepted, with the widening justified by the change that caused it
+
+**Issue:** the builder-spec slice (`.ai/builder-spec-truth.contract.md`) completed with **exit 0 and a 0-byte
+log** — the second observed silent success — after modifying **more than the contract's `Files likely
+affected`**: `playwright.config.js` (+54), the builder spec (+252), and **five** further specs
+(`akira-media-admin`, `akira-post-publish-journey`, `akira-theme-activate`, `live-hosts`, `read-authority`),
+plus a new `tests/browser/auth.setup.ts`.
+
+**Options:**
+- A. Revert the five unlisted specs and re-scope them as separate work.
+- B. Accept them as consequence-repair of the shared-config change, on the evidence of a full green suite.
+- C. Accept silently.
+
+**Chosen:** B.
+**Reason:** S2 required the baseURL/`.env` root fix **and** stated that "the whole suite must still pass —
+this config is shared, so a regression elsewhere is a failure of S2, not an unrelated inconvenience." Those
+five specs logged in themselves; moving login into global setup *is* what breaks them, so repairing them is
+delivering S2, not scope creep. A would have reverted our own config change's necessary consequences and left
+the suite red; C is what this session's whole discipline exists to prevent. Widening that the change itself
+causes, evidenced and accepted, is in-contract; widening nobody asked for is not.
+
+**Verification (Chair, independently):** tenant healthy before measuring (`/` 200, `/login` 200) so a failure
+would be attributable; **`PW_EXIT=0`, 9 passed (1.7m)**; `auth.login_rate_limited` count **0 before and 0
+after**; `failed requests: []` on both hosts. The builder spec now runs
+**`create -> save draft -> preview -> validate -> publish (16.9s)`** — the journey that had **never executed
+past line 79** in any previous run, and whose earlier failure is why this slice existed.
+
+**Observed good behaviour worth keeping (unprompted efficiency-ladder judgement):** the executor loaded `.env`
+with the standard library rather than adding `dotenv` (a dependency for ~15 lines), and chose **global setup
+over a `setup` project** for the single login specifically because a setup project would add its own test to
+the count and break the nine-test contract. Both are the repo's own ladder applied without being told.
+
+**Also recorded:** this is the second silent success (`exit 0`, 0-byte log) and therefore the second real
+anchor for the run-ledger slice's non-vacuity tests —
+`tests/ai_run_test.php` must classify exactly this case as `silent`, never `completed`.
+**Authority:** Chair, IN-CONTRACT.
 **Owner intervention:** not required.

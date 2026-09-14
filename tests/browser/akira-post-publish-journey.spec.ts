@@ -16,22 +16,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const TENANT = process.env.TENANT_URL ?? process.env.APP_URL ?? 'http://akiracms.test';
-const TENANT_USER = process.env.TENANT_USER ?? 'charlienacario884';
-const TENANT_PASS = process.env.TENANT_PASS ?? 'iKabud6123!#';
 
 // Smallest valid PNG (1x1). Uploaded through the real multipart form.
 const PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
-
-async function login(page: Page): Promise<void> {
-  await page.goto(`${TENANT}/login`);
-  await page.fill('#username', TENANT_USER);
-  await page.fill('#password', TENANT_PASS);
-  await page.locator('button[type="submit"]').first().click();
-  await page.waitForURL(/\/cms-akira-shell(?:\/|$)/, { timeout: 20000 });
-}
 
 /** Upload through the media surface and return the stored URL. */
 async function uploadImage(page: Page, filename: string): Promise<string> {
@@ -57,7 +47,8 @@ test('editorial journey: create a post with a featured image and publish it', as
   const stamp = Date.now().toString(36);
   const slug = `pw-post-${stamp}`;
 
-  await login(page);
+  // The authenticated session comes from auth.setup.ts's storageState; this spec
+  // makes no login POST of its own.
 
   // 1. Image first: the post can only select media that exists in the library.
   const imageUrl = await uploadImage(page, `pw-post-image-${stamp}.png`);

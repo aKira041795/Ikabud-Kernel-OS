@@ -9,24 +9,15 @@
 // Run (visible browser):
 //   PW_HEADED=1 npx playwright test tests/browser/akira-theme-activate.spec.ts
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 const TENANT = process.env.TENANT_URL ?? process.env.APP_URL ?? 'http://akiracms.test';
-const TENANT_USER = process.env.TENANT_USER ?? 'charlienacario884';
-const TENANT_PASS = process.env.TENANT_PASS ?? 'iKabud6123!#';
 const THEME = process.env.AKIRA_THEME ?? 'akira-editorial';
-
-async function login(page: Page): Promise<void> {
-    await page.goto(`${TENANT}/login`);
-    await page.fill('#username', TENANT_USER);
-    await page.fill('#password', TENANT_PASS);
-    await page.locator('button[type="submit"]').first().click();
-    await page.waitForURL(/\/cms-akira-shell(?:\/|$)/, { timeout: 20000 });
-}
 
 test('theme studio: activating a theme must reach the runtime and the public page', async ({ page }) => {
     test.setTimeout(120_000);
-    await login(page);
+    // The authenticated session comes from auth.setup.ts's storageState; this spec
+    // makes no login POST of its own.
 
     // 0. What the runtime currently resolves, before we touch anything.
     const before = await page.request.get(`${TENANT}/api/v1/cms-akira-theme/resolve`);
