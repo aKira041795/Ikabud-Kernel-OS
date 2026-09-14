@@ -8,6 +8,63 @@ declare(strict_types=1);
  * The legacy JSON file remains a read-only fallback for older installs.
  */
 
+/**
+ * Activation-time, idempotent seed for the GUI settings write policy.
+ *
+ * The two POST /api/v1/admin/gui-settings routes declare gui_settings.apply@1 as
+ * their required authority; dispatch authority is fail-closed, so the policy row
+ * must exist BEFORE the declaration is relied on or every operator is refused.
+ *
+ * The role set is `admin` and only `admin`: both handlers gate exactly
+ * `$user['role'] === 'admin'` (handlers.php apiSaveGuiSettings/apiResetGuiSettings),
+ * so any wider set would grant access nobody has today and any narrower set would
+ * 403 a working operator. `caller_module` mirrors this capability's own declared
+ * allow_callers (`kernel,gui-settings` in module.json) and includes the route
+ * dispatcher `gui-settings`; an empty value would permit ANY caller, not none.
+ *
+ * The permissions UI clones the active policy set into a new version, so a seed
+ * pinned to version 1 lands inactive once the active version advances (the live
+ * tenant is on version 30). Join the currently active version, matching
+ * cacSeedShellReadPolicies() in cms-akira-core rather than the older version-1
+ * template.
+ */
+function guiSettingsSeedApplyPolicy(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
+    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
+        'actor' => app()->user(),
+    ]);
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+        null,
+        $scope,
+        $resolver,
+        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
+    );
+    $activeRows = $registry->activePolicyRows();
+    $policyVersion = $activeRows === [] ? 1 : (int)($activeRows[0]['policy_version'] ?? 1);
+
+    $rows = [];
+    $rows[] = [
+        'policy_version' => $policyVersion,
+        'capability_id' => 'gui_settings.apply@1',
+        'capability_version' => '1',
+        'provider' => 'gui-settings',
+        'caller_module' => 'kernel,gui-settings',
+        'allowed_roles' => 'admin',
+        'provider_activation_required' => true,
+        'requires_protocol' => 'v2',
+        'is_active' => true,
+    ];
+
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+}
+
+guiSettingsSeedApplyPolicy();
+
 function guiSettingsPath(): string
 {
     return STORAGE_PATH . '/gui-settings.json';

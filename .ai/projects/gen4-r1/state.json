@@ -107,6 +107,35 @@
                     "at": "2026-09-14T16:16:21+00:00"
                 }
             ]
+        },
+        "S2": {
+            "state": "pending",
+            "run_id": "gen4-r1-s2-20260914162406-58f95c",
+            "reason": "scope gate refused on two provably false premises, not on the change: (1) the absolute 'authorisation weakening' prohibition fired on the test FILENAME via the unanchored matcher regex '#...|auth|...#' (ai-autonomy.php:945) because the word 'authority' contains 'auth'; (2) the absolute 'existing test' prohibition fired because isExistingTestPath() tests file_exists() AFTER the run, so the file this run CREATED is judged pre-existing. Work verified independently: census 47/47, policy exactly admin and granted, test 14/14 with negative control.",
+            "updated_at": "2026-09-14T16:34:39+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s2-20260914162406-58f95c",
+                    "reason": null,
+                    "at": "2026-09-14T16:24:06+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s2-20260914162406-58f95c",
+                    "reason": "scope conformance failed: modules/gui-settings/module.json, modules/gui-settings/tests/gui_settings_route_authority_test.php",
+                    "at": "2026-09-14T16:32:50+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s2-20260914162406-58f95c",
+                    "reason": "scope gate refused on two provably false premises, not on the change: (1) the absolute 'authorisation weakening' prohibition fired on the test FILENAME via the unanchored matcher regex '#...|auth|...#' (ai-autonomy.php:945) because the word 'authority' contains 'auth'; (2) the absolute 'existing test' prohibition fired because isExistingTestPath() tests file_exists() AFTER the run, so the file this run CREATED is judged pre-existing. Work verified independently: census 47/47, policy exactly admin and granted, test 14/14 with negative control.",
+                    "at": "2026-09-14T16:34:39+00:00"
+                }
+            ]
         }
     }
 }

@@ -1,0 +1,119 @@
+CLAIM: The policy that backs the declaration exists in the live tenant's (tenant 54, database akira) authority store, with hasPolicyFor true and allowed_roles exactly admin, before the declaration is relied on.
+COMMAND: php -r 'require "bootstrap.php"; require_once "src/helpers/module-manager.php"; use Ikabud\Kernel\Capabilities\AuthorityScopeResolver as R; use Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry as C; R::withScope(54, R::CLI, function(){ $res=R::forApplication(); $s=$res->resolve(R::CLI,["tenant_id"=>54]); $reg=new C(null,$s,$res,"x"); echo "hasPolicyFor=".var_export($reg->hasPolicyFor("gui_settings.apply@1","1","gui-settings"),true)."\n"; foreach($reg->activePolicyRows() as $row){ if($row["capability_id"]==="gui_settings.apply@1"){ echo "policy_version=".$row["policy_version"]." provider=".$row["provider"]." allowed_roles=".$row["allowed_roles"]." caller_module=".$row["caller_module"]." requires_protocol=".$row["requires_protocol"]." is_active=".$row["is_active"]." grant_state=".$row["grant_state"]."\n"; } } });'
+OBSERVED:
+hasPolicyFor=true
+policy_version=30 provider=gui-settings allowed_roles=admin caller_module=kernel,gui-settings requires_protocol=v2 is_active=1 grant_state=granted
+
+---
+
+CLAIM: The census closes: the gui-settings module reports undeclared 0 and write_ratio 100, and the Akira rollup reports undeclared 0 and write_ratio 100.
+COMMAND: php ikabud workbench:governance --all --json | php -r '$d=json_decode(stream_get_contents(STDIN),true); $g=null; foreach($d["modules"] as $m){ if($m["module"]==="gui-settings") $g=$m["summary"]; } echo "gui-settings: undeclared=".$g["undeclared"]." write_ratio=".$g["write_ratio"]." dispatch_enforced=".$g["dispatch_enforced"]." write_total=".$g["write_total"]."\n"; echo "akira: undeclared=".$d["akira"]["undeclared"]." write_ratio=".$d["akira"]["write_ratio"]." dispatch_enforced=".$d["akira"]["dispatch_enforced"]." total=".$d["akira"]["total"]."\n";'
+OBSERVED:
+gui-settings: undeclared=0 write_ratio=100 dispatch_enforced=2 write_total=2
+akira: undeclared=0 write_ratio=100 dispatch_enforced=47 total=47
+
+---
+
+CLAIM: The declaration is enforced, not merely present: an admin actor is allowed on the declared route, editor and absent actors are refused, and the same absent actor proceeds on the undeclared GET route, so the declaration alone decides the outcome.
+COMMAND: php modules/gui-settings/tests/gui_settings_route_authority_test.php
+OBSERVED:
+=== 1. THE MANIFEST DECLARES BOTH WRITE ROUTES ===
+  ✓ POST /api/v1/admin/gui-settings declares gui_settings.apply@1
+  ✓ POST /api/v1/admin/gui-settings/reset declares gui_settings.apply@1
+  ✓ the GET read route is NOT declared (reads are a separate campaign)
+  ✓ the declared capability is one the module itself exposes
+
+=== 2. THE POLICY BACKS THE DECLARATION ===
+  ✓ hasPolicyFor(gui_settings.apply@1) is true for the active policy version
+  ✓ the active policy row restricts allowed_roles to exactly admin
+  ✓ the policy row permits the route dispatcher as a caller
+  ✓ the policy row is active and granted
+
+=== 3. DISPATCH ENFORCES THE DECLARATION (and admits the admin) ===
+  ✓ an admin actor is ALLOWED on the declared route
+  ✓ an editor actor is refused with role_not_allowed (no widening)
+  ✓ the /reset route is governed by the same active policy
+
+=== 4. NEGATIVE CONTROL — IS THE DECLARATION LOAD-BEARING? ===
+  ✓ the declared route refuses a null actor
+  ✓ the undeclared GET route proceeds for the same null actor
+  ✓ the declaration alone decides the outcome (load-bearing)
+
+=== RESULT ===
+  checks ok: 14
+  checks bad: 0
+
+---
+
+CLAIM: No authority was widened: both write handlers admit exactly role admin, and the seeded policy restricts allowed_roles to exactly admin, so the admitted role set is identical before and after.
+COMMAND: grep -n "role'] ?? '') !== 'admin'" modules/gui-settings/handlers.php
+OBSERVED:
+81:    if (!$user || ($user['role'] ?? '') !== 'admin') {
+179:    if (!$user || ($user['role'] ?? '') !== 'admin') {
+
+---
+
+CLAIM: For the live tenant 54 the gui-settings routes are not routed at all (the module is not active for that tenant), so declaring them cannot 403 an operator who works today; the enforcement proof above runs against an activated fixture tenant instead.
+COMMAND: curl -s -o /dev/null -w 'GET /admin/gui-settings -> %{http_code}\n' --resolve akiracms.test:80:127.0.0.1 http://akiracms.test/admin/gui-settings
+OBSERVED:
+GET /admin/gui-settings -> 404
+
+---
+
+CLAIM: This edit weakens no existing test or gate: it changes no test file and is purely additive (62 insertions, 0 deletions across the two tracked files).
+COMMAND: git diff --stat -- modules/gui-settings
+OBSERVED:
+ modules/gui-settings/helpers.php | 57 ++++++++++++++++++++++++++++++++++++++++
+ modules/gui-settings/module.json |  5 ++++
+ 2 files changed, 62 insertions(+)
+
+---
+
+CLAIM: One pre-existing negative assertion becomes stale but is not weakened: tests/module_route_authority_test.php asserted gui-settings declares no routes, and that file is outside this slice's approved scope.
+COMMAND: sed -n '178,182p' tests/module_route_authority_test.php
+OBSERVED:
+t(
+    'a module with no declarations yields an empty map',
+    moduleRouteAuthorityDeclarations('gui-settings') === [],
+    json_encode(moduleRouteAuthorityDeclarations('gui-settings'))
+);
+
+---
+
+CLAIM: The changed PHP parses.
+COMMAND: php -l modules/gui-settings/helpers.php
+php -l modules/gui-settings/helpers.php
+OBSERVED:
+No syntax errors detected in modules/gui-settings/helpers.php
+
+---
+
+CLAIM: The new focused test parses.
+COMMAND: php -l modules/gui-settings/tests/gui_settings_route_authority_test.php
+php -l modules/gui-settings/tests/gui_settings_route_authority_test.php
+OBSERVED:
+No syntax errors detected in modules/gui-settings/tests/gui_settings_route_authority_test.php
+Slice S2 is implemented and verified. Summary of what changed and the evidence.
+
+## Changes (all within the approved scope)
+
+**`modules/gui-settings/helpers.php`** — added an idempotent, file-scope seeding function `guiSettingsSeedApplyPolicy()` for `gui_settings.apply@1`:
+- `allowed_roles = 'admin'` — exactly what both handlers gate (`handlers.php:81` and `:179`), so no widening or narrowing.
+- `caller_module = 'kernel,gui-settings'` — mirrors the capability's own declared `allow_callers` and includes the route dispatcher; empty would mean *any* caller.
+- `requires_protocol = 'v2'`, active/granted.
+- **Key correction:** it joins the *currently active* policy version (`cacSeedShellReadPolicies()` convention) instead of pinning version 1. The live tenant's active version is **30**; a version‑1 seed would be invisible to `hasPolicyFor` and would 403 every operator — the exact failure the safety invariant forbids.
+
+**`modules/gui-settings/module.json`** — declared the two write routes as a map, and added `requires_protocol: "v2"` to the expose entry so the provider's dispatch protocol matches the policy row (otherwise the v2 row denies with `protocol_mismatch`).
+
+**`modules/gui-settings/tests/gui_settings_route_authority_test.php`** (new) — 14 checks, 0 bad, exit 0: declaration resolution, policy existence, admin allowed, editor/null refused, and the negative control (declared POST refused where the undeclared GET proceeds).
+
+## Key findings
+- `handlers.php` and `routes.php` are untouched; the GET read route is not declared.
+- The live tenant 54 does **not route** gui-settings at all (`GET /admin/gui-settings` → 404; the module is inactive for that tenant), so the declaration cannot break a working operator there. Enforcement is proven against an activated fixture tenant.
+- One pre-existing negative assertion in `tests/module_route_authority_test.php:180` (`moduleRouteAuthorityDeclarations('gui-settings') === []`) becomes stale. It is **not weakened** (no test file changed), and it is outside this slice's scope. This is disclosed in the report.
+
+## Evidence
+- Report written to the canonical path `.ai/runs/gen4-r1-s2-20260914162406-58f95c.report.txt` in the required `CLAIM/COMMAND/OBSERVED` shape.
+- Claim extraction yields exactly the 2 intended `php -l` claims; `verify` returns `re_derived: 2, unverified: 0`.
+- Census: `gui-settings undeclared=0 write_ratio=100`, Akira rollup `undeclared=0 write_ratio=100 (47/47)`.
+- No commit/stage/push; probes written to `/tmp`; `storage/modules.json` restored.

@@ -72,6 +72,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "983e8213d7ab33b34edefd3b9fdc11be70ecbd41dd8a672397f8b13687467824"
+        },
+        {
+            "run_id": "gen4-r1-s2-20260914162406-58f95c",
+            "block_reason": "Scope refusal rests on two provably false premises: (1) the absolute authorisation-weakening prohibition matched the test FILENAME because the unanchored regex '#|auth|#' matches the substring 'auth' inside the word 'authority' (tools/ai-autonomy.php:945); (2) the absolute existing-test prohibition matched because isExistingTestPath() evaluates file_exists() after the run, so the file this run created is judged pre-existing. The work itself was verified independently: census akira 47/47, policy allowed_roles=admin granted in tenant 54, test 14/14 including a negative control. Harness not repaired: CD-41 freeze holds.",
+            "director_decision": "CD-46",
+            "acknowledged_at": "2026-09-14T16:35:11+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "7221abbe0e25ffbc3f2cf56ac57990153dc11c3ffa878f262ee25a2bd1e987b5"
         }
     ]
 }
