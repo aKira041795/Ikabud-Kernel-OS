@@ -308,19 +308,26 @@ $h->test(
     aiRunDetail($gateClean)
 );
 
-// ── R6: claims are extracted, never verified ───────────────────────────────────────────────────
-$h->section('claims: extract, mark unverified, never assert');
+// ── R6: claims are structured objects, extracted unverified ────────────────────────────────────
+$h->section('claims: structured, extracted unverified, honest re-derivability');
 $claimsReport = $fixture . '/claims-report.md';
 file_put_contents($claimsReport, <<<'MD'
 # Completion report
-RESULTS
-  46/46 passed
-  passed=46 failed=0
+$ php tests/ai_run_test.php
+  19/19 passed
   exit=0
-  PASS auth
-  FAIL widgets
-  SKIP browser
-  tests/ai_run_test.php ok
+$ php -l tools/ai-run.php
+No syntax errors detected in tools/ai-run.php
+exit 0
+$ npx playwright test tests/browser
+  3 passed
+$ php ikabud migrate:status
+$ hyperfine ./bench.sh
+$ sha256sum tools/ai-run.php
+$ git diff --name-only
+$ composer test
+  99/99 passed
+tests/ai_run_test.php ok
 MD);
 $run(array_merge($startArgs('claims-case'), ["--report={$claimsReport}"]));
 $run(['finish', '--id=claims-case', '--exit=0']);
@@ -330,28 +337,60 @@ if (!is_array($claimsData)) {
     $claimsData = [];
 }
 $claims = is_array($claimsData['claims'] ?? null) ? $claimsData['claims'] : [];
-$kinds = [];
+$types = [];
 $allUnverified = $claims !== [];
+$shapeOk = $claims !== [];
 foreach ($claims as $claim) {
-    $kinds[(string) ($claim['kind'] ?? '')] = true;
-    if (($claim['status'] ?? null) !== 'unverified') {
+    $types[(string) ($claim['type'] ?? '')] = true;
+    foreach (['claim_id', 'run', 'type', 're_derivable', 'subject', 'executor_claim', 'verification', 'status'] as $key) {
+        if (!array_key_exists($key, $claim)) {
+            $shapeOk = false;
+        }
+    }
+    if (!str_starts_with((string) ($claim['claim_id'] ?? ''), 'CLM-claims-case-')) {
+        $shapeOk = false;
+    }
+    if (($claim['status'] ?? null) !== 'UNVERIFIED') {
         $allUnverified = false;
     }
 }
 $h->test(
-    '16. claims extracts at least three distinct claim shapes',
-    $claimsRun['code'] === 0 && count($kinds) >= 3,
-    'kinds: ' . implode(', ', array_keys($kinds)) . '; ' . aiRunDetail($claimsRun)
+    '16. claims extracts at least three distinct structured claim types',
+    $claimsRun['code'] === 0 && count($types) >= 3 && $shapeOk,
+    'types: ' . implode(', ', array_keys($types)) . '; ' . aiRunDetail($claimsRun)
 );
 $h->test(
-    '17. every extracted claim is marked unverified',
+    '17. every extracted claim is UNVERIFIED and carries the structured shape',
     $allUnverified && ($claimsData['verified'] ?? true) === false,
     aiRunDetail($claimsRun)
 );
 $h->test(
-    '18. claims state that re-derivation is a later slice',
-    str_contains((string) ($claimsData['note'] ?? ''), 'later slice'),
+    '18. claims state that verify re-derives by execution',
+    str_contains((string) ($claimsData['note'] ?? ''), 'verify'),
     'note: ' . (string) ($claimsData['note'] ?? '')
+);
+$honest = [
+    'TEST_RESULT' => true,
+    'LINT_RESULT' => true,
+    'CONTRACT_CONFORMANCE' => true,
+    'ARTIFACT_HASH' => true,
+    'FILE_SCOPE' => true,
+    'BROWSER_JOURNEY' => false,
+    'PERFORMANCE_MEASUREMENT' => false,
+    'MIGRATION_STATE' => false,
+];
+$claimTypes = $claimsData['claim_types'] ?? null;
+$honestyOk = is_array($claimTypes) && $claimTypes === $honest;
+foreach ($claims as $claim) {
+    $type = (string) ($claim['type'] ?? '');
+    if (!array_key_exists($type, $honest) || ($claim['re_derivable'] ?? null) !== $honest[$type]) {
+        $honestyOk = false;
+    }
+}
+$h->test(
+    '18b. every recognised type declares re_derivable honestly',
+    $honestyOk && count($types) >= 3,
+    'claim_types: ' . json_encode($claimsData['claim_types'] ?? null)
 );
 file_put_contents($runs . '/broken.json', '{not valid json');
 $malformed = $run(['claims', '--id=broken']);
@@ -360,6 +399,176 @@ $h->test(
     '19. malformed/absent input exits 2',
     $malformed['code'] === 2 && $unknown['code'] === 2,
     aiRunDetail($malformed) . "\n---\n" . aiRunDetail($unknown)
+);
+
+// ── R7: commit-check is deterministic ──────────────────────────────────────────────────────────
+$h->section('commit-check: eligibility decided by the ledger, not the tree');
+$commitCheck = static function (string $dir) use ($tool): array {
+    return aiRunLedger($tool, ['commit-check', "--runs-dir={$dir}"]);
+};
+$freshRun = static function (string $name, string $dir) use ($startArgs): array {
+    return array_merge($startArgs($name), ["--runs-dir={$dir}"]);
+};
+
+$ccEmpty = $fixture . '/cc-empty';
+mkdir($ccEmpty, 0777, true);
+$ccEmptyRun = $commitCheck($ccEmpty);
+$h->test('20. commit-check: no runs -> exit 0', $ccEmptyRun['code'] === 0 && str_contains($ccEmptyRun['output'], 'ELIGIBLE'), aiRunDetail($ccEmptyRun));
+
+$ccCompleted = $fixture . '/cc-completed';
+mkdir($ccCompleted, 0777, true);
+aiRunLedger($tool, $freshRun('cc-done', $ccCompleted));
+file_put_contents($fixture . '/cc-done.log', "1/1 passed\n");
+aiRunLedger($tool, ['finish', '--id=cc-done', '--exit=0', "--log={$fixture}/cc-done.log", "--runs-dir={$ccCompleted}"]);
+$ccCompletedRun = $commitCheck($ccCompleted);
+$h->test('21. commit-check: completed only -> exit 0', $ccCompletedRun['code'] === 0 && str_contains($ccCompletedRun['output'], 'ELIGIBLE'), aiRunDetail($ccCompletedRun));
+
+$livePid = getmypid() ?: 0;
+$ccRunning = $fixture . '/cc-running';
+mkdir($ccRunning, 0777, true);
+aiRunLedger($tool, array_merge($freshRun('cc-live', $ccRunning), ["--pid={$livePid}"]));
+$ccRunningResult = $commitCheck($ccRunning);
+$h->test(
+    '22. commit-check: running -> exit 3, run named with its state',
+    $ccRunningResult['code'] === 3 && str_contains($ccRunningResult['output'], 'cc-live') && str_contains($ccRunningResult['output'], 'running'),
+    aiRunDetail($ccRunningResult)
+);
+
+$ccSilent = $fixture . '/cc-silent';
+mkdir($ccSilent, 0777, true);
+file_put_contents($fixture . '/cc-silent.log', '');
+aiRunLedger($tool, array_merge($freshRun('cc-silent', $ccSilent), ["--log={$fixture}/cc-silent.log"]));
+aiRunLedger($tool, ['finish', '--id=cc-silent', '--exit=0', "--runs-dir={$ccSilent}"]);
+$ccSilentResult = $commitCheck($ccSilent);
+$h->test(
+    '23. commit-check: silent -> exit 3, run named with its state',
+    $ccSilentResult['code'] === 3 && str_contains($ccSilentResult['output'], 'cc-silent') && str_contains($ccSilentResult['output'], 'silent'),
+    aiRunDetail($ccSilentResult)
+);
+
+$ccFailed = $fixture . '/cc-failed';
+mkdir($ccFailed, 0777, true);
+aiRunLedger($tool, $freshRun('cc-failed', $ccFailed));
+aiRunLedger($tool, ['finish', '--id=cc-failed', '--exit=1', "--runs-dir={$ccFailed}"]);
+$ccFailedResult = $commitCheck($ccFailed);
+$h->test(
+    '24. commit-check: failed -> exit 3, run named with its state',
+    $ccFailedResult['code'] === 3 && str_contains($ccFailedResult['output'], 'cc-failed') && str_contains($ccFailedResult['output'], 'failed'),
+    aiRunDetail($ccFailedResult)
+);
+
+$ccAbandoned = $fixture . '/cc-abandoned';
+mkdir($ccAbandoned, 0777, true);
+$ccDeadPid = aiRunDeadPid();
+aiRunLedger($tool, array_merge($freshRun('cc-dead', $ccAbandoned), ["--pid={$ccDeadPid}"]));
+$ccAbandonedResult = $commitCheck($ccAbandoned);
+$h->test(
+    '25. commit-check: dead pid reconciled to abandoned -> exit 3, run named with its state',
+    $ccDeadPid > 0 && $ccAbandonedResult['code'] === 3 && str_contains($ccAbandonedResult['output'], 'cc-dead') && str_contains($ccAbandonedResult['output'], 'abandoned'),
+    aiRunDetail($ccAbandonedResult)
+);
+
+// ── R8: verify re-derives by execution ─────────────────────────────────────────────────────────
+$h->section('verify: re-derive by execution and bind evidence to the revision');
+
+$verifyReport = $fixture . '/verify-ok.md';
+file_put_contents($verifyReport, <<<'MD'
+# Verification fixture
+$ php -l tools/ai-run.php
+No syntax errors detected in tools/ai-run.php
+exit 0
+MD);
+$run(array_merge($startArgs('verify-ok'), ["--report={$verifyReport}"]));
+$run(['finish', '--id=verify-ok', '--exit=0']);
+$verifyOk = $run(['verify', '--run=verify-ok', '--json']);
+$verifyOkData = json_decode($verifyOk['output'], true);
+$verifyOkClaims = is_array($verifyOkData['claims'] ?? null) ? $verifyOkData['claims'] : [];
+$verifyOkClaim = is_array($verifyOkClaims[0] ?? null) ? $verifyOkClaims[0] : [];
+$verifyOkVerification = is_array($verifyOkClaim['verification'] ?? null) ? $verifyOkClaim['verification'] : [];
+$verifyOkBinding = is_array($verifyOkData['binding'] ?? null) ? $verifyOkData['binding'] : [];
+$verifyOkRecord = aiRunRecord($runs, 'verify-ok');
+$h->test(
+    '26. verify re-executes an allowlisted command and records RE_DERIVED',
+    $verifyOk['code'] === 0
+        && ($verifyOkClaim['status'] ?? null) === 'RE_DERIVED'
+        && ($verifyOkVerification['method'] ?? null) === 'independent_execution'
+        && ($verifyOkVerification['verifier'] ?? null) === 'deterministic'
+        && ($verifyOkVerification['observed_exit'] ?? null) === 0,
+    aiRunDetail($verifyOk)
+);
+$h->test(
+    '27. verify records the tree binding, on the output and in the run record',
+    preg_match('/^[0-9a-f]{40}$/', (string) ($verifyOkBinding['rev'] ?? '')) === 1
+        && is_bool($verifyOkBinding['dirty'] ?? null)
+        && is_array($verifyOkRecord)
+        && ($verifyOkRecord['claim_verification']['rev'] ?? null) === ($verifyOkBinding['rev'] ?? null),
+    'binding: ' . json_encode($verifyOkBinding) . '; record: ' . json_encode(is_array($verifyOkRecord) ? ($verifyOkRecord['claim_verification'] ?? null) : null)
+);
+
+$contradictReport = $fixture . '/verify-bad.md';
+file_put_contents($contradictReport, <<<'MD'
+# Contradiction fixture
+$ php -l tools/ai-run.php
+exit 1
+MD);
+$run(array_merge($startArgs('verify-bad'), ["--report={$contradictReport}"]));
+$run(['finish', '--id=verify-bad', '--exit=0']);
+$verifyBad = $run(['verify', '--run=verify-bad', '--json']);
+$verifyBadData = json_decode($verifyBad['output'], true);
+$verifyBadClaims = is_array($verifyBadData['claims'] ?? null) ? $verifyBadData['claims'] : [];
+$verifyBadClaim = is_array($verifyBadClaims[0] ?? null) ? $verifyBadClaims[0] : [];
+$verifyBadVerification = is_array($verifyBadClaim['verification'] ?? null) ? $verifyBadClaim['verification'] : [];
+$verifyBadMismatches = is_array($verifyBadVerification['mismatches'] ?? null) ? $verifyBadVerification['mismatches'] : [];
+$exitMismatch = is_array($verifyBadMismatches['exit_code'] ?? null) ? $verifyBadMismatches['exit_code'] : [];
+$h->test(
+    '28. a claim the command does not produce is CONTRADICTED, exit 3',
+    $verifyBad['code'] === 3
+        && ($verifyBadClaim['status'] ?? null) === 'CONTRADICTED'
+        && ($exitMismatch['claimed'] ?? null) === 1
+        && ($exitMismatch['observed'] ?? null) === 0,
+    aiRunDetail($verifyBad)
+);
+
+$sentinel = $fixture . '/verify-refused-sentinel';
+$refuseReport = $fixture . '/verify-refuse.md';
+$refuseCommand = 'php -l tools/ai-run.php; touch ' . $sentinel;
+file_put_contents($refuseReport, "# Refusal fixture\n\$ " . $refuseCommand . "\nexit 0\n");
+$run(array_merge($startArgs('verify-refuse'), ["--report={$refuseReport}"]));
+$run(['finish', '--id=verify-refuse', '--exit=0']);
+$verifyRefuse = $run(['verify', '--run=verify-refuse', '--json']);
+$verifyRefuseData = json_decode($verifyRefuse['output'], true);
+$verifyRefuseClaims = is_array($verifyRefuseData['claims'] ?? null) ? $verifyRefuseData['claims'] : [];
+$verifyRefuseClaim = is_array($verifyRefuseClaims[0] ?? null) ? $verifyRefuseClaims[0] : [];
+$verifyRefuseVerification = is_array($verifyRefuseClaim['verification'] ?? null) ? $verifyRefuseClaim['verification'] : [];
+$h->test(
+    '29. a non-allowlisted command is refused, shown, and NOT executed',
+    ($verifyRefuseClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($verifyRefuseVerification['reason'] ?? null) === 'command_not_allowlisted'
+        && !is_file($sentinel)
+        && str_contains($verifyRefuse['output'], 'command_not_allowlisted'),
+    'sentinel exists: ' . (is_file($sentinel) ? 'yes' : 'no') . "\n" . aiRunDetail($verifyRefuse)
+);
+
+$browserReport = $fixture . '/verify-browser.md';
+file_put_contents($browserReport, <<<'MD'
+# Browser fixture
+$ npx playwright test tests/browser
+  3 passed
+MD);
+$run(array_merge($startArgs('verify-browser'), ["--report={$browserReport}"]));
+$run(['finish', '--id=verify-browser', '--exit=0']);
+$verifyBrowser = $run(['verify', '--run=verify-browser', '--json']);
+$verifyBrowserData = json_decode($verifyBrowser['output'], true);
+$verifyBrowserClaims = is_array($verifyBrowserData['claims'] ?? null) ? $verifyBrowserData['claims'] : [];
+$verifyBrowserClaim = is_array($verifyBrowserClaims[0] ?? null) ? $verifyBrowserClaims[0] : [];
+$verifyBrowserVerification = is_array($verifyBrowserClaim['verification'] ?? null) ? $verifyBrowserClaim['verification'] : [];
+$h->test(
+    '30. a non-re-derivable claim is UNVERIFIED, never RE_DERIVED',
+    ($verifyBrowserClaim['type'] ?? null) === 'BROWSER_JOURNEY'
+        && ($verifyBrowserClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($verifyBrowserVerification['reason'] ?? null) === 'not_re_derivable_by_pure_tool'
+        && ($verifyBrowserVerification['method'] ?? null) === null,
+    aiRunDetail($verifyBrowser)
 );
 
 aiRunRemoveFixture($fixture);

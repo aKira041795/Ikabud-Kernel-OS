@@ -433,3 +433,34 @@ rather than executor prose; and the priority order is now **commit eligibility �
 retrofit**.
 **Authority:** Chair, IN-CONTRACT; the review is advisory and its findings are adopted deliberately.
 **Owner intervention:** the review was commissioned by the owner; no decision required.
+
+## CD-14 — HARPP 5 landed: claims are objects, and a class of them is re-derived by execution
+
+**What shipped** (`.ai/harpp5-claim-rederivation.contract.md`, scope: exactly the four authorised files):
+`commit-check` (P0); structured claim objects with honest per-type `re_derivable`; and `verify`, which
+executes an allowlisted command as **argv with `bypass_shell`** — never a shell — and records claimed vs
+observed values plus the tree binding (revision + dirty flag).
+
+**Verified by the Chair, independently of the report:**
+- `php tests/ai_run_test.php` → **31/31, exit 0**; `php tests/ai_autonomy_test.php` → **46/46, exit 0**.
+- `commit-check` on the real ledger → **exit 0**; with a synthetic live run → **exit 3**, naming
+  `running age=0s pid=…`. Commit eligibility is now decided by the ledger, not by how the tree looks.
+- The **refusal path is proven, not asserted**: the suite plants a sentinel file that a chained command
+  (`php -l …; touch <sentinel>`) would create, and fails if the sentinel exists. It does not. The chained
+  command is shown and marked `command_not_allowlisted`, and was never executed.
+- A **`CONTRADICTED` case is demonstrated** (claim asserted `exit 1`, the command returned `0`) and exits `3`.
+- `BROWSER_JOURNEY` is reported `not_re_derivable_by_pure_tool` — never presented as verified.
+
+**The slice modified three existing test cases (16–18) and disclosed it.** I inspected the diff rather than
+accepting the disclosure: the adaptation *strengthened* the assertions (structured type checks plus a new
+assertion that the declared `re_derivable` set is exactly the honest one). Nothing was relaxed.
+
+**P0 applied to myself:** this commit was made only after `commit-check` returned 0, and the run whose work it
+contains had already reported `exit 0`. The rule I wrote is the rule I followed.
+
+**Remaining, recorded rather than implied:** semantic verification does not exist (the tool can prove `php -l`
+exited 0; it cannot judge whether a diff is sound), re-derivation is new and narrow (one allowlisted shape
+family, one repository, no browser or performance claims), and verification is still invoked rather than
+forced. §3.1 of the brief was updated from "does not exist" to "exists, partially" accordingly.
+**Authority:** Chair, IN-CONTRACT.
+**Owner intervention:** not required.

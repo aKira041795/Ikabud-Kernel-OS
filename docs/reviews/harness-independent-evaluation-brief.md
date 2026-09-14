@@ -278,14 +278,39 @@ review.
 **A reviewer who finds unlisted weaknesses here should discount this entire document.** These are the ones we
 know about.
 
-### 3.1 Claim re-derivation does not exist — the biggest gap
+### 3.1 Claim re-derivation exists, but only for deterministic allowlisted claims
 
-The harness can *record* what an executor claimed (`tools/ai-run.php claims` extracts "46/46 passed", "exit=0"
-and marks each **`unverified`**). It **cannot yet re-prove those claims by software**. Today, verification of
-an executor's report is performed by the **Chair reading evidence** — another model.
+**Updated 2026-09-14 — the review's headline finding, now partially closed.** The harness can re-prove a class
+of claims **by execution** instead of by reading a report:
 
-Consequence: the loop's honesty currently rests on the diligence of an AI reviewer. This is precisely why the
-brief says you are not being asked to certify independence of verification: **it is not yet independent.**
+```
+report claim -> structured object (claim_id, type, re_derivable, subject.command)
+             -> verify: execute the declared command through an argv allowlist (no shell)
+             -> RE_DERIVED (agrees) | CONTRADICTED (disagrees) | UNVERIFIED (not attempted)
+```
+
+- `re_derivable` is declared **per claim type, honestly**: `TEST_RESULT`, `LINT_RESULT`,
+  `CONTRACT_CONFORMANCE`, `ARTIFACT_HASH` and `FILE_SCOPE` can be re-derived; `BROWSER_JOURNEY`,
+  `PERFORMANCE_MEASUREMENT` and `MIGRATION_STATE` **cannot**, and are reported as
+  `not_re_derivable_by_pure_tool` rather than quietly counted as satisfied.
+- The allowlist **is** the security boundary and is **data, not a regex**: three command shapes, executed as
+  argv with `bypass_shell`. A chained or unknown command is **refused and never executed** — asserted by a test
+  that plants a sentinel file the chained command would create and **fails if the sentinel exists**.
+- Verification records the **tree binding** (revision + dirty flag), so evidence names the code it describes.
+- **A verifier that always agrees is worse than none**, so a `CONTRADICTED` case is a required demonstrated
+  test, not an aspiration.
+
+**What still does not exist — the remaining gap:**
+
+- **Semantic verification.** The harness can re-derive that `php -l` exited 0. It cannot judge whether the diff
+  was *sound*. That is §3.10, and it is deliberately not solved by an AI security layer.
+- **Re-derivation is new and narrow.** One allowlisted shape family, no browser journeys, no performance
+  claims, exercised on one repository. Treat §3.1 as *partially* closed.
+- Verification is still invoked by a person or a phase; nothing yet forces it automatically before a claim is
+  relied upon.
+
+This is progress on the loop's honesty, not the end of it: the Chair can now point at a re-derived result
+instead of asserting that a report looked convincing — but only for the claim classes above.
 
 ### 3.2 The corpus is mostly non-conformant
 
@@ -511,6 +536,10 @@ Chair → **4 evidence-bearing autonomy (here)** → 5 independent verification 
 > The proposition being approached is no longer *"can AI complete my project without bothering me?"* but
 > **"can an inexpensive AI system complete bounded engineering work while producing enough independent
 > evidence that I need not trust the AI that did it?"**
+
+**Update 2026-09-14:** re-derivation now exists for allowlisted deterministic claims (§3.1), so the system has
+entered **HARPP 5 for that class only**. Longitudinal validation (6) remains untouched, and no new capability
+surface was added to chase it — per the review's instruction to get this stage right first.
 
 That is the objective this document is written against, and §3.1 remains the honest statement of the distance
 remaining.

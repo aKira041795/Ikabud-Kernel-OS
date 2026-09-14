@@ -435,8 +435,28 @@ answers liveness from the recorded pid: a `running` record whose pid is no longe
 `abandoned`. **The terminal's completion notification carries the exit code — wait for it and pass it to
 `finish`;** it is the only authoritative signal that the run ended. `silent` and `abandoned` are recorded
 facts, not guesses: `status --gate` exits `3` so a phase can refuse to advance on a run that never
-reported. `claims --id=<id>` extracts test-result claims from a run's report/log and marks every one
-`unverified` — the ledger records claims, it does not verify them (re-derivation is a later slice).
+reported. `claims --id=<id>` extracts claims as structured objects (`claim_id`, `type`, `re_derivable`,
+`subject.command`, `executor_claim`, `status`) and marks every one `UNVERIFIED`.
+
+**Commit eligibility is decided by the ledger, not by how the tree looks.** Committing is forbidden while
+any run is not `completed`; run `commit-check` before staging. It exits `0` only when every recorded run
+is `completed` (or there are none) and exits `3` naming each run that is `running`, `silent`, `failed` or
+`abandoned`. The failure it prevents is silent: the tree looks coherent while a run is still writing to
+it, so a commit made during a live run captures a non-final state.
+
+**Claims are re-derived by execution, not by prose.** `php tools/ai-run.php verify --run=<id>` re-runs
+each claim whose type is `re_derivable` and whose command is on the tool's allowlist, records the observed
+exit code and values, sets `RE_DERIVED` when the observation agrees and `CONTRADICTED` when it does not
+(both claimed and observed recorded), and binds the evidence to `git rev-parse HEAD` plus a dirty flag.
+A command that is not allowlisted is refused, never executed, and shown with
+`reason: command_not_allowlisted`; a claim whose type cannot be re-derived by a pure tool (a browser
+journey, a performance measurement, migration state) stays `UNVERIFIED` and is never presented as
+verified.
+
+**The release gate consumes re-derived claims.** A phase may not advance on executor prose alone; it
+advances on claims whose status is `RE_DERIVED`, read from the run record's `claim_verification` (or the
+`verify --json` output). Non-re-derivable claim types are listed as needing a human or a separate
+procedure — they are not silently treated as satisfied.
 
 ## Simulation harness
 

@@ -393,6 +393,9 @@ The director answers with one option id. The harness resumes at the recorded che
 - No "asking a question" without options and a recommendation.
 - No treating an unreported run as evidence: a silent success (exit 0, no report) is as blind as a
   failure. Record run state with `tools/ai-run.php`; never infer it from log size or `pgrep`.
+- No committing during a live or unstable run: committing while any run is not `completed` is a process
+  defect. Commit eligibility is decided by the ledger (`php tools/ai-run.php commit-check`), not by how
+  the tree looks — a tree can look coherent while a run is still writing to it.
 - No test may create a live decision on the host: every test invocation sets `HARPP_NOTIFY=0` and uses a stubbed `harpp` first on `PATH` with a sandbox `HARPP_CONFIG`.
 
 ## Risks and open items

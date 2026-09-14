@@ -57,6 +57,37 @@ const RUN_STATUSES = ['running', 'completed', 'silent', 'failed', 'abandoned'];
 /** @var list<string> */
 const GATE_STATUSES = ['silent', 'failed', 'abandoned'];
 
+/**
+ * Claim types recognised from a report, each with an honest re-derivability by a pure deterministic
+ * tool. `false` means the tool must not — and does not — present the claim as verified.
+ * @var array<string,bool>
+ */
+const CLAIM_TYPES = [
+    'TEST_RESULT' => true,
+    'LINT_RESULT' => true,
+    'CONTRACT_CONFORMANCE' => true,
+    'ARTIFACT_HASH' => true,
+    'FILE_SCOPE' => true,
+    'BROWSER_JOURNEY' => false,
+    'PERFORMANCE_MEASUREMENT' => false,
+    'MIGRATION_STATE' => false,
+];
+
+/**
+ * The allowlist, as data rather than scattered conditionals. Each rule is an anchored pattern; the
+ * `pure_test` screen additionally rejects `php tests/<file>.php` when the file may bootstrap the app.
+ * The security boundary is the whole table, so it can be read in one place and refused consistently.
+ * @var list<array{pattern:string,screen?:string}>
+ */
+const COMMAND_ALLOWLIST = [
+    ['pattern' => '/^php\s+tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.php$/', 'screen' => 'pure_test'],
+    ['pattern' => '/^php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php$/'],
+    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php$/'],
+    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--json$/'],
+    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--live-only$/'],
+    ['pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md$/'],
+];
+
 /** Print command help and contractual exit codes. */
 function usage(): void
 {
@@ -87,10 +118,40 @@ Usage:
                               --gate exits 3 when any run is silent, failed or abandoned; 0 when clean.
 
   php tools/ai-run.php claims --id=ID [--runs-dir=DIR] [--json]
-                              Extract test-result claims from the run's report/log text, each with its
-                              source line. Every claim is marked unverified: this tool RECORDS claims,
-                              it does not re-derive them. Re-derivation is a later slice.
-Exit codes: 0 ok; 2 malformed input or contract; 3 the --gate found a silent/failed/abandoned run.
+                              Extract claims from the run's report/log as STRUCTURED objects: claim_id,
+                              type, re_derivable, subject.command, executor_claim and status. Every
+                              claim starts UNVERIFIED; `verify` re-derives by execution.
+
+  php tools/ai-run.php commit-check [--runs-dir=DIR] [--json]
+                              Decide commit eligibility from the ledger, not from how the tree looks.
+                              Exits 0 only when every recorded run is `completed` (or there are no
+                              runs); exits 3 and names each run that is running, silent, failed or
+                              abandoned. Cheap and read-only: it performs only the reconciliation
+                              `status` already performs. The failure it prevents is silent — a tree
+                              looks coherent while a run is still writing to it.
+
+  php tools/ai-run.php verify --run=ID [--claim=CLAIM_ID] [--runs-dir=DIR] [--json]
+                              [--timeout=SECONDS]
+                              Re-derive re-derivable claims by executing their declared commands,
+                              capturing the real exit code and output. Records
+                              method=independent_execution, verifier=deterministic, the observed
+                              values, and the tree binding (git rev-parse HEAD + dirty flag). Sets
+                              RE_DERIVED when the observation agrees and CONTRADICTED when it does
+                              not, recording both claimed and observed. A command that is not on the
+                              allowlist is refused, never executed, and shown so a human can decide.
+                              A type that cannot be re-derived by a pure tool is never reported as
+                              verified.
+
+ALLOWLIST — the security boundary. Executing a command named by a report is a code-execution
+surface, so only these exact shapes run, with a per-command timeout and no shell:
+  php tests/<file>.php            (the file must be pure: no bootstrap, no MODE_INTEGRATION)
+  php -l <file>.php
+  php tools/ai-contract-lint.php [--json|--live-only|--contract=<file>.md]
+Anything else — chaining, arguments outside the shape, other interpreters — is refused with
+reason `command_not_allowlisted`.
+
+Exit codes: 0 ok; 2 malformed input or contract; 3 the --gate/commit-check found a
+            silent/failed/abandoned/running run, or verify found a CONTRADICTED claim.
 TXT
     . "\n");
 }
@@ -499,58 +560,365 @@ function commandStatus(array $options, bool $json, bool $gate): int
     return $gate && $blocking !== [] ? EXIT_GATE : EXIT_OK;
 }
 
-/**
- * Extract test-result claims from free text without asserting any of them. Each claim carries the
- * line it came from and is marked `unverified`; the tool never re-runs anything in this slice.
- *
- * @return list<array{kind:string,value:string,line:string,line_number:int,source:string,status:string}>
- */
-function extractClaims(string $text, string $source): array
+/** Honest re-derivability for a recognised claim type. */
+function claimReDerivable(string $type): bool
 {
-    /** @var list<array{kind:string,regex:string,capture:int|string}> $patterns */
-    $patterns = [
-        ['kind' => 'passed_fraction', 'regex' => '/(\d+)\s*\/\s*(\d+)\s+passed\b/i', 'capture' => 1],
-        ['kind' => 'passed_count', 'regex' => '/\bpassed\s*=\s*(\d+)\b/i', 'capture' => 1],
-        ['kind' => 'failed_count', 'regex' => '/\bfailed\s*=\s*(\d+)\b/i', 'capture' => 1],
-        ['kind' => 'exit_code', 'regex' => '/\bexit\s*[=:]?\s*(\d+)\b/i', 'capture' => 1],
-        ['kind' => 'result_token', 'regex' => '/\b(PASS|FAIL|SKIP)\b/', 'capture' => 1],
-        ['kind' => 'tests_ok', 'regex' => '/\btests\/\S+\s+ok\b/i', 'capture' => 'full'],
-    ];
+    return CLAIM_TYPES[$type] ?? false;
+}
 
+/**
+ * Recognise the claim type of a declared command by its prefix, or null when the line is not a
+ * command. Classification is separate from the allowlist: a recognised command may still be refused.
+ */
+function classifyCommand(string $command): ?string
+{
+    $command = trim($command);
+    if ($command === '') {
+        return null;
+    }
+    if (preg_match('/^(npx\s+)?playwright\b/i', $command) === 1) {
+        return 'BROWSER_JOURNEY';
+    }
+    if (preg_match('/^php\s+ikabud\s+migrate\b/', $command) === 1) {
+        return 'MIGRATION_STATE';
+    }
+    if (preg_match('/^(ab|wrk|hyperfine|siege)\b/', $command) === 1) {
+        return 'PERFORMANCE_MEASUREMENT';
+    }
+    if (preg_match('/^(sha256sum|md5sum|git\s+hash-object)\b/', $command) === 1) {
+        return 'ARTIFACT_HASH';
+    }
+    if (preg_match('/^git\s+(status|diff)\b/', $command) === 1) {
+        return 'FILE_SCOPE';
+    }
+    if (preg_match('/^php\s+tools\/ai-contract-lint\.php\b/', $command) === 1) {
+        return 'CONTRACT_CONFORMANCE';
+    }
+    if (
+        preg_match('/^php\s+tests\/[^\s]+\.php\b/', $command) === 1
+        || preg_match('/^composer\s+test\b/', $command) === 1
+        || preg_match('/^php\s+scripts\/run-tests\.php\b/', $command) === 1
+        || preg_match('/^(php\s+)?vendor\/bin\/phpunit\b/', $command) === 1
+    ) {
+        return 'TEST_RESULT';
+    }
+    if (
+        preg_match('/^php\s+-l\s+\S+/', $command) === 1
+        || preg_match('/^(php\s+)?vendor\/bin\/phpstan\b/', $command) === 1
+        || preg_match('/^vendor\/bin\/(phpcs|php-cs-fixer)\b/', $command) === 1
+    ) {
+        return 'LINT_RESULT';
+    }
+    return null;
+}
+
+/** A test file is safe to execute only when it is pure: no bootstrap, no integration mode. */
+function testFileIsPure(string $relativePath): bool
+{
+    $path = dirname(__DIR__) . '/' . $relativePath;
+    $content = @file_get_contents($path);
+    if ($content === false) {
+        return false;
+    }
+    return !str_contains($content, 'MODE_INTEGRATION') && !str_contains($content, 'bootstrap.php');
+}
+
+/** The allowlist. Only these exact command shapes may be executed; everything else is refused. */
+function commandIsAllowlisted(string $command): bool
+{
+    $command = trim($command);
+    if ($command === '' || str_contains($command, '..')) {
+        return false;
+    }
+    foreach (COMMAND_ALLOWLIST as $rule) {
+        if (preg_match($rule['pattern'], $command, $matches) !== 1) {
+            continue;
+        }
+        if (($rule['screen'] ?? null) === 'pure_test') {
+            return testFileIsPure('tests/' . $matches[1] . '.php');
+        }
+        return true;
+    }
+    return false;
+}
+
+/**
+ * A declared command is executed as an argv array with bypass_shell, so chaining operators can never
+ * be interpreted. Only allowlisted `php ...` commands reach here.
+ *
+ * @return list<string>|null
+ */
+function argvForCommand(string $command): ?array
+{
+    $command = trim($command);
+    if (!str_starts_with($command, 'php ')) {
+        return null;
+    }
+    $parts = preg_split('/\s+/', substr($command, 4)) ?: [];
+    if ($parts === [] || $parts[0] === '') {
+        return null;
+    }
+    array_unshift($parts, PHP_BINARY);
+    return $parts;
+}
+
+/**
+ * Parse a whole line as a command declaration. Whole lines only, so prose that merely mentions a
+ * command is not promoted into an executable claim.
+ *
+ * @return array{command:string,type:string,re_derivable:bool}|null
+ */
+function parseCommandLine(string $line): ?array
+{
+    $candidate = trim($line);
+    $candidate = preg_replace('/^[>$]\s*/', '', $candidate) ?? $candidate;
+    $candidate = trim($candidate);
+    if (strlen($candidate) > 2 && str_starts_with($candidate, '`') && str_ends_with($candidate, '`')) {
+        $candidate = trim(substr($candidate, 1, -1));
+    }
+    $type = classifyCommand($candidate);
+    if ($type === null) {
+        return null;
+    }
+    return ['command' => $candidate, 'type' => $type, 're_derivable' => claimReDerivable($type)];
+}
+
+/** @return array<string,mixed> */
+function parseEvidence(string $line): array
+{
+    $evidence = [];
+    if (preg_match('/(\d+)\s*\/\s*(\d+)\s+passed\b/i', $line, $matches) === 1) {
+        $evidence['passed'] = (int) $matches[1];
+        $evidence['total'] = (int) $matches[2];
+    } elseif (preg_match('/\bpassed\s*[=:]\s*(\d+)/i', $line, $matches) === 1) {
+        $evidence['passed'] = (int) $matches[1];
+    }
+    if (preg_match('/\bfailed\s*[=:]\s*(\d+)/i', $line, $matches) === 1) {
+        $evidence['failed'] = (int) $matches[1];
+    }
+    if (preg_match('/\bexit\s*[=:]?\s*(\d+)\b/i', $line, $matches) === 1) {
+        $evidence['exit_code'] = (int) $matches[1];
+    }
+    if (stripos($line, 'No syntax errors detected') !== false) {
+        $evidence['syntax_ok'] = true;
+    }
+    return $evidence;
+}
+
+/**
+ * A bare result line without a command can still name a test we know how to re-run.
+ *
+ * @return array{command:?string,type:string,re_derivable:bool}|null
+ */
+function parseProseClaim(string $line): ?array
+{
+    if (preg_match('/\b(tests\/[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php)\s+ok\b/i', $line, $matches) === 1) {
+        return ['command' => 'php ' . $matches[1], 'type' => 'TEST_RESULT', 're_derivable' => true];
+    }
+    if (preg_match('/(\d+)\s*\/\s*(\d+)\s+passed\b/i', $line) === 1
+        || preg_match('/\b(passed|failed)\s*[=:]\s*\d+/i', $line) === 1) {
+        return ['command' => null, 'type' => 'TEST_RESULT', 're_derivable' => true];
+    }
+    if (stripos($line, 'No syntax errors') !== false) {
+        return ['command' => null, 'type' => 'LINT_RESULT', 're_derivable' => true];
+    }
+    return null;
+}
+
+/** @return array<string,mixed> */
+function buildClaim(string $runId, int $sequence, string $type, ?string $command, string $source, int $lineNumber, string $text): array
+{
+    return [
+        'claim_id' => 'CLM-' . $runId . '-' . $sequence,
+        'run' => $runId,
+        'type' => $type,
+        're_derivable' => claimReDerivable($type),
+        'subject' => [
+            'command' => $command,
+            'source' => $source,
+            'line' => $lineNumber,
+            'text' => trim($text),
+        ],
+        'executor_claim' => [],
+        'verification' => [
+            'method' => null,
+            'verifier' => null,
+            'observed_exit' => null,
+            'observed' => null,
+        ],
+        'status' => 'UNVERIFIED',
+    ];
+}
+
+/**
+ * Turn report/log prose into structured claims. A command line opens a block; result evidence on the
+ * following lines attaches to it. Result-only lines become claims with no command, marked for later
+ * refusal rather than silently trusted.
+ *
+ * @return list<array<string,mixed>>
+ */
+function extractClaims(string $text, string $source, string $runId, int &$sequence): array
+{
     $claims = [];
-    $seen = [];
+    $active = null;
     $lines = preg_split('/\r?\n/', $text) ?: [];
     foreach ($lines as $index => $line) {
-        foreach ($patterns as $pattern) {
-            $matches = [];
-            if (preg_match_all($pattern['regex'], $line, $matches, PREG_SET_ORDER) === false) {
-                continue;
-            }
-            foreach ($matches as $match) {
-                if ($pattern['kind'] === 'passed_fraction') {
-                    $value = $match[1] . '/' . $match[2];
-                } elseif ($pattern['capture'] === 'full') {
-                    $value = trim((string) $match[0]);
-                } else {
-                    $value = (string) $match[(int) $pattern['capture']];
+        // A section heading or code-fence boundary ends the active command block, so evidence from a
+        // later section cannot be attributed to an earlier command.
+        if (preg_match('/^\s*(?:```|#{1,6}\s|\*\*|---)/', $line) === 1) {
+            $active = null;
+        }
+        $parsed = parseCommandLine($line);
+        if ($parsed !== null) {
+            $claims[] = buildClaim($runId, ++$sequence, $parsed['type'], $parsed['command'], $source, $index + 1, $line);
+            $active = count($claims) - 1;
+            continue;
+        }
+        $evidence = parseEvidence($line);
+        if ($evidence !== []) {
+            if ($active !== null) {
+                foreach ($evidence as $key => $value) {
+                    $claims[$active]['executor_claim'][$key] = $value;
                 }
-                $key = $pattern['kind'] . '|' . $value . '|' . ($index + 1) . '|' . $source;
-                if (isset($seen[$key])) {
+            } else {
+                $prose = parseProseClaim($line);
+                if ($prose === null) {
                     continue;
                 }
-                $seen[$key] = true;
-                $claims[] = [
-                    'kind' => $pattern['kind'],
-                    'value' => $value,
-                    'line' => trim($line),
-                    'line_number' => $index + 1,
-                    'source' => $source,
-                    'status' => 'unverified',
-                ];
+                $claim = buildClaim($runId, ++$sequence, $prose['type'], $prose['command'], $source, $index + 1, $line);
+                $claim['executor_claim'] = $evidence;
+                $claims[] = $claim;
+            }
+            continue;
+        }
+        if ($active === null) {
+            $prose = parseProseClaim($line);
+            if ($prose !== null) {
+                $claims[] = buildClaim($runId, ++$sequence, $prose['type'], $prose['command'], $source, $index + 1, $line);
             }
         }
     }
     return $claims;
+}
+
+/**
+ * Execute an argv array directly, with no shell, under a wall-clock timeout. The tree is observed,
+ * never rewritten.
+ *
+ * @param list<string> $argv
+ * @return array{exit_code:?int,output:string,timed_out:bool}
+ */
+function executeArgv(array $argv, string $cwd, int $timeoutSeconds): array
+{
+    if (!function_exists('proc_open')) {
+        return ['exit_code' => null, 'output' => 'proc_open unavailable', 'timed_out' => false];
+    }
+    $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $pipes = [];
+    $process = @proc_open($argv, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
+    if (!is_resource($process)) {
+        return ['exit_code' => null, 'output' => 'proc_open failed', 'timed_out' => false];
+    }
+    fclose($pipes[0]);
+    stream_set_blocking($pipes[1], false);
+    stream_set_blocking($pipes[2], false);
+    $output = '';
+    $exitCode = null;
+    $timedOut = false;
+    $deadline = microtime(true) + max(1, $timeoutSeconds);
+    while (true) {
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        $output .= ($stdout === false ? '' : $stdout) . ($stderr === false ? '' : $stderr);
+        $status = proc_get_status($process);
+        if (!$status['running']) {
+            $exitCode = (int) $status['exitcode'];
+            break;
+        }
+        if (microtime(true) >= $deadline) {
+            $timedOut = true;
+            proc_terminate($process);
+            break;
+        }
+        usleep(20000);
+    }
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    $output .= ($stdout === false ? '' : $stdout) . ($stderr === false ? '' : $stderr);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($process);
+    return ['exit_code' => $timedOut ? null : $exitCode, 'output' => $output, 'timed_out' => $timedOut];
+}
+
+/** @return array{rev:?string,dirty:bool} */
+function treeBinding(): array
+{
+    $root = dirname(__DIR__);
+    $rev = null;
+    $revRun = executeArgv(['git', 'rev-parse', 'HEAD'], $root, 10);
+    if (!$revRun['timed_out'] && $revRun['exit_code'] === 0) {
+        $candidate = trim($revRun['output']);
+        $rev = $candidate === '' ? null : $candidate;
+    }
+    $dirty = false;
+    $statusRun = executeArgv(['git', 'status', '--porcelain'], $root, 10);
+    if (!$statusRun['timed_out'] && $statusRun['exit_code'] === 0) {
+        $dirty = trim($statusRun['output']) !== '';
+    }
+    return ['rev' => $rev, 'dirty' => $dirty];
+}
+
+/** @return array<string,mixed> */
+function parseObserved(string $output, int $exitCode): array
+{
+    $observed = ['exit_code' => $exitCode];
+    if (preg_match('/(\d+)\s*\/\s*(\d+)\s+passed\b/i', $output, $matches) === 1) {
+        $observed['passed'] = (int) $matches[1];
+        $observed['total'] = (int) $matches[2];
+    } elseif (preg_match('/\bpassed\s*[=:]\s*(\d+)/i', $output, $matches) === 1) {
+        $observed['passed'] = (int) $matches[1];
+    }
+    if (preg_match('/\bfailed\s*[=:]\s*(\d+)/i', $output, $matches) === 1) {
+        $observed['failed'] = (int) $matches[1];
+    }
+    if (stripos($output, 'No syntax errors detected') !== false) {
+        $observed['syntax_ok'] = true;
+    } elseif (stripos($output, 'Parse error') !== false || stripos($output, 'syntax error') !== false) {
+        $observed['syntax_ok'] = false;
+    }
+    return $observed;
+}
+
+/**
+ * @param array<string,mixed> $expected
+ * @param array<string,mixed> $observed
+ * @return array{status:string,mismatches:array<string,array{claimed:mixed,observed:mixed}>,reason:?string}
+ */
+function evaluateClaim(array $expected, array $observed): array
+{
+    if ($expected === []) {
+        return ['status' => 'UNVERIFIED', 'mismatches' => [], 'reason' => 'nothing_to_compare'];
+    }
+    $mismatches = [];
+    $unobservable = [];
+    foreach ($expected as $key => $value) {
+        $key = (string) $key;
+        if (!array_key_exists($key, $observed)) {
+            $unobservable[] = $key;
+            continue;
+        }
+        if ($observed[$key] !== $value) {
+            $mismatches[$key] = ['claimed' => $value, 'observed' => $observed[$key]];
+        }
+    }
+    if ($mismatches !== []) {
+        return ['status' => 'CONTRADICTED', 'mismatches' => $mismatches, 'reason' => null];
+    }
+    if ($unobservable !== []) {
+        return ['status' => 'UNVERIFIED', 'mismatches' => [], 'reason' => 'observed_value_missing: ' . implode(', ', $unobservable)];
+    }
+    return ['status' => 'RE_DERIVED', 'mismatches' => [], 'reason' => null];
 }
 
 /**
@@ -564,6 +932,7 @@ function commandClaims(array $options, bool $json): int
 
     $claims = [];
     $sources = [];
+    $sequence = 0;
     foreach (['report', 'log'] as $field) {
         $path = is_string($record[$field] ?? null) ? $record[$field] : null;
         if ($path === null || $path === '' || !is_file($path)) {
@@ -574,15 +943,16 @@ function commandClaims(array $options, bool $json): int
             throw new InvalidArgumentException("run '{$id}' {$field} '{$path}' cannot be read");
         }
         $sources[] = $path;
-        $claims = array_merge($claims, extractClaims($text, $path));
+        $claims = array_merge($claims, extractClaims($text, $path, $id, $sequence));
     }
 
-    $note = 'claims are extracted, not verified; re-derivation is a later slice';
+    $note = 'claims are extracted UNVERIFIED; run `verify` to re-derive the ones whose type is re_derivable and whose command is allowlisted';
     $payload = [
         'id' => $id,
         'sources' => $sources,
         'verified' => false,
         'note' => $note,
+        'claim_types' => CLAIM_TYPES,
         'claims' => $claims,
     ];
 
@@ -593,20 +963,274 @@ function commandClaims(array $options, bool $json): int
     fwrite(STDOUT, "CLAIMS — {$id} [UNVERIFIED]\n");
     fwrite(STDOUT, "  {$note}\n");
     if ($claims === []) {
-        fwrite(STDOUT, "  (no test-result claims found)\n");
+        fwrite(STDOUT, "  (no claims found)\n");
         return EXIT_OK;
     }
     foreach ($claims as $claim) {
+        $subject = is_array($claim['subject'] ?? null) ? $claim['subject'] : [];
+        $command = is_string($subject['command'] ?? null) ? $subject['command'] : '(no command)';
+        $source = is_string($subject['source'] ?? null) ? $subject['source'] : '?';
+        $line = is_int($subject['line'] ?? null) ? $subject['line'] : 0;
+        $type = is_string($claim['type'] ?? null) ? $claim['type'] : 'UNKNOWN';
+        $status = is_string($claim['status'] ?? null) ? $claim['status'] : 'UNVERIFIED';
+        $kind = ($claim['re_derivable'] ?? false) === true ? 're-derivable' : 'human/procedure';
         fwrite(STDOUT, sprintf(
-            "  [unverified] %-16s %-10s %s:%d  %s\n",
-            $claim['kind'],
-            $claim['value'],
-            $claim['source'],
-            $claim['line_number'],
-            $claim['line']
+            "  [%s] %-22s %-16s %s  %s:%d\n",
+            $status,
+            $type,
+            $kind,
+            $command,
+            $source,
+            $line
         ));
     }
     return EXIT_OK;
+}
+
+/**
+ * Commit eligibility is decided by the ledger, not by how the tree looks. A running run is writing to
+ * the tree right now; a silent, failed or abandoned run never produced a final state. Only when every
+ * recorded run is `completed` is a commit eligible.
+ *
+ * @param array<string,list<string>> $options
+ */
+function commandCommitCheck(array $options, bool $json): int
+{
+    $runsDir = runsDirOf(option($options, 'runs-dir'));
+    $loaded = loadAllRuns($runsDir);
+    $now = time();
+    $blocking = [];
+    $total = 0;
+    foreach ($loaded['runs'] as $run) {
+        $total++;
+        $decorated = decorateRun($run, $now);
+        $status = (string) ($decorated['status'] ?? 'unknown');
+        if ($status === 'completed') {
+            continue;
+        }
+        $blocking[] = [
+            'id' => (string) ($decorated['id'] ?? 'unknown'),
+            'status' => $status,
+            'pid' => (int) ($decorated['pid'] ?? 0),
+            'age' => (string) ($decorated['age'] ?? '0s'),
+        ];
+    }
+
+    if ($json) {
+        fwrite(STDOUT, encodeJson([
+            'runs_dir' => $runsDir,
+            'runs_count' => $total,
+            'eligible' => $blocking === [],
+            'blocking' => $blocking,
+            'errors' => $loaded['errors'],
+        ], true) . "\n");
+    } else {
+        fwrite(STDOUT, "COMMIT-CHECK — {$runsDir}\n");
+        if ($blocking === []) {
+            if ($total === 0) {
+                fwrite(STDOUT, "  ELIGIBLE — no runs recorded; nothing can be mid-flight\n");
+            } else {
+                fwrite(STDOUT, "  ELIGIBLE — all {$total} run(s) are completed\n");
+            }
+        } else {
+            fwrite(STDOUT, "  NOT ELIGIBLE — committing now would capture a non-final state; " . count($blocking) . " run(s) are not completed\n");
+            foreach ($blocking as $item) {
+                fwrite(STDOUT, "  BLOCK  {$item['id']}  {$item['status']}  age={$item['age']}  pid={$item['pid']}\n");
+            }
+        }
+        foreach ($loaded['errors'] as $error) {
+            fwrite(STDERR, "WARN: unreadable run record {$error}\n");
+        }
+    }
+
+    return $blocking === [] ? EXIT_OK : EXIT_GATE;
+}
+
+/**
+ * Re-derive claims by execution. This OBSERVES the tree: it never repairs, formats or rewrites it.
+ * The only write is the evidence record persisted under the run ledger.
+ *
+ * @param array<string,list<string>> $options
+ */
+function commandVerify(array $options, bool $json, int $timeoutSeconds): int
+{
+    $id = validateRunId(requiredValue(option($options, 'run'), 'run'));
+    $runsDir = runsDirOf(option($options, 'runs-dir'));
+    $record = loadRecord($runsDir, $id);
+    $only = option($options, 'claim');
+
+    $claims = [];
+    $sequence = 0;
+    foreach (['report', 'log'] as $field) {
+        $path = is_string($record[$field] ?? null) ? $record[$field] : null;
+        if ($path === null || $path === '' || !is_file($path)) {
+            continue;
+        }
+        $text = @file_get_contents($path);
+        if ($text === false) {
+            throw new InvalidArgumentException("run '{$id}' {$field} '{$path}' cannot be read");
+        }
+        $claims = array_merge($claims, extractClaims($text, $path, $id, $sequence));
+    }
+
+    if ($only !== null) {
+        $filtered = [];
+        foreach ($claims as $claim) {
+            if (($claim['claim_id'] ?? null) === $only) {
+                $filtered[] = $claim;
+            }
+        }
+        $claims = $filtered;
+        if ($claims === []) {
+            throw new InvalidArgumentException("run '{$id}' has no claim '{$only}'");
+        }
+    }
+
+    $binding = treeBinding();
+    $attempted = 0;
+    $contradicted = 0;
+    $results = [];
+    foreach ($claims as $claim) {
+        $subject = is_array($claim['subject'] ?? null) ? $claim['subject'] : [];
+        $command = is_string($subject['command'] ?? null) ? $subject['command'] : null;
+        $expected = is_array($claim['executor_claim'] ?? null) ? $claim['executor_claim'] : [];
+        $reDerivable = ($claim['re_derivable'] ?? false) === true;
+        /** @var array<string,mixed> $verification */
+        $verification = [
+            'method' => null,
+            'verifier' => null,
+            'observed_exit' => null,
+            'observed' => null,
+        ];
+
+        // A claim that cannot be re-derived must never look verified.
+        if (!$reDerivable) {
+            $verification['reason'] = 'not_re_derivable_by_pure_tool';
+            $claim['verification'] = $verification;
+            $results[] = $claim;
+            continue;
+        }
+        if ($command === null) {
+            $verification['reason'] = 'no_command_declared';
+            $claim['verification'] = $verification;
+            $results[] = $claim;
+            continue;
+        }
+        // Prove the refusal path before the happy path: the command is shown, not executed.
+        if (!commandIsAllowlisted($command)) {
+            $verification['reason'] = 'command_not_allowlisted';
+            $verification['detail'] = 'the command is shown but was NOT executed; a human must decide';
+            $claim['verification'] = $verification;
+            $results[] = $claim;
+            continue;
+        }
+        $argv = argvForCommand($command);
+        if ($argv === null) {
+            $verification['reason'] = 'command_not_allowlisted';
+            $claim['verification'] = $verification;
+            $results[] = $claim;
+            continue;
+        }
+        $attempted++;
+        $execution = executeArgv($argv, dirname(__DIR__), $timeoutSeconds);
+        if ($execution['timed_out']) {
+            $verification['reason'] = 'timeout';
+            $verification['observed_exit'] = null;
+            $verification['observed'] = ['timeout_seconds' => $timeoutSeconds];
+            $claim['verification'] = $verification;
+            $results[] = $claim;
+            continue;
+        }
+        $observed = parseObserved((string) $execution['output'], (int) $execution['exit_code']);
+        $evaluation = evaluateClaim($expected, $observed);
+        $verification['method'] = 'independent_execution';
+        $verification['verifier'] = 'deterministic';
+        $verification['observed_exit'] = $observed['exit_code'];
+        $verification['observed'] = $observed;
+        $verification['binding'] = $binding;
+        if ($evaluation['status'] === 'CONTRADICTED') {
+            $verification['mismatches'] = $evaluation['mismatches'];
+            $claim['status'] = 'CONTRADICTED';
+            $contradicted++;
+        } elseif ($evaluation['status'] === 'UNVERIFIED') {
+            $verification['reason'] = $evaluation['reason'];
+            $claim['status'] = 'UNVERIFIED';
+        } else {
+            $claim['status'] = 'RE_DERIVED';
+        }
+        $claim['verification'] = $verification;
+        $results[] = $claim;
+    }
+
+    // Evidence binds to the revision it was verified against, so it cannot silently drift.
+    $record['claim_verification'] = [
+        'verified_at' => date(DATE_ATOM),
+        'rev' => $binding['rev'],
+        'dirty' => $binding['dirty'],
+        'results' => $results,
+    ];
+    writeRecord(recordPath($runsDir, $id), $record);
+
+    $summary = [
+        'attempted' => $attempted,
+        're_derived' => 0,
+        'contradicted' => 0,
+        'refused' => 0,
+        'not_re_derivable' => 0,
+        'unverified' => 0,
+    ];
+    foreach ($results as $claim) {
+        $status = is_string($claim['status'] ?? null) ? $claim['status'] : 'UNVERIFIED';
+        $verification = $claim['verification'];
+        $reason = is_string($verification['reason'] ?? null) ? $verification['reason'] : '';
+        if ($status === 'RE_DERIVED') {
+            $summary['re_derived']++;
+        } elseif ($status === 'CONTRADICTED') {
+            $summary['contradicted']++;
+        } elseif ($reason === 'not_re_derivable_by_pure_tool') {
+            $summary['not_re_derivable']++;
+        } elseif ($reason === 'command_not_allowlisted') {
+            $summary['refused']++;
+        } else {
+            $summary['unverified']++;
+        }
+    }
+
+    if ($json) {
+        fwrite(STDOUT, encodeJson([
+            'run' => $id,
+            'binding' => $binding,
+            'summary' => $summary,
+            'claims' => $results,
+        ], true) . "\n");
+    } else {
+        fwrite(STDOUT, "VERIFY — {$id}\n");
+        $rev = is_string($binding['rev']) ? $binding['rev'] : '(unavailable)';
+        fwrite(STDOUT, "  binding: rev={$rev} dirty=" . ($binding['dirty'] ? 'yes' : 'no') . "\n");
+        foreach ($results as $claim) {
+            $subject = is_array($claim['subject'] ?? null) ? $claim['subject'] : [];
+            $command = is_string($subject['command'] ?? null) ? $subject['command'] : '(no command)';
+            $type = is_string($claim['type'] ?? null) ? $claim['type'] : 'UNKNOWN';
+            $status = is_string($claim['status'] ?? null) ? $claim['status'] : 'UNVERIFIED';
+            fwrite(STDOUT, "  [{$status}] {$type}  {$command}\n");
+            $verification = $claim['verification'];
+            if ($status === 'CONTRADICTED') {
+                $mismatches = is_array($verification['mismatches'] ?? null) ? $verification['mismatches'] : [];
+                foreach ($mismatches as $key => $mismatch) {
+                    $claimed = is_array($mismatch) ? ($mismatch['claimed'] ?? null) : null;
+                    $observedValue = is_array($mismatch) ? ($mismatch['observed'] ?? null) : null;
+                    fwrite(STDOUT, "      claimed {$key}=" . encodeJson($claimed) . ' observed ' . encodeJson($observedValue) . "\n");
+                }
+            } elseif ($status === 'RE_DERIVED') {
+                fwrite(STDOUT, "      claimed " . encodeJson($claim['executor_claim'] ?? []) . ' observed ' . encodeJson($verification['observed'] ?? null) . "\n");
+            } elseif (is_string($verification['reason'] ?? null)) {
+                fwrite(STDOUT, '      reason: ' . $verification['reason'] . "\n");
+            }
+        }
+        fwrite(STDOUT, "  summary: attempted={$summary['attempted']} re-derived={$summary['re_derived']} contradicted={$summary['contradicted']} refused={$summary['refused']} not_re_derivable={$summary['not_re_derivable']} unverified={$summary['unverified']}\n");
+    }
+
+    return $contradicted > 0 ? EXIT_GATE : EXIT_OK;
 }
 
 /** Dispatch and return a contractual exit status. */
@@ -619,7 +1243,7 @@ function main(): int
         return EXIT_OK;
     }
     $command = array_shift($args);
-    if (!in_array($command, ['start', 'finish', 'status', 'claims'], true)) {
+    if (!in_array($command, ['start', 'finish', 'status', 'claims', 'commit-check', 'verify'], true)) {
         throw new InvalidArgumentException("unknown command '{$command}'");
     }
     $parsed = parseArguments($args);
@@ -635,6 +1259,15 @@ function main(): int
     if ($command === 'claims') {
         validateArgumentNames($parsed, ['id', 'runs-dir'], ['json']);
         return commandClaims($parsed['options'], isset($parsed['flags']['json']));
+    }
+    if ($command === 'commit-check') {
+        validateArgumentNames($parsed, ['runs-dir'], ['json']);
+        return commandCommitCheck($parsed['options'], isset($parsed['flags']['json']));
+    }
+    if ($command === 'verify') {
+        validateArgumentNames($parsed, ['run', 'claim', 'runs-dir', 'timeout'], ['json']);
+        $timeout = option($parsed['options'], 'timeout');
+        return commandVerify($parsed['options'], isset($parsed['flags']['json']), $timeout === null ? 120 : intValue($timeout, 'timeout'));
     }
     validateArgumentNames($parsed, ['runs-dir'], ['json', 'gate']);
     return commandStatus($parsed['options'], isset($parsed['flags']['json']), isset($parsed['flags']['gate']));
