@@ -59,6 +59,7 @@ function catThemeJsonError(Throwable $error): void
  * route guard measure; it does not change who is admitted. A failure is returned
  * as a readable payload rather than escaping as an uncaught capability error.
  *
+ * @param array<string, mixed> $payload
  * @return array<string, mixed>
  */
 function catThemeReadViaBus(string $operation, array $payload = []): array
@@ -213,9 +214,34 @@ function catThemeAdminPage(array $params = []): void
             }
             $value = $savedValues[$sectionId][$fieldId] ?? ($control['default'] ?? '');
             $type = (string)($control['type'] ?? 'text');
-            $inputType = in_array($type, ['color', 'number'], true) ? $type : 'text';
-            $fields .= '<label class="block"><span class="mb-1 block text-sm font-semibold text-slate-700">' . catThemeEscape($control['label'] ?? $fieldId) . '</span>'
-                . '<input class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-akira-500 focus:ring-akira-500" type="' . catThemeEscape($inputType) . '" name="values[' . catThemeEscape($sectionId) . '][' . catThemeEscape($fieldId) . ']" value="' . catThemeEscape($value) . '"></label>';
+            $name = 'values[' . catThemeEscape($sectionId) . '][' . catThemeEscape($fieldId) . ']';
+            $inputClass = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-akira-500 focus:ring-akira-500';
+            $field = '';
+            if ($type === 'select') {
+                $options = '';
+                foreach (is_array($control['options'] ?? null) ? $control['options'] : [] as $option) {
+                    if (!is_scalar($option)) {
+                        continue;
+                    }
+                    $option = (string)$option;
+                    $selected = (string)$value === $option ? ' selected' : '';
+                    $options .= '<option value="' . catThemeEscape($option) . '"' . $selected . '>' . catThemeEscape($option) . '</option>';
+                }
+                $field = '<select class="' . $inputClass . '" name="' . $name . '">' . $options . '</select>';
+            } else {
+                $inputType = in_array($type, ['color', 'number'], true) ? $type : 'text';
+                $constraints = is_array($control['constraints'] ?? null) ? $control['constraints'] : [];
+                $numericAttributes = '';
+                if ($inputType === 'number') {
+                    foreach (['min', 'max', 'step'] as $attribute) {
+                        if (isset($constraints[$attribute]) && is_numeric($constraints[$attribute])) {
+                            $numericAttributes .= ' ' . $attribute . '="' . catThemeEscape($constraints[$attribute]) . '"';
+                        }
+                    }
+                }
+                $field = '<input class="' . $inputClass . '" type="' . catThemeEscape($inputType) . '" name="' . $name . '" value="' . catThemeEscape($value) . '"' . $numericAttributes . '>';
+            }
+            $fields .= '<label class="block"><span class="mb-1 block text-sm font-semibold text-slate-700">' . catThemeEscape($control['label'] ?? $fieldId) . '</span>' . $field . '</label>';
         }
         $studio .= '<fieldset class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><legend class="px-2 text-lg font-bold text-slate-900">' . catThemeEscape($section['label'] ?? $sectionId) . '</legend><div class="grid gap-4">' . $fields . '</div></fieldset>';
     }

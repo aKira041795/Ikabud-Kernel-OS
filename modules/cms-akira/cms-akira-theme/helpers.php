@@ -606,11 +606,14 @@ function catThemeValidate(string $slug): array
         $driftFindings = \Ikabud\Kernel\Services\ThemeViewContractDrift::compare($entityViewDeclarations, $registeredFields);
         $contractFieldErrors = 0;
         foreach ($driftFindings as $finding) {
-            $entity = (string) ($finding['entity'] ?? '');
-            $view = (string) ($finding['view'] ?? '');
-            $field = (string) ($finding['field'] ?? '');
+            // compare() declares its return shape, so these keys always exist and
+            // are always strings - guarding them with ?? is dead code and PHPStan
+            // rejects it as nullCoalesce.offset.
+            $entity = $finding['entity'];
+            $view = $finding['view'];
+            $field = $finding['field'];
             $label = $entity . '.' . $view;
-            $reason = (string) ($finding['reason'] ?? '');
+            $reason = $finding['reason'];
             if ($reason === \Ikabud\Kernel\Services\ThemeViewContractDrift::REASON_FIELD_NOT_IN_CONTRACT) {
                 $result['errors'][] = "entity-view-map '{$label}' declares field '{$field}' not present in the registered contract.";
                 $contractFieldErrors++;
@@ -753,6 +756,35 @@ function catThemeCustomizerSchema(string $slug): array
 }
 
 /**
+ * Reject malformed and out-of-range numeric customizer values before the
+ * declarative provider can coerce or clamp them. Rejection is a 422 and the
+ * customization transaction stores no values.
+ */
+function catThemeValidateNumericControlValue(
+    mixed $value,
+    \Ikabud\Kernel\Contracts\ControlDefinition $control,
+    string $field,
+): void {
+    if (!is_int($value) && !is_float($value)
+        && (!is_string($value) || preg_match('/^-?(?:\d+(?:\.\d*)?|\.\d+)$/D', trim($value)) !== 1)) {
+        throw new CatThemeException("Customizer field {$field} must be a number.", 422);
+    }
+
+    $number = (float)$value;
+    if (!is_finite($number)) {
+        throw new CatThemeException("Customizer field {$field} must be a finite number.", 422);
+    }
+    $min = $control->constraints['min'] ?? null;
+    $max = $control->constraints['max'] ?? null;
+    if (is_numeric($min) && $number < (float)$min) {
+        throw new CatThemeException("Customizer field {$field} must be at least {$min}.", 422);
+    }
+    if (is_numeric($max) && $number > (float)$max) {
+        throw new CatThemeException("Customizer field {$field} must be at most {$max}.", 422);
+    }
+}
+
+/**
  * @param array<string,mixed> $values
  * @return array<string,array<string,mixed>>
  */
@@ -776,6 +808,10 @@ function catThemeValidateCustomizerValues(string $slug, array $values): array
         foreach ($submitted as $field => $value) {
             if (!is_scalar($value) && $value !== null) {
                 throw new CatThemeException("Customizer field {$sectionId}.{$field} must be a scalar value.", 422);
+            }
+            $control = $section->controls[(string)$field];
+            if (in_array($control->type, ['number', 'integer'], true)) {
+                catThemeValidateNumericControlValue($value, $control, "{$sectionId}.{$field}");
             }
             $tokenKey = '--' . str_replace('_', '-', (string) $field);
             if (isset($definition->tokens[$tokenKey]) && is_scalar($value)
