@@ -58,9 +58,9 @@ behaviour. **P0 must precede P3** — building against an unmeasured gap list is
 
 | Defect the director reported | Phase | Blocked by |
 |---|---|---|
-| Theme Studio renders without the sidebar | P1 | **CD-58.** Confirmed live: `/cms-akira-theme` answers `403`, `Required authority: akira.theme.read@1`, `Reason: unknown_role`. The capability's caller allowlist refuses the caller. |
+| Theme Studio renders without the sidebar | P1 | **CD-58.** Proven deterministically from the tenant policy row: `akira.shell.admin_page@1` v30, active, `caller_module = cms-akira-shell,cms-akira-seo,cms-akira-navigation`. `cms-akira-theme` is absent — though it declares the dependency (`module.json:122`) and calls it (`helpers.php:1390`). Exactly **one** shell-owned capability carries a caller allowlist, so the class is contained to that one row. |
 | Sidebar is a flat 20-link list (IA) | P2 | **CD-59.** Grouping needs a `group` field on sidebar contributions — a `module.json` edit — which the ledger blocks unconditionally. |
-| Other admin pages lack the sidebar | P1 | **Not blocked.** `345fcaa` covered seo + navigation; any remainder is measurable and fixable now. |
+| Other admin pages lack the sidebar | P1 | **Substantially resolved — statically verified.** Only three modules consume the shared chrome (theme, seo, navigation); `cms-akira-shell` serves the other 19 admin routes directly through `akiraShellPage()`. seo and navigation were fixed in `345fcaa`. The remaining gap is therefore **Theme Studio alone**, i.e. the CD-58 row above. Live-session confirmation is still required before P1 chrome can be called done. |
 
 Both things the director noticed by hand are the two things that cannot proceed without an owner decision. That is
 not a coincidence, and it is the most important fact about this project's critical path: **the gates are the
@@ -105,6 +105,16 @@ Three separate sweeps have now been invalidated by auth, so the mechanics are re
 - **The marker set is unproven.** No authenticated admin page has yet been read, so whether these surfaces use
   `<table>` at all is unknown — the probe's own markers are the first thing to validate once a session exists.
   An unvalidated marker produces exactly the false gap report this project exists to prevent.
+- **`unknown_role` means *unauthenticated*, not *unauthorised*.** `CapabilityAuthorizationRegistry.php:79` emits it
+  when `$actorRole === ''`. A sweep where every route carries this reason is a dead session, not a policy finding.
+  Mislabelling this produced a false "confirmed live" claim about CD-58 on 2026-09-15 which had to be corrected in
+  the decision record. **Read what a reason code means before it becomes evidence.**
+- **Authority state is per-tenant, and CLI `app()->db()` is not the tenant.** Measured: CLI resolves to `ikabudsix`
+  with **12** policy rows, while tenant 54's `akira` holds **1531**. A query for the chrome capability's policy
+  returned "zero rows" from the wrong database and nearly produced the opposite conclusion. Use
+  `app()->dbForTenant(<id>)`.
+- **A `403` or `404` is never evidence about a product surface until an authenticated session is proven.** Every
+  sweep must first fetch a page known to render and assert it, or it must refuse to report.
 
 ## Harness defect found and fixed: nothing monitored a running process
 
