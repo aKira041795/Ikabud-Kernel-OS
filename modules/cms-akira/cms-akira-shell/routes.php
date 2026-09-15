@@ -7,6 +7,8 @@ return [
         '/' => 'cms-akira-shell:akiraPublicHome',
         '/posts' => 'cms-akira-shell:akiraPublicPostList',
         '/posts/{slug}' => 'cms-akira-shell:akiraPublicPostSingle',
+        '/sitemap.xml' => 'cms-akira-shell:akiraPublicSitemap',
+        '/robots.txt' => 'cms-akira-shell:akiraPublicRobots',
         '/cms-akira-shell' => 'cms-akira-shell:akiraShellDashboard',
         '/cms-akira-shell/login' => 'cms-akira-shell:akiraShellLogin',
         '/cms-akira-shell/posts' => 'cms-akira-shell:akiraShellPostList',

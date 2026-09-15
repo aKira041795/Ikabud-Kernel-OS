@@ -22,6 +22,25 @@ function akiraShellSeedKernelProvenancePolicy(): void
 
 akiraShellSeedKernelProvenancePolicy();
 
+/*
+ * The kernel full-page cache restores a hardcoded `Content-Type: text/html` on
+ * a cache hit (src/helpers/page-cache.php:334). A sitemap or robots file served
+ * as text/html is rejected by crawlers, so these two non-HTML public resources
+ * must not be page-cached. The cache's own documented bypass is ?nocache=1;
+ * setting it here, at module-load time (before dispatch computes page-cache
+ * eligibility), keeps the correct handler headers on every request. Only these
+ * two exact paths are affected.
+ */
+function akiraPublicBypassPageCacheForNonHtml(): void
+{
+    $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    if (is_string($path) && in_array(rtrim($path, '/'), ['/sitemap.xml', '/robots.txt'], true)) {
+        $_GET['nocache'] = '1';
+    }
+}
+
+akiraPublicBypassPageCacheForNonHtml();
+
 function akiraShellEscape(mixed $value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -48,6 +67,164 @@ function akiraPublicContext(string $title, string $path, string $description = '
         'current_year' => date('Y'),
         'show_admin_bar' => is_array($user) && $user !== [],
     ];
+}
+
+/**
+ * Absolute origin (scheme://host) for the current request, derived from the
+ * request's own Host and scheme. This is deliberately not a configured
+ * constant: a sitemap or robots file must always describe the host that asked
+ * for it, so tenant A can never emit tenant B's URLs.
+ *
+ * The Host header is caller-controlled, so it is validated before use. An
+ * implausible authority yields '' and the caller emits no absolute URL rather
+ * than an attacker-shaped one.
+ */
+function akiraPublicRequestOrigin(): string
+{
+    $host = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
+    $valid = preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$/', $host) === 1
+        || preg_match('/^\[[0-9a-f:.]+\](?::[0-9]{1,5})?$/', $host) === 1;
+    if (!$valid) {
+        return '';
+    }
+    $scheme = function_exists('request_scheme') ? strtolower(request_scheme()) : 'http';
+    return ($scheme === 'https' ? 'https' : 'http') . '://' . $host;
+}
+
+/** XML-escape a scalar for safe inclusion in the sitemap document. */
+function akiraPublicSitemapEscape(mixed $value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES | ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/** Hard cap on sitemap entries; beyond it the response says it was truncated. */
+function akiraPublicSitemapMaxEntries(): int
+{
+    return 500;
+}
+
+/**
+ * Normalise a projected post timestamp to a W3C datetime for <lastmod>, or
+ * null when the value is absent or not a real calendar date. An unparseable
+ * timestamp omits the element rather than inventing a date.
+ */
+function akiraPublicSitemapLastmod(mixed $value): ?string
+{
+    $value = trim((string) $value);
+    if ($value === '' || preg_match('/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/', $value, $matches) !== 1) {
+        return null;
+    }
+    $date = $matches[1];
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    if (!$parsed instanceof DateTimeImmutable || $parsed->format('Y-m-d') !== $date) {
+        return null;
+    }
+    return isset($matches[2]) && $matches[2] !== '' ? $date . 'T' . $matches[2] : $date;
+}
+
+/**
+ * Build the urlset document from already-projected published post rows. URLs
+ * come from the canonical `url` field the entity view exposes — never a slug
+ * rebuilt here — and every value is XML-escaped.
+ *
+ * @param list<array<string,mixed>> $posts
+ */
+function akiraPublicSitemapUrlset(array $posts, string $origin, bool $truncated = false): string
+{
+    $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+    if ($truncated) {
+        $xml .= '<!-- truncated at ' . akiraPublicSitemapMaxEntries() . ' entries -->' . "\n";
+    }
+    $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+    foreach ($posts as $post) {
+        if (!is_array($post) || $origin === '') {
+            continue;
+        }
+        $url = trim((string) ($post['url'] ?? ''));
+        // The canonical projection is an absolute path. Anything else is not a
+        // locatable public post and is skipped rather than guessed.
+        if ($url === '' || !str_starts_with($url, '/') || str_starts_with($url, '//')) {
+            continue;
+        }
+        $xml .= '  <url><loc>' . akiraPublicSitemapEscape($origin . $url) . '</loc>';
+        $lastmod = akiraPublicSitemapLastmod($post['metadata'] ?? null);
+        if ($lastmod !== null) {
+            $xml .= '<lastmod>' . akiraPublicSitemapEscape($lastmod) . '</lastmod>';
+        }
+        $xml .= '</url>' . "\n";
+    }
+    return $xml . '</urlset>' . "\n";
+}
+
+/**
+ * Read the tenant's published posts for syndication through the existing
+ * published-only entity read. include_unpublished is deliberately absent, so
+ * the capability applies the same tenant-scoped status='published' AND
+ * deleted_at IS NULL boundary the public pages use. No second filter exists.
+ *
+ * @return array{posts: list<array<string,mixed>>, truncated: bool}
+ */
+function akiraPublicSitemapPosts(): array
+{
+    $max = akiraPublicSitemapMaxEntries();
+    $pageSize = 50;
+    $posts = [];
+    $offset = 0;
+    $truncated = false;
+    while (count($posts) < $max) {
+        $limit = min($pageSize, $max - count($posts));
+        $result = akiraShellCall('entity.list.post@1', [
+            'limit' => $limit,
+            'offset' => $offset,
+            'sort_field' => 'published_at',
+            'sort_direction' => 'asc',
+        ]);
+        $rows = is_array($result) && ($result['ok'] ?? false) === true && is_array($result['rows'] ?? null)
+            ? array_values(array_filter($result['rows'], 'is_array'))
+            : [];
+        if ($rows === []) {
+            break;
+        }
+        foreach ($rows as $row) {
+            if (count($posts) >= $max) {
+                break;
+            }
+            $posts[] = $row;
+        }
+        // Advance by the requested window, not the projected count: the entity
+        // projection can drop an unsafe stored slug, and counting projections
+        // would then skip a real post.
+        $offset += $limit;
+        $total = is_array($result) ? (int) ($result['total'] ?? count($posts)) : count($posts);
+        if ($offset >= $total) {
+            break;
+        }
+        if (count($posts) >= $max) {
+            $truncated = true;
+            break;
+        }
+    }
+    return ['posts' => $posts, 'truncated' => $truncated];
+}
+
+/** Full sitemap document for the current request. */
+function akiraPublicSitemapXml(): string
+{
+    $origin = akiraPublicRequestOrigin();
+    $data = akiraPublicSitemapPosts();
+    return akiraPublicSitemapUrlset($data['posts'], $origin, $data['truncated']);
+}
+
+/** robots.txt body for the current request. */
+function akiraPublicRobotsTxt(?string $origin = null): string
+{
+    $origin = $origin ?? akiraPublicRequestOrigin();
+    $lines = ['User-agent: *', 'Allow: /', ''];
+    if ($origin !== '') {
+        $lines[] = 'Sitemap: ' . $origin . '/sitemap.xml';
+        $lines[] = '';
+    }
+    return implode("\n", $lines);
 }
 
 /**

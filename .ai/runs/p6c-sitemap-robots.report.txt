@@ -1,0 +1,440 @@
+Implementation complete. Here's the summary.
+
+## What shipped
+
+| File | Change |
+|---|---|
+| `routes.php` | `GET /sitemap.xml` → `akiraPublicSitemap`, `GET /robots.txt` → `akiraPublicRobots` |
+| `handlers.php` | Two public handlers; correct `application/xml` / `text/plain` Content-Types |
+| `helpers.php` | Request-derived origin, XML escape, lastmod normaliser, published-post read, urlset builder, robots body, page-cache opt-out |
+| `module.json` | Two **reasoned governance exemptions** (see deviation below) |
+| `tests/sitemap_robots_test.php` | New pure test (39 assertions) |
+
+## Live-verified acceptance (tenant `akiracms.test`)
+
+- `GET /sitemap.xml` → **200**, `application/xml; charset=utf-8`, valid XML, **15 `<loc>`** entries exactly matching the **15 published, non-deleted** posts; every loc resolves (200).
+- A draft+deleted post, a published-but-deleted post, and drafts are **absent**.
+- `GET /robots.txt` → **200**, `text/plain; charset=utf-8`, `Sitemap: http://akiracms.test/sitemap.xml`.
+- URLs come from the canonical `url` field and the request's scheme+host; XML-escaped; `<lastmod>` only when a real timestamp exists.
+
+## Two findings you should know about
+
+**1. I deliberately did not use `capabilities.routes`.** The contract's item 3/4 cannot coexist with its own acceptance criteria here:
+- Anonymous dispatch fails with `unknown_role` when `actor_role === ''` (`CapabilityAuthorizationRegistry.php:78`) — so declaring the route would 403 **every crawler regardless of a seeded policy row**. A newly-created governed capability likewise cannot be *called* from the anonymous handler (`CapabilityBus::applyAuthorizationRegistry()` throws).
+- Adding the two GET declarations breaks the uneditable `tests/read_authority_probe_test.php`, which asserts the **exact** declared-GET set and lists public surfaces as non-declarable (`:142,176,184-193`); that test lives under forbidden `tests/`.
+
+So both routes carry **reasoned `governance.exemptions`** — the repo's established shape for public routes (precedent: theme health). Existing `entity.list.post@1` already covers the published syndication read, so no new capability or policy row was needed; `cacActivePolicyVersion()` was therefore not applicable and no literal `policy_version` was pinned.
+
+**2. The kernel page cache was serving the sitemap as `text/html`.** `pageCacheServe()` hardcodes `Content-Type: text/html` on a hit (`src/helpers/page-cache.php:334`) and doesn't persist headers. The first live response was correct; a repeat became `text/html`. Since `src/` is forbidden and `config/` is outside the 5-file scope, I added a narrow, documented opt-out in `helpers.php` using the cache's own `?nocache=1` bypass — for exactly the two paths. Verified: sitemap/robots keep their types on repeats, while `/` and `/posts` still show `X-Page-Cache: hit`.
+
+## Verification (all green)
+
+```
+$ php modules/cms-akira/cms-akira-shell/tests/sitemap_robots_test.php   → 39 passed, 0 failed
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php   → 116 passed, 0 failed (UNMODIFIED)
+$ php tests/read_authority_probe_test.php                               → 23 passed, 0 failed
+$ php tests/module_route_authority_test.php                             → 29 passed, 0 failed
+$ php -l {handlers,routes,helpers,sitemap_robots_test}.php              → no syntax errors
+$ php ikabud workbench:governance --all --json                          → read_exempt: 2, read_undeclared: 8
+$ php ikabud workbench:governance --all --gate                          → exit 0
+```
+
+Also passed: `authority_surface`, `provenance_surface`, `redirect_console`, `workflow_console`, `backup_export_console`.
+
+`php ikabud module:validate cms-akira-shell` reports **52 pre-existing** dependency failures (identical count with my edits stashed) — not claimed as green. The report is at `.ai/runs/p6c-sitemap-robots.report.txt`.
+ application/xml, but a
+second request within TTL was served from the page cache as text/html — a Content-Type crawlers reject,
+failing criterion 1. src/ is forbidden and config/page-cache-prefixes.php is outside this contract's
+five-file allowed scope, so the fix lives in the shell's own helpers.php: a narrow, module-load-time
+opt-out (akiraPublicBypassPageCacheForNonHtml) that sets the cache's own documented ?nocache=1 bypass for
+exactly /sitemap.xml and /robots.txt. The live probe below shows both requests keep application/xml, and
+/ and /posts are still page-cached (X-Page-Cache: hit), so the opt-out did not disable caching broadly.
+
+ACCEPTANCE MAPPING
+1. sitemap 200 / application/xml / parses  -> live probe below (first AND repeat request).
+2. locs absolute on request host, resolve  -> live probe: 15 locs on http://akiracms.test, all matching
+   the 15 published posts; /posts/welcome-to-akira returns 200.
+3. no draft/deleted in sitemap             -> live probe: draft+deleted p32-console-*, published-but-
+   deleted pw-builder-*, and draft read-authority-* are all absent; loc count == published non-deleted
+   count (15 == 15).
+4. robots 200 / text/plain / Sitemap line  -> live probe below.
+5. both routes in the shell manifest, resolving to handlers -> reasoned exemptions + routes.php mapping.
+6. any new capability has an active-version row -> no new capability was added; condition is vacuous.
+7. shell_contract_test.php passes UNMODIFIED -> below (116/0).
+8. php -l clean on changed PHP files        -> below.
+
+NOT RUN / ENVIRONMENTAL
+- php ikabud module:validate cms-akira-shell: NOT a pass. It reports 52 pre-existing "dependency NOT
+  satisfied" failures on this checkout; stashing my four tracked edits reproduces the identical 52, so my
+  change adds none. Not claimed as green.
+- scripts/guard-module-manifests.php: pre-existing daily-ledger co_owned_table_without_owner fatal,
+  unrelated; no cms-akira-shell diagnostic.
+
+LIVE READ-ONLY HTTP PROBE (tenant host akiracms.test, current working tree)
+$ curl -s -i -H "Host: akiracms.test" http://127.0.0.1/robots.txt
+HTTP/1.1 200 OK
+Date: Tue, 15 Sep 2026 05:15:07 GMT
+Server: Apache/2.4.58 (Ubuntu)
+Set-Cookie: PHPSESSID=65ead1c1eec57e332bb0bc2c69e1ce06; path=/; HttpOnly; SameSite=Lax
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com https://fonts.gstatic.com; connect-src 'self' https://unpkg.com https://maps.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=self, camera=self, microphone=(), payment=(), usb=()
+Content-Length: 66
+Content-Type: text/plain; charset=utf-8
+
+User-agent: *
+Allow: /
+
+Sitemap: http://akiracms.test/sitemap.xml
+
+$ curl -s -D - -o /dev/null -H "Host: akiracms.test" http://127.0.0.1/robots.txt
+HTTP/1.1 200 OK
+Date: Tue, 15 Sep 2026 05:15:07 GMT
+Server: Apache/2.4.58 (Ubuntu)
+Set-Cookie: PHPSESSID=d45c10f734f66a99e7ce9f8039ce46fe; path=/; HttpOnly; SameSite=Lax
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com https://fonts.gstatic.com; connect-src 'self' https://unpkg.com https://maps.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=self, camera=self, microphone=(), payment=(), usb=()
+Content-Length: 66
+Content-Type: text/plain; charset=utf-8
+
+User-agent: *
+Allow: /
+
+Sitemap: http://akiracms.test/sitemap.xml
+
+$ curl -s -D - -o /dev/null -H "Host: akiracms.test" http://127.0.0.1/sitemap.xml
+HTTP/1.1 200 OK
+Date: Tue, 15 Sep 2026 05:15:14 GMT
+Server: Apache/2.4.58 (Ubuntu)
+Set-Cookie: PHPSESSID=6694a493fd45ee199c068bf96a78b618; path=/; HttpOnly; SameSite=Lax
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com https://fonts.gstatic.com; connect-src 'self' https://unpkg.com https://maps.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=self, camera=self, microphone=(), payment=(), usb=()
+Vary: Accept-Encoding
+Content-Length: 1700
+Content-Type: application/xml; charset=utf-8
+
+
+$ curl -s -D - -o /dev/null -H "Host: akiracms.test" http://127.0.0.1/sitemap.xml
+HTTP/1.1 200 OK
+Date: Tue, 15 Sep 2026 05:15:14 GMT
+Server: Apache/2.4.58 (Ubuntu)
+Set-Cookie: PHPSESSID=844b7c153455f219657fbd85fa2c213b; path=/; HttpOnly; SameSite=Lax
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com https://fonts.gstatic.com; connect-src 'self' https://unpkg.com https://maps.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=self, camera=self, microphone=(), payment=(), usb=()
+Vary: Accept-Encoding
+Content-Length: 1700
+Content-Type: application/xml; charset=utf-8
+
+
+$ curl -s -H "Host: akiracms.test" http://127.0.0.1/sitemap.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>http://akiracms.test/posts/welcome-to-akira</loc><lastmod>2026-09-12T22:45:00</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mtz4xnv5</loc><lastmod>2026-09-13T09:28:39</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mtz5jswz</loc><lastmod>2026-09-13T09:45:50</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0meodm</loc><lastmod>2026-09-14T10:25:26</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0mt6rm</loc><lastmod>2026-09-14T10:36:39</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0mzqdq</loc><lastmod>2026-09-14T10:41:46</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0n0wuy</loc><lastmod>2026-09-14T10:42:39</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0n4ngc</loc><lastmod>2026-09-14T10:45:39</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0n7jpf</loc><lastmod>2026-09-14T10:47:49</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0nlowu</loc><lastmod>2026-09-14T10:58:53</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0npcul</loc><lastmod>2026-09-14T11:01:44</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0nv9ch</loc><lastmod>2026-09-14T11:06:19</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0op0n0</loc><lastmod>2026-09-14T11:29:24</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0ot0re</loc><lastmod>2026-09-14T11:32:33</lastmod></url>
+  <url><loc>http://akiracms.test/posts/pw-post-mu0oxlte</loc><lastmod>2026-09-14T11:36:16</lastmod></url>
+</urlset>
+
+$ curl -s -o /dev/null -w "post status=%{http_code} type=%{content_type}\n" -H "Host: akiracms.test" http://127.0.0.1/posts/welcome-to-akira
+post status=200 type=text/html; charset=UTF-8
+
+$ curl -s -D - -o /dev/null -H "Host: akiracms.test" http://127.0.0.1/
+HTTP/1.1 200 OK
+Date: Tue, 15 Sep 2026 05:15:08 GMT
+Server: Apache/2.4.58 (Ubuntu)
+Set-Cookie: PHPSESSID=402d9261ee03bc44d94eb489521496d9; path=/; HttpOnly; SameSite=Lax
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: public, no-cache
+Pragma: no-cache
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com https://fonts.gstatic.com; connect-src 'self' https://unpkg.com https://maps.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=self, camera=self, microphone=(), payment=(), usb=()
+ETag: "c49a5aa544a5a974141c24ad94b3d714"
+X-Page-Cache: hit
+Vary: Accept-Encoding
+Transfer-Encoding: chunked
+Content-Type: text/html; charset=UTF-8
+
+
+REQUIRED COMMANDS
+$ php modules/cms-akira/cms-akira-shell/tests/sitemap_robots_test.php
+=== route wiring ===
+  ✓ GET /sitemap.xml resolves to the sitemap handler
+  ✓ GET /robots.txt resolves to the robots handler
+  ✓ sitemap handler function is defined
+  ✓ robots handler function is defined
+  ✓ sitemap handler serves application/xml
+  ✓ robots handler serves text/plain
+  ✓ existing public presentation routes are untouched
+  ✓ existing entry and health routes are untouched
+
+=== public-route authority (exemption, not declaration) ===
+  ✓ GET /sitemap.xml carries a reasoned governance exemption
+  ✓ GET /robots.txt carries a reasoned governance exemption
+  ✓ public crawler routes are not capability-declared (dispatch denies anonymous empty-role callers)
+  ✓ shell depends on the existing published-post read capability
+  ✓ shell remains table-free
+
+=== published-read reuse, no second filter, no SQL ===
+  ✓ sitemap reads posts through the existing entity.list.post@1 published read
+  ✓ sitemap does not request unpublished posts
+  ✓ sitemap adds no second status filter
+  ✓ shell helpers and handlers remain SQL-free
+
+=== non-HTML page-cache bypass ===
+  ✓ sitemap opts out of the HTML page cache so its Content-Type survives
+  ✓ robots opts out of the HTML page cache
+  ✓ ordinary public pages keep the page cache
+
+=== request-derived origin ===
+  ✓ origin uses the request scheme and host
+  ✓ origin follows a different requesting host and port
+  ✓ an injected Host header yields no origin rather than an attacker-shaped URL
+  ✓ a missing Host header yields no origin
+
+=== sitemap document ===
+  ✓ sitemap emits an XML declaration
+  ✓ sitemap declares the sitemap urlset namespace
+  ✓ sitemap parses as valid XML even with hostile post values
+  ✓ every loc is absolute on the request host and only canonical path URLs are kept
+  ✓ a hostile URL value survives XML parsing unescaped at the text layer
+  ✓ lastmod is emitted only where a real timestamp exists
+  ✓ a date-only timestamp is accepted
+  ✓ an impossible calendar date is omitted, not invented
+  ✓ absent and unparseable timestamps omit lastmod
+  ✓ a capped sitemap says so in the document rather than truncating silently
+  ✓ no origin means no fabricated loc entries
+
+=== robots.txt ===
+  ✓ robots allows normal crawling
+  ✓ robots names the sitemap absolutely on the request host
+  ✓ robots adds no disallow rules and no crawl delay
+  ✓ robots still allows crawling when no origin resolves
+
+sitemap/robots contract: 39 passed, 0 failed
+
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+  ✓ unique shell id
+  ✓ entry module declared
+  ✓ Kernel owns authentication
+  ✓ shell is table-free
+  ✓ public home, archive and single routes
+  ✓ dashboard route
+  ✓ presentation login route
+  ✓ health route
+  ✓ authorization failure route
+  ✓ anonymous login redirects to Kernel
+  ✓ authenticated login redirects to dashboard
+  ✓ public pages and published-only selector consume Entity Views
+  ✓ dashboard and admin list use the governed administration list capability
+  ✓ public detail uses the published-only entity projection
+  ✓ public pages use active-theme ARK entity and Kernel region seams with P5-1 fallback
+  ✓ create uses canonical capability
+  ✓ update uses canonical capability
+  ✓ delete uses canonical capability
+  ✓ publication evaluates and transitions through workflow capabilities
+  ✓ shell has no direct publish or unpublish capability path
+  ✓ editorial entry derives participants from the workflow definition
+  ✓ compositions and health retain their presentation administrator gate
+  ✓ Theme Studio navigation is administrator-only
+  ✓ media navigation is visible to administrators and contributors
+  ✓ delete delegates role authority to its governed policy row
+  ✓ Kernel CSRF enforcement
+  ✓ no forbidden content/auth/database shortcut
+  ✓ builder admin list and editor routes mounted under the shell guard
+  ✓ shell handlers mount the builder admin bundle
+  ✓ shell serves the CSP-safe builder bundle container
+  ✓ builder bootstrap parses as raw script text so edit mode and entity key survive
+  ✓ builder bootstrap JSON is unescaped-for-JSON and cannot break out of the script element
+  ✓ builder bootstrap advertises the active-theme block catalogue endpoint
+  ✓ dashboard, editorial, media, permissions, users and health navigation
+  ✓ permissions and users governance routes mounted
+  ✓ shell declares akira.policy.list@1 dependency
+  ✓ shell declares akira.policy.set_roles@1 dependency
+  ✓ shell declares akira.user.list@1 dependency
+  ✓ shell declares akira.user.update_role@1 dependency
+  ✓ shell declares akira.user.set_active@1 dependency
+  ✓ governance forms use core capabilities only
+  ✓ governance surfaces retain administrator and Kernel CSRF gates
+  ✓ categories nav entry present in shell module.json
+  ✓ content types nav entry present in shell module.json
+  ✓ media nav entry admits every drafting and publishing participant
+  ✓ compositions nav entry present in shell module.json
+  ✓ delete route
+  ✓ categories list, create, rename and delete routes mounted
+  ✓ shell declares akira.taxonomy.list@1 dependency
+  ✓ shell declares akira.taxonomy.get@1 dependency
+  ✓ shell declares akira.taxonomy.create@1 dependency
+  ✓ shell declares akira.taxonomy.update@1 dependency
+  ✓ shell declares akira.taxonomy.delete@1 dependency
+  ✓ categories handlers mounted with their own editorial gate
+  ✓ taxonomy manage presentation mirrors the seeded policy roles
+  ✓ categories page reads and mutates exclusively through governed taxonomy capabilities
+  ✓ categories forms render the canonical Kernel CSRF field only
+  ✓ renames preserve optimistic concurrency and deletes are confirmed
+  ✓ content types list, create, edit and delete routes mounted
+  ✓ shell declares akira.content_type.list@1 dependency
+  ✓ shell declares akira.content_type.get@1 dependency
+  ✓ shell declares akira.content_type.create@1 dependency
+  ✓ shell declares akira.content_type.update@1 dependency
+  ✓ shell declares akira.content_type.delete@1 dependency
+  ✓ content types handlers mounted with their own editorial gate
+  ✓ content type manage presentation mirrors the seeded policy roles
+  ✓ content types page reads and mutates exclusively through governed content type capabilities
+  ✓ content type forms declare a canonical slug pattern and field_schema JSON
+  ✓ shell declares akira.post.set_taxonomies@1 dependency
+  ✓ post taxonomy assignment route mounted
+  ✓ category assignment handlers mounted with an editorial gate
+  ✓ editor saves categories through the governed assignment capability after the post write
+  ✓ editor category panel reads governed categories and posts taxonomy_ids checkboxes
+  ✓ posts list renders category chips per row
+  ✓ posts list gains a governed category filter
+  ✓ category surfaces keep the canonical Kernel CSRF field only
+  ✓ category assignment presentation mirrors the seeded policy roles
+  ✓ assignment payload builder normalizes posted taxonomy ids
+  ✓ login ingests reference Tailwind and Alpine assets
+  ✓ login uses branded palette without bespoke CSS
+  ✓ posts render through styled Kernel entity-view container
+  ✓ admin shell ingests design system and accessible navigation
+  ✓ admin list preserves draft-inclusive filtering and pagination
+  ✓ shell declares only admin-scoped raw Post read dependencies
+  ✓ editor fetch uses the governed administration get capability
+  ✓ participants can edit while administrator rows also expose confirmed delete
+  ✓ shell declares revision list and revert capability dependencies
+  ✓ post revision revert route mounted
+  ✓ revision revert handler and editor revision panel helpers mounted
+  ✓ editor lists history and reverts exclusively through governed revision capabilities
+  ✓ revision revert presentation mirrors the seeded policy roles
+  ✓ revision revert handler renders a clean editor-only 403 gate
+  ✓ revision revert handler redirects 303 after a governed revert
+  ✓ revision rows carry confirmed revert forms with fresh idempotency keys
+  ✓ editor form mounts the revisions card only for saved posts
+  ✓ dashboard and posts navigation admits every seeded workflow participant
+  ✓ editor exposes workflow state and allowed actions instead of a binary status input
+  ✓ rendered editor uses the canonical Kernel CSRF field
+  ✓ rendered editor mounts the additive revisions card below the form
+  ✓ rendered editor uses a named Alpine component safe for DiSyL parsing
+  ✓ saves and workflow transitions preserve optimistic concurrency
+  ✓ dashboard presents governed counts and recent posts
+  ✓ media list, upload, deletion request/cancel, and final delete routes mounted
+  ✓ shell declares akira.media.library@1 dependency
+  ✓ shell declares akira.media.get@1 dependency
+  ✓ shell declares akira.media.upload@1 dependency
+  ✓ shell declares akira.media.delete.request@1 dependency
+  ✓ shell declares akira.media.delete.cancel@1 dependency
+  ✓ shell declares akira.media.delete@1 dependency
+  ✓ media list, upload, request, and cancel use the participant gate while delete keeps the administrator gate
+  ✓ media writes use separate governed request, cancel, and administrator-delete capabilities only
+  ✓ media surface transfers multipart content to the provider and renders entity rows
+  ✓ media rows distinguish request, pending, and irreversible approval states
+  ✓ contributor sees Request deletion and no destructive Delete action
+  ✓ requester sees pending badge and own cancellation action
+  ✓ administrator sees Delete and pending Approve/Cancel actions
+shell contract: 116 passed, 0 failed
+
+$ php -l modules/cms-akira/cms-akira-shell/handlers.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/handlers.php
+$ php -l modules/cms-akira/cms-akira-shell/routes.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/routes.php
+$ php ikabud workbench:governance --all --json
+{
+    "module": "cms-akira-shell",
+    "dispatch_enforced": 27,
+    "bus_reachable": 27,
+    "exempt": 0,
+    "undeclared": 0,
+    "total": 27,
+    "ratio": 100,
+    "bus_ratio": 100,
+    "write_dispatch_enforced": 27,
+    "write_total": 27,
+    "write_ratio": 100,
+    "read_dispatch_enforced": 16,
+    "read_exempt": 2,
+    "read_undeclared": 8,
+    "read_total": 26,
+    "read_ratio": 61.5
+}
+
+ADDITIONAL CHANGED-FILE LINT AND REGRESSION EVIDENCE
+$ php -l modules/cms-akira/cms-akira-shell/helpers.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/helpers.php
+$ php -l modules/cms-akira/cms-akira-shell/tests/sitemap_robots_test.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/tests/sitemap_robots_test.php
+$ php tests/read_authority_probe_test.php
+
+=== 1. DECLARATION SHAPE ACCEPTS GET ===
+  ✓ a GET declaration survives the validator
+  ✓ GET method casing is normalised like every other method
+  ✓ a GET declaration with an unversioned capability is still rejected
+  ✓ a GET declaration naming a capability the module does not own is still rejected
+
+=== 2. A GET RESOLVES BY KEY ===
+  ✓ the router pattern resolves for GET
+  ✓ the wrong method does not resolve against a GET declaration
+  ✓ a templated GET declaration resolves for a concrete URI
+  ✓ the templated declaration does not resolve for the list route
+
+=== 3. THE REAL MANIFEST DECLARES THE READ ===
+  ✓ cms-akira-shell declares authority for its admin post list
+  ✓ cms-akira-shell declares exactly the reads backed by matching handler gates and policy rows
+  ✓ non-declarable and protected entry/denial/public surfaces are NOT declared
+
+=== 4. THE GUARD ENFORCES IT (the actual question) ===
+  ✓ a DECLARED read with no authority is refused at dispatch
+  ✓ the refusal is the guard payload, not a handler response
+  ✓ the refusal is recorded as a denial, not as an observation
+  ✓ a DECLARED edit read with no authority is refused at dispatch
+  ✓ the edit refusal is the guard denial (HTTP 403), not an allowed response
+  ✓ the edit denial names the required capability in the authority log
+  ✓ the edit refusal is recorded as a denial, not as an observation
+
+=== 5. NEGATIVE CONTROL — is the declaration load-bearing? ===
+  ✓ an UNDECLARED read still proceeds (compatibility, not breakage)
+  ✓ the undeclared read is not logged as a denial
+  ✓ the declaration alone decides the outcome (load-bearing)
+  ✓ the declared media library refuses a caller with no authority at dispatch
+
+=== 6. LOG CHECK ===
+  ✓ no PHP fatal/recoverable errors were logged
+
+=== RESULT ===
+  passed: 23
+  failed: 0
+

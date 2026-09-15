@@ -117,6 +117,20 @@
             "akira.seo.content_health@1"
         ]
     },
+    "governance": {
+        "exemptions": [
+            {
+                "method": "GET",
+                "route": "/sitemap.xml",
+                "reason": "Public unauthenticated crawler endpoint. Dispatch authority is fail-closed and refuses anonymous callers (empty actor role), so a capability declaration here would 403 every crawler. The handler reads only the published, tenant-scoped post projection through entity.list.post@1."
+            },
+            {
+                "method": "GET",
+                "route": "/robots.txt",
+                "reason": "Public unauthenticated crawler endpoint. Dispatch authority is fail-closed and refuses anonymous callers (empty actor role), so a capability declaration here would 403 every crawler. The handler reads no tenant data and names the sitemap for the requesting host."
+            }
+        ]
+    },
     "routes": true,
     "events": [],
     "admin_contributions": [

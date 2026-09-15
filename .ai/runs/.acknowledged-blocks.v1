@@ -153,6 +153,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "a7ad378ac012356aebf0bfbc7e0ffd5de8b1946ea91f59bf71b5cccbd54c072d"
+        },
+        {
+            "run_id": "p6c-sitemap-robots",
+            "block_reason": "The module.json edit is authorised by this contract's Files likely affected and acceptance criterion 5. The L4 classification is the known D-2 defect: finish() has no flag to receive a justification, so any slice touching a module.json blocks unconditionally. The executor's deviation from capabilities.routes to governance.exemptions was accepted on measured grounds - anonymous dispatch fails unknown_role when actor_role is empty, so declaring a public route would 403 every crawler. Verified: sitemap 200 application/xml 15 loc, robots 200 text/plain, 39/0 and shell 116/0 unmodified.",
+            "director_decision": "CD-56",
+            "acknowledged_at": "2026-09-15T05:17:02+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "dbf3432b8c7a26a0b27bbe1a7b97d1fcf39c8eb8eb8c4f3c69048ad643d4d63a"
         }
     ]
 }

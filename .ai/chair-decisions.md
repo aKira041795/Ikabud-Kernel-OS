@@ -2725,3 +2725,43 @@ method produced **HTTP 500 on every route**, including the public site. I caught
 **Rule:** an interface change is one change. Revert it together with every caller, or not at all — a partial revert of
 a shared surface is worse than either endpoint. And **check the live site immediately after any revert that touches a
 shared interface**, not after the next commit.
+
+---
+
+## CD-56 — P6c shipped: public routes CANNOT be declared, and the page cache destroys Content-Type
+
+**Shipped and chair-verified.** `/sitemap.xml` → **200**, `Content-Type: application/xml; charset=utf-8`, valid XML,
+**15 `<loc>`** exactly matching the 15 published non-deleted posts, each with `<lastmod>` where a real timestamp
+exists; `/robots.txt` → **200**, `text/plain; charset=utf-8`, `Sitemap: http://akiracms.test/sitemap.xml`. Tests
+`sitemap_robots_test` **39 passed / 0 failed**, `shell_contract_test` **116 / 0 unmodified**. The kernel deliberately
+reserves these two paths (`TenantEntryRouter::shouldFastReject()` returns false for them) and nothing served them;
+now something does.
+
+**Finding 1 — a PUBLIC route cannot be declared, and this reframes the census.** The executor declined to use
+`capabilities.routes` and used `governance.exemptions` instead. Its reason is measured and decisive: anonymous
+dispatch fails with **`unknown_role` when `actor_role === ''`**
+(`kernel/Capabilities/CapabilityAuthorizationRegistry.php:78`), so **declaring a public route would 403 every
+anonymous caller regardless of any seeded policy row** — a crawl wall for the whole site. `tests/read_authority_probe_test.php`
+independently encodes the same rule: it lists public surfaces as non-declarable (`:142,176,184-193`).
+
+**I accept the deviation** (CD-8: the Chair decides where the contract's mechanism cannot satisfy its own acceptance
+criteria). The consequence is larger than this slice: **`read_undeclared` is not all debt.** A public read route is
+*correctly* undeclared, and the honest mechanism is a reasoned exemption — which, per PR #124, had **never once been
+used** until now. The master plan's framing ("107 undeclared GET routes") and the census's read-debt number both need
+this distinction before any read-closure target can be meaningful. Recorded as an obligation, not silently adopted.
+
+**Finding 2 — the kernel page cache overwrites Content-Type on every hit.** `pageCacheServe()` hardcodes
+`Content-Type: text/html` (`src/helpers/page-cache.php:334`) and does not persist response headers, so the FIRST
+`sitemap.xml` response was correct and every repeat was served as `text/html`. The executor added a narrow, documented
+opt-out using the cache's own bypass for exactly those two paths and verified `/` and `/posts` still show
+`X-Page-Cache: hit`. That is the right shape for a bounded slice — but it is a **workaround**: the root defect is in
+`src/`, which was out of scope. **Every future non-HTML response (feeds, JSON, images, sitemap indexes) inherits this
+bug**, and the fix belongs in the cache, not in each handler. Own slice, recorded.
+
+**The block, and this is the fourth time.** `modules/cms-akira/cms-akira-shell/module.json` was classified
+`public API/capability contract change` (L4) with *"justification is absent or not grounded"* — the known **D-2**
+defect: `finish` has no flag to supply a justification, so **every slice that touches any `module.json` blocks
+unconditionally**, however well its contract authorises the change. Acknowledged against this decision. This is the
+single highest-value harness repair available and it is on the verifier trust surface, so it needs the owner.
+
+**Authority:** CD-8 and CD-55's owner decision. **Owner intervention:** not required for this slice.

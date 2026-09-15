@@ -131,6 +131,34 @@ function akiraPublicNotFound(): void
     ]);
 }
 
+/**
+ * GET /sitemap.xml — the tenant's published posts for crawlers. Public and
+ * unauthenticated; reads only through the published-only entity projection.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraPublicSitemap(array $params = []): void
+{
+    if (!headers_sent()) {
+        header('Content-Type: application/xml; charset=utf-8');
+    }
+    echo akiraPublicSitemapXml();
+}
+
+/**
+ * GET /robots.txt — allow normal crawling and name the sitemap absolutely for
+ * the host that asked. Public and unauthenticated.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraPublicRobots(array $params = []): void
+{
+    if (!headers_sent()) {
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    echo akiraPublicRobotsTxt();
+}
+
 function akiraShellAuthorize(): bool
 {
     $user = akiraShellParticipant();
