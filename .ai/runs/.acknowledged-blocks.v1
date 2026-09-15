@@ -162,6 +162,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "dbf3432b8c7a26a0b27bbe1a7b97d1fcf39c8eb8eb8c4f3c69048ad643d4d63a"
+        },
+        {
+            "run_id": "admin-chrome",
+            "block_reason": "Two offences are mine (CE-12): the contract listed the shell manifest but not the seo/navigation manifests, and a capability consumer MUST declare the dependency in its own module.json, so those edits were unavoidable. Legitimised by contract revision 3 under CD-57, not by silently widening the envelope. The third offence on cms-akira-shell/module.json is the known D-2 defect where finish() cannot receive a justification. Verified live by the chair: seo 2094->6647 and navigation 3102->7531, both now carry the sidebar, exactly one Tailwind load, every form field preserved, shell users page byte-identical at 9993.",
+            "director_decision": "CD-57",
+            "acknowledged_at": "2026-09-15T05:30:15+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "b483f2e46bdad9b3296a1e6670542cbedc7074165809adcef6d3d644a604698c"
         }
     ]
 }

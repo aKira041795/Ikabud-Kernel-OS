@@ -54,7 +54,7 @@ function akiraSeoFailureDetail(Throwable $error): array
 /** @param array<string, mixed> $context */
 function akiraSeoRender(array $context = []): void
 {
-    echo casCtx()->render(__DIR__ . '/templates/admin.disyl', $context + [
+    $fragment = casCtx()->render(__DIR__ . '/templates/admin.disyl', $context + [
         'page_title' => 'SEO metadata',
         'record' => [],
         'entity_type' => '',
@@ -66,6 +66,46 @@ function akiraSeoRender(array $context = []): void
         'deleted' => false,
         'error' => '',
     ]);
+
+    echo akiraSeoShellChrome('SEO metadata', $fragment, 'seo');
+}
+
+/**
+ * Wrap the rendered SEO content fragment in the shared shell chrome through the
+ * capability bus. The shell owns the only page builder, so this never rebuilds
+ * the sidebar, copies the navigation list, or recreates the old three-link
+ * header. If the capability is unavailable or denied, the request degrades to a
+ * chrome-free document that still carries the fragment, so a shell failure can
+ * never blank the page.
+ */
+function akiraSeoShellChrome(string $title, string $fragment, string $active): string
+{
+    try {
+        $result = app()->cap()->call('akira.shell.admin_page@1', [
+            'title' => $title,
+            'body' => $fragment,
+            'active' => $active,
+        ], [
+            'caller' => ['module' => 'cms-akira-seo', 'user' => app()->user()],
+            'mode' => 'first',
+        ]);
+    } catch (Throwable $error) {
+        return akiraSeoShellFallback($fragment);
+    }
+
+    $html = is_array($result) ? ($result['html'] ?? null) : null;
+    return is_string($html) && $html !== '' ? $html : akiraSeoShellFallback($fragment);
+}
+
+function akiraSeoShellFallback(string $fragment): string
+{
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>SEO metadata — CMS Akira</title></head>'
+        . '<body style="margin:2rem auto;max-width:64rem;font-family:system-ui,sans-serif;line-height:1.5;color:#1e293b">'
+        . '<p role="alert"><strong>The shared Akira administration shell could not be rendered.</strong> '
+        . 'This page is shown without the sidebar.</p><hr>' . $fragment
+        . '<p><a href="/cms-akira-shell">Return to the Akira dashboard</a></p></body></html>';
 }
 
 /** @param array<string, string> $params */

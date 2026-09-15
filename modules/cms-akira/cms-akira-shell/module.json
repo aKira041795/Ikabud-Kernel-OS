@@ -15,7 +15,16 @@
     "reads_tables": [],
     "migrations": [],
     "capabilities": {
-        "exposes": [],
+        "exposes": [
+            {
+                "id": "akira.shell.admin_page@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Render a module-owned admin content fragment inside the one CMS Akira shell chrome (sidebar, palette, Alpine, layout)"
+            }
+        ],
         "routes": {
             "GET /cms-akira-shell": "akira.post.admin.list@1",
             "GET /cms-akira-shell/posts": "akira.post.admin.list@1",

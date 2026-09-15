@@ -2765,3 +2765,52 @@ unconditionally**, however well its contract authorises the change. Acknowledged
 single highest-value harness repair available and it is on the verifier trust surface, so it needs the owner.
 
 **Authority:** CD-8 and CD-55's owner decision. **Owner intervention:** not required for this slice.
+
+---
+
+## CD-57 — the director's sidebar complaint is FIXED, verified live
+
+**The complaint, measured before the fix.** `/cms-akira-shell/posts` rendered 21,873 bytes with the full sidebar;
+`/cms-akira-seo` rendered **2,094** and `/cms-akira-navigation` **3,102**, each emitting a *complete second HTML
+document* with a three-link header and its own Tailwind load. A user clicking either sidebar entry **lost the
+sidebar**. The admin surface had no shared layout at all.
+
+**After, measured live by the chair on tenant 54 — not taken from the report:**
+
+| Page | Before | After | Sidebar nav | Tailwind loads |
+|---|---|---|---|---|
+| `/cms-akira-seo` | 2,094 B, none | **6,647 B** | present | **1** (was 1, no duplicate) |
+| `/cms-akira-navigation` | 3,102 B, none | **7,531 B** | present | **1** |
+
+Form markup confirmed preserved field-by-field: SEO keeps `entity_type`, `entity_key`, both `maxlength` (64/190),
+both `pattern` and both `placeholder`; Navigation keeps `slug`, `title`, `location`, `idempotency_key` and the
+`_token` CSRF field. `/cms-akira-shell/users` is **byte-identical at 9,993**, so the shell itself did not move.
+
+**The authorisation is correct in both directions** — the part most likely to be got wrong. The seeded row sits at
+**version 30**, the tenant's *resolved* active version rather than a pinned literal, with
+`caller_module: cms-akira-shell,cms-akira-seo,cms-akira-navigation` and
+`allowed_roles: admin,administrator,superadmin`. Probed independently: shell/seo/navigation all `allow`,
+`cms-akira-theme` is denied **`disabled_caller`** (it is not a caller and must be added deliberately, not by
+accident), an `author` role is denied **`role_not_allowed`**, and a non-admin receives a fallback rather than a
+blank page. So the new capability is neither over- nor under-permissive.
+
+**The design choice that mattered.** The chrome already existed in `akiraShellPage()`, and its navigation comes from
+two sources — an inline base list **plus** the contribution registry. My first contract told the executor to extract
+the nav list from `helpers.php`; that was **wrong**, because the list is not the only source, and following it would
+have produced a second navigation list and exactly the drift this slice removes. I withdrew the contract and rewrote
+it as a thin capability wrapper over `akiraShellPage()`. One chrome implementation, three consumers. **The
+premise-checking was the work; the implementation was then mechanical.**
+
+**CE-12 — Chair error, third of this class: the envelope omitted a path the work required.** The contract listed
+`cms-akira-shell/module.json` but not `cms-akira-seo/module.json` or `cms-akira-navigation/module.json`. A consumer
+of a capability **must** declare it in its own manifest `depends`, so both edits were unavoidable and the gate
+therefore blocked two paths as *outside the approved scope*. Kept and legitimised by contract revision 3 under this
+decision, with the rationale recorded rather than the boundary quietly moved.
+
+**Rule to carry forward:** when a slice introduces a capability with consumers, **every consumer's `module.json` is
+in scope** — the dependency declaration is part of the change, not an incidental edit.
+
+**Still outstanding:** `cms-akira-theme` (`helpers.php:1344`, 11,842 B) is the third page with its own chrome and is
+**not** fixed by this slice. It is PHP-built rather than DiSyL, so it is a different conversion and gets its own.
+
+**Authority:** CD-8. **Owner intervention:** not required.

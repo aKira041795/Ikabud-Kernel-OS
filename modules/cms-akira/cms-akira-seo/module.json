@@ -85,7 +85,8 @@
             "kernel.idempotency.commit@1",
             "kernel.idempotency.release@1",
             "kernel.audit.record@1",
-            "akira.post.admin.list@1"
+            "akira.post.admin.list@1",
+            "akira.shell.admin_page@1"
         ]
     },
     "routes": true,
@@ -112,6 +113,7 @@
             "location": "sidebar",
             "label": "SEO metadata",
             "route": "/cms-akira-seo",
+            "active_key": "seo",
             "roles": [
                 "admin",
                 "administrator",

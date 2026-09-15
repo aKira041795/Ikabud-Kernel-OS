@@ -22,6 +22,73 @@ function akiraShellSeedKernelProvenancePolicy(): void
 
 akiraShellSeedKernelProvenancePolicy();
 
+/**
+ * Seed the one shell chrome render authority. Module-owned administration
+ * surfaces (the shell itself, cms-akira-seo, cms-akira-navigation) render their
+ * content fragments through akira.shell.admin_page@1; the caller_module
+ * allowlist must name every consumer or fail-closed dispatch refuses it with
+ * `disabled_caller` and the surface silently degrades.
+ *
+ * The policy version is the tenant's ACTIVE version, never a literal. The
+ * permissions surface clones the active set into N+1, so a row pinned to a
+ * superseded version resolves as `missing_policy_row` and refuses every
+ * operator even though the row exists and is active.
+ */
+function akiraShellSeedAdminPagePolicy(): void
+{
+    if (!function_exists('cacActivePolicyVersion')) {
+        return;
+    }
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
+        'policy_version' => cacActivePolicyVersion(),
+        'capability_id' => 'akira.shell.admin_page@1',
+        'capability_version' => '1',
+        'provider' => 'cms-akira-shell',
+        'caller_module' => 'cms-akira-shell,cms-akira-seo,cms-akira-navigation',
+        'allowed_roles' => 'admin,administrator,superadmin',
+        'provider_activation_required' => true,
+        'requires_protocol' => 'v1',
+        'is_active' => true,
+    ]]);
+}
+
+akiraShellSeedAdminPagePolicy();
+
+/**
+ * Capability handler map for the shell's exposed capabilities. The chrome
+ * capability is a thin wrapper over akiraShellPage(): the shell owns exactly
+ * one page builder, and no consumer copies the navigation list or builds a
+ * second page.
+ *
+ * @return array<string, string>
+ */
+function cms_akira_shell_capability_handlers(): array
+{
+    return [
+        'akira.shell.admin_page@1' => 'akiraShellCapAdminPage',
+    ];
+}
+
+/**
+ * Render an already-built admin content fragment inside the one shell chrome.
+ * This is deliberately the whole implementation: it delegates to
+ * akiraShellPage() instead of reconstructing the sidebar, palette, Alpine
+ * config or layout. A second page builder here would recreate the defect this
+ * capability exists to remove.
+ *
+ * @param array<string, mixed> $payload
+ * @return array{html: string}
+ */
+function akiraShellCapAdminPage(mixed $payload = [], string $capabilityId = '', string $providerId = ''): array
+{
+    $data = is_array($payload) ? $payload : [];
+    return ['html' => akiraShellPage(
+        (string) ($data['title'] ?? ''),
+        (string) ($data['body'] ?? ''),
+        ['active' => (string) ($data['active'] ?? '')]
+    )];
+}
+
 /*
  * The kernel full-page cache restores a hardcoded `Content-Type: text/html` on
  * a cache hit (src/helpers/page-cache.php:334). A sitemap or robots file served
