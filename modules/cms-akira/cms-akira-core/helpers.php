@@ -288,6 +288,48 @@ function cacSeedPostRevisionMutationPolicies(): void
 
 cacSeedPostRevisionMutationPolicies();
 
+/**
+ * The tenant's currently active policy version, or 1 when the store has none.
+ *
+ * Governance declarations must JOIN the active policy set. Pinning policy_version
+ * to 1 leaves the row invisible the moment the active set advances, because the
+ * permissions surface clones the whole active set into N+1 — so on a tenant whose
+ * active version is 30, a version-1 row is indistinguishable from no row at all.
+ * Route dispatch authority is fail-closed, so the capability then reports
+ * `missing_policy_row` and refuses every operator. That is how a correctly seeded
+ * capability still 403s, and it is why this must be measured rather than assumed.
+ */
+function cacActivePolicyVersion(): int
+{
+    try {
+        $app = app();
+        if (!is_object($app)) {
+            return 1;
+        }
+        $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication($app);
+        $actor = method_exists($app, 'user') ? $app->user() : null;
+        $scope = $resolver->resolveForCapability([], ['user' => is_array($actor) ? $actor : null]);
+        if (!$scope instanceof \Ikabud\Kernel\Capabilities\AuthorityScope) {
+            return 1;
+        }
+        $db = $resolver->database($scope);
+        if (!$db instanceof \PDO) {
+            return 1;
+        }
+        $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry($db, $scope, $resolver);
+        $version = 1;
+        foreach ($registry->activePolicyRows() as $row) {
+            $candidate = (int) ($row['policy_version'] ?? 0);
+            if ($candidate > $version) {
+                $version = $candidate;
+            }
+        }
+        return $version;
+    } catch (\Throwable) {
+        return 1;
+    }
+}
+
 /** Seed the P3-1 governance writes; policy rows remain their sole role authority. */
 function cacSeedGovernancePolicies(): void
 {
@@ -295,9 +337,10 @@ function cacSeedGovernancePolicies(): void
         return;
     }
     $rows = [];
+    $policyVersion = cacActivePolicyVersion();
     foreach (['akira.policy.set_roles@1', 'akira.user.update_role@1', 'akira.user.set_active@1', 'akira.user.revoke_sessions@1'] as $capabilityId) {
         $rows[] = [
-            'policy_version' => 1, 'capability_id' => $capabilityId, 'capability_version' => '1',
+            'policy_version' => $policyVersion, 'capability_id' => $capabilityId, 'capability_version' => '1',
             'provider' => 'cms-akira-core', 'caller_module' => 'cms-akira-shell,cms-akira-core',
             'allowed_roles' => 'admin,administrator,superadmin', 'provider_activation_required' => true,
             'requires_protocol' => 'v2', 'is_active' => true,

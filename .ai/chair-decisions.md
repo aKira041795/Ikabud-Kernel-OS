@@ -2575,3 +2575,73 @@ recording it: an escalation with no stated reason is a skipped check, not a fail
 never evidence of a real refusal.**
 
 **Authority:** CD-8 (decidability is authority). **Owner intervention:** not required for P3.3; required only if D-1/D-2 are to be repaired.
+
+---
+
+## CD-54 — P3.3 shipped a capability that 403'd EVERY operator; found only by opening a browser
+
+**The product defect, and how it was found.** After P3.3 was verified by 24/0 unit assertions and 116/0 on the shell
+contract, I drove the live tenant. Clicking `Revoke sessions` returned:
+
+```
+HTTP 403 · Access denied
+Required authority: akira.user.revoke_sessions@1. Reason: missing_policy_row.
+```
+
+**Every unit assertion passed and the feature was completely broken for real users.** The unit test asserted that the
+seed *loop contains* the capability (`the governance seed loop includes the revocation capability`); it never asserted
+that the seeded row is **visible to the authorizer**. That is the whole difference between declaring a policy and
+having one, and no assertion in the slice measured it.
+
+**Root cause — measured, and not what I first assumed.** I initially guessed the seed had not run. The tenant store
+said otherwise:
+
+```
+akira.user.set_active@1        rows=30  active=1  max_version=30
+akira.user.revoke_sessions@1   rows=1   active=1  max_version=1     <-- invisible
+```
+
+The row existed and was active — at **version 1**, while the tenant's active policy version was **30**. The seed loop
+hardcodes `'policy_version' => 1`, and the permissions surface clones the entire active set into N+1, so any newly
+seeded capability lands in a version nobody resolves. Route dispatch authority is fail-closed, so the capability reads
+as `missing_policy_row` and refuses everyone. My own earlier contract for a *different* slice had named this exact
+trap; I did not carry the requirement forward into the P3.3 contract, and the executor implemented what I asked for.
+
+**Fix (module-level, minimal).** `cacSeedGovernancePolicies()` now resolves the tenant's active version through
+`cacActivePolicyVersion()` — which reuses `AuthorityScopeResolver::forApplication()` + `AuthorityScope` + the registry's
+public `activePolicyRows()`, defaulting to 1 when no store or no rows exist — and seeds at that version instead of the
+pinned literal. `kernel/` is untouched, which is also why the fix belongs in the module: the seed call is the
+module's, and `seedPolicy()` semantics are frozen by the ratified authority-store ADR.
+
+**Live proof after the fix, same browser, same tenant:**
+
+| | before → after |
+|---|---|
+| `token_version` | **4 → 5** |
+| `role` | author → author |
+| activation control | Deactivate → Deactivate |
+| flash | "Users updated." |
+
+Policy row after: `akira.user.revoke_sessions@1 rows=2 active=2 max_version=30` — it now joins the active set.
+
+**Open obligation, deliberately not closed by a hasty edit.** The regression guard is **not written**. The invariant to
+test is behavioural: *a seeded governance capability has an active row whose `policy_version` equals the tenant's
+resolved active policy version*. That needs the tenant-scoped fixture pattern in
+`modules/cms-akira/cms-akira-core/tests/user_revoke_sessions_test.php`, which I had not read far enough to mirror
+correctly. A broken test is worse than a tracked gap, so it is recorded as an obligation rather than fumbled now.
+**Until it exists, this defect can silently return.**
+
+**Two further defects this measurement exposed, both pre-existing and NOT introduced by P3.3:**
+
+1. **Unbounded policy-version growth.** 1529 rows over 66 capabilities, with `akira.policy.set_roles@1`,
+   `akira.user.update_role@1` and `akira.user.set_active@1` each at **30 versions**. Nothing prunes superseded versions.
+2. **The `widening_refused` stream.** 13 occurrences each for `akira.seo.*`, `akira.search.*`, `akira.post.publish@1`
+   and `akira.post.unpublish@1` — stored rows carry `allowed_roles: "admin"` while the declarations want the admin
+   tier, so the seed refuses to widen and **those declared policies are not in force either**. It did not cause this
+   incident (0 of the refusals named `revoke_sessions`) but it is the same class of silent policy divergence.
+
+**The lesson worth keeping.** This is the second time in this programme that a *live* check found what a green suite
+could not, and it is the strongest argument for the live-verification step being part of the slice rather than an
+afterthought. **A passing test proves the assertions ran; it does not prove the feature works.**
+
+**Authority:** CD-8 (decidability is authority). **Owner intervention:** not required.
