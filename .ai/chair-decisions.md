@@ -2814,3 +2814,52 @@ in scope** — the dependency declaration is part of the change, not an incident
 **not** fixed by this slice. It is PHP-built rather than DiSyL, so it is a different conversion and gets its own.
 
 **Authority:** CD-8. **Owner intervention:** not required.
+
+---
+
+## CD-58 — Sign out fixed and verified; two false alarms of mine; and a real authority-model gap
+
+**The director's report was true.** Sign out was wedged between Compositions and Permissions: `signOutBox.y = 517`
+against `Compositions y=484 h=48` (spans 484-532) and `Permissions y=532`. Cause: the aside was `lg:static`, so an
+`absolute bottom-5` Sign out had **no positioned ancestor** and anchored to the page, landing inside the nav list.
+With 20 nav links there was no room.
+
+**Fixed and chair-verified live with a cache-buster:** the aside is a flex column (`lg:sticky lg:flex lg:h-screen`),
+the nav is the scrollable middle (`min-h-0 flex-1 overflow-y-auto`, scrollHeight 955 in clientHeight 385), and Sign
+out is normal-flow `mt-auto` at y=506 — below the nav box (100-485). **VISUAL collisions: empty.**
+
+**The instrument that was missing now exists**, and it was required to fail first. `tests/browser/akira-admin-shell.spec.ts`
+reported the pre-fix collisions at **900px: Site settings, Provenance** and **600px: Permissions**. That falsification
+is the point: before it, our verification was HTTP codes, byte counts and re-derived property claims, none of which can
+see a button sitting on its own menu. A human found it in ten seconds by looking.
+
+**TWO CHAIR ERRORS, both in one turn — recorded because they are the lesson, not the trivia:**
+1. I probed the **page cache** and nearly reported the fix as not working. The served markup was stale; the fix was on
+   disk and correct. Cache-bust every probe (`?cb=$RANDOM`).
+2. My own collision probe compared **raw geometry** and ignored that the nav now scrolls, so it flagged
+   `Compositions` — a link **clipped** by `overflow-y-auto` and therefore invisible. `VISUALcollisions: []`. The
+   spec was right and my ad-hoc check was wrong.
+**Twice in one turn I nearly reported a false defect against a working fix.** Verify the harness before believing the
+finding — a rule this repo already wrote down and I broke while criticising verification.
+
+**STILL BROKEN, and this is a real gap rather than my reluctance.** `/cms-akira-theme` remains without the sidebar. It
+needs `cms-akira-theme` added to the `akira.shell.admin_page@1` policy row's **caller set**, and the ratified
+authority-store ADR **refuses widening an existing grant from code** (narrowing auto-applies; widening needs a
+deliberate new grant). The Permissions surface cannot change caller identity.
+
+**So there is currently NO governed route to widen a capability's callers.** That is the same root as the
+`widening_refused` stream observed earlier (`akira.seo.*`, `akira.search.*`, `akira.post.publish|unpublish`). Two
+concrete costs: a module can never become a caller of an existing capability without direct DB surgery, and Theme
+Studio's chrome cannot be unified.
+
+**Owner decision required:** how should a capability gain a caller?
+- **A — a governed grant transition.** Extend the existing audited `transitionGrantState()` / permissions path to
+  cover `caller_module`, so widening is deliberate, audited and attributable. Preferred: it uses the mechanism the ADR
+  already ratified rather than adding one.
+- **B — a CLI/operator command** that performs the widening with an authenticating actor and a reason, recorded.
+- **C — declare chrome and presentation capabilities unrestricted by caller.** Rejected as the default: it removes a
+  control to solve a routing annoyance, and an empty declared allowlist counts as widening anyway.
+
+**I did not force it.** Forcing the row would be exactly the silent widening the ADR exists to prevent.
+
+**Authority:** CD-8. **Owner intervention:** REQUIRED (the caller-widening route).

@@ -1374,15 +1374,44 @@ function catThemeAdmin(): ?array
     return $user;
 }
 
-/** @param array<string, mixed> $data */
+/**
+ * Wrap a Theme Studio content fragment in the shell-owned admin chrome.
+ *
+ * The shell capability is the sole page builder. Theme Studio owns only its
+ * controls and content; it does not duplicate the navigation, scripts, or
+ * document structure. A small chrome-free document keeps an explanatory error
+ * and the complete fragment available if governed shell rendering is denied.
+ *
+ * @param array<string, mixed> $data
+ */
 function catThemePage(string $title, string $body, array $data = []): string
 {
-    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        . '<title>' . catThemeEscape($title) . '</title><script src="https://cdn.tailwindcss.com"></script><script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>'
-        . '<script>tailwind.config={theme:{extend:{colors:{akira:{500:"#8b5cf6",600:"#7c3aed",700:"#6d28d9"}}}}}</script></head><body class="bg-slate-50 p-6 text-slate-800">'
-        . '<nav class="mb-6 flex gap-4" aria-label="Akira theme administration"><a href="/cms-akira-shell">Akira Shell</a> '
-        . '<a href="/cms-akira-theme">Themes</a> <a href="/auth/logout">Sign out</a></nav>'
-        . '<main><h1>' . catThemeEscape($title) . '</h1>' . $body . '</main></body></html>';
+    try {
+        $result = app()->cap()->call('akira.shell.admin_page@1', [
+            'title' => $title,
+            'body' => $body,
+            'active' => 'theme',
+        ], [
+            'caller' => ['module' => 'cms-akira-theme', 'user' => app()->user()],
+            'mode' => 'first',
+        ]);
+    } catch (Throwable) {
+        return catThemeShellFallback($title, $body);
+    }
+
+    $html = is_array($result) ? ($result['html'] ?? null) : null;
+    return is_string($html) && $html !== '' ? $html : catThemeShellFallback($title, $body);
+}
+
+function catThemeShellFallback(string $title, string $body): string
+{
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>' . catThemeEscape($title) . ' — CMS Akira</title></head>'
+        . '<body style="margin:2rem auto;max-width:64rem;font-family:system-ui,sans-serif;line-height:1.5;color:#1e293b">'
+        . '<p role="alert"><strong>The shared Akira administration shell could not be rendered.</strong> '
+        . 'This page is shown without the sidebar.</p><h1>' . catThemeEscape($title) . '</h1>' . $body
+        . '<p><a href="/cms-akira-shell">Return to the Akira dashboard</a></p></body></html>';
 }
 
 function catThemeCsrfField(): string

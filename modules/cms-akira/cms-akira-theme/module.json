@@ -118,7 +118,8 @@
             "kernel.idempotency.claim@1",
             "kernel.idempotency.commit@1",
             "kernel.idempotency.release@1",
-            "kernel.audit.record@1"
+            "kernel.audit.record@1",
+            "akira.shell.admin_page@1"
         ]
     },
     "governance": {
@@ -140,6 +141,7 @@
             "location": "sidebar",
             "label": "Theme Studio",
             "route": "/cms-akira-theme",
+            "active_key": "theme",
             "roles": [
                 "admin",
                 "administrator",

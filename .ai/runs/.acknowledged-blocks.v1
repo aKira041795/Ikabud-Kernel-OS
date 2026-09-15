@@ -171,6 +171,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "b483f2e46bdad9b3296a1e6670542cbedc7074165809adcef6d3d644a604698c"
+        },
+        {
+            "run_id": "admin-shell-integrity",
+            "block_reason": "The cms-akira-theme/module.json edit is the dependency declaration a capability consumer must make and is listed in this contract's Files likely affected; the L4 classification is the known D-2 defect where finish() cannot receive a justification. Chair-verified live WITH a cache-buster: aside no longer absolute, nav scrolls (955 in 385), Sign out at y=506 below the nav box 100-485, VISUAL collisions empty. My first two probes produced a false defect - one measured cached HTML, the other compared raw geometry and ignored overflow-y-auto clipping. The new spec falsified pre-fix at 900px (Site settings, Provenance) and 600px (Permissions). Theme Studio remains sidebarless pending the caller-widening route, which is an owner decision recorded in CD-58.",
+            "director_decision": "CD-58",
+            "acknowledged_at": "2026-09-15T06:37:02+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "640e4802664c57c44e8c34c6ea95058333320242b0d145ac9059bf58c770302c"
         }
     ]
 }

@@ -24,7 +24,8 @@ akiraShellSeedKernelProvenancePolicy();
 
 /**
  * Seed the one shell chrome render authority. Module-owned administration
- * surfaces (the shell itself, cms-akira-seo, cms-akira-navigation) render their
+ * surfaces (the shell itself, cms-akira-seo, cms-akira-navigation and
+ * cms-akira-theme) render their
  * content fragments through akira.shell.admin_page@1; the caller_module
  * allowlist must name every consumer or fail-closed dispatch refuses it with
  * `disabled_caller` and the surface silently degrades.
@@ -44,7 +45,7 @@ function akiraShellSeedAdminPagePolicy(): void
         'capability_id' => 'akira.shell.admin_page@1',
         'capability_version' => '1',
         'provider' => 'cms-akira-shell',
-        'caller_module' => 'cms-akira-shell,cms-akira-seo,cms-akira-navigation',
+        'caller_module' => 'cms-akira-shell,cms-akira-seo,cms-akira-navigation,cms-akira-theme',
         'allowed_roles' => 'admin,administrator,superadmin',
         'provider_activation_required' => true,
         'requires_protocol' => 'v1',
@@ -525,8 +526,10 @@ function akiraShellPage(string $title, string $body, array $data = []): string
     $nav = '';
     foreach ($links as $link) {
         [$key, $url, $label] = [$link['id'], $link['route'], $link['label']];
-        $classes = $key === $active ? 'bg-akira-600 text-white shadow-lg shadow-akira-950/20' : 'text-slate-300 hover:bg-white/10 hover:text-white';
-        $nav .= '<a href="' . $url . '" class="flex items-center rounded-xl px-4 py-3 text-sm font-medium transition ' . $classes . '">' . $label . '</a>';
+        $isActive = $key === $active;
+        $classes = $isActive ? 'bg-akira-600 text-white shadow-lg shadow-akira-950/20' : 'text-slate-300 hover:bg-white/10 hover:text-white';
+        $current = $isActive ? ' aria-current="page"' : '';
+        $nav .= '<a href="' . $url . '"' . $current . ' class="flex items-center rounded-xl px-4 py-3 text-sm font-medium transition ' . $classes . '">' . $label . '</a>';
     }
     $user = app()->user();
     $display = is_array($user) ? (string)($user['display_name'] ?? $user['username'] ?? 'Administrator') : 'Administrator';
@@ -535,9 +538,9 @@ function akiraShellPage(string $title, string $body, array $data = []): string
         . '<title>' . akiraShellEscape($title) . ' — CMS Akira</title><script src="https://cdn.tailwindcss.com"></script>'
         . '<script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script><script>tailwind.config={theme:{extend:{colors:{akira:{50:\'#f5f3ff\',100:\'#ede9fe\',500:\'#8b5cf6\',600:\'#7c3aed\',700:\'#6d28d9\',950:\'#2e1065\'}}}}}</script></head>'
         . '<body class="min-h-screen bg-slate-50 text-slate-800" x-data="{menu:false}"><a href="#akira-main" class="sr-only focus:not-sr-only">Skip to content</a>'
-        . '<div class="min-h-screen lg:flex"><aside :class="menu ? \'block\' : \'hidden\'" class="fixed inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-slate-950 to-akira-950 p-5 text-white lg:static lg:block">'
-        . '<div class="mb-8 flex items-center gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-akira-600 text-lg font-black">A</span><div><strong class="block">CMS Akira</strong><span class="text-xs text-slate-400">Content workspace</span></div></div>'
-        . '<nav aria-label="Akira administration" class="space-y-1">' . $nav . '</nav><div class="absolute bottom-5 left-5 right-5 border-t border-white/10 pt-4"><a href="/auth/logout" class="text-sm text-slate-300 hover:text-white">Sign out</a></div></aside>'
+        . '<div class="min-h-screen lg:flex"><aside :class="menu ? \'flex\' : \'hidden\'" class="fixed inset-y-0 left-0 z-40 w-64 flex-col bg-gradient-to-b from-slate-950 to-akira-950 p-5 text-white lg:sticky lg:top-0 lg:flex lg:h-screen">'
+        . '<div class="mb-8 flex shrink-0 items-center gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-akira-600 text-lg font-black">A</span><div><strong class="block">CMS Akira</strong><span class="text-xs text-slate-400">Content workspace</span></div></div>'
+        . '<nav aria-label="Akira administration" class="min-h-0 flex-1 space-y-1 overflow-y-auto">' . $nav . '</nav><div class="mt-auto shrink-0 border-t border-white/10 pt-4"><a href="/auth/logout" class="text-sm text-slate-300 hover:text-white">Sign out</a></div></aside>'
         . '<div class="min-w-0 flex-1"><header class="flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 shadow-sm lg:px-8"><button @click="menu=!menu" class="rounded-lg border border-slate-200 p-2 lg:hidden" aria-label="Toggle navigation">☰</button><span class="text-sm text-slate-500">Akira administration</span><span class="text-sm font-semibold text-slate-700">' . akiraShellEscape($display) . '</span></header>'
         . '<main id="akira-main" class="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8"><div class="mb-7"><h1 class="text-3xl font-bold tracking-tight text-slate-950">' . akiraShellEscape($title) . '</h1></div>' . $body . '</main></div></div>'
         . '<div id="akira-toast" class="fixed bottom-4 right-4" aria-live="polite"></div></body></html>';
