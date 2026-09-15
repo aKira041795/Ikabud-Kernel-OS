@@ -109,10 +109,10 @@
             ]
         },
         "S2": {
-            "state": "blocked",
-            "run_id": "gen4-r1-s2-20260914163558-380c79",
-            "reason": "missing verified report/claims (marker text is not evidence)",
-            "updated_at": "2026-09-14T16:38:29+00:00",
+            "state": "done",
+            "run_id": "gen4-r1-s2-final",
+            "reason": null,
+            "updated_at": "2026-09-15T02:21:07+00:00",
             "history": [
                 {
                     "from": "pending",
@@ -148,6 +148,27 @@
                     "run_id": "gen4-r1-s2-20260914163558-380c79",
                     "reason": "missing verified report/claims (marker text is not evidence)",
                     "at": "2026-09-14T16:38:29+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s2-20260914163558-380c79",
+                    "reason": "rerun under the widened evidence surface: the census is now admissible, and CD-48 Repair B allows a run to CREATE a pure root test. The declaration and its policy seed are already committed; this pass supplies admissible evidence for them.",
+                    "at": "2026-09-15T02:06:14+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s2-final",
+                    "reason": null,
+                    "at": "2026-09-15T02:21:06+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "gen4-r1-s2-final",
+                    "reason": null,
+                    "at": "2026-09-15T02:21:07+00:00"
                 }
             ]
         }

@@ -880,3 +880,27 @@ runs the thing capable of failing is not verification — B-F1's rule, applied t
 Corollary for fixtures: **a test must not use a live module as a stand-in for a negative case.**
 Discover the subject (e.g. a module whose declarations are currently empty) and assert the premise,
 so the failure says *why* it failed.
+
+### 5. The report format: transcript lines, NOT labels
+
+Corrected 2026-09-15 (CD-49). The extractor has **no `CLAIM:`/`COMMAND:`/`OBSERVED:` marker handling** —
+`grep` it. `parseCommandLine()` strips only a leading `>` or `$`, so `COMMAND: php tests/x.php` classifies as
+nothing and **binds no claim**. Written this way, a report extracts claims with `command_source: null` and
+`verify` returns `no_command_declared` for every one — the run then blocks with the work complete and correct.
+
+Two shapes bind. Use the first:
+
+```
+$ php tests/<name>.php
+16/16 passed
+Assertions: 16
+exit 0
+```
+
+A `$`-prefixed command line binds the claim; the following output lines merge into it. A bare command line
+works too. The second shape is a single line carrying the command **and** its result
+(`parseInlineCommand`) — it works, but do not rely on it: putting the command inside a prose sentence is how
+the binding has been accidental rather than intended.
+
+State each claim's subject in plain prose *before* the transcript if you want it recorded, but the **command
+must be its own `$`-prefixed line** with its output beneath it.

@@ -2340,3 +2340,41 @@ asked. Both keep the prohibition absolute in force.
 **Authority: this decision.** The two repairs are authorised by it and recorded as a trust-surface amendment
 after they land.
 **Owner intervention:** the ruling is the owner's; no further decision is required.
+
+## CD-49 — our report format is inert: the extractor has no marker, and I prescribed it in every contract
+
+**Found from the S2 evidence report, which bound 8 claims with `command_source: null` on all of them.**
+
+`tools/ai-run.php` contains **no handling of `CLAIM:`, `COMMAND:` or `OBSERVED:`** — a grep for those markers
+returns nothing. `parseCommandLine()` strips only a leading `>` or `$`:
+
+```php
+$candidate = preg_replace('/^[>$]\s*/', '', $candidate);
+$type = classifyCommand($candidate);   // on 'COMMAND: php tests/x.php' -> null
+```
+
+so a line labelled `COMMAND: php tests/x.php` is classified as **nothing** and binds **no claim**. The shapes
+that do bind are:
+
+- a **shell-transcript line** — `$ php tests/<name>.php` (or a bare command line) followed by its output
+  lines, which merge into that claim; or
+- a **line carrying the command and its result together** (`parseInlineCommand`), which is why Sol's earlier
+  report bound 6 claims: its *CLAIM text* embedded both. That was luck, not compliance.
+
+**This is mine, and it is not new.** I inherited the `CLAIM:/COMMAND:/OBSERVED:` template from the earlier
+harness contracts and copied it into every contract since — so the instructions told each executor to write a
+format the extractor ignores. It explains, in one stroke, several things I had diagnosed as separate defects:
+"prose claims", "phantom claims from a numbered list", "claims bound with no command". The executors complied
+with the format they were given; the format was not a format.
+
+**The lesson, stated so it stops recurring:** a report convention is a **mechanism**, and a mechanism that has
+never been tested is a belief. Every contract's report section is now the transcript shape, and it is validated
+by running the extractor over a one-line probe before the instruction is trusted — the same rule as
+"verify the harness before believing the finding", applied to my own authoring.
+
+**Not a harness defect, and not repaired as one.** The extractor behaves as designed; the documentation of its
+own report format was wrong, and the fix is to the instruction, not the code. If the marker format is what we
+*intend* to support, that is a separate design decision with its own contract.
+
+**Authority:** CD-48 governs leeway on mechanisms; this is a correction to my authoring.
+**Owner intervention:** not required.

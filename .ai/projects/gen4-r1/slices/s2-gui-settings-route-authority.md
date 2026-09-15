@@ -1,21 +1,27 @@
 # SLICE — gen4-r1 S2: declare the last two undeclared write routes in Akira
 
-project: gen4-r1 · status: READY_FOR_IMPLEMENTATION · revision: 2
+project: gen4-r1 · status: READY_FOR_IMPLEMENTATION · revision: 3
 repo: `/var/www/html/ikabudsix`
-lane: deepseek/deepseek-v4-flash
-dispatch: ["pi", "-p", "-a", "--thinking", "medium", "--model", "deepseek/deepseek-v4-flash", "--name", "gen4-r1-s2", "<CONTRACT>"]
+lane: openai-codex/gpt-5.6-sol
+dispatch: ["pi", "-p", "-a", "--thinking", "medium", "--model", "openai-codex/gpt-5.6-sol", "--name", "gen4-r1-s2", "<CONTRACT>"]
 
-> **Revision 2 — the work is already applied; this run VERIFIES it.** Attempt 1 did the work correctly and was
-> then blocked by the scope gate on two **provably false** premises (recorded as CD-46, deliberately not
-> repaired because CD-41 freezes the apparatus): the absolute *authorisation-weakening* prohibition matched the
-> test **filename** because the word "authority" contains "auth" (`tools/ai-autonomy.php:945`, an unanchored
-> `#|auth|#` alternation), and the absolute *existing-test* prohibition matched because `isExistingTestPath()`
-> evaluates `file_exists()` **after** the run, so a file the run itself created is judged pre-existing.
+> **Revision 3 — the evidence pass.** The declaration and its policy seed are **already committed and
+> verified**; the census reads 47/47. What was missing was *admissible evidence*, and two harness repairs
+> have since changed what that means (CD-48):
 >
-> **Therefore: do NOT create, rename, or modify any test file in this run.** Not because the test is
-> unwelcome — a good regression test already exists at
-> `modules/gui-settings/tests/gui_settings_route_authority_test.php` and you are to **run** it, not write it.
-> Creating another one cannot pass the gate, whatever it contains, and will cost the run.
+> - the **governance census** is now an allowed command, and
+> - a run may now **CREATE** a test file — `isExistingTestPath()` decides from the dispatch baseline, so a
+>   file absent at dispatch is an *addition*, not a modification.
+>
+> So your job is to write **one new PURE root test** that holds the declaration's evidence, and to run it.
+> Do not change `modules/` — that work is done.
+
+> **The app-bootstrap screen is a production safety rule, and you must not dodge it.** A test that
+> bootstraps the CMS app poisons the APCu module cache and 503s the live tenant, so both admissible shapes
+> refuse one. A test that hand-rolls a PDO connection, or otherwise reaches the database, **specifically so
+> that it does not contain the string `bootstrap.php`** is an evasion of that screen by wording — it does
+> the forbidden thing while satisfying the check. That is prohibited and fails this slice. **Write a test
+> that is genuinely pure**, or say plainly that the assertion cannot be made purely.
 
 ```yaml
 harness:
@@ -25,6 +31,13 @@ harness:
   decision_transport: harpp
   evidence: real command output and exit codes; no claim without evidence
 ```
+
+exceptions:
+  - what:     extend the new declaration test with the census assertion
+    why:      a declared census command binds as a claim but verify returns nothing_to_compare, so the census must be asserted INSIDE the test to be re-derivable; that test was created by the previous evidence pass and therefore exists at dispatch, which makes this an edit to an existing test file and absolutely prohibited without an authority route
+    scope:    tests/gui_settings_route_authority_declaration_test.php
+    decided_when: 2026-09-15T02:20:00+00:00
+    authority: CD-48
 
 authority: CD-41 (measure ordinary work with the apparatus frozen) + `docs/architecture/akira-beyond-the-cms.md` §P2
 (route coverage). This contract **authorises the authorization-semantics change** it asks for — declaring routes
@@ -117,73 +130,89 @@ imply — and say which you chose and why.
 
 ## Files likely affected
 
-- `modules/gui-settings/module.json`
-- `modules/gui-settings/helpers.php`
-- `modules/gui-settings/tests/`
+- `tests/gui_settings_route_authority_declaration_test.php` (new, PURE)
+
+Nothing else. `modules/gui-settings/` is already changed, committed and verified — do not touch it.
 
 ## Acceptance criteria
 
-Every criterion below must be shown by a command you declare.
+Every criterion below must be shown by a command you declare, and **only the admissible shapes** count:
+`php tests/<name>.php` (ROOT tests/), `php -l <file>`, `php tools/ai-contract-lint.php`, and
+`php ikabud workbench:governance --all --json`. Anything else binds **no claim at all**.
 
-1. **The policy exists, before the declaration is relied on.**
-   `php -r '...CapabilityAuthorizationRegistry::hasPolicyFor("gui_settings.apply@1")...'` prints `true`, and the
-   active row's `allowed_roles` is exactly `admin`.
-2. **The census closes.** `php ikabud workbench:governance --all --json` shows `gui-settings` with
-   `undeclared 0` and `write_ratio 100`, and the **akira rollup** with `undeclared 0` and `write_ratio 100`.
-3. **The declaration is enforced, not merely present** — by running the existing test, which carries the
-   negative control: an identical actor refused on the declared route and proceeding on the undeclared GET
-   route, so the declaration alone decides the outcome.
-4. **No authority was widened.** State the role set the handlers admit and the role set the policy grants;
-   they are identical.
-5. Say plainly whether this edit **weakens** any existing test or gate. If it does, say so and stop — that
-   judgement is the Chair's.
+1. **The declaration is real and load-bearing.** Your new pure test asserts, from the manifest itself, that
+   `modules/gui-settings/module.json` maps **both** write routes to `gui_settings.apply@1` and does **not**
+   declare the GET route. It must be capable of **failing** if a declaration were removed — show its shape, do
+   not edit the module to prove it.
+2. **The policy source admits exactly `admin` and nothing wider.** Assert that the module's seed pins
+   `allowed_roles` to exactly `admin` — the set both handlers already admit (`handlers.php`:
+   `$user['role'] === 'admin'`). Not wider (that would grant access nobody has today), not narrower (that
+   would 403 a working operator), and that `caller_module` names the route dispatcher.
+3. **The census closes, and the assertion lives INSIDE the test.** `gui-settings` must report `undeclared 0`
+   and `write_ratio 100`, and the **akira rollup** `undeclared 0` and `write_ratio 100`.
+
+   **Assert this from inside `tests/gui_settings_route_authority_declaration_test.php`, by running the census
+   in a subprocess and parsing its JSON.** Do not offer the census as a standalone claim: measured on the
+   previous attempt, a declared `php ikabud workbench:governance --all --json` binds as a claim but `verify`
+   returns **`nothing_to_compare`** — the verifier has no observation to compare a census against, so a declared
+   census can never re-derive and would block the slice. Asserting it in the test makes it re-derivable, because
+   the test's own `passed`/`failed` counts are what the verifier compares.
+4. **State the residual gap explicitly, in your reply.** The live policy ROW in a tenant database is **not**
+   proven by this run, because both admissible shapes refuse an app-bootstrapping test and that screen must not
+   be dodged. It was verified separately (tenant 54: `hasPolicyFor` true, `allowed_roles=admin`,
+   `grant_state=granted`) and is recorded as **Chair** evidence, not as a claim of yours. Do not claim it.
+5. Say plainly whether this edit **weakens** any existing test or gate. If it does, say so and stop.
 
 ## Architectural constraints on verification
 
-- Verify by **declared commands**. Do not create or modify any file to produce evidence — the two prohibitions
-  in the revision note make a new test file impossible, and that restriction is a measured property of the
-  frozen apparatus (CD-46), not a preference of this contract.
-- If the work appears **already applied**, that is expected and correct. Your job is to establish that it is
-  right, not to change it. A run with `delta=0` that re-derives every claim is a **success**, not a no-op.
+- **Verify by declared commands**, and only the four admissible shapes above.
+- **Write a genuinely pure test.** No app bootstrap, no database, no PDO, no filesystem mutation. If an
+  assertion cannot be made purely, say so rather than contorting the test to slip past the screen.
+- If the work appears **already applied**, that is expected: `modules/` is committed. This run's product is the
+  **evidence**, not the change.
 
 ## Required tests
 
 ```
-php modules/gui-settings/tests/gui_settings_route_authority_test.php
+$ php tests/gui_settings_route_authority_declaration_test.php
+$ php -l tests/gui_settings_route_authority_declaration_test.php
 ```
 
-**Run it; do not edit it and do not write another.** It must exit 0 with zero skips and 14 checks passing. If a
-prerequisite is genuinely unavailable, report `SKIP: <reason>` rather than claiming a pass. The file already
-exists and is committed — modifying it would re-trip the two prohibitions described in the revision note.
+Your new test must exit 0 with zero skips and zero failures. **Do not edit** any existing test file, and do not
+modify `modules/gui-settings/tests/gui_settings_route_authority_test.php` (it bootstraps the app and is
+therefore refused by the screen — that is correct behaviour, not a problem to solve).
 
-## Report format — required
+## Report format — required (CORRECTED 2026-09-15, CD-49)
 
-The report is **evidence**: every statement in it must be backable by a command. This is not stylistic —
-`parseProseClaim()` (`tools/ai-run.php:1407`) binds report **prose** as a claim by design, so a numbered list, a
-bold lead-in, or a plain sentence describing what you did becomes a claim of its own and binds `UNVERIFIED`,
-blocking the slice **even when the work is complete and correct**. Three runs of S1 were blocked exactly that way.
+**The `CLAIM:` / `COMMAND:` / `OBSERVED:` template previously printed here is INERT and is withdrawn.** The
+extractor has no handling of those markers: `parseCommandLine()` strips only a leading `>` or `$`, so a line
+labelled `COMMAND: php tests/x.php` classifies as nothing and **binds no claim**. The previous revision of this
+slice produced a report whose 8 claims all bound with `command_source: null`, and `verify` returned
+`no_command_declared` for every one — the work was complete and correct and the evidence was unreadable.
 
-### The report, literally
-
-Copy this shape — nothing before the first `CLAIM:`, nothing after the last `OBSERVED:` block, no headings, no
-lists:
+Write a **shell transcript**. A `$`-prefixed command line binds the claim; the output lines beneath it merge
+into that claim:
 
 ```
-CLAIM: <short assertion>
-COMMAND: <exact command, copy-pasteable>
-OBSERVED: <verbatim output, including the exit code>
+$ php tests/gui_settings_route_authority_declaration_test.php
+passed: 5
+failed: 0
+skipped: 0
+exit code: 0
+
+$ php -l tests/gui_settings_route_authority_declaration_test.php
+No syntax errors detected in tests/gui_settings_route_authority_declaration_test.php
 ```
 
-One block per acceptance criterion. Two mechanical rules:
+The census is asserted **inside the test**, not offered as a separate claim — see acceptance criterion 3.
 
-- **Write your claims once, at the top. Never repeat them in an `## Outcome`, `### Evidence`, or summary
-  section.** That duplicate section is what bound as a phantom claim and blocked S1.
-- **Declare only the keys the command's own stdout prints.** Copy the keys from the output you paste, not from
-  what you know to be true. Declaring a true fact the command does not print (`failed:0` when the suite emits no
-  such key) cannot re-derive and binds `UNVERIFIED`.
-
-Write the report to **the run's canonical report path** — the harness sets it via `--report`. **Do not invent a
-report path:** a slice-authored path is outside the slice's own approved scope and trips the scope matcher.
+Rules that are mechanical:
+- **The command must be its own line, prefixed with `$`** (or `>`, or bare). Never inside a sentence, and never
+  behind a label.
+- **Declare only the keys your command's actual output prints** — copy them from what you ran.
+- No headings, no numbered lists, no narrative sections: `parseProseClaim()` binds report prose as a claim by
+  design, so a numbered list or a bold lead-in becomes a claim of its own and blocks the slice.
+- Anything you want to explain goes in your reply to me, not in the report file.
 
 ## Risks
 

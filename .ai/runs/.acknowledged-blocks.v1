@@ -108,6 +108,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "4649517922385bd9ad75b8046dafdecff674d8bb617d7817adf21ceb388dec73"
+        },
+        {
+            "run_id": "gen4-r1-s2-census",
+            "block_reason": "Blocked because the exception authorising this edit carried a timestamp I wrote from memory (02:20:00Z) that was AFTER the dispatch clock (02:19:22Z), so the gate correctly treated it as unreceipted. That is the authoring defect recorded in CD-49, not a defect in the gate: the exception existed, was decided before dispatch in fact, and was mis-stamped. The change it made was verified independently afterwards (8/8 passing, genuinely pure, census asserted in-test) and is evidenced by gen4-r1-s2-final, whose two claims re-derived 2/2.",
+            "director_decision": "CD-49",
+            "acknowledged_at": "2026-09-15T02:21:06+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "ec966e1378364b34368686114502f9a52a05dae9ed63a9fb31f924aa5966159e"
         }
     ]
 }
