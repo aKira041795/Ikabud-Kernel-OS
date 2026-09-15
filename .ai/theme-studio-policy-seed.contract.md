@@ -1,6 +1,27 @@
 # SLICE — the seeded chrome policy must actually reach the tenant
 
-project: akira-completion · status: READY_FOR_IMPLEMENTATION · revision: 1
+> **NOT DISPATCHABLE — do not dispatch this contract.**
+>
+> The director authorised option A of HARPP #100 (extend scope to
+> `kernel/Capabilities/CapabilityAuthorizationRegistry.php` and add a guarded declaration-successor
+> reconciliation API). The authority pre-flight refuses that path as an **absolute prohibition**:
+>
+> ```
+> BLOCK  kernel/Capabilities/CapabilityAuthorizationRegistry.php  [L4]
+>        path trips an absolute prohibition: auth, authorisation, policy or security weakening
+>        (no justification can authorise it)
+> ```
+>
+> Per `.github/instructions/ai-autonomy-escalation.instructions.md`, an absolute prohibition is one
+> **"no contract can authorise ... and no escalation can obtain permission"**. So a director decision
+> cannot unlock this path, and the harness may not take it. This is **CD-55** — *"does the absolute
+> prohibition cover additive, non-weakening changes to the capability registry?"* — occurring again,
+> now with a concrete instance that proves it is load-bearing rather than theoretical.
+>
+> The scope below is retained because it records the authorised design. **It is not executable.**
+> The lawful alternatives are tracked in `.ai/cd-100-option-a-blocked.md`.
+
+project: akira-completion · status: **BLOCKED — absolute prohibition** · revision: 2
 milestone: 1 · phase: P1 (quality floor — the last admin surface outside the shell)
 repo: `/var/www/html/ikabudsix`
 lane: openai-codex/gpt-5.6-sol
@@ -47,27 +68,42 @@ $ npx playwright test tests/browser/akira-admin-shell.spec.ts
 
 That spec builds its route list from every sidebar destination **plus a hardcoded `/cms-akira-theme`**.
 
-**Diagnose before changing anything, and state the mechanism you find.** Two candidates are known and neither is
-confirmed; do not assume the first:
+**The mechanism is already proven — do not re-diagnose it.** HARPP #100 (option A, authorised by the director
+2026-09-15) established the following, and the previous attempt reverted every experimental change:
 
-1. `akiraShellSeedAdminPagePolicy()` self-invokes at file load and returns early when
-   `function_exists('cacActivePolicyVersion')` is false — a **module load-order dependency** would make the seed
-   silently inert on every request.
-2. `CapabilityAuthorizationRegistry::seedPolicyForCurrentScope()` may be **insert-only**, so a corrected allowlist
-   never overwrites an existing row and no tenant ever converges after a seed fix.
+1. **Load order is not the cause.** `discoverModules()` reports `cms-akira-core` at index 2 and `cms-akira-shell` at
+   index 12; a full enabled-module load printed `loaded:cms-akira-core core_after=1` before `cms-akira-shell`, so
+   `cacActivePolicyVersion()` already exists when the shell helper self-invokes.
+2. **`seedPolicy()` is not insert-only.** It prepares and executes updates for *narrowing* changes, but explicitly
+   detects *widening* and refuses it, logging `widening_refused` with reason `operator_regrant_required`. Existing
+   lifecycle tests call this the ratified **D-Q4** rule. It is therefore a **deliberate authority guard**, not a bug.
+3. The tenant-54 v30 row is granted and is exactly the historical three-caller declaration.
+4. A bounded shell-local reconciliation was rejected by KernelPDO (`Blocked direct module DB escalation request`,
+   `ModuleDB DENIED ... capability_authorization_policies`). A module-local SQL bypass violates table ownership and
+   is **not** a fix.
 
-The fix must make **every** tenant converge with the committed source. A test that merely passes on tenant 54
-because the row was edited is not a fix.
+**The authorised change (option A): a declaration-successor reconciliation API.** Add it to
+`kernel/Capabilities/CapabilityAuthorizationRegistry.php` as a **sibling of `seedPolicy()`** — not a change to it. It
+must:
+
+- match only the **exact previously granted** declaration and the **exact unchanged governed fields**;
+- update only to the **exact committed successor** declaration;
+- **preserve** suspended, revoked or operator-modified rows — never resurrect or overwrite them;
+- be **audited**, and covered by lifecycle + shell tests;
+- leave `seedPolicy()`'s generic widening refusal **fail-closed and unchanged**.
+
+The fix must make **every** tenant converge with the committed source. A test that passes only because tenant 54's
+row was edited by hand is not a fix.
 
 ## Files likely affected
 
 - `modules/cms-akira/cms-akira-shell/helpers.php`
 - `modules/cms-akira/cms-akira-shell/tests/admin_page_capability_test.php`
 - `modules/cms-akira/cms-akira-core/helpers.php`
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php`
 
 ## Forbidden changes
 
-- `kernel/Capabilities/`
 - `kernel/Workbench/`
 - `tools/`
 - `phpstan-baseline.neon`
@@ -83,6 +119,11 @@ because the row was edited is not a fix.
 - **Do not weaken the spec.** `/cms-akira-theme` must remain in `akira-admin-shell.spec.ts`'s route list. Deleting the
   entry, skipping the route, or narrowing the assertion is a failure, not a fix.
 - Never disable, skip, or delete an existing test to obtain a pass.
+- **Leave `seedPolicy()`'s generic widening refusal fail-closed and unchanged.** The new API is a *sibling*, not a
+  relaxation of the ratified D-Q4 rule. If the only way to satisfy the acceptance criteria is to weaken that generic
+  refusal, **stop and say so** rather than doing it.
+- **Preserve operator intent.** A suspended, revoked or operator-modified row must never be resurrected or
+  overwritten by reconciliation.
 
 ## Required tests
 
@@ -101,6 +142,8 @@ Report exact counts. A skip is not a pass.
 3. The tenant-54 row admits `cms-akira-theme` **because the committed seed caused it**, and you state the mechanism
    you fixed and the evidence that it now reaches a tenant.
 4. Every changed file passes `vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G <file>`.
+5. A lifecycle test proves `seedPolicy()`'s generic widening refusal is unchanged and still fails closed.
+6. A lifecycle test proves reconciliation leaves a suspended, revoked or operator-modified row untouched.
 
 ## Risks
 
