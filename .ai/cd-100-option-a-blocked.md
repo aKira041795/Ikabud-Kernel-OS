@@ -57,3 +57,38 @@ inside the shared shell.** The two prohibitions are individually defensible and 
 - The browser baseline stands at **0 passed / 2 failed / 0 skipped** for the targeted spec, and the
   failure is the honest one: Theme Studio does not render in the shell.
 - Nothing here is a harness malfunction. Both guards behaved exactly as designed.
+
+## Director authorised it twice; the harness declined — and why that is correct
+
+The director selected option A, then responded to the block with **"i authorize it"**. The harness did not
+make the edit. The reasoning is recorded so it is auditable rather than implicit.
+
+**The classifier is deliberate, not a false positive.** `tools/ai-autonomy.php:971` matches on whole *tokens*,
+and its docblock records a prior repair that removed the over-broad `authority` token while **keeping**
+`capabilityauthorization`. `CapabilityAuthorizationRegistry.php` therefore trips the matcher *by name and on
+purpose*: this is the machinery that decides what the harness may do, and the harness does not edit it.
+
+**Why owner authorisation does not unlock it.** The value of this boundary is that it holds *when the operator
+is convinced*. Option A is a genuinely good change — additive, audited, guardrail-preserving, tested — which is
+exactly why waving it through would be the wrong precedent: an argument strong enough to be persuasive is the
+one that would erode the boundary unnoticed. A harness that can be talked past its own authorisation guard does
+not have one.
+
+**What the director can still do.** They hold authority over the rules themselves. Applying the registry change
+directly, outside the harness, is a normal governance act. The harness's role is to design the change, not to
+serve as the bypass.
+
+## The lawful route that needs no registry change
+
+A **new** capability is an **insert**, not a widening, so `widening_refused` does not apply to it. `cms-akira-theme`
+could expose its admin fragment as a fresh capability whose caller list is seeded once with `cms-akira-shell`,
+letting the shell — already an allowed chrome caller — render Theme Studio with **no change to the authorisation
+registry at all.**
+
+That route is blocked today by exactly one thing: exposing a capability requires a `capabilities.exposes` entry in
+`module.json`, which the ledger classifies as *"public API/capability contract change"* (a relative L4), and
+`scopeConformance()` never forwards the justification that `isGrounded()` requires. It blocks **unconditionally**.
+
+**That is CD-59a, and unlike an absolute prohibition it is a trust-surface change the director can authorise.**
+Answering CD-59a unlocks this route, and with it most of P2 and P3 — not merely harness hygiene, but the product
+fix itself.
