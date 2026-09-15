@@ -220,7 +220,12 @@ function watchRow(array $record): array
             $note = watchCmdline($pid);
         } else {
             $state = 'STALE';
-            $note = "recorded running, pid {$pid} is gone — died without finish";
+            // A dead recorded pid does NOT prove the lane died. `ai-run.php start` records the pid of
+            // the shell that invoked it; when the dispatching terminal is backgrounded that shell
+            // exits while `pi` continues, which produced a false STALE on 2026-09-15 for a run that
+            // later completed with a full report. Report the fact, not a conclusion.
+            $note = "recorded running, pid {$pid} is gone — either the lane died, or the recorded pid "
+                . 'was the dispatching shell rather than the lane (use .ai/dispatch-lane.sh to make them the same)';
         }
     } elseif ($status === 'blocked') {
         $state = 'BLOCKED';
