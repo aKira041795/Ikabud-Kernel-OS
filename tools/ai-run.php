@@ -90,9 +90,16 @@ const PYTHON_SHAPE_ENV = [
 
 /**
  * The allowlist, as data rather than scattered conditionals. Each rule is an anchored pattern plus
- * the executable (`exec`) that runs it; the `pure_test` and `bridge_test` screens additionally refuse
- * a named test file that may bootstrap the app or that does not exist. The security boundary is the
- * whole table, so it can be read in one place and refused consistently.
+ * the executable (`exec`) that runs it; the `pure_test`, `module_test` and `bridge_test` screens
+ * additionally refuse a named test file that may bootstrap the app or that does not exist. The
+ * security boundary is the whole table, so it can be read in one place and refused consistently.
+ *
+ * The module test and governance census entries are the two shapes ordinary product work needs
+ * (gen4-r1-d1). The module rule is bounded to `modules/<module...>/tests/<name>.php` and REUSES the
+ * `pure_test` screen — but passes the full matched path, because the root rule's hardcoded `tests/`
+ * prefix cannot address a nested module test. A module test that bootstraps the CMS app poisons the
+ * APCu module cache and 503s the live tenant, so that screen is mandatory. The census rule is the
+ * single read-only shape the programme reports (`--all --json`) with no free-form arguments.
  *
  * The Python entries are the subject's native evidence shapes (slice C). They are deliberately no
  * broader than the evidence needs: `py_compile` is a syntax check, `unittest` is bounded to this
@@ -104,11 +111,19 @@ const PYTHON_SHAPE_ENV = [
  */
 const COMMAND_ALLOWLIST = [
     ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.php$/', 'screen' => 'pure_test'],
+    // Module test: same app-bootstrap/existence screen as the root suite, but the captured group is
+    // the FULL matched path (`modules/<module...>/tests/<name>.php`), because the root rule's
+    // hardcoded `tests/` prefix cannot address a nested module test. Bounded to a single `tests/`
+    // level with a bare filename, so a nested `fixtures/` path cannot ride along.
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+(modules\/(?:[A-Za-z0-9_-]+\/)+tests\/[A-Za-z0-9_][A-Za-z0-9_.-]*\.php)$/', 'screen' => 'module_test'],
     ['exec' => PHP_BINARY, 'pattern' => '/^php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php$/'],
     ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php$/'],
     ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--json$/'],
     ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--live-only$/'],
     ['exec' => PHP_BINARY, 'pattern' => '/^php\s+tools\/ai-contract-lint\.php\s+--contract=[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.md$/'],
+    // Governance census: the one bounded read-only shape the programme reports (write_ratio /
+    // undeclared). Anchored with no free-form arguments, so a `;`/`|` chain cannot ride along.
+    ['exec' => PHP_BINARY, 'pattern' => '/^php\s+ikabud\s+workbench:governance\s+--all\s+--json$/'],
     // Python syntax check: an existing or missing path is fine; `..` is refused globally above.
     ['exec' => 'python3', 'env' => PYTHON_SHAPE_ENV, 'pattern' => '/^python3\s+-m\s+py_compile\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.py$/'],
     // Python module test: bounded to this repository's own `tests.*` package and `test_*` module name,
@@ -1231,8 +1246,15 @@ function classifyCommand(string $command): ?string
     if (preg_match('/^php\s+tools\/ai-contract-lint\.php\b/', $command) === 1) {
         return 'CONTRACT_CONFORMANCE';
     }
+    // The governance census is a re-derivable programme measure (write_ratio / undeclared). It is
+    // recognised here only so it is an explicit claim or refusal; COMMAND_ALLOWLIST is still the only
+    // thing that permits execution, and it admits exactly the `--all --json` shape.
+    if (preg_match('/^php\s+ikabud\s+workbench:governance\b/', $command) === 1) {
+        return 'CONTRACT_CONFORMANCE';
+    }
     if (
         preg_match('/^php\s+tests\/[^\s]+\.php\b/', $command) === 1
+        || preg_match('/^php\s+modules\/[^\s]+\.php\b/', $command) === 1
         || preg_match('/^composer\s+test\b/', $command) === 1
         || preg_match('/^php\s+scripts\/run-tests\.php\b/', $command) === 1
         || preg_match('/^(php\s+)?vendor\/bin\/phpunit\b/', $command) === 1
@@ -1244,6 +1266,12 @@ function classifyCommand(string $command): ?string
         || preg_match('/^(php\s+)?vendor\/bin\/phpstan\b/', $command) === 1
         || preg_match('/^vendor\/bin\/(phpcs|php-cs-fixer)\b/', $command) === 1
     ) {
+        return 'LINT_RESULT';
+    }
+    if (preg_match('/^php\s+-r\b/', $command) === 1) {
+        // `php -r` is inline code: arbitrary execution and the PHP form of the B-F1 vacuity hole.
+        // Recognised so it is an explicit refusal (matching the `python3 -c` treatment), never a
+        // silently ignored line. COMMAND_ALLOWLIST has no rule for it and never will.
         return 'LINT_RESULT';
     }
     if (
@@ -1295,6 +1323,11 @@ function matchingAllowlistRule(string $command): ?array
         }
         $screen = $rule['screen'] ?? null;
         if ($screen === 'pure_test' && !testFileIsPure('tests/' . $matches[1] . '.php')) {
+            return null;
+        }
+        // The module rule captures the full path, so the screen is applied to exactly the file that
+        // would run: a module test that bootstraps the app (or does not exist) is refused here.
+        if ($screen === 'module_test' && !testFileIsPure($matches[1])) {
             return null;
         }
         if ($screen === 'bridge_test' && !is_file(dirname(__DIR__) . '/tools/harpp-bridge/tests/' . $matches[1] . '.py')) {

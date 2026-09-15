@@ -806,6 +806,170 @@ foreach ($pythonRefusals as $pythonLabel => $pythonCommand) {
     );
 }
 
+// ── R8d: the widened evidence surface (gen4-r1-d1) — module tests and the bounded census ─────────
+// The owner lifted the trust surface freeze for exactly two new allowlist rules. These cases prove
+// each rule EXECUTES through the verifier, that the module rule reuses the app-bootstrap screen with
+// the full matched path, and that every prior refusal still holds. The suite's own source must never
+// contain the purity markers itself, so the bootstrap marker is assembled rather than written.
+$h->section('the widened allowlist: module tests screened, census bounded');
+$aiRunToolSource = (string) file_get_contents($tool);
+$moduleBootstrapMarker = 'bootstrap' . '.php';
+
+/** Declare one command in a report, run it through start/finish/verify, and return its first claim. @return array<string,mixed> */
+$widenedClaim = static function (string $runId, string $command) use ($run, $startArgs, $fixture): array {
+    $report = $fixture . '/widened-' . $runId . '.md';
+    file_put_contents($report, "# Widened-surface fixture — {$runId}\n\$ " . $command . "\nexit 0\n");
+    $run(array_merge($startArgs($runId), ["--report={$report}"]));
+    $run(['finish', '--id=' . $runId, '--exit=0']);
+    $verify = $run(['verify', '--run=' . $runId, '--json']);
+    $data = json_decode($verify['output'], true);
+    $claims = is_array($data['claims'] ?? null) ? $data['claims'] : [];
+    return is_array($claims[0] ?? null) ? $claims[0] : [];
+};
+/** @param array<string,mixed> $claim @return array<string,mixed> */
+$widenedVerification = static function (array $claim): array {
+    return is_array($claim['verification'] ?? null) ? $claim['verification'] : [];
+};
+
+// Criterion 1 — a pure module test is admitted and executed; the rule's executable is PHP_BINARY, and
+// the same rule's anchored pattern matches the module path the contract names (screened below).
+$moduleTestClaim = $widenedClaim('widened-module-test', 'php modules/cms-akira/cms-akira-editor/tests/editor_contract_test.php');
+$moduleTestVerification = $widenedVerification($moduleTestClaim);
+$moduleRuleExtracted = preg_match('/\[\'exec\' => PHP_BINARY, \'pattern\' => \'([^\']+)\', \'screen\' => \'module_test\'\]/', $aiRunToolSource, $moduleRuleMatch) === 1;
+$modulePatternMatchesNamed = $moduleRuleExtracted && preg_match($moduleRuleMatch[1], 'php modules/gui-settings/tests/gui_settings_route_authority_test.php') === 1;
+$h->test(
+    '29a. a pure module test is admitted and re-derived by execution (rule exec = PHP_BINARY)',
+    ($moduleTestClaim['type'] ?? null) === 'TEST_RESULT'
+        && ($moduleTestClaim['status'] ?? null) === 'RE_DERIVED'
+        && ($moduleTestVerification['method'] ?? null) === 'independent_execution'
+        && ($moduleTestVerification['verifier'] ?? null) === 'deterministic'
+        && ($moduleTestVerification['observed_exit'] ?? null) === 0
+        && $modulePatternMatchesNamed,
+    'rules in table: ' . substr_count($aiRunToolSource, "['exec' =>") . '; claim: ' . json_encode($moduleTestClaim, JSON_UNESCAPED_SLASHES)
+);
+
+// Criterion 2 — a module test whose source contains the app bootstrap is refused by the SAME screen,
+// because the module rule passes the full matched path. Executing it would poison APCu and 503 the
+// live tenant, so the hazardous report is only run when the screen is actually wired; a regression
+// fails the assertion without running the app-bootstrapping file.
+$moduleImpurePath = dirname(__DIR__) . '/modules/gui-settings/tests/gui_settings_route_authority_test.php';
+$moduleImpureSource = is_file($moduleImpurePath) ? (string) file_get_contents($moduleImpurePath) : '';
+$moduleScreenWired = str_contains($aiRunToolSource, "'screen' => 'module_test'")
+    && str_contains($aiRunToolSource, 'testFileIsPure($matches[1])');
+if ($moduleScreenWired && str_contains($moduleImpureSource, $moduleBootstrapMarker)) {
+    $moduleImpureClaim = $widenedClaim('widened-module-impure', 'php modules/gui-settings/tests/gui_settings_route_authority_test.php');
+    $moduleImpureVerification = $widenedVerification($moduleImpureClaim);
+    $h->test(
+        '29b. a module test that bootstraps the app is refused, not executed',
+        ($moduleImpureClaim['status'] ?? null) === 'UNVERIFIED'
+            && ($moduleImpureVerification['reason'] ?? null) === 'command_not_allowlisted'
+            && ($moduleImpureVerification['method'] ?? null) === null
+            && ($moduleImpureVerification['observed_exit'] ?? null) === null,
+        'fixture modules/gui-settings/tests/gui_settings_route_authority_test.php contains ' . $moduleBootstrapMarker
+            . '; claim: ' . json_encode($moduleImpureClaim, JSON_UNESCAPED_SLASHES)
+    );
+} else {
+    $h->test(
+        '29b. a module test that bootstraps the app is refused, not executed',
+        false,
+        'the module purity screen is not wired; the app-bootstrapping fixture was deliberately NOT executed'
+    );
+}
+
+// Criterion 2b — a module path that does not exist is refused by the same screen, never attempted.
+$moduleMissingClaim = $widenedClaim('widened-module-missing', 'php modules/gui-settings/tests/no_such_module_test_xyz.php');
+$moduleMissingVerification = $widenedVerification($moduleMissingClaim);
+$h->test(
+    '29c. a nonexistent module test is refused by the existence screen',
+    ($moduleMissingClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($moduleMissingVerification['reason'] ?? null) === 'command_not_allowlisted'
+        && ($moduleMissingVerification['method'] ?? null) === null
+        && ($moduleMissingVerification['observed_exit'] ?? null) === null
+        && !is_file(dirname(__DIR__) . '/modules/gui-settings/tests/no_such_module_test_xyz.php'),
+    json_encode($moduleMissingClaim, JSON_UNESCAPED_SLASHES)
+);
+
+// Criterion 3 — the census is admitted and only in its bounded shape. The declared pattern is read
+// back from the table and applied to all three forms, then the admitted form is actually executed.
+$censusClaim = $widenedClaim('widened-census', 'php ikabud workbench:governance --all --json');
+$censusVerification = $widenedVerification($censusClaim);
+$censusRuleExtracted = preg_match('/\[\'exec\' => PHP_BINARY, \'pattern\' => \'([^\']*workbench:governance[^\']*)\'\]/', $aiRunToolSource, $censusRuleMatch) === 1;
+$censusPattern = $censusRuleExtracted ? $censusRuleMatch[1] : '//';
+$h->test(
+    '29d. the bounded census shape is admitted and re-derived by execution',
+    ($censusClaim['type'] ?? null) === 'CONTRACT_CONFORMANCE'
+        && ($censusClaim['status'] ?? null) === 'RE_DERIVED'
+        && ($censusVerification['method'] ?? null) === 'independent_execution'
+        && ($censusVerification['observed_exit'] ?? null) === 0
+        && $censusRuleExtracted
+        && preg_match($censusPattern, 'php ikabud workbench:governance --all --json') === 1
+        && preg_match($censusPattern, 'php ikabud workbench:governance --all --json; rm -rf /tmp/x') === 0
+        && preg_match($censusPattern, 'php ikabud workbench:governance --all --json | tee /tmp/x') === 0,
+    'census pattern: ' . $censusPattern . '; claim: ' . json_encode($censusClaim, JSON_UNESCAPED_SLASHES)
+);
+
+// Criterion 3b — the chained and piped census forms are refused, and neither is executed.
+$censusRefusals = [
+    'chained' => 'php ikabud workbench:governance --all --json; rm -rf /tmp/x',
+    'piped' => 'php ikabud workbench:governance --all --json | tee /tmp/x',
+];
+foreach ($censusRefusals as $censusLabel => $censusCommand) {
+    $censusRefusalClaim = $widenedClaim('widened-census-' . $censusLabel, $censusCommand);
+    $censusRefusalVerification = $widenedVerification($censusRefusalClaim);
+    $h->test(
+        '29e-' . $censusLabel . '. the census refuses a ' . $censusLabel . ' form',
+        ($censusRefusalClaim['status'] ?? null) === 'UNVERIFIED'
+            && ($censusRefusalVerification['reason'] ?? null) === 'command_not_allowlisted'
+            && ($censusRefusalVerification['method'] ?? null) === null
+            && ($censusRefusalVerification['observed_exit'] ?? null) === null,
+        json_encode($censusRefusalClaim, JSON_UNESCAPED_SLASHES)
+    );
+}
+
+// Criterion 4 — `php -r` stays refused (the B-F1 vacuity hole). A sentinel proves no execution.
+$phpInlineSentinel = $fixture . '/widened-php-r-sentinel';
+$phpInlineCommand = "php -r 'file_put_contents(\"{$phpInlineSentinel}\", \"x\");'";
+$phpInlineClaim = $widenedClaim('widened-php-r', $phpInlineCommand);
+$phpInlineVerification = $widenedVerification($phpInlineClaim);
+$h->test(
+    '29f. php -r is still refused and never executed',
+    ($phpInlineClaim['type'] ?? null) === 'LINT_RESULT'
+        && ($phpInlineClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($phpInlineVerification['reason'] ?? null) === 'command_not_allowlisted'
+        && ($phpInlineVerification['method'] ?? null) === null
+        && ($phpInlineVerification['observed_exit'] ?? null) === null
+        && !is_file($phpInlineSentinel),
+    'sentinel exists: ' . (is_file($phpInlineSentinel) ? 'yes' : 'no') . '; ' . json_encode($phpInlineClaim, JSON_UNESCAPED_SLASHES)
+);
+
+// Criterion 5 — path traversal is refused before any rule is consulted (the global `..` guard).
+$traversalClaim = $widenedClaim('widened-traversal', 'php modules/../tests/x_test.php');
+$traversalVerification = $widenedVerification($traversalClaim);
+$h->test(
+    '29g. path traversal in a module path is still refused',
+    ($traversalClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($traversalVerification['reason'] ?? null) === 'command_not_allowlisted'
+        && ($traversalVerification['method'] ?? null) === null
+        && ($traversalVerification['observed_exit'] ?? null) === null,
+    json_encode($traversalClaim, JSON_UNESCAPED_SLASHES)
+);
+
+// Criterion 6 — the pre-existing rules are untouched byte-for-byte, the global `..` refusal is in
+// place, and the table holds exactly the eleven rules nine pre-existing plus the two additions.
+$pureRuleLiteral = '[\'exec\' => PHP_BINARY, \'pattern\' => \'/^php\s+tests\/([A-Za-z0-9_][A-Za-z0-9_.-]*)\.php$/\', \'screen\' => \'pure_test\'],';
+$lintRuleLiteral = '[\'exec\' => PHP_BINARY, \'pattern\' => \'/^php\s+-l\s+[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.php$/\'],';
+$h->test(
+    '29h. every pre-existing rule is byte-for-byte unchanged and the table holds exactly 11 rules',
+    str_contains($aiRunToolSource, $pureRuleLiteral)
+        && str_contains($aiRunToolSource, $lintRuleLiteral)
+        && str_contains($aiRunToolSource, "'screen' => 'bridge_test'")
+        && str_contains($aiRunToolSource, 'str_contains($command, \'..\')')
+        && substr_count($aiRunToolSource, "['exec' =>") === 11,
+    'rules in table: ' . substr_count($aiRunToolSource, "['exec' =>") . '; pure rule present: '
+        . (str_contains($aiRunToolSource, $pureRuleLiteral) ? 'yes' : 'no')
+        . '; lint rule present: ' . (str_contains($aiRunToolSource, $lintRuleLiteral) ? 'yes' : 'no')
+);
+
 $browserReport = $fixture . '/verify-browser.md';
 file_put_contents($browserReport, <<<'MD'
 # Browser fixture

@@ -1,62 +1,62 @@
 {
-  "_about": "Chair decisions that were wrong, recorded here because GEN4-R1 measures interpretive drift and an unrecorded error rate is an unfalsifiable one. An entry means the Chair asserted or did something the evidence later falsified — not that a slice failed. The metric counts entries; the details are provenance.",
-  "_schema": "{ \"errors\": [ { \"id\": string, \"when\": ISO-8601, \"what\": string, \"falsified_by\": string, \"cost\": string } ] }",
-  "errors": [
-    {
-      "id": "CE-01",
-      "when": "2026-09-14",
-      "what": "CD-45 recorded that 'fenced content is skipped by the extractor' and instructed a slice on that basis.",
-      "falsified_by": "In the very run CD-45 cited, claim 2 bound from line 116 INSIDE a fence (command_source=declared), executed via parseInlineCommand() at tools/ai-run.php:1497. The rule was inferred from a single unrelated observation.",
-      "cost": "One slice instruction carried a false rule; a later contract line had to be retracted."
-    },
-    {
-      "id": "CE-02",
-      "when": "2026-09-14",
-      "what": "CD-45 recorded that the S1 executor 'wrote a third claim with no command'.",
-      "falsified_by": "The report contains exactly one ^CLAIM line. The other two claims were manufactured by the extractor: one by parseInlineCommand(), one by parseProseClaim() (tools/ai-run.php:1407), which binds report prose as a claim by design. The executor did nothing wrong.",
-      "cost": "A correct executor was recorded as having erred, which is the more damaging of the two errors: it misattributes a harness property to the work."
-    },
-    {
-      "id": "CE-03",
-      "when": "2026-09-14",
-      "what": "S1 acceptance criterion 3 required non-vacuity 'demonstrated by temporary revert' and supplied no command for it.",
-      "falsified_by": "The executor described the procedure in prose; parseProseClaim bound the description as a claim; the claim had no command and bound UNVERIFIED, blocking a slice whose work was complete. An acceptance criterion demanding a non-mechanisable demonstration cannot be satisfied by evidence.",
-      "cost": "Run 1 of S1 blocked. First of three consecutive blocks."
-    },
-    {
-      "id": "CE-04",
-      "when": "2026-09-14",
-      "what": "Corrected CE-03 by stating the requirement as a PRINCIPLE ('the report must contain nothing else') rather than as a SHAPE the executor could copy.",
-      "falsified_by": "The executor complied with every stated rule and still wrote an '## Outcome' section and a numbered '### Evidence' list; the numbered item bound as a phantom claim. A principle the model satisfies in letter while its report format violates it in structure is not an instruction.",
-      "cost": "Run 2 of S1 blocked, on the same class as run 1."
-    },
-    {
-      "id": "CE-05",
-      "when": "2026-09-14",
-      "what": "Corrected CE-04 by forbidding duplicate narrative, but left the key rule unstated: that a declared expectation may name only keys the command's stdout actually prints.",
-      "falsified_by": "The phantom claim declared {\"passed\":16,\"total\":16,\"failed\":0,\"exit_code\":0}; the suite prints '16/16 passed', 'Assertions: 16', 'exit 0' and emits no 'failed' key, so the claim could not re-derive and bound UNVERIFIED. A true belief ('zero failures') is not a derivable claim.",
-      "cost": "Run 3 of S1 blocked. Third consecutive block, all three on contract authoring."
-    },
-    {
-      "id": "CE-06",
-      "when": "2026-09-14",
-      "what": "Committed while `ai-run.php commit-check` reported NOT ELIGIBLE, and re-dispatched without the predecessor link that the ledger required.",
-      "falsified_by": "This is the second occurrence of the CD-11 defect and the second of the CD-32 defect. The lesson recorded after the first occurrence — that the corrective must be mechanical rather than motivational — was not applied until the guard was placed in the commit path.",
-      "cost": "Two repeat violations, recorded as CD-42."
-    },
-    {
-      "id": "CE-07",
-      "when": "2026-09-14",
-      "what": "Wrote a slice table row reading 'S2+' as a placeholder for work not yet specified.",
-      "falsified_by": "The project's id scanner cannot distinguish a declaration from a reference (CD-34); the project reported a phantom slice named 'S2+' with one obligation. project.md now forbids placeholder ids.",
-      "cost": "One phantom obligation in the project state."
-    },
-    {
-      "id": "CE-08",
-      "when": "2026-09-14",
-      "what": "Accepted and committed S2 (c51f024) as 'verified' without running the root test that covered the touched area. tests/module_route_authority_test.php went 29 passed / 0 failed to 26 / 3.",
-      "falsified_by": "Running that test against both manifests: pre-S2 module.json gives 29/0/exit 0, post-S2 gives 26/3/exit 1. The failure is entirely S2's and entirely correct behaviour by the test — it used the REAL gui-settings module as its example of 'a module with no declarations', and S2's whole purpose was to give gui-settings declarations.",
-      "cost": "A red root test committed to the branch. The deeper fault: my verification could not fail, because it never ran the thing capable of failing. B-F1's rule — a verifier must be shown capable of failing before its pass counts — applied to the Chair and was not applied."
-    }
-  ]
+    "_about": "Chair decisions that were wrong, recorded here because GEN4-R1 measures interpretive drift and an unrecorded error rate is an unfalsifiable one. An entry means the Chair asserted or did something the evidence later falsified — not that a slice failed. The metric counts entries; the details are provenance.",
+    "_schema": "{ \"errors\": [ { \"id\": string, \"when\": ISO-8601, \"what\": string, \"falsified_by\": string, \"cost\": string } ] }",
+    "errors": [
+        {
+            "id": "CE-01",
+            "when": "2026-09-14",
+            "what": "CD-45 recorded that 'fenced content is skipped by the extractor' and instructed a slice on that basis.",
+            "falsified_by": "In the very run CD-45 cited, claim 2 bound from line 116 INSIDE a fence (command_source=declared), executed via parseInlineCommand() at tools/ai-run.php:1497. The rule was inferred from a single unrelated observation.",
+            "cost": "One slice instruction carried a false rule; a later contract line had to be retracted."
+        },
+        {
+            "id": "CE-02",
+            "when": "2026-09-14",
+            "what": "CD-45 recorded that the S1 executor 'wrote a third claim with no command'.",
+            "falsified_by": "The report contains exactly one ^CLAIM line. The other two claims were manufactured by the extractor: one by parseInlineCommand(), one by parseProseClaim() (tools/ai-run.php:1407), which binds report prose as a claim by design. The executor did nothing wrong.",
+            "cost": "A correct executor was recorded as having erred, which is the more damaging of the two errors: it misattributes a harness property to the work."
+        },
+        {
+            "id": "CE-03",
+            "when": "2026-09-14",
+            "what": "S1 acceptance criterion 3 required non-vacuity 'demonstrated by temporary revert' and supplied no command for it.",
+            "falsified_by": "The executor described the procedure in prose; parseProseClaim bound the description as a claim; the claim had no command and bound UNVERIFIED, blocking a slice whose work was complete. An acceptance criterion demanding a non-mechanisable demonstration cannot be satisfied by evidence.",
+            "cost": "Run 1 of S1 blocked. First of three consecutive blocks."
+        },
+        {
+            "id": "CE-04",
+            "when": "2026-09-14",
+            "what": "Corrected CE-03 by stating the requirement as a PRINCIPLE ('the report must contain nothing else') rather than as a SHAPE the executor could copy.",
+            "falsified_by": "The executor complied with every stated rule and still wrote an '## Outcome' section and a numbered '### Evidence' list; the numbered item bound as a phantom claim. A principle the model satisfies in letter while its report format violates it in structure is not an instruction.",
+            "cost": "Run 2 of S1 blocked, on the same class as run 1."
+        },
+        {
+            "id": "CE-05",
+            "when": "2026-09-14",
+            "what": "Corrected CE-04 by forbidding duplicate narrative, but left the key rule unstated: that a declared expectation may name only keys the command's stdout actually prints.",
+            "falsified_by": "The phantom claim declared {\"passed\":16,\"total\":16,\"failed\":0,\"exit_code\":0}; the suite prints '16/16 passed', 'Assertions: 16', 'exit 0' and emits no 'failed' key, so the claim could not re-derive and bound UNVERIFIED. A true belief ('zero failures') is not a derivable claim.",
+            "cost": "Run 3 of S1 blocked. Third consecutive block, all three on contract authoring."
+        },
+        {
+            "id": "CE-06",
+            "when": "2026-09-14",
+            "what": "Committed while `ai-run.php commit-check` reported NOT ELIGIBLE, and re-dispatched without the predecessor link that the ledger required.",
+            "falsified_by": "This is the second occurrence of the CD-11 defect and the second of the CD-32 defect. The lesson recorded after the first occurrence — that the corrective must be mechanical rather than motivational — was not applied until the guard was placed in the commit path.",
+            "cost": "Two repeat violations, recorded as CD-42."
+        },
+        {
+            "id": "CE-07",
+            "when": "2026-09-14",
+            "what": "Wrote a slice table row reading 'S2+' as a placeholder for work not yet specified.",
+            "falsified_by": "The project's id scanner cannot distinguish a declaration from a reference (CD-34); the project reported a phantom slice named 'S2+' with one obligation. project.md now forbids placeholder ids.",
+            "cost": "One phantom obligation in the project state."
+        },
+        {
+            "id": "CE-08",
+            "when": "2026-09-14",
+            "what": "Accepted and committed S2 (c51f024) as 'verified' without running the root test that covered the touched area. tests/module_route_authority_test.php went 29 passed / 0 failed to 26 / 3.",
+            "falsified_by": "Running that test against both manifests: pre-S2 module.json gives 29/0/exit 0, post-S2 gives 26/3/exit 1. The failure is entirely S2's and entirely correct behaviour by the test — it used the REAL gui-settings module as its example of 'a module with no declarations', and S2's whole purpose was to give gui-settings declarations.",
+            "cost": "A red root test committed to the branch. The deeper fault: my verification could not fail, because it never ran the thing capable of failing. B-F1's rule — a verifier must be shown capable of failing before its pass counts — applied to the Chair and was not applied."
+        }
+    ]
 }

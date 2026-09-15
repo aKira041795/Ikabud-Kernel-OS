@@ -81,6 +81,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "7221abbe0e25ffbc3f2cf56ac57990153dc11c3ffa878f262ee25a2bd1e987b5"
+        },
+        {
+            "run_id": "allowlist-evidence-surface",
+            "block_reason": "The run changed tools/ai-run.php, which the scope gate refuses absolutely — correctly, and by design: a RUN may never modify the trust surface. This amendment was authorised by the owner's decision gen4-r1-d1 and landed by the Chair, who verified it behaviourally through the real code path (pure module test and census bind; a module test containing bootstrap.php is refused by the module_test screen; non-allowlisted commands still bind nothing). The run record stays blocked as evidence.",
+            "director_decision": "gen4-r1-d1",
+            "acknowledged_at": "2026-09-14T23:56:40+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "8c51373ae097ec06ea43f9e212d9cb833085f6ade709e18e5fbd339a861c0233"
         }
     ]
 }

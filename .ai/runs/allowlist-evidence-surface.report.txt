@@ -1,0 +1,175 @@
+CLAIM: plan refuses this contract because it names the verifier trust surface; rule 1 is intact
+COMMAND: php tools/ai-autonomy.php plan --contract=.ai/allowlist-evidence-surface.contract.md
+php tools/ai-autonomy.php plan --contract=.ai/allowlist-evidence-surface.contract.md
+OBSERVED:
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-run.php' reaches 'tools/ai-run.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+
+CLAIM: a pure module test is admitted and re-derived by execution, with the executable taken from the matched rule
+COMMAND: php modules/cms-akira/cms-akira-editor/tests/editor_contract_test.php
+php modules/cms-akira/cms-akira-editor/tests/editor_contract_test.php
+OBSERVED:
+  ✓ manifest exposes only the five native versioned capabilities
+  ✓ module depends on cms-akira-core
+  ✓ content source is the Post detail projection
+  ✓ module is table-free
+  ✓ only native health routing is declared
+  ✓ module has no host-admin residue
+  ✓ tenant activation remains explicit
+  ✓ runtime handlers exactly match manifest authority
+  ✓ normalize is deterministic for identical projections
+  ✓ sanitize is deterministic for identical projections
+  ✓ normalize and sanitize share canonical parity
+  ✓ canonical policy removes executable markup
+  ✓ canonical policy preserves safe formatting and links
+  ✓ render emits the canonical safe body
+  ✓ render identifies its projection source
+  ✓ validate accepts a populated projected body
+  ✓ validate reports an empty projected body
+  ✓ validate rejects a non-object payload
+  ✓ internal domain fields fail closed
+  ✓ domain content rows are not accepted as projections
+  ✓ assets require no external provider
+  ✓ assets are Akira-owned stable URLs
+  ✓ declared editor assets are present
+  ✓ no unowned capability id is declared
+  ✓ canonical preparation is idempotent
+
+CMS Akira editor: 25 passed, 0 failed
+EXIT=0
+
+CLAIM: the bounded governance census is admitted and re-derived by execution
+COMMAND: php ikabud workbench:governance --all --json
+php ikabud workbench:governance --all --json
+OBSERVED:
+{
+    "rule": "Three separate coverage measures, never merged. WRITE authority coverage = declared-and-enforced / routed business operations (POST/PUT/PATCH/DELETE). READ authority coverage = declared-and-enforced / routed read operations (GET/HEAD/OPTIONS). NON-HTTP authority coverage = declared / non-HTTP capability call sites. auth/session infrastructure is excluded from both routed denominators. The measures have different scales and semantics, so no merged percentage is published: a single figure would read as total authority coverage when it is only the write figure.",
+EXIT=0
+
+CLAIM: the widened allowlist behaves as required: module tests screened, census bounded, 79/79 assertions, zero skips
+COMMAND: php tests/ai_run_test.php
+php tests/ai_run_test.php
+OBSERVED:
+
+══════════════════════════════════════
+  ai-run
+  Started: 2026-09-14 23:51:00
+══════════════════════════════════════
+  🧬 tools/ai-run.php — 879c84f77511...
+
+── start writes the authoritative record ──
+  ✅ 1. start exits 0 and writes a record
+  ✅ 2. record carries a 16-hex contract revision
+  ✅ 3. record carries the pid, lane and scope counts
+  ✅ 3a. start records the trust-surface anchor (aggregate + seven files)
+  ✅ 3b. start captures the dispatch-time changed-path baseline
+  ✅ 3c. verifier work requires a real director decision and records its reference
+  ✅ 4. status reports the started run as running (live dispatcher pid)
+
+── finish classification matrix ──
+  ✅ 5. exit 1 classifies failed
+  ✅ 6. exit 0 with a 0-byte log classifies silent
+  ✅ 7. exit 0 with content classifies completed
+
+── replay of the observed real cases (non-vacuity anchor) ──
+  ✅ 8. scope-path-semantics (exit 0, 0-byte log) -> silent
+  ✅ 9. a ~7 KB report (exit 0) -> completed
+  ✅ 10. classification is content-sensitive, not exit-code-only (same exit 0, two outcomes)
+
+── pid reconciliation: from the pid, never from log size ──
+  ✅ 11. a live pid stays running
+  ✅ 12. a dead pid reconciles running -> abandoned
+  ✅ 13. reconciliation is persisted, not re-inferred per call
+
+── --gate refuses to advance on an unreported run ──
+  ✅ 14. --gate exits 3 while silent/failed/abandoned runs exist
+  ✅ 15. --gate exits 0 when every run is clean
+
+── claims: structured, extracted unverified, honest re-derivability ──
+  ✅ 16. claims extracts at least three distinct structured claim types
+  ✅ 17. every extracted claim is UNVERIFIED and carries the structured shape
+  ✅ 18. claims state that verify re-derives by execution
+  ✅ 18b. every recognised type declares re_derivable honestly
+  ✅ 19. malformed/absent input exits 2
+
+── commit-check: eligibility decided by the ledger, not the tree ──
+  ✅ 20. commit-check: no runs -> exit 0
+  ✅ 21. commit-check: completed only -> exit 0
+  ✅ 22. commit-check: running -> exit 3, run named with its state
+  ✅ 23. commit-check: silent -> exit 3, run named with its state
+  ✅ 24. commit-check: failed -> exit 3, run named with its state
+  ✅ 25. commit-check: dead pid reconciled to abandoned -> exit 3, run named with its state
+  ✅ 25a. commit-check: a malformed record is NOT ELIGIBLE and names the file (D3)
+  ✅ 25b. commit-check: a trust-surface hash mismatch blocks and names the file (D2)
+  ✅ 25c. commit-check: a legacy record without a trust-surface hash is not blocked
+
+── verify: re-derive by execution and bind evidence to the revision ──
+  ✅ 26. verify re-executes an allowlisted command and records RE_DERIVED
+  ✅ 27. verify records the tree binding, on the output and in the run record
+  ✅ 26a. a real python3 -m py_compile command is executed and re-derives to RE_DERIVED
+  ✅ 26b. a python verification leaves the working tree unchanged (git status and bytecode)
+  ✅ 26c. the bounded unittest shape is allowlisted and executed, not refused
+  ✅ 26d. the file-test shape refuses a missing file through its existence screen
+  ✅ 26e. the file-test shape is declared in the allowlist with its existence screen
+  ✅ 28. a claim the command does not produce is CONTRADICTED, exit 3
+  ✅ 29. a non-allowlisted command is refused, shown, and NOT executed
+  ✅ 29-chained-and. python refusal (chained-and): refused and not executed
+  ✅ 29-traversal. python refusal (traversal): refused and not executed
+  ✅ 29-inline-code. python refusal (inline-code): refused and not executed
+  ✅ 29-module-os. python refusal (module-os): refused and not executed
+  ✅ 29-bare-file. python refusal (bare-file): refused and not executed
+  ✅ 29-chained-pipe. python refusal (chained-pipe): refused and not executed
+
+── the widened allowlist: module tests screened, census bounded ──
+  ✅ 29a. a pure module test is admitted and re-derived by execution (rule exec = PHP_BINARY)
+  ✅ 29b. a module test that bootstraps the app is refused, not executed
+  ✅ 29c. a nonexistent module test is refused by the existence screen
+  ✅ 29d. the bounded census shape is admitted and re-derived by execution
+  ✅ 29e-chained. the census refuses a chained form
+  ✅ 29e-piped. the census refuses a piped form
+  ✅ 29f. php -r is still refused and never executed
+  ✅ 29g. path traversal in a module path is still refused
+  ✅ 29h. every pre-existing rule is byte-for-byte unchanged and the table holds exactly 11 rules
+  ✅ 30. a non-re-derivable claim is UNVERIFIED, never RE_DERIVED
+
+── claim binding: declared routes and labelled derivation ──
+  ✅ 31. a command-bearing evidence line binds command_source declared
+  ✅ 32. a TEST_RESULT naming an existing pure test binds a labelled derived command
+  ✅ 33. a TEST_RESULT naming a missing file is refused and stays UNVERIFIED
+  ✅ 34. a TEST_RESULT naming an impure file is refused and stays UNVERIFIED
+
+── runner usage is artefact-derived; blocked history is acknowledged, never rewritten ──
+  ✅ 35. run binds the exposed runner session and derives exact tokens/cost from its JSONL
+  ✅ 36. absent runner usage is explicit null with a reason, never a figure
+  ✅ 37. acknowledgement refuses without a resolvable director decision (exit 3)
+  ✅ 38. one blocked run is acknowledged verbatim and commit-check becomes eligible
+  ✅ 39. acknowledgement does not mutate status, scope conformance, or any run-record byte
+  ✅ 40. a named blocked run can be acknowledged only once
+  ✅ 41. a new blocked run blocks again; acknowledgement is not a general unblock
+  ✅ 42. a still-running run cannot be acknowledged (exit 3)
+
+── declared harness artefacts: shown, guarded, and A-F2 unweakened ──
+  ✅ 43. GUARD 1 refuses a trust-surface artefact (exact file and covering directory), exit 2
+  ✅ 44. GUARD 1 refuses a forbidden_scope artefact, naming the entry, exit 2
+  ✅ 45. a traversal or absolute artefact is refused, exit 2
+  ✅ 46. GUARD 2 refuses --harness-artifact on finish and leaves the run running, exit 2
+  ✅ 47. a declared artefact is excluded from the delta and shown in scope_conformance
+  ✅ 48. A-F2 unweakened: an undeclared out-of-scope path still blocks (exit 3)
+  ✅ 49. a declaration narrows attribution only: declared shown, undeclared still blocks
+
+── CD-44 — an authorised existing-test change is recorded and attributed ──
+  ✅ 50. an authorised existing-test change finishes OK and the record names the exception and its authority
+  ✅ 51. the same existing-test delta without an exception still blocks (exit 3), unweakened
+  ✅ 52. an exception supplied after dispatch moves the revision and is refused (exit 3)
+
+══════════════════════════════════════
+  RESULTS
+  79/79 passed
+  Assertions: 79
+
+  Suite: ai-run
+  Time: 40.5s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-run.json
+EXIT=0

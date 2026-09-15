@@ -59,5 +59,12 @@
         "suppressed": false,
         "harpp_decision_id": "96",
         "error": null
+    },
+    "resolution": {
+        "chosen_option_id": "widen-and-rerun",
+        "decided_by": "director",
+        "decided_at": "2026-09-14T23:39:03+00:00",
+        "note": "",
+        "source": "local"
     }
 }
