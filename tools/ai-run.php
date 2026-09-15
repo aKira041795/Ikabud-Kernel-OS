@@ -37,7 +37,7 @@ require_once dirname(__DIR__) . '/kernel/Workbench/Development/DevelopmentTaskCo
  *                               [--pid=N] [--director-decision=REF] [--predecessor=ID]
  *                               [--repair-level=L1|L2|L3] [--approach-change=TEXT]
  *                               [--previous-failure=TEXT] [--runs-dir=DIR] [--json]
- *   php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH]
+ *   php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH] [--justification=TEXT]
  *                               [--runs-dir=DIR] [--json]
  *   php tools/ai-run.php status [--runs-dir=DIR] [--json] [--gate]
  *   php tools/ai-run.php claims --id=ID [--runs-dir=DIR] [--json]
@@ -263,7 +263,7 @@ Usage:
                               finish: after the evidence exists it is an exemption, not a statement
                               of intent (GUARD 2).
 
-  php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH]
+  php tools/ai-run.php finish --id=ID --exit=CODE [--log=PATH] [--report=PATH] [--justification=TEXT]
                               [--runs-dir=DIR] [--json]
                               Record the exit code observed by the dispatcher, compare changed paths
                               against the dispatch baseline and contract envelope, and classify:
@@ -864,7 +864,7 @@ function validatedHarnessArtifact(string $raw, array $contract): string
  * @param list<string> $paths
  * @return array{ok:bool,checked:list<string>,offending:list<array{path:string,reasons:list<string>}>,authorised_exceptions?:list<array<string,mixed>>}
  */
-function scopeConformance(string $contract, string $expectedRevision, array $paths, ?string $dispatchAt = null, ?array $baselinePaths = null): array
+function scopeConformance(string $contract, string $expectedRevision, array $paths, ?string $dispatchAt = null, ?array $baselinePaths = null, string $justification = ''): array
 {
     try {
         $finishContract = loadContract($contract);
@@ -891,6 +891,8 @@ function scopeConformance(string $contract, string $expectedRevision, array $pat
             $existedAtDispatch = in_array($path, $baselinePaths, true) || in_array($path, $trackedAtHead, true);
             $arguments[] = $existedAtDispatch ? '--existed-at-dispatch=1' : '--existed-at-dispatch=0';
         }
+        // Forwarded verbatim. `check` enforces absolute prohibitions first, so this cannot ground one.
+        if ($justification !== '') { $arguments[] = '--justify=' . $justification; }
         $arguments[] = '--json';
         $run = executeArgv($arguments, dirname(__DIR__), 20);
         $payload = json_decode($run['output'], true);
@@ -1058,6 +1060,10 @@ function commandFinish(array $options, bool $json): int
 
     $log = option($options, 'log', is_string($record['log'] ?? null) ? $record['log'] : null);
     $report = option($options, 'report', is_string($record['report'] ?? null) ? $record['report'] : null);
+    // A justification is the ONLY input that can ground a relative L4 trigger: `ai-autonomy.php check`
+    // resolves it to L3 when the text appears verbatim in the contract's acceptance or constraints.
+    // Absolute prohibitions are enforced BEFORE it is consulted, so forwarding it can never unlock one.
+    $justification = trim((string) option($options, 'justification', ''));
     $logBytes = fileBytes($log);
     $reportBytes = fileBytes($report);
 
@@ -1094,7 +1100,8 @@ function commandFinish(array $options, bool $json): int
             (string) ($record['contract_revision'] ?? ''),
             $delta,
             is_string($record['started_at'] ?? null) ? (string) $record['started_at'] : null,
-            $baseline
+            $baseline,
+            $justification
         );
         $conformance['declared_harness_artifacts'] = $declaredArtifacts;
     }
@@ -1106,6 +1113,7 @@ function commandFinish(array $options, bool $json): int
     $record['scope_finish_paths'] = $current['paths'];
     $record['scope_delta_paths'] = $delta;
     $record['scope_conformance'] = $conformance;
+    $record['scope_justification'] = $justification === '' ? null : $justification;
     $record['status'] = $conformance['ok'] ? classifyRun($exitCode, $logBytes, $reportBytes) : 'blocked';
     $usage = usageFromBoundSession($record, (string) $record['finished_at']);
     $record['usage'] = $usage['usage'];
@@ -2337,7 +2345,7 @@ function main(): int
         return commandStart($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'finish') {
-        validateArgumentNames($parsed, ['id', 'exit', 'log', 'report', 'harness-artifact', 'runs-dir'], ['json']);
+        validateArgumentNames($parsed, ['id', 'exit', 'log', 'report', 'harness-artifact', 'runs-dir', 'justification'], ['json']);
         return commandFinish($parsed['options'], isset($parsed['flags']['json']));
     }
     if ($command === 'claims') {
