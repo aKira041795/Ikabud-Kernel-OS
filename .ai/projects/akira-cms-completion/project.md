@@ -67,6 +67,16 @@ not a coincidence, and it is the most important fact about this project's critic
 bottleneck, not implementation capacity.** The revised plan therefore front-loads every unblocked slice and puts
 the decisions first rather than last.
 
+**And the gate hid a red test — the single most important artifact in this project.** The `admin-shell-integrity`
+run wrote `tests/browser/akira-admin-shell.spec.ts`, which builds its route list from every sidebar destination **plus
+`/cms-akira-theme` explicitly**, then asserts the shared nav is visible on each. That test is **RED in the tree right
+now**: both viewports fail with `getByRole('navigation', { name: 'Akira administration' })` not found on Theme Studio.
+
+The run was `blocked`, acknowledged, and `commit-check` reported the ledger clean — so **a failing test sat in the
+tree while the gate declared the run final.** A red test is the clearest statement of a defect this project will ever
+produce, and the gate discarded its signal. That is the forest that was being missed: not a missing measurement, but
+a failing one nobody read.
+
 ## Standing constraints
 
 - One writer per file. Never dispatch two lanes concurrently (the ledger's `finish` absorbs the other run's delta).
@@ -86,6 +96,26 @@ the decisions first rather than last.
 - Report `SKIP` as `SKIP`. A skip is not a pass.
 - **`php tools/ai-watch.php --watch` while a slice is dispatched.** Nothing else in the harness monitors a running
   process (see the defect record below), so an unwatched dispatch is an unobserved one.
+
+### Measurement harness — RESOLVED: use the repo's own browser suite (2026-09-15)
+
+**The measurement already existed, and it was rebuilt badly.** `npx playwright test` runs **11 specs in 7 files**
+(`akira-admin-shell`, `akira-builder-admin`, `akira-media-admin`, `akira-post-publish-journey`, `akira-theme-activate`,
+`live-hosts`, `read-authority`), with `tests/browser/auth.setup.ts` as a Playwright `globalSetup` that logs in **once**
+and persists a `storageState` the chromium project reuses.
+
+`auth.setup.ts` already documents the exact failure hit three times in this session:
+
+> *"The kernel login limiter permits 5 attempts per 300s window. Every authenticated spec used to submit the login
+> form itself (7 POSTs in this tree…), so the limiter refused the later attempts and the specs failed with a timeout
+> that reads exactly like an authorisation regression."*
+
+**Rule: never hand-roll a login or a sweep — run the suite.** Measured 2026-09-15: **9 passed, 2 failed in 2.3m**, and
+the `read-authority` spec reports every declared admin surface at **200**, so the 403s seen from bespoke curl and
+browser sweeps were entirely a session artefact — for the third time.
+
+The bespoke `scripts/akira-admin-affordance-probe.sh` has been **deleted**: it could not authenticate, it duplicated a
+better harness, and its unvalidated marker set is exactly the false-gap-report trap this project exists to avoid.
 
 ### Measurement harness — the parts that bit us (2026-09-15)
 
