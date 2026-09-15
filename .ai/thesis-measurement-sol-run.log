@@ -1,0 +1,308 @@
+# F1–F4 measurement result
+
+No files were modified. Initial and final `git status --short` were identical.
+
+## Verdicts
+
+| Claim | Verdict | Finding |
+|---|---|---|
+| **F1 Domain generality** | **SUPPORTED, statically only** | Ledger expresses its domain entirely in module files and declares zero capability dependencies. No ledger-specific kernel branch or historical kernel change was found. Runtime lifecycle proof was prohibited. |
+| **F2 Governance universality** | **SUPPORTED for contract validation** | Generic Workbench validation discovers and checks the ledger without domain-specific Workbench code. It does not, however, observe actual ledger business governance. |
+| **F3 Explicability** | **UNMEASURED** | No durable ledger Workbench run/audit record exists. `workbench:explain daily-ledger` treats the argument as a run ID and fails. Runtime capability-call evidence could not safely be generated. |
+| **F4 Non-bypassability** | **FALSIFIED** | Route handlers execute directly. No capability-policy, kernel audit, or kernel idempotency wrapper surrounds dispatch. All 52 classified ledger business-operation routes bypass the capability bus. |
+
+---
+
+## M1 — Daily Ledger surface census
+
+### Declared surface — measured
+
+Commands:
+
+```text
+php -r '...count routes...'
+GET 61
+POST 56
+unique_handlers 117 total_routes 117
+
+php -r '...count exposes/depends...'
+exposes 7 depends 0
+
+grep -cE '^function ...' modules/daily-ledger/handlers*.php
+handlers-deliveries.php 51
+handlers-offline.php 26
+handlers.php 187
+handlers-pos.php 55
+total 319
+```
+
+- **Capabilities exposed:** 7 — `modules/daily-ledger/module.json:134-201`
+- **Capability dependencies:** 0 — `module.json:202`
+- **Routes:** 117: GET 61, POST 56
+- **Unique routed handlers:** 117
+- **All declared functions in `handlers*.php`:** 319
+
+The 319 functions include internal helpers and therefore are **not** the governance denominator.
+
+### Operation classification
+
+**Rule:** an operation is a state-oriented POST route representing ledger business or administration. I excluded four account/session infrastructure routes:
+
+- login
+- refresh
+- forgot password
+- reset password
+
+Thus:
+
+```text
+56 POST routes − 4 auth/session routes = 52 business operations
+```
+
+This intentionally excludes GET queries/pages and internal helper functions.
+
+### Substrate governance calls — measured
+
+Exact probe:
+
+```text
+rg -n "app\(\)->cap\(|app\(\)->capabilities\(|kernel\.audit\.record@1|kernel\.idempot|idempotency\.[A-Za-z]" modules/daily-ledger/handlers*.php
+modules/daily-ledger/handlers.php:2956:
+    $auth = app()->cap()->call('kernel.auth.authenticate@1', [
+```
+
+Results:
+
+- Business-operation handlers calling capability bus: **0/52**
+- Auth/session handlers calling capability bus: **1** (`dailyLedgerAuthLogin`)
+- Handlers directly calling `kernel.audit.record@1`: **0**
+- Handlers directly calling kernel idempotency capabilities: **0**
+
+The ledger instead has module-local mechanisms:
+
+- `dl_auditLog()` calls `$ctx->audit(...)`: `handlers.php:25-36`
+- Cache-backed local idempotency helpers: `handlers.php:76-103`
+- Additional operation-specific/local idempotency appears in deliveries, POS and offline code.
+
+### Governance ratio
+
+**Governed operations ratio: `0 / 52 = 0%`.**
+
+The denominator means **routed ledger business/admin POST operations**, not every function and not GET presentation/query handlers. “Governed” here strictly means entering the kernel capability policy/audit/idempotency path requested by F4. Module-local authorization or logging does not count as substrate governance.
+
+---
+
+## M2 — Dispatch path
+
+Route selection dispatches module handlers at `public/index.php:588-591`:
+
+```php
+if (str_contains($handler, ':')) {
+    executeModuleHandler($handler, $params);
+    exit;
+}
+```
+
+The actual invocation is at `src/helpers/module-manager.php:2992-2998`:
+
+```php
+app()->setActiveModule($moduleId);
+\Ikabud\Kernel\Database\KernelPDO::setActiveModule($moduleId);
+
+$routeCallable($params);
+```
+
+### What wraps it
+
+`executeModuleHandler()` provides:
+
+- enabled-module check,
+- kernel-admin opt-in gate,
+- module context,
+- CSRF for applicable non-API mutations,
+- optional anti-spam,
+- page cache,
+- output buffering and exception handling.
+
+It sets `_capability_call_context` at `src/helpers/module-manager.php:2885-2889`, but this only supplies context **if a handler later calls a capability**.
+
+### What does not wrap it
+
+There is no mandatory:
+
+- capability authorization,
+- `kernel.audit.record@1`,
+- kernel idempotency,
+- capability-bus invocation.
+
+**Measured conclusion:** a route handler can perform business writes directly. The direct `$routeCallable($params)` invocation is the F4 bypass.
+
+---
+
+## M3 — Workbench reach
+
+### Raw human-readable output
+
+```text
+$ php ikabud workbench:validate daily-ledger
+
+  Workbench validate: daily-ledger
+  Status: BLOCKED
+  ✗ tests/daily-ledger/daily_ledger_manifest_test.php must exist
+  ✗ tests/daily-ledger/daily_ledger_routes_test.php must exist
+  ✗ tests/daily-ledger/daily_ledger_handlers_test.php must exist
+  ✗ tests/daily-ledger/daily_ledger_authz_test.php must exist
+  ✗ tests/daily-ledger/daily_ledger_same_location_release_test.php must exist
+  ✗ tests/daily-ledger/daily_ledger_pos_test.php must exist
+  ✗ tests/browser/modules/daily-ledger/auth/login.spec.js must exist
+  ✗ tests/browser/modules/daily-ledger/navigation/sidebar-navigation.spec.js must exist
+  ✗ tests/browser/modules/daily-ledger/daily-ledger-contract-verification.spec.js must exist
+  ✗ tests/browser/modules/daily-ledger/ledger/pending-save-scope.spec.js must exist
+  ✗ tests/browser/modules/daily-ledger/commissary/same-location-release.spec.js must exist
+  ✗ tests/browser/modules/daily-ledger/pos/pos-manual-mode.spec.js must exist
+  ✗ tests/browser/modules/daily-ledger/pos/pos-checkout.spec.js must exist
+```
+
+Exit code: **1**.
+
+The JSON command also exited 1. Its raw result enumerated successful route and capability claims, then the same 13 missing test-file failures. Representative raw entries:
+
+```json
+{
+  "id": "capability-claim",
+  "passed": true,
+  "detail": "kernel.auth.authenticate@1 must be exposed by module.json",
+  "severity": "error"
+},
+{
+  "id": "test-file",
+  "passed": false,
+  "detail": "tests/daily-ledger/daily_ledger_manifest_test.php must exist",
+  "severity": "error"
+}
+```
+
+### Explain and audit
+
+```text
+$ php ikabud workbench:explain daily-ledger --json
+Workbench contract error:
+Contract not found:
+/var/www/html/ikabudsix/storage/workbench/runs/daily-ledger.json
+```
+
+Therefore `workbench:explain` cannot explain a ledger decision without an existing durable run ID.
+
+`workbench:audit --json` is not module-oriented:
+
+```json
+{
+  "ok": true,
+  "file": "kernel/WorkflowEngine.php",
+  "finding_count": 0,
+  "critical_count": 0,
+  "findings": []
+}
+```
+
+It audits `kernel/WorkflowEngine.php`, not ledger policy decisions or audit records.
+
+### Domain-specific branches
+
+Command:
+
+```text
+rg -n -i "daily-ledger|cms-akira|content_type|cms_" kernel/Workbench
+(no output)
+```
+
+**Measured:** no domain-specific Workbench branch was found.
+
+The domain concepts in validation output come from the module-owned `workbench-contract.json`, not hard-coded Workbench logic.
+
+---
+
+## M4 — Comparison
+
+Akira command totals:
+
+```text
+modules=15 exposes=84 routes=77 all_handler_functions=114
+depends_unique=43 contracts=0
+```
+
+Routes by method:
+
+```text
+DELETE=1 GET=46 POST=29 PUT=1 unique_handlers=77
+```
+
+| Axis | cms-akira-* | daily-ledger |
+|---|---:|---:|
+| Capabilities / routes / routed handlers | 84 / 77 / 77 | 7 / 117 / 117 |
+| Governed operations ratio | **Not comparably established in this audit** | **0/52 (0%)** |
+| Own auth? | No; shell/kernel-owned | Yes: `auth_owned` and `dl_users` |
+| Capability `depends` | 43 distinct declared dependency IDs | 0 |
+| Workbench contract present? | 0/15 modules | Yes |
+| Instrument can enumerate surface? | Manifest/routes statically enumerable; no contracts | Yes; validation enumerated routes and capabilities |
+| Instrument can explain a decision? | Not measured here | No existing run; `explain` failed |
+| Handler functions | 114 | 319 |
+
+The Akira governance ratio is deliberately not inferred merely from textual capability references; doing so would use a different denominator/standard than the ledger measurement.
+
+---
+
+## M5 — What ledger needed that content did not
+
+### Measured static list
+
+- New kernel primitive: **none found**
+- Kernel change naming `daily-ledger`: **none found**
+- Capability-bus special case: **none found**
+- Workbench domain branch: **none found**
+- Activation exception: **none found**
+- Capability dependencies: **none declared** (`module.json:202`)
+
+Commands:
+
+```text
+rg -n -i "daily-ledger" kernel/Workbench
+(no output)
+
+git log --all -S'daily-ledger' --oneline -- kernel src bootstrap.php public/index.php
+(no output)
+```
+
+### Inference
+
+The domain needed no content-specific substrate extension because most business behavior simply runs outside the governed capability path. This supports additive domain hosting but does **not** support governed-domain generality.
+
+---
+
+## M6 — Evidence of intent
+
+Ledger README, `modules/daily-ledger/README.md:16-20`:
+
+> **Auth-owned**: `dl_users` table, `admin` role, separate auth shell from CMS  
+> **Handler-based**: business logic in `handlers.php`, not exposed as kernel capabilities
+
+**Confirmed.**
+
+Evidence:
+
+- 117 routed handlers and 319 handler-file functions
+- only one handler capability-bus call, for authentication at `handlers.php:2956`
+- exposed capabilities are authentication, entity reads and report exports: `module.json:134-201`
+- ordinary sales, deliveries, POS, shifts and administrative mutations are route handlers rather than exposed capabilities.
+
+---
+
+## What could not be measured
+
+1. **Runtime lifecycle:** discovery → enable → migration → resolution was not run because enabling or migrating the live money domain was explicitly prohibited.
+2. **Runtime mutation bypass attempts:** not executed because they require writing ledger/tenant data.
+3. **F3 call-level explanation:** no safe capability invocation or durable ledger run was generated; `workbench:explain` requires a run ID.
+4. **Audit-record completeness:** static analysis establishes the absence of mandatory dispatch wrapping, but actual records could only be verified against runtime data.
+5. **Akira’s directly comparable governance ratio:** establishing it rigorously requires a separate per-operation classification across 15 modules; no unsupported ratio was substituted.
+
+No tenant was enabled or touched, no migration or handler was run, and no reset/data-wipe path was invoked.

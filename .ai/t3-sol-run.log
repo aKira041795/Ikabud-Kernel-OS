@@ -1,0 +1,28 @@
+status: BLOCKED
+changed:
+  - none
+implementation_summary:
+  registry: Not implemented.
+  consumer: Not implemented.
+  shell_wiring: Not implemented.
+verification:
+  php_lint: Not run
+  cs_fixer: Not run
+  phpstan: Not run
+  registry_test: Not run
+  shell_test: Not run
+  http_dashboard: Not run
+  http_nav: Not run
+  logs: Not checked
+scope:
+  unexpected_files:
+    - Existing untracked `.ai/**` files and `storage/cms-themes/akira-ark-demo/` were untouched.
+risks:
+  - None introduced.
+unresolved:
+  - `modules/cms-akira/cms-akira-theme/module.json` does not contain the stated `cms.sidebar` contribution.
+  - Adding that required contribution would edit `cms-akira-theme`, which is outside the explicitly permitted scope.
+  - Synthesizing it in core or shell would violate contribution ownership and acceptance criteria.
+  - Escalation via HARPP was attempted, but the repository’s HARPP bridge executable is missing.
+
+Authorization is required for a minimal edit to `modules/cms-akira/cms-akira-theme/module.json`, or the missing expected branch/change must be supplied.

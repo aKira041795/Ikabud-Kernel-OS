@@ -1,0 +1,383 @@
+{
+    "id": "harpp-gen4-s5-20260914082239-fce746",
+    "contract": ".ai/projects/harpp-gen4/slices/s5-first-real-run.md",
+    "contract_revision": "d3b5ec3d91275302",
+    "allowed_count": 1,
+    "forbidden_count": 17,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T08:22:39+00:00",
+    "pid": 2351793,
+    "log": null,
+    "report": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+    "status": "completed",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/allowlist-native-evidence.log",
+        ".ai/chair-decisions.md",
+        ".ai/guardrail-scope-integrity.log",
+        ".ai/guardrail-trust-surface.log",
+        ".ai/harness-declared-artifacts.contract.md",
+        ".ai/harness-declared-artifacts.report.txt",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/harpp-gen4/metrics.json",
+        ".ai/projects/harpp-gen4/slices/s5-first-real-run.md",
+        ".ai/projects/harpp-gen4/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/.acknowledged-blocks.v1",
+        ".ai/runs/harness-declared-artifacts.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        ".ai/trust-surface-amendments.json",
+        "tests/ai_loop_test.php",
+        "tests/ai_run_test.php",
+        "tools/ai-loop.php",
+        "tools/ai-run.php"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/allowlist-native-evidence.log": "file:3e538300f5362be43f745ed58bce573171d1197985c036234ba2672ba5f7c1cb",
+        ".ai/chair-decisions.md": "file:dfe3578eff113ada4836d9ce55069d80a7e2c041a094368d11da79ce9c7f8727",
+        ".ai/guardrail-scope-integrity.log": "file:db56d457be3947a299a142caf81c258f2358d96b2044e8ba70a261a431725774",
+        ".ai/guardrail-trust-surface.log": "file:182bb833f1ea85023262197720c57b2a1853536ed8d78f0881f3ba8cda8e5319",
+        ".ai/harness-declared-artifacts.contract.md": "file:57042d10c218462de76a611d18cb8589be35d16e18c928b9934a2724202e2909",
+        ".ai/harness-declared-artifacts.report.txt": "file:6e46eecf182ecd625a6fccc1da2815b51623d5029b8563866ebc8aa31aae31bd",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/projects/harpp-gen4/metrics.json": "file:fa8e3a3aa2c3d3b6aa9084c9bcbfb6f153e1f949790a7ed9e7127d59993ae395",
+        ".ai/projects/harpp-gen4/slices/s5-first-real-run.md": "file:ed6cc6b8120fd4023875ae89c2922543f6faea27054763d5b5d24a1993bb45b6",
+        ".ai/projects/harpp-gen4/state.json": "file:7b0d1c4a42554e7e29887776d26c7f7a8764ab27701ceed4fb3af8cab1948b6c",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/runs/.acknowledged-blocks.v1": "file:cfd32ef364d5c266a238f195174d7b0d9d1a407220c93741fc0aa1a2f1b3ec90",
+        ".ai/runs/harness-declared-artifacts.json": "file:9a48641a8ac544f9882196c557c05d03d93a06bf928d225502907fb50894bdc9",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.json": "file:d0a78c4226c61c83a96049779d5606a6d5c45319c3f98cad5a438b284cd11384",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.report.txt": "file:78d8044bf6907038e35ed5ca55b5dd693b38d26b920ee7b2845a98fcbd3182af",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1",
+        ".ai/trust-surface-amendments.json": "file:b38d0dc44121da0831debf6166c45a52ac01915a673f77fbfaf4013474ffcc10",
+        "tests/ai_loop_test.php": "file:49b209b4898664ebe815ec065a4b886363df250c8405949654c727bbe5f8b4a6",
+        "tests/ai_run_test.php": "file:462cd0fc528eac17bc9a067c9a0913abb79d06687e5ffea5b8f52a8f34b821cd",
+        "tools/ai-loop.php": "file:69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-run.php": "file:207dc1a2727284d16cf84fe9a5c7168fe3e7f4d261a5f07ed9a038c9d087935c"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/harpp-gen4-s5-20260914082239-fce746.json",
+        ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt"
+    ],
+    "harness_artifacts": [
+        ".ai/projects/harpp-gen4/repair-decisions.json",
+        ".ai/projects/harpp-gen4/state.json"
+    ],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": null,
+    "trust_surface_hash": "a14c6c209accf674bf3e6dd9eca2c2f4332282026acb5b44e4de444b0132ad75",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+        "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "207dc1a2727284d16cf84fe9a5c7168fe3e7f4d261a5f07ed9a038c9d087935c",
+        "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+    },
+    "finished_at": "2026-09-14T08:30:18+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 18523,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/allowlist-native-evidence.log",
+        ".ai/chair-decisions.md",
+        ".ai/guardrail-scope-integrity.log",
+        ".ai/guardrail-trust-surface.log",
+        ".ai/harness-declared-artifacts.contract.md",
+        ".ai/harness-declared-artifacts.report.txt",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/harpp-gen4/metrics.json",
+        ".ai/projects/harpp-gen4/slices/s5-first-real-run.md",
+        ".ai/projects/harpp-gen4/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/.acknowledged-blocks.v1",
+        ".ai/runs/harness-declared-artifacts.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.json",
+        ".ai/runs/harpp-gen4-s5-20260914074854-8dd9f1.report.txt",
+        ".ai/runs/harpp-gen4-s5-20260914082239-fce746.json",
+        ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        ".ai/trust-surface-amendments.json",
+        "tests/ai_loop_test.php",
+        "tests/ai_run_test.php",
+        "tools/ai-loop.php",
+        "tools/ai-run.php"
+    ],
+    "scope_delta_paths": [
+        ".ai/projects/harpp-gen4/metrics.json"
+    ],
+    "scope_conformance": {
+        "ok": true,
+        "checked": [
+            ".ai/projects/harpp-gen4/metrics.json"
+        ],
+        "offending": [],
+        "declared_harness_artifacts": [
+            ".ai/projects/harpp-gen4/repair-decisions.json",
+            ".ai/projects/harpp-gen4/state.json"
+        ]
+    },
+    "evidence_fingerprint": "b35b7262171b6a583e5478c2ee8f11cdddd212765c6c5c527ce478075b3ad4b1",
+    "evidence_unavailable_reason": null,
+    "claim_verification": {
+        "verified_at": "2026-09-14T08:31:07+00:00",
+        "contract_revision": "d3b5ec3d91275302",
+        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-1",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 240,
+                    "text": "$ php tests/ai_project_test.php"
+                },
+                "executor_claim": {
+                    "passed": 18,
+                    "total": 18,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 18,
+                        "total": 18
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-2",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_loop_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 249,
+                    "text": "$ php tests/ai_loop_test.php"
+                },
+                "executor_claim": {
+                    "passed": 18,
+                    "total": 18,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 18,
+                        "total": 18
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-3",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_run_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 258,
+                    "text": "$ php tests/ai_run_test.php"
+                },
+                "executor_claim": {
+                    "passed": 67,
+                    "total": 67,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 67,
+                        "total": 67
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-4",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 267,
+                    "text": "$ php tests/ai_autonomy_test.php"
+                },
+                "executor_claim": {
+                    "passed": 59,
+                    "total": 59,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 59,
+                        "total": 59
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-5",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_contract_lint_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 276,
+                    "text": "$ php tests/ai_contract_lint_test.php"
+                },
+                "executor_claim": {
+                    "passed": 3,
+                    "total": 3,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 3,
+                        "total": 3
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-6",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "python3 -m py_compile tools/harpp-bridge/harpp_wake.py",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 285,
+                    "text": "$ python3 -m py_compile tools/harpp-bridge/harpp_wake.py"
+                },
+                "executor_claim": {
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s5-20260914082239-fce746-7",
+                "run": "harpp-gen4-s5-20260914082239-fce746",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "python3 -m py_compile tools/harpp-bridge/tests/test_harpp_wake.py",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s5-20260914082239-fce746.report.txt",
+                    "line": 292,
+                    "text": "$ python3 -m py_compile tools/harpp-bridge/tests/test_harpp_wake.py"
+                },
+                "executor_claim": {
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0
+                    },
+                    "binding": {
+                        "rev": "f5679aecf494016dd99f7849a37fbfd45fe43e8d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            }
+        ]
+    }
+}

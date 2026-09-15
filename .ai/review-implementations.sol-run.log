@@ -1,0 +1,9 @@
+Review complete. Report written to:
+
+`.ai/review-implementations.sol.md`
+
+Key verdicts:
+- **Area A: UNSOUND** — critical verifier trust-surface authorization flaw confirmed (`plan` exit 0, `check` exit 0/L2).
+- **Area B: SOUND_WITH_FINDINGS** — marker-only stages fail; `evidence: "required"` is enforced; scoped suite passed 207/207.
+- **Python bridge: SAFE TO COMMIT**, with documented vacuous-verifier and live-test provenance findings.
+- Bridge diff stat remained identical before and after review.

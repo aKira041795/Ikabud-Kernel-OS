@@ -368,7 +368,11 @@ function casSeoActor(): array
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CasSeoMutationException('Authentication required.', 401);
     }
-    if ((string) ($actor['role'] ?? '') !== 'admin') {
+    $role = (string) ($actor['role'] ?? '');
+    if (!in_array($role, ['admin', 'administrator', 'superadmin'], true)) {
+        throw new CasSeoMutationException('Administrator role required.', 403);
+    }
+    if ($role === 'superadmin' && (string) ($actor['source'] ?? '') !== 'kernel') {
         throw new CasSeoMutationException('Administrator role required.', 403);
     }
     return $actor;

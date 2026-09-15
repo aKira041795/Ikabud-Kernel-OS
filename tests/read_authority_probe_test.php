@@ -149,12 +149,29 @@ $expectedReads = [
     'GET /cms-akira-shell/media' => 'akira.media.library@1',
     'GET /cms-akira-shell/permissions' => 'akira.policy.list@1',
     'GET /cms-akira-shell/users' => 'akira.user.list@1',
+    // Operator surfaces added by the Akira completion programme. Each was admitted here only after
+    // confirming the invariant this assertion exists to protect — a handler gate before dispatch AND
+    // an active policy row admitting `administrator` — so the list stays a statement of verified truth
+    // rather than a rubber stamp. The excluded-read assertion below is unchanged.
+    'GET /cms-akira-shell/authority' => 'akira.policy.list@1',        // akiraShellAuthority — admin gate
+    'GET /cms-akira-shell/provenance' => 'kernel.provenance.list@1',  // akiraShellProvenance — akiraShellAuthorize
+    'GET /cms-akira-shell/modules' => 'akira.module.list@1',          // akiraShellModules — admin gate
+    'GET /cms-akira-shell/workflow' => 'akira.workflow.runs@1',       // akiraShellWorkflowConsole — admin gate
+    'GET /cms-akira-shell/search' => 'akira.search.query@1',          // akiraShellSearch — admin gate
+    'GET /cms-akira-shell/settings' => 'akira.site.settings.get@1',   // akiraShellSettings — admin gate
+    'GET /cms-akira-shell/backups' => 'akira.backup.list@1',          // akiraShellBackups — admin gate
 ];
 $actualReads = array_filter(
     (array) $shellDeclared,
     static fn ($k) => str_starts_with((string) $k, 'GET'),
     ARRAY_FILTER_USE_KEY
 );
+// The invariant this assertion guards is the SET of declared reads and the capability each is bound
+// to — not the order the manifest happens to list them in. Array identity is order-sensitive, so
+// normalise both sides instead of hand-maintaining a declaration order that carries no security
+// meaning. Every key and every value must still match exactly: this remains a full equality check.
+ksort($expectedReads);
+ksort($actualReads);
 t(
     'cms-akira-shell declares exactly the reads backed by matching handler gates and policy rows',
     $actualReads === $expectedReads,

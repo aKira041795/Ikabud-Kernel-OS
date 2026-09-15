@@ -1,0 +1,14 @@
+Implemented all contract deliverables.
+
+Key results:
+- Rule 1 remains intact; attached contract is refused by `plan` with exit `2`.
+- D1 directory/glob trust-surface coverage is refused; `docs/` remains accepted.
+- D2 director amendment route validates decisions, records provenance/hash, and never edits trust-surface files.
+- Director-authorised runs record their decision reference.
+- D3 dispatch-baseline scope conformance blocks out-of-scope changes without false-blocking pre-existing work.
+- D4 mutation checks confirmed each new gate fails when reverted.
+- PHP 8.3 pure suites: **119/119 passed, zero skips**.
+- No staging, commits, or pushes performed.
+
+Report: `.ai/guardrail-scope-integrity.report.txt`  
+Amendment ledger: `.ai/trust-surface-amendments.json`

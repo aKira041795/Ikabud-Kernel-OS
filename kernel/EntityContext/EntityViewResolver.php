@@ -203,6 +203,12 @@ final class EntityViewResolver
             }
         }
 
+        // Presence is meaningful: absent metadata uses the governed fallback,
+        // while an explicit empty list means that every field is hidden.
+        if (array_key_exists('visible_fields', $contract)) {
+            $merged['visible_fields'] = $contract['visible_fields'];
+        }
+
         $merged['provider'] = $providerId;
 
         if (array_key_exists('source_schema', $contract)) {
@@ -244,7 +250,7 @@ final class EntityViewResolver
 
         // Return cached resolved context as array
         if (isset($this->resolvedCache[$key])) {
-            return $this->resolvedCache[$key]->toArray();
+            return $this->restoreVisibleFields($entityType, $view, $this->resolvedCache[$key]->toArray());
         }
 
         // Exact match
@@ -256,7 +262,7 @@ final class EntityViewResolver
                 $this->viewContracts[$key]['_provenance'] ?? null
             );
             $this->resolvedCache[$key] = $ctx;
-            return $ctx->toArray();
+            return $this->restoreVisibleFields($entityType, $view, $ctx->toArray());
         }
 
         // Fallback: default view for the entity type
@@ -269,7 +275,7 @@ final class EntityViewResolver
                 $this->viewContracts[$fallbackKey]['_provenance'] ?? null
             );
             $this->resolvedCache[$key] = $ctx;
-            return $ctx->toArray();
+            return $this->restoreVisibleFields($entityType, $view, $ctx->toArray());
         }
 
         // Last resort: built-in defaults per entity type
@@ -301,7 +307,7 @@ final class EntityViewResolver
      *   args:        {qualifier, view, limit, sort, ...}
      *
      * @param array<string, mixed> $overrides  caller overrides (limit, sort, filters, etc.)
-     * @return array{rows: array<int, array>, total: int, view: array, source: array, error: string|null}
+     * @return array{rows: array<int, array>, total: int, view: array, display_fields?: list<string>, source: array, error: string|null}
      */
     public function resolve(string $source, string $view = 'compact', array $overrides = []): array
     {
@@ -339,17 +345,15 @@ final class EntityViewResolver
         // Resolve key_field — always include it in query results for URL interpolation
         // even when it's not a display field (e.g. {id} in action_urls / row-click).
         $keyField = $contract['key_field'] ?? 'id';
-        $displayFields = $contract['fields'] ?? '*';
+        $displayFields = $this->resolveDisplayFields($contract);
         $queryFields = $displayFields;
         // Ensure key_field is always queried — needed for row-click and action URLs
-        if (is_array($queryFields)) {
-            if (!in_array($keyField, $queryFields, true)) {
-                $queryFields[] = $keyField;
-            }
-            // Also ensure 'id' is present even if key_field is different
-            if ($keyField !== 'id' && !in_array('id', $queryFields, true)) {
-                $queryFields[] = 'id';
-            }
+        if (!in_array($keyField, $queryFields, true)) {
+            $queryFields[] = $keyField;
+        }
+        // Also ensure 'id' is present even if key_field is different
+        if ($keyField !== 'id' && !in_array('id', $queryFields, true)) {
+            $queryFields[] = 'id';
         }
 
         $capabilityArgs = [
@@ -426,7 +430,7 @@ final class EntityViewResolver
             'rows' => $rows,
             'total' => $total,
             'view' => $contract,
-            'display_fields' => is_array($displayFields) ? $displayFields : ($rows[0] ?? [] ? array_values(array_intersect(array_keys($rows[0]), \Ikabud\Kernel\EntityContext\DefaultEntityRenderer::SAFE_FALLBACK_FIELDS)) : []),
+            'display_fields' => $displayFields,
             'source' => $parsed,
             'error' => null,
         ];
@@ -486,9 +490,9 @@ final class EntityViewResolver
         $filters = is_array($overrides['filters'] ?? null) ? $overrides['filters'] : [];
 
         $keyField = $contract['key_field'] ?? null;
-        $displayFields = $contract['fields'] ?? '*';
+        $displayFields = $this->resolveDisplayFields($contract);
         $queryFields = $displayFields;
-        if ($keyField !== null && is_array($queryFields) && !in_array($keyField, $queryFields, true)) {
+        if ($keyField !== null && !in_array($keyField, $queryFields, true)) {
             $queryFields[] = $keyField;
         }
 
@@ -714,6 +718,67 @@ final class EntityViewResolver
     private function viewKey(string $entityType, string $view): string
     {
         return trim($entityType) . '.' . trim($view);
+    }
+
+    /**
+     * Restore presence-sensitive metadata omitted by the legacy value object.
+     *
+     * @param array<string, mixed> $resolved
+     * @return array<string, mixed>
+     */
+    private function restoreVisibleFields(string $entityType, string $view, array $resolved): array
+    {
+        $key = $this->viewKey($entityType, $view);
+        $source = $this->viewContracts[$key] ?? null;
+        if ($source === null) {
+            $source = $this->viewContracts[$this->viewKey($entityType, 'default')] ?? null;
+        }
+        if (is_array($source) && array_key_exists('visible_fields', $source)) {
+            $resolved['visible_fields'] = $source['visible_fields'];
+        }
+        return $resolved;
+    }
+
+    /**
+     * Resolve display/query fields from contract metadata only.
+     *
+     * @param array<string, mixed> $contract
+     * @return list<string>
+     */
+    private function resolveDisplayFields(array $contract): array
+    {
+        $requested = $contract['fields'] ?? '*';
+        $wildcard = $requested === '*' || $requested === ['*'];
+        $requestedFields = [];
+        if (!$wildcard) {
+            if (!is_array($requested)) {
+                return [];
+            }
+            foreach ($requested as $field) {
+                if (!is_string($field)) {
+                    return [];
+                }
+                $requestedFields[] = $field;
+            }
+        }
+
+        if (array_key_exists('visible_fields', $contract)) {
+            $visible = $contract['visible_fields'];
+            if (!is_array($visible)) {
+                $visible = DefaultEntityRenderer::SAFE_FALLBACK_FIELDS;
+            } else {
+                foreach ($visible as $field) {
+                    if (!is_string($field)) {
+                        $visible = DefaultEntityRenderer::SAFE_FALLBACK_FIELDS;
+                        break;
+                    }
+                }
+            }
+            $visible = array_values(array_unique($visible));
+            return $wildcard ? $visible : array_values(array_intersect($requestedFields, $visible));
+        }
+
+        return $wildcard ? DefaultEntityRenderer::SAFE_FALLBACK_FIELDS : array_values(array_unique($requestedFields));
     }
 
     /**

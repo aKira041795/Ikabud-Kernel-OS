@@ -1,0 +1,122 @@
+Implemented all triage buckets; changes remain uncommitted.
+
+### A — Quarantine
+
+Moved exactly:
+
+- `tests/disyl_document_renderer_test.php` → `tests/_retired/disyl_document_renderer_test.php.retired`
+- `tests/entity_context_registry_test.php` → `tests/_retired/entity_context_registry_test.php.retired`
+- `tests/entity_context_runtime_bridge_test.php` → `tests/_retired/entity_context_runtime_bridge_test.php.retired`
+- `tests/infrastructure_test.php` → `tests/_retired/infrastructure_test.php.retired`
+- `tests/integration_bridge_validation_test.php` → `tests/_retired/integration_bridge_validation_test.php.retired`
+- `tests/manifest_settings_defaults_test.php` → `tests/_retired/manifest_settings_defaults_test.php.retired`
+- `tests/page_cache_smoke_test.php` → `tests/_retired/page_cache_smoke_test.php.retired`
+- `tests/platform_tier1_operational_test.php` → `tests/_retired/platform_tier1_operational_test.php.retired`
+- `tests/render_context_contracts_test.php` → `tests/_retired/render_context_contracts_test.php.retired`
+- `tests/request_dispatch_integration_test.php` → `tests/_retired/request_dispatch_integration_test.php.retired`
+- `tests/trigger_validation_test.php` → `tests/_retired/trigger_validation_test.php.retired`
+
+Added `tests/_retired/README.md`.
+
+Evidence:
+
+```text
+No test files found in /var/www/html/ikabudsix/tests/_retired
+EXIT:1
+```
+
+### B — Test rot
+
+- Updated `tests/disyl_assoc_test.php` with temporary template/cache directories and explicit compiled-mode selection.
+- Updated `tests/tenant_entry_auth_shell_standard_test.php` to load shell helpers and activate the Akira suite in the isolated runner environment.
+- Assertions remain intact.
+
+### C — Environment guards
+
+Added `tests/_support/env_guard.php` with:
+
+- `requireWritableCompiledCache()`
+- `requireTenantFixture(int $tenantId)`
+
+Applied to all requested tests, plus tenant fixture `101` for the entity-view investigation.
+
+Observed SKIPs include:
+
+```text
+[SKIP] capability_effect_invalidation_test.php — tenant 6401 has no resolvable database configuration
+[SKIP] durable_idempotency_test.php — tenant 63001 has no resolvable database configuration
+[SKIP] entity_view_render_cache_test.php — tenant 101 has no resolvable database configuration
+[SKIP] error_page_contract_test.php — compiled template cache is not writable by the current process
+[SKIP] eventbus_durable_outbox_test.php — tenant 62001 has no resolvable database configuration
+[SKIP] kernel_idempotency_capability_test.php — tenant 953331 has no resolvable database configuration
+```
+
+### D — Runner
+
+`scripts/run-tests.php` now detects `^SKIP:`, records the reason, excludes skips from passes, and displays skips in the table and totals.
+
+Final suite:
+
+```text
+Total: 103 files — 95 passed, 8 skipped  (26335ms)
+
+RUNNER_EXIT:0
+MODULES_RESTORED
+```
+
+### E — Entity-view verdict
+
+**Environmental fixture absence, not a capability-registration failure and not a real entity-view regression.**
+
+Evidence before guarding:
+
+```text
+DEBUG capability not invoked; rendered=<div class="ikb-entity-error ...
+capability authorization registry version lookup failed:
+Tenant database configuration could not be resolved for tenant 101
+```
+
+The test itself successfully registers the dynamic capability. Rendering fails earlier while resolving authorization state for nonexistent tenant fixture `101`. Therefore it now loudly skips through `requireTenantFixture(101)`.
+
+### Validation
+
+Syntax checks:
+
+```text
+No syntax errors detected in scripts/run-tests.php
+No syntax errors detected in tests/disyl_assoc_test.php
+No syntax errors detected in tests/tenant_entry_auth_shell_standard_test.php
+No syntax errors detected in tests/error_page_contract_test.php
+No syntax errors detected in tests/capability_effect_invalidation_test.php
+No syntax errors detected in tests/durable_idempotency_test.php
+No syntax errors detected in tests/eventbus_durable_outbox_test.php
+No syntax errors detected in tests/kernel_idempotency_capability_test.php
+No syntax errors detected in tests/entity_view_render_cache_test.php
+No syntax errors detected in tests/_support/env_guard.php
+```
+
+All eleven retired PHP files also reported no syntax errors.
+
+Formatting:
+
+```text
+Fixed 0 of 10 files in 0.053 seconds, 20.00 MB memory used
+```
+
+Static analysis:
+
+```text
+[OK] No errors
+```
+
+Module state after restoration:
+
+```text
+MODULE_STATE_OK: gui-settings ON, all cms-akira-* ON, daily-ledger OFF
+```
+
+### Unexpected findings
+
+- The writable-cache probe needed to reject `tempnam()` silently falling back to `/tmp`; otherwise an unwritable target directory appeared writable.
+- Unrelated pre-existing/concurrent modifications appeared in `.github/copilot-instructions.md` and `docs/architecture/cms-akira-extensibility-adr.md`. I did not touch or revert them.
+- Existing `.ai/**`, theme files, and the supplied kernel engine fix were left untouched.

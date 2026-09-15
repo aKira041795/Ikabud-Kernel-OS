@@ -1,0 +1,261 @@
+{
+  "schema_version": "1.0.0",
+  "sections": {
+    "header": {
+      "label": "Header",
+      "controls": {
+        "brand": {
+          "type": "text",
+          "label": "Brand",
+          "default": "CMS Akira"
+        }
+      }
+    },
+    "footer": {
+      "label": "Footer",
+      "controls": {
+        "message": {
+          "type": "text",
+          "label": "Message",
+          "default": "Governed publishing on Ikabud"
+        }
+      }
+    },
+    "design_colors": {
+      "label": "Design colours",
+      "controls": {
+        "color_primary": {
+          "type": "color",
+          "label": "Primary",
+          "default": "#005c55"
+        },
+        "color_primary_dark": {
+          "type": "color",
+          "label": "Primary dark",
+          "default": "#0f766e"
+        },
+        "color_primary_soft": {
+          "type": "color",
+          "label": "Primary soft",
+          "default": "#9cf2e8"
+        },
+        "color_accent": {
+          "type": "color",
+          "label": "Accent",
+          "default": "#fea619"
+        },
+        "color_accent_deep": {
+          "type": "color",
+          "label": "Accent deep",
+          "default": "#855300"
+        },
+        "color_tertiary": {
+          "type": "color",
+          "label": "Tertiary",
+          "default": "#7f4025"
+        },
+        "color_surface": {
+          "type": "color",
+          "label": "Surface",
+          "default": "#faf8ff"
+        },
+        "color_surface_raised": {
+          "type": "color",
+          "label": "Raised surface",
+          "default": "#ffffff"
+        },
+        "color_surface_low": {
+          "type": "color",
+          "label": "Low surface",
+          "default": "#f3f2ff"
+        },
+        "color_surface_container": {
+          "type": "color",
+          "label": "Surface container",
+          "default": "#ebedff"
+        },
+        "color_text": {
+          "type": "color",
+          "label": "Text",
+          "default": "#071747"
+        },
+        "color_text_muted": {
+          "type": "color",
+          "label": "Muted text",
+          "default": "#3e4947"
+        },
+        "color_outline": {
+          "type": "color",
+          "label": "Outline",
+          "default": "#6e7977"
+        },
+        "color_border": {
+          "type": "color",
+          "label": "Border",
+          "default": "#bdc9c6"
+        },
+        "color_error": {
+          "type": "color",
+          "label": "Error",
+          "default": "#ba1a1a"
+        },
+        "color_link": {
+          "type": "color",
+          "label": "Links",
+          "default": "#005c55"
+        },
+        "color_heading": {
+          "type": "color",
+          "label": "Headings",
+          "default": "#071747"
+        },
+        "color_button_background": {
+          "type": "color",
+          "label": "Button background",
+          "default": "#005c55"
+        },
+        "color_button_text": {
+          "type": "color",
+          "label": "Button text",
+          "default": "#ffffff"
+        },
+        "color_button_hover_background": {
+          "type": "color",
+          "label": "Button hover background",
+          "default": "#0f766e"
+        },
+        "color_field_border": {
+          "type": "color",
+          "label": "Form-field border",
+          "default": "#bdc9c6"
+        },
+        "color_field_focus": {
+          "type": "color",
+          "label": "Form-field focus",
+          "default": "#6e7977"
+        },
+        "color_code_surface": {
+          "type": "color",
+          "label": "Code surface",
+          "default": "#ebedff"
+        }
+      }
+    },
+    "design_typography": {
+      "label": "Design typography",
+      "controls": {
+        "font_family": {
+          "type": "text",
+          "label": "Editorial font family",
+          "default": "'Source Serif 4', Georgia, 'Times New Roman', serif"
+        },
+        "font_family_ui": {
+          "type": "text",
+          "label": "Interface font family",
+          "default": "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        },
+        "font_size_base": {
+          "type": "number",
+          "label": "Base font size (px)",
+          "default": 15,
+          "constraints": {"min": 12, "max": 24, "step": 1}
+        },
+        "line_height_body": {
+          "type": "number",
+          "label": "Body line height (px)",
+          "default": 22,
+          "constraints": {"min": 16, "max": 40, "step": 1}
+        },
+        "font_size_display_max": {
+          "type": "number",
+          "label": "Display heading maximum (px)",
+          "default": 56,
+          "constraints": {"min": 36, "max": 88, "step": 1}
+        },
+        "font_size_headline_lg_max": {
+          "type": "number",
+          "label": "Large heading maximum (px)",
+          "default": 40,
+          "constraints": {"min": 28, "max": 64, "step": 1}
+        },
+        "font_size_headline_md": {
+          "type": "number",
+          "label": "Medium heading size (px)",
+          "default": 28,
+          "constraints": {"min": 20, "max": 48, "step": 1}
+        },
+        "font_size_headline_sm": {
+          "type": "number",
+          "label": "Small heading size (px)",
+          "default": 22,
+          "constraints": {"min": 16, "max": 36, "step": 1}
+        },
+        "heading_letter_spacing_adjust": {
+          "type": "number",
+          "label": "Heading letter-spacing adjustment (em)",
+          "default": 0,
+          "constraints": {"min": -0.1, "max": 0.1, "step": 0.005}
+        }
+      }
+    },
+    "design_layout": {
+      "label": "Design layout",
+      "controls": {
+        "spacing_page": {
+          "type": "text",
+          "label": "Page spacing",
+          "default": "1.25rem"
+        },
+        "radius_card": {
+          "type": "text",
+          "label": "Card radius",
+          "default": "0.75rem"
+        },
+        "container_max": {
+          "type": "text",
+          "label": "Container maximum width",
+          "default": "1120px"
+        },
+        "reading_width": {
+          "type": "text",
+          "label": "Reading width",
+          "default": "720px"
+        },
+        "button_radius": {
+          "type": "number",
+          "label": "Button radius (px)",
+          "default": 12,
+          "constraints": {"min": 0, "max": 48, "step": 1}
+        },
+        "button_padding_block": {
+          "type": "number",
+          "label": "Button vertical padding (px)",
+          "default": 12,
+          "constraints": {"min": 4, "max": 32, "step": 1}
+        },
+        "button_padding_inline": {
+          "type": "number",
+          "label": "Button horizontal padding (px)",
+          "default": 24,
+          "constraints": {"min": 8, "max": 64, "step": 1}
+        },
+        "card_shadow": {
+          "type": "select",
+          "label": "Card shadow",
+          "default": "0 1px 2px rgba(7,23,71,.06),0 1px 3px rgba(7,23,71,.04)",
+          "options": [
+            "none",
+            "0 1px 2px rgba(7,23,71,.06),0 1px 3px rgba(7,23,71,.04)",
+            "0 4px 12px rgba(7,23,71,.08),0 2px 4px rgba(7,23,71,.04)"
+          ]
+        },
+        "header_height": {
+          "type": "number",
+          "label": "Header height (px)",
+          "default": 80,
+          "constraints": {"min": 48, "max": 160, "step": 1}
+        }
+      }
+    }
+  }
+}

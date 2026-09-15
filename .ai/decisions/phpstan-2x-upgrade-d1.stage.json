@@ -1,0 +1,21 @@
+{
+    "schema": "ark.workbench-development-stage-result.v1",
+    "schema_version": "1.0",
+    "stage": "architect",
+    "task_id": "phpstan-2x-upgrade",
+    "actor": {
+        "role": "implement",
+        "model": null,
+        "harness": "pi",
+        "context_governor": null
+    },
+    "result": "architecture_decision_required",
+    "recorded_at": "2026-09-13T03:09:42+00:00",
+    "summary": "How should the 247 findings newly detected by PHPStan 2.x be handled?",
+    "unresolved_findings": [
+        {
+            "severity": "P1",
+            "summary": "How should the 247 findings newly detected by PHPStan 2.x be handled?"
+        }
+    ]
+}

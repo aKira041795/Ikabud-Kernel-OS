@@ -1,0 +1,1145 @@
+#!/usr/bin/env python3
+"""HARPP bridge CLI — talk to the HARPP module from the shell / Pi.
+
+Commands:
+  harpp config set <key> <value>      base_url | bridge_key | tenant_id
+  harpp config get [key]
+  harpp check                         validate config (no network)
+  harpp self-test                     run the local unit tests (no network)
+  harpp decision record --task T --decision D [--constraint C --additional A --source S --applied-to X]
+  harpp decision list [--limit N] [--remote --state S --priority P --workbench-state W]
+  harpp decision submit --title T --body B [--context C --requested R --priority P --source S --workbench-state W --decision-key K]
+  harpp decision ack <id> [--rationale R]
+  harpp decision cancel <id> [--rationale R]
+  harpp decision apply <id> [--rationale R]
+  harpp msg send --body B [--conversation-id N --title T --harness-session-id S --idempotency-key K]
+  harpp msg poll [--conversation-id N --after A --limit N]
+  harpp status --message M [--status S --workbench-state W --harness-session-id S]
+  harpp job track --pid N --model M --task T --conversation C [verification options]
+  harpp job list
+  harpp job untrack <id>
+  harpp workflow resume <id>
+
+Set HARPP_DRY_RUN=1 to preview requests without sending.
+"""
+import argparse
+import fcntl
+import json
+import os
+import socket
+import sys
+import threading
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import harpp_client  # noqa: E402
+import harpp_wake  # noqa: E402
+
+DEFAULT_INBOX = ".ai/harpp-inbox.jsonl"  # legacy workspace-relative path
+RUN_LEASE_RENEW_INTERVAL = 120
+_DESKTOP_RUN_LOCK = threading.Lock()
+
+
+def _default_inbox():
+    """Machine-global inbox so monitoring survives workspace switches."""
+    return str(harpp_wake.INBOX_FILE)
+
+
+def _default_log():
+    return str(harpp_wake.AUTOPROCESS_LOG)
+
+
+def _desktop_runner_key():
+    hostname = socket.gethostname().strip().lower() or "localhost"
+    return f"desktop-{hostname}"
+
+
+def _run_desktop_pass(*, workspace, wake_command, model, timeout, open_terminal):
+    """Claim and synchronously supervise at most one desktop run; never raise."""
+    runner_key = _desktop_runner_key()
+    run = None
+    claim_token = ""
+    run_id = 0
+    try:
+        harpp_client.register_runner(runner_key=runner_key, display_name="HARPP desktop",
+                                     capabilities=["desktop"])
+        harpp_client.reconcile_runs([], runner_key)
+        response = harpp_client.claim_run(runner_key=runner_key, lease_seconds=300)
+        data = (response.get("data") or {}) if isinstance(response, dict) else {}
+        run = data.get("run")
+        if not isinstance(run, dict):
+            return
+        run_id = int(run.get("id") or 0)
+        claim_token = str(data.get("claim_token") or "")
+        conversation_id = int(run.get("conversation_id") or 0)
+        if not run_id or not claim_token or not conversation_id:
+            raise ValueError("claimed run is missing id, claim_token, or conversation_id")
+
+        if harpp_wake._wake_receipt_exists(int(run.get("source_message_id") or 0)):
+            try:
+                # Self-cancel with our claim token so the run retires cleanly instead
+                # of being reconciled to STALLED by the finally block below.
+                harpp_client.cancel_run(run_id=run_id, claim_token=claim_token)
+            except Exception as exc:
+                print(f"harpp watch: run {run_id} already answered; cancel failed: {exc}", flush=True)
+            return
+
+        context_response = harpp_client.conversation_context(conversation_id, limit=20)
+        context = (context_response.get("data") or {}) if isinstance(context_response, dict) else {}
+        task = str(run.get("task") or run.get("message_body") or run.get("body") or "Process the queued HARPP run.")
+        prompt = ("You are the local HARPP desktop runner. Complete the claimed task, report any "
+                  "required owner-facing response through HARPP, then exit.\n\n"
+                  f"Task:\n{task[:4000]}\n\nBounded conversation context:\n"
+                  f"{json.dumps(context, ensure_ascii=False)[:12000]}")
+        harpp_client.mark_run_running(run_id, claim_token)
+
+        stop_renewal = threading.Event()
+
+        def renew_lease():
+            while not stop_renewal.wait(RUN_LEASE_RENEW_INTERVAL):
+                try:
+                    harpp_client.renew_run(run_id, claim_token, lease_seconds=300)
+                except Exception as exc:
+                    print(f"harpp watch: run {run_id} lease renewal failed: {exc}", flush=True)
+                try:
+                    harpp_client.register_runner(runner_key=runner_key, display_name="HARPP desktop",
+                                                 capabilities=["desktop"])
+                except Exception as exc:
+                    print(f"harpp watch: runner {runner_key} heartbeat failed: {exc}", flush=True)
+
+        renewer = threading.Thread(target=renew_lease, daemon=True)
+        renewer.start()
+        # Run inside the conversation's HARPP workspace folder (base/workspace_key)
+        # so the claimed task executes in the right project dir, not the global one.
+        run_workspace = harpp_wake.conversation_workspace_dir(conversation_id) or workspace
+        try:
+            ok, reason = harpp_wake.spawn_agent(
+                prompt, command=wake_command, model=model or harpp_wake.DEFAULT_MODEL,
+                timeout=timeout, cwd=run_workspace, verify_delivery_receipts=False,
+                open_terminal=open_terminal, return_reason=True, require_marker=False)
+        finally:
+            stop_renewal.set()
+            renewer.join(timeout=1)
+        result = {"runner_key": runner_key, "reason": reason or ("completed" if ok else "agent failed")}
+
+        def _transition(target: str, payload: dict) -> bool:
+            try:
+                call = harpp_client.complete_run if target == "SUCCEEDED" else harpp_client.fail_run
+                response = call(run_id, claim_token, result=payload)
+                return bool((response or {}).get("ok"))
+            except Exception as exc:  # noqa: BLE001
+                print(f"harpp watch: run {run_id} {target} transition error: {exc}", flush=True)
+                return False
+
+        # A failed terminal transition would leave the run RUNNING and silently
+        # reconciled to STALLED. Always land on a terminal state; retry FAILED once
+        # so a transient 409 can't strand the run.
+        if ok and _transition("SUCCEEDED", result):
+            pass
+        elif not _transition("FAILED", result):
+            retried = _transition("FAILED", {**result, "error": "first terminal transition failed"})
+            if not retried:
+                print(f"harpp watch: run {run_id} could not reach a terminal state (will be reconciled); "
+                      f"ok={ok} reason={reason}", flush=True)
+    except Exception as exc:
+        print(f"harpp watch: desktop runner pass failed: {exc}", flush=True)
+        if run_id and claim_token:
+            try:
+                harpp_client.fail_run(run_id, claim_token, result={"error": str(exc)})
+            except Exception as report_exc:
+                print(f"harpp watch: run {run_id} failure report failed: {report_exc}", flush=True)
+    finally:
+        try:
+            harpp_client.reconcile_runs([], runner_key)
+        except Exception as exc:
+            print(f"harpp watch: desktop runner reconciliation failed: {exc}", flush=True)
+
+
+def _start_desktop_pass(*, workspace, wake_command, model, timeout, open_terminal):
+    """Start one desktop runner pass without blocking the watch poll loop."""
+    if not _DESKTOP_RUN_LOCK.acquire(blocking=False):
+        return False
+
+    def run_pass():
+        try:
+            _run_desktop_pass(workspace=workspace, wake_command=wake_command, model=model,
+                              timeout=timeout, open_terminal=open_terminal)
+        except Exception as exc:
+            print(f"harpp watch: desktop runner thread failed: {exc}", flush=True)
+        finally:
+            _DESKTOP_RUN_LOCK.release()
+
+    try:
+        threading.Thread(target=run_pass, daemon=True).start()
+    except Exception as exc:
+        _DESKTOP_RUN_LOCK.release()
+        print(f"harpp watch: desktop runner start failed: {exc}", flush=True)
+        return False
+    return True
+
+
+def _watch_state_path():
+    base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "harpp"
+    return base / "watch-state.json"
+
+
+def _watch_lock_path():
+    return _watch_state_path().with_name("watch.lock")
+
+
+def _load_watch_state():
+    p = _watch_state_path()
+    try:
+        return json.loads(p.read_text()) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save_watch_state(state):
+    p = _watch_state_path()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+        with tmp.open("w", encoding="utf-8") as stream:
+            stream.write(json.dumps(state))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, p)
+        return True
+    except Exception as e:
+        print(f"harpp watch: state save failed: {e}", flush=True)
+        return False
+
+
+def _notify(title, body):
+    try:
+        import shutil
+        import subprocess
+        if shutil.which("notify-send"):
+            subprocess.Popen(["notify-send", title, body])
+    except Exception:
+        pass
+
+
+def _emit(record, inbox):
+    line = json.dumps(record, ensure_ascii=False)
+    print(line, flush=True)
+    if inbox:
+        try:
+            p = Path(inbox)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            return True
+        except Exception as e:
+            print(f"harpp watch: inbox append failed: {e}", flush=True)
+            return False
+    return True
+
+
+AUTOPROCESS_MAX_RETRIES = 3
+
+
+def _autoprocess(records, log, failures=None):
+    """Auto-respond and return only records that still need retrying (bounded).
+
+    A record that keeps failing (server 4xx/5xx, closed conversation, unparsable
+    response) is dropped after AUTOPROCESS_MAX_RETRIES consecutive failures so the
+    watch loop never re-acks the same owner message every poll — that unbounded
+    retry loop duplicated "Received" replies and push notifications.
+    """
+    failures = {} if failures is None else failures
+    outcomes = []
+    for note in harpp_client.autoprocess(records, outcomes=outcomes):
+        print("autoprocess: " + note, flush=True)
+        if log:
+            try:
+                p = Path(log)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with harpp_wake._open_capped_log(p) as f:
+                    f.write("autoprocess: " + note + "\n")
+            except Exception as e:
+                print(f"harpp watch: autoprocess log failed: {e}", flush=True)
+    keep = []
+    for rec, ok in outcomes:
+        key = f"{rec.get('kind')}:{rec.get('id')}"
+        if ok:
+            failures.pop(key, None)
+            continue
+        count = failures.get(key, 0) + 1
+        if count < AUTOPROCESS_MAX_RETRIES:
+            failures[key] = count
+            keep.append(rec)
+        else:
+            failures.pop(key, None)
+            print(f"autoprocess: dropped {key} after {AUTOPROCESS_MAX_RETRIES} failed ack attempts", flush=True)
+    return keep
+
+
+def watch_loop(once, interval, inbox=None, autoprocess=True, log=None,
+               wake=False, wake_command=None, cooldown=60, max_per_hour=20,
+               timeout=900, model=None, max_retries=3, open_terminal=True):
+    import time
+    inbox = inbox or _default_inbox()
+    log = log or _default_log()
+    workspace = harpp_wake.default_workspace()
+    lock_path = _watch_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    watch_lock = lock_path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(watch_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        watch_lock.close()
+        print(f"harpp watch: another watcher owns {lock_path}", flush=True)
+        return
+    state = _load_watch_state()
+    last_msg = int(state.get("last_msg_id", 0))
+    last_decided = int(state.get("last_decided_id", 0))
+    pending = state.get("pending_autoprocess", []) if autoprocess else []
+    failures = state.get("autoprocess_failures", {}) if autoprocess else {}
+    while True:
+        emitted = []
+        try:
+            # Page through every owner message newer than the last processed id.
+            # The bridge API keys polls by id>cursor and caps each page at `limit`;
+            # one uncursored request silently drops messages once the store exceeds
+            # the page size, leaving owner messages unresponded (fixed).
+            msgs = []
+            cursor = last_msg
+            while True:
+                page = harpp_client.poll_messages(limit=100, after=cursor).get("data", {}).get("messages", [])
+                if not page:
+                    break
+                msgs.extend(page)
+                nxt = max(int(m.get("id", 0)) for m in page)
+                if nxt <= cursor:
+                    break
+                cursor = nxt
+            for m in sorted(msgs, key=lambda row: int(row.get("id", 0))):
+                mid = int(m.get("id", 0))
+                if mid > last_msg:
+                    # Never receipt/re-wake on the harness's own replies.
+                    sender = str(m.get("sender_type") or "owner").lower()
+                    if sender not in ("owner", "user"):
+                        last_msg = mid
+                        continue
+                    rec = {"kind": "message", "id": mid, "conversation_id": m.get("conversation_id"), "conversation_title": m.get("conversation_title"), "conversation_version": m.get("conversation_version"), "run_id": m.get("run_id"), "run_state": m.get("run_state"), "sender_type": m.get("sender_type"), "body": m.get("body"), "created_at": m.get("created_at")}
+                    if not _emit(rec, inbox):
+                        # Do not advance past an unstaged owner message. It will be
+                        # fetched and durably appended on the next poll.
+                        break
+                    last_msg = mid
+                    _notify("HARPP message", str(m.get("body", ""))[:120])
+                    emitted.append(rec)
+        except Exception as e:
+            print(f"harpp watch: message poll failed: {e}", flush=True)
+        try:
+            # Keyset-cursor paging (ADR-6): a single uncursored limit=100 fetch
+            # silently drops decisions once the store exceeds a page. Page through
+            # ALL of them (no arbitrary cap -> no silent tail loss). Termination is
+            # deterministic: each page advances the keyset cursor to strictly older
+            # rows, and we stop once everything newer than last_decided is seen.
+            ds = []
+            _cursor_at = None
+            _cursor_id = None
+            while True:
+                page = harpp_client.list_decisions(limit=100, cursor_created_at=_cursor_at, cursor_id=_cursor_id).get("data", {})
+                rows = page.get("decisions", []) or []
+                if not rows:
+                    break
+                ds.extend(rows)
+                if max(int(r.get("id", 0)) for r in rows) <= int(last_decided or 0):
+                    break
+                nxt = page.get("next_cursor") or {}
+                if not nxt.get("created_at"):
+                    break
+                _cursor_at = nxt.get("created_at")
+                _cursor_id = int(nxt.get("id", 0))
+                if _cursor_id >= max(int(r.get("id", 0)) for r in rows):
+                    # Non-advancing cursor (protocol/anomaly): bail loudly so the next
+                    # poll re-scans instead of silently looping.
+                    print("harpp watch: decision paging cursor did not advance; stopping this poll", flush=True)
+                    break
+            for d in sorted(ds, key=lambda row: int(row.get("id", 0))):
+                did = int(d.get("id", 0))
+                if d.get("decided_at") and d.get("lifecycle_state") == "DECIDED" and did > last_decided:
+                    rec = {"kind": "decision", "id": did, "decision_key": d.get("decision_key"), "title": d.get("title"), "decision": d.get("decision"), "rationale": d.get("rationale"), "decided_by": d.get("decided_by"), "lifecycle_state": d.get("lifecycle_state")}
+                    if not _emit(rec, inbox):
+                        break
+                    last_decided = did
+                    _notify("HARPP decision", f"#{did} {str(d.get('title', ''))[:120]}")
+                    emitted.append(rec)
+        except Exception as e:
+            print(f"harpp watch: decision poll failed: {e}", flush=True)
+        if autoprocess:
+            known = {(r.get("kind"), r.get("id")) for r in pending}
+            pending.extend(r for r in emitted if (r.get("kind"), r.get("id")) not in known)
+        # Persist pending receipts before network delivery so a crash cannot lose them.
+        _save_watch_state({"last_msg_id": last_msg, "last_decided_id": last_decided,
+                           "pending_autoprocess": pending, "autoprocess_failures": failures})
+        # Instant confirmation + decisions are deterministic and retried every poll.
+        if autoprocess and pending:
+            pending = _autoprocess(pending, log, failures)
+            _save_watch_state({"last_msg_id": last_msg, "last_decided_id": last_decided,
+                               "pending_autoprocess": pending, "autoprocess_failures": failures})
+        # Deterministic workflow commands from the messenger: the owner drives
+        # multi-stage work directly from HARPP (workflow start/list/status/show,
+        # "run the X loop") — no VS Code / LLM needed. Handled commands are marked
+        # processed so the wake agent does not double-handle them.
+        try:
+            recorded = harpp_wake.auto_record_directives(emitted)
+            if recorded:
+                print(f"harpp watch: recorded {recorded} durable decision(s)", flush=True)
+            harpp_wake.route_workflow_commands(emitted)
+            # Owner debate requests ("Start debate …") launch the arch-debate tool
+            # as a tracked background job, auto-reported on completion.
+            harpp_wake.route_debate_commands(emitted)
+            # Owner multi-task plans (T1..Tn) are claimed here so they run as a
+            # governed workflow instead of being interrupted by the wake agent.
+            harpp_wake.route_plan_commands(emitted, default_model=model or harpp_wake.DEFAULT_MODEL)
+        except Exception as e:
+            print(f"harpp watch: workflow command routing failed: {e}", flush=True)
+        # Job monitor: track delegated model processes; when one finishes, verify + commit
+        # + report the result to the owner conversation automatically (no reminder needed).
+        try:
+            harpp_wake.monitor_jobs()
+            # Governed multi-stage workflows advance on each stage's real outcome.
+            harpp_wake.advance_workflows()
+            # Phone-queued deploys: publish inventory + run the deploy worker on demand,
+            # so the FTP worker process exists only while a deploy is actually running.
+            harpp_wake.sync_deploys()
+            # Daemon liveness + workflow summary for the /harpp/status page.
+            harpp_wake.report_daemon_status(runner_key=_desktop_runner_key())
+            # Claim + satisfy pending wake requests (Nudge) for runners we can serve.
+            harpp_wake.wake_relay_pass(own_runner_key=_desktop_runner_key())
+            # Provision a local folder for every active HARPP workspace so a
+            # workspace created in the UI gets its project folder (base/key) here.
+            try:
+                harpp_wake.provision_workspaces()
+            except Exception as e:
+                print(f"harpp watch: workspace provisioning failed: {e}", flush=True)
+        except Exception as e:
+            print(f"harpp watch: job monitor failed: {e}", flush=True)
+        if wake:
+            _start_desktop_pass(workspace=workspace, wake_command=wake_command, model=model,
+                                timeout=timeout, open_terminal=open_terminal)
+        # Substantive processing: the wake agent (when enabled) replies/works in the
+        # background, ledger-deduped, bounded by cooldown + max-per-hour.
+        if wake:
+            wake_kw = dict(enabled=True, command=wake_command,
+                           model=model or harpp_wake.DEFAULT_MODEL, cooldown=cooldown,
+                           max_per_hour=max_per_hour, timeout=timeout,
+                           max_retries=max_retries, workspace=workspace,
+                           open_terminal=open_terminal)
+            if once:
+                harpp_wake.maybe_wake(inbox, **wake_kw)
+            else:
+                # Agent latency (up to timeout) must never block polling/instant receipts.
+                threading.Thread(target=harpp_wake.maybe_wake, args=(inbox,),
+                                 kwargs=wake_kw, daemon=True).start()
+        if once:
+            watch_lock.close()
+            return
+        time.sleep(max(5, interval))
+
+
+def inbox_cmd(clear, path=None):
+    p = Path(path or _default_inbox())
+    if not p.exists():
+        print(f"inbox empty ({p})")
+        return
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            print(line)
+    if clear:
+        p.unlink()
+
+
+def cmd_job_track(args):
+    workspace = harpp_wake.default_workspace()
+    try:
+        jid = harpp_wake.track_job(
+            pid=args.pid, model=args.model, task=args.task, conversation_id=args.conversation,
+            log_path=args.log, verify=args.verify, marker=args.marker,
+            repo=args.repo or workspace, commit=args.commit, timeout=args.timeout,
+            authority_level=args.authority_level)
+    except ValueError as exc:
+        sys.exit(f"harpp job track: {exc}")
+    print(json.dumps({"job_id": jid, "status": "tracked", "pid": args.pid,
+                      "conversation_id": args.conversation}))
+
+
+def cmd_job_launch(args):
+    command = args.command
+    if command and command[0] == "--":
+        command = command[1:]  # argparse REMAINDER keeps the '--' separator
+    command = command[0] if len(command) == 1 else command
+    workspace = args.cwd or harpp_wake.default_workspace()
+    try:
+        jid, proc = harpp_wake.launch_job(
+            model=args.model, task=args.task, conversation_id=args.conversation,
+            command=command, log_path=args.log, verify=args.verify, marker=args.marker,
+            repo=args.repo or workspace, commit=args.commit, quiet=args.quiet,
+            timeout=args.timeout, cwd=workspace, open_terminal=not args.no_terminal,
+            authority_level=args.authority_level)
+    except ValueError as exc:
+        sys.exit(f"harpp job launch: {exc}")
+    print(json.dumps({"job_id": jid, "status": "tracked", "pid": proc.pid,
+                      "conversation_id": args.conversation}))
+
+
+def cmd_job_list(args):
+    jobs = harpp_wake.list_jobs()
+    print(json.dumps({"count": len(jobs), "jobs": jobs}, indent=2))
+
+
+def cmd_job_untrack(args):
+    ok = harpp_wake.untrack_job(args.id)
+    print(json.dumps({"job_id": args.id, "untracked": ok}))
+    if not ok:
+        raise SystemExit(1)
+
+
+def cmd_workflow_start(args):
+    try:
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        sys.exit(f"harpp workflow start: cannot read manifest {args.manifest}: {exc}")
+    stages = manifest.get("stages") if isinstance(manifest, dict) else None
+    if not isinstance(stages, list) or not stages:
+        sys.exit("harpp workflow start: manifest must contain a non-empty 'stages' array")
+    # Deterministic preflight before persisting/launching: invalid or unsafe
+    # manifests fail with the exact field identified.
+    try:
+        harpp_wake.preflight_workflow_manifest(manifest, workspace=args.workspace)
+    except ValueError as exc:
+        sys.exit(f"harpp workflow start: {exc}")
+    title = args.title or (manifest.get("title") if isinstance(manifest, dict) else "") or "Governed HARPP workflow"
+    defaults = dict(harpp_client.DEFAULT_WORKFLOW_BUDGETS)
+    for key in defaults:
+        arg_value = getattr(args, key, None)
+        if arg_value is not None:
+            defaults[key] = arg_value
+        elif isinstance(manifest, dict) and manifest.get(key) is not None:
+            defaults[key] = manifest.get(key)
+    if getattr(args, "dry_run", False):
+        print(json.dumps({"dry_run": True, "manifest": args.manifest, "stages": len(stages),
+                          "preflight": "PASS", **defaults}))
+        return
+    try:
+        preferred_model = harpp_wake.requested_model(getattr(args, "model", None))
+        if getattr(args, "model", None) and not preferred_model:
+            raise ValueError("unknown --model preference; use a supported provider/model or alias")
+        wid = harpp_wake.start_workflow(title=title, conversation_id=args.conversation,
+                                        stages=stages, workspace=args.workspace,
+                                        max_repairs=int(defaults["max_repairs"]),
+                                        max_total_cycles=int(defaults["max_total_cycles"]),
+                                        max_browser_repairs=int(defaults["max_browser_repairs"]),
+                                        max_tool_retries=int(defaults["max_tool_retries"]),
+                                        max_network_retries=int(defaults["max_network_retries"]),
+                                        contract_revision=int(getattr(args, "contract_revision", 0) or 0),
+                                        preferred_model=preferred_model,
+                                        authority_level=getattr(args, "authority_level", None))
+    except ValueError as exc:
+        sys.exit(f"harpp workflow start: {exc}")
+    print(json.dumps({"workflow_id": wid, "status": "running", "stages": len(stages), **defaults}))
+
+
+def cmd_workflow_validate(args):
+    try:
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        sys.exit(f"harpp workflow validate: cannot read manifest {args.manifest}: {exc}")
+    errors = harpp_wake.validate_workflow_manifest(manifest, name=Path(args.manifest).name,
+                                                   workspace=args.workspace)
+    if errors:
+        print(json.dumps({"manifest": args.manifest, "valid": False,
+                          "schema_version": harpp_wake.WORKFLOW_MANIFEST_SCHEMA_VERSION,
+                          "errors": errors}, indent=2))
+        raise SystemExit(1)
+    print(json.dumps({"manifest": args.manifest, "valid": True,
+                      "schema_version": harpp_wake.WORKFLOW_MANIFEST_SCHEMA_VERSION}, indent=2))
+
+
+def cmd_workflow_list(args):
+    wfs = harpp_wake.list_workflows()
+    print(json.dumps({"count": len(wfs), "workflows": [
+        {"id": w["id"], "title": w.get("title"), "status": w.get("status"),
+         "current_index": w.get("current_index"), "stages": len(w.get("stages", [])),
+         "conversation_id": w.get("conversation_id"), "created_at": w.get("created_at")}
+        for w in wfs]}, indent=2))
+
+
+def cmd_workflow_show(args):
+    w = harpp_wake.get_workflow(args.id)
+    if not w:
+        print(json.dumps({"workflow_id": args.id, "found": False}))
+        raise SystemExit(1)
+    print(json.dumps(w, indent=2))
+
+
+def cmd_workflow_resume(args):
+    w = harpp_wake.resume_workflow(args.id)
+    if not w:
+        print(json.dumps({"workflow_id": args.id, "found": False}))
+        raise SystemExit(1)
+    print(json.dumps(w, indent=2))
+
+
+def cmd_wake_relay(args):
+    config = harpp_wake.harpp_client.load_config()
+    wol = config.get("wake_on_lan") or {}
+    runners = wol.get("runners") or {}
+
+    if args.check:
+        print(f"base_url={config.get('base_url', '')}")
+        print(f"tenant_id={config.get('tenant_id', '')}")
+        if not runners:
+            print("HARPP wake relay: no wake_on_lan.runners configured.")
+            print(f"Add to {harpp_client.config_path()}:")
+            print('  "wake_on_lan": { "runners": { "<desktop-runner-key>": { "mac": "AA:BB:CC:DD:EE:FF", "broadcast": "192.168.1.255", "port": 9 } } }')
+            print("Then: harpp wake-relay --check")
+            return
+        for runner_key, runner_spec in runners.items():
+            spec = runner_spec if isinstance(runner_spec, dict) else {}
+            mac = spec.get("mac") or wol.get("mac") or ""
+            broadcast = spec.get("broadcast") or wol.get("broadcast") or "255.255.255.255"
+            port = spec.get("port") or wol.get("port") or 9
+            print(f"runner {runner_key}: mac={mac} broadcast={broadcast} port={port}")
+        print("Note: WoL requires the target machine's NIC/BIOS to have Wake-on-LAN (Magic Packet) enabled.")
+        return
+
+    runner_keys = list(runners.keys())
+    print(f"HARPP wake relay: serving {len(runner_keys)} runner(s) ({', '.join(runner_keys)}). Ctrl-C to stop.", flush=True)
+    print("Each pass emits at most one magic packet per runner; raise --interval to throttle WoL further.", flush=True)
+    if args.once:
+        harpp_wake.wake_relay_pass(own_runner_key=None, config=config)
+        return
+    try:
+        while True:
+            try:
+                harpp_wake.wake_relay_pass(own_runner_key=None, config=config)
+            except Exception as exc:  # noqa: BLE001
+                print(f"HARPP wake relay: pass failed: {exc}", flush=True)
+            # Sleep outside the pass try so a failure can never skip the interval
+            # (avoids a hot-spin if wake_relay_pass ever raised).
+            time.sleep(max(1, args.interval))
+    except KeyboardInterrupt:
+        print("wake relay stopped", flush=True)
+
+
+def cmd_cms(args):
+    """Manage the HARPP CMS Assistant (draft-only content editing, deepseek/groq)."""
+    if args.cmd2 == "set":
+        if not args.key or not args.value:
+            sys.exit("harpp cms set requires KEY and VALUE")
+        if args.key not in ("enabled", "conversation_title", "model", "base_url", "token", "timeout", "cooldown", "max_per_hour"):
+            sys.exit(f"unknown cms key: {args.key}")
+        if args.key == "model" and not (str(args.value).startswith("deepseek/") or str(args.value).startswith("groq/")):
+            sys.exit("cms model must be deepseek/* or groq/* (never Codex)")
+        cfg = harpp_client.load_config()
+        cms = dict(cfg.get("cms") or {})
+        value = args.value
+        if args.key in ("timeout", "cooldown", "max_per_hour"):
+            try:
+                value = int(value)
+            except ValueError:
+                sys.exit(f"{args.key} must be an integer")
+        elif args.key == "enabled":
+            value = str(value).lower() in ("1", "true", "yes", "on")
+        cms[args.key] = value
+        harpp_client.save_config({"cms": cms})
+        print(f"cms {args.key} -> {'<redacted>' if args.key == 'token' else value}")
+        return
+    if args.cmd2 == "enable":
+        cfg = harpp_client.load_config()
+        cms = dict(cfg.get("cms") or {})
+        cms["enabled"] = True
+        harpp_client.save_config({"cms": cms})
+        print("CMS Assistant lane enabled")
+        return
+    if args.cmd2 == "disable":
+        cfg = harpp_client.load_config()
+        cms = dict(cfg.get("cms") or {})
+        cms["enabled"] = False
+        harpp_client.save_config({"cms": cms})
+        print("CMS Assistant lane disabled")
+        return
+    if args.cmd2 == "status":
+        cfg = harpp_client.load_config()
+        cms = harpp_wake.cms_config(cfg)
+        usage = harpp_wake._normalized_cms_usage(harpp_wake.read_state())
+        print(json.dumps({
+            "enabled": cms.get("enabled"),
+            "conversation_title": cms.get("conversation_title"),
+            "model": cms.get("model"),
+            "base_url": cms.get("base_url"),
+            "token_configured": bool(str(cms.get("token") or "").strip()),
+            "timeout": cms.get("timeout"),
+            "cooldown": cms.get("cooldown"),
+            "max_per_hour": cms.get("max_per_hour"),
+            "cms_usage": {"count": usage.get("count"), "last": usage.get("last"),
+                            "models": usage.get("models"), "messages": usage.get("messages")},
+        }, indent=2))
+        return
+    if args.cmd2 == "setup":
+        print("CMS Assistant — setup")
+        print("1. Mint a service token (on the app server, per tenant):")
+        print("   php ikabud cms:service-token create <tenant_id|domain> 'CMS Assistant'")
+        print("2. Configure the lane on this desktop:")
+        print("   harpp cms set base_url https://harpp.ikabudkernel.com")
+        print("   harpp cms set token <raw-token>")
+        print("   harpp cms set model deepseek/deepseek-v4-flash")
+        print("   harpp cms enable")
+        print("3. Create a conversation titled 'CMS Assistant' in the messenger.")
+        print("4. Verify:")
+        print("   harpp cms status")
+        return
+    # Content/page operations (used by the CMS Assistant agent): proxy to cms_client.
+    import cms_client
+    if args.cmd2 == "content-create":
+        argv = ["content-create", "--title", args.title, "--body", args.body] + (["--type", args.type] if args.type else [])
+    elif args.cmd2 == "content-update":
+        argv = ["content-update", str(args.id)] + (["--title", args.title] if args.title else []) + (["--body", args.body] if args.body else [])
+    elif args.cmd2 == "content-get":
+        argv = ["content-get", str(args.id)]
+    elif args.cmd2 == "content-list":
+        argv = ["content-list"]
+        if getattr(args, "q", None):
+            argv += ["--q", args.q]
+        argv += ["--type", args.type]
+        if getattr(args, "status", None):
+            argv += ["--status", args.status]
+        argv += ["--limit", str(getattr(args, "limit", 20)), "--offset", str(getattr(args, "offset", 0))]
+        if getattr(args, "author_id", None):
+            argv += ["--author-id", str(args.author_id)]
+    elif args.cmd2 == "drafts":
+        # Review loop: list drafts authored by the service user (id 0).
+        cfg = cms_client.load_cms_config()
+        rows = []
+        for ctype in ("post", "page"):
+            r = cms_client.content_list(cfg, type=ctype, status="draft", author_id=0, limit=25)
+            for it in (r.get("data") or []):
+                rows.append((it.get("id"), ctype, it.get("status"), it.get("title")))
+        if not rows:
+            print("No assistant drafts awaiting review.")
+        else:
+            print(f"{len(rows)} assistant draft(s) awaiting review (status=draft):")
+            for rid, ctype, rstatus, rtitle in rows:
+                print(f"  #{rid} [{ctype}/{rstatus}] {rtitle}")
+        print(f"Review + publish in the CMS admin: {cfg.get('base_url', '')}/cms/admin")
+        return
+    elif args.cmd2 == "page-get":
+        argv = ["page-get", str(args.id)]
+    elif args.cmd2 == "page-save":
+        argv = ["page-save", str(args.id), "--document-file", args.document_file]
+    else:
+        sys.exit(f"unknown cms command: {args.cmd2}")
+    sys.exit(cms_client._main(argv))
+
+
+def cmd_advisor(args):
+    """Manage the ChatGPT Advisor (ideation) lane (separate, read-only, never Codex)."""
+    if args.acmd == "set":
+        if not args.key or not args.value:
+            sys.exit("harpp advisor set requires KEY and VALUE")
+        if args.key not in ("enabled", "conversation_title", "model", "backend", "profile", "timeout", "cooldown", "max_per_hour"):
+            sys.exit(f"unknown advisor key: {args.key}")
+        if args.key == "backend" and str(args.value).lower() not in ("api", "page"):
+            sys.exit("advisor backend must be 'api' (OpenAI API key) or 'page' (ChatGPT web / Pro+Plus)")
+        if args.key == "model" and not str(args.value).startswith("openai-ideation/"):
+            sys.exit("advisor model must start with 'openai-ideation/' (ideation provider only; never Codex/dev)")
+        cfg = harpp_client.load_config()
+        adv = dict(cfg.get("advisor") or {})
+        value = args.value
+        if args.key in ("timeout", "cooldown", "max_per_hour"):
+            try:
+                value = int(value)
+            except ValueError:
+                sys.exit(f"{args.key} must be an integer")
+        elif args.key == "enabled":
+            value = str(value).lower() in ("1", "true", "yes", "on")
+        elif args.key == "backend":
+            value = str(value).lower()
+        adv[args.key] = value
+        harpp_client.save_config({"advisor": adv})
+        print(f"advisor {args.key} -> {value}")
+        return
+    if args.acmd == "login":
+        # One-time interactive ChatGPT login into the persistent advisor profile.
+        sys.exit(harpp_wake.chatgpt_page_login(profile=args.profile))
+    if args.acmd == "enable":
+        cfg = harpp_client.load_config()
+        adv = dict(cfg.get("advisor") or {})
+        adv["enabled"] = True
+        harpp_client.save_config({"advisor": adv})
+        print("ChatGPT Advisor lane enabled")
+        return
+    if args.acmd == "disable":
+        cfg = harpp_client.load_config()
+        adv = dict(cfg.get("advisor") or {})
+        adv["enabled"] = False
+        harpp_client.save_config({"advisor": adv})
+        print("ChatGPT Advisor lane disabled")
+        return
+    if args.acmd == "status":
+        cfg = harpp_client.load_config()
+        adv = harpp_wake.advisor_config(cfg)
+        usage = harpp_wake._normalized_ideation_usage(harpp_wake.read_state())
+        print(json.dumps({
+            "enabled": adv.get("enabled"),
+            "backend": adv.get("backend"),
+            "conversation_title": adv.get("conversation_title"),
+            "model": adv.get("model"),
+            "profile": str(adv.get("profile") or ""),
+            "timeout": adv.get("timeout"),
+            "cooldown": adv.get("cooldown"),
+            "max_per_hour": adv.get("max_per_hour"),
+            "ideation_usage": {
+                "count": usage.get("count"),
+                "last": usage.get("last"),
+                "models": usage.get("models"),
+                "messages": usage.get("messages"),
+            },
+        }, indent=2))
+        return
+    if args.acmd == "setup":
+        print("ChatGPT Advisor (ideation) — setup")
+        print("1. Create a conversation titled '" + str(harpp_wake.ADVISOR_CONVERSATION_TITLE) + "' in the HARPP messenger.")
+        print("2. Add a dedicated OpenAI API key for ideation to the Pi harness (own billing, NEVER the Codex token):")
+        print("   - provider 'openai-ideation' in ~/.pi/agent/models.json")
+        print("   - an auth entry 'openai-ideation' in ~/.pi/agent/auth.json")
+        print("3. Configure the lane:")
+        print("   harpp advisor set conversation_title 'ChatGPT Advisor'")
+        print("   harpp advisor set model openai-ideation/gpt-5.4")
+        print("   harpp advisor enable")
+        print("4. Verify:")
+        print("   harpp advisor status")
+        return
+
+
+def main():
+    p = argparse.ArgumentParser(prog="harpp", description="HARPP harness bridge client")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    cfg = sub.add_parser("config")
+    cfg.add_argument("action", choices=["set", "get"])
+    cfg.add_argument("key", nargs="?")
+    cfg.add_argument("value", nargs="?")
+
+    sub.add_parser("check")
+    sub.add_parser("self-test")
+
+    d = sub.add_parser("decision")
+    dsub = d.add_subparsers(dest="dcmd", required=True)
+    dr = dsub.add_parser("record")
+    dr.add_argument("--task", required=True)
+    dr.add_argument("--decision", required=True)
+    dr.add_argument("--constraint", action="append", default=[])
+    dr.add_argument("--additional", action="append", default=[])
+    dr.add_argument("--source", default="human")
+    dr.add_argument("--applied-to", default="")
+    ds = dsub.add_parser("submit")
+    ds.add_argument("--title", required=True)
+    ds.add_argument("--body", required=True)
+    ds.add_argument("--context", default="")
+    ds.add_argument("--requested", dest="requested_decision", default="")
+    ds.add_argument("--priority", default="normal", choices=["low", "normal", "high", "critical"])
+    ds.add_argument("--source", default="harness")
+    ds.add_argument("--workbench-state", default="ARCHITECTURE_DECISION_REQUIRED")
+    ds.add_argument("--decision-key", default="")
+    dl = dsub.add_parser("list")
+    dl.add_argument("--limit", type=int, default=25)
+    dl.add_argument("--remote", action="store_true")
+    dl.add_argument("--state", default="")
+    dl.add_argument("--priority", default="")
+    dl.add_argument("--workbench-state", default="")
+    da = dsub.add_parser("ack")
+    da.add_argument("id", type=int)
+    da.add_argument("--rationale", default="Harness acknowledged the owner decision.")
+    dc = dsub.add_parser("cancel")
+    dc.add_argument("id", type=int)
+    dc.add_argument("--rationale", default="Owner cancelled the decision via harness.")
+    dv = dsub.add_parser("view", help="mark a decision viewed (NOTIFIED -> VIEWED) via the bridge")
+    dv.add_argument("id", type=int)
+    dv.add_argument("--rationale", default="Owner viewed the decision via messenger.")
+    dd = dsub.add_parser("decide", help="record the owner's decision (DECIDED) via the bridge")
+    dd.add_argument("id", type=int)
+    dd.add_argument("--decision", required=True)
+    dd.add_argument("--rationale", default="Owner decision recorded by harness.")
+    dp = dsub.add_parser("apply")
+    dp.add_argument("id", type=int)
+    dp.add_argument("--rationale", default="Harness applied the owner decision.")
+
+    m = sub.add_parser("msg")
+    msub = m.add_subparsers(dest="mcmd", required=True)
+    ms = msub.add_parser("send")
+    ms.add_argument("--body", required=True)
+    ms.add_argument("--conversation-id", type=int)
+    ms.add_argument("--title", default="")
+    ms.add_argument("--harness-session-id", default="")
+    ms.add_argument("--idempotency-key", default="")
+    mp = msub.add_parser("poll")
+    mp.add_argument("--conversation-id", type=int)
+    mp.add_argument("--after", type=int, default=0)
+    mp.add_argument("--limit", type=int, default=25)
+
+    st = sub.add_parser("status")
+    st.add_argument("--message", required=True)
+    st.add_argument("--status", default="")
+    st.add_argument("--workbench-state", default="")
+    st.add_argument("--harness-session-id", default="")
+
+    wt = sub.add_parser("watch", help="actively monitor + auto-process owner messages + decided decisions")
+    wt.add_argument("--once", action="store_true", help="single check, then exit")
+    wt.add_argument("--interval", type=int, default=60, help="poll interval seconds (default 60)")
+    wt.add_argument("--inbox", default=None, help=f"append new items to this JSONL file (default {_default_inbox()})")
+    wt.add_argument("--no-autoprocess", action="store_true", help=argparse.SUPPRESS)  # retained compatibility; ignored
+    wt.add_argument("--log", default=None, help=f"autoprocess action log (default {_default_log()})")
+    wt.add_argument("--wake", action="store_true", help="enable headless Pi-agent wake (mechanism E; env HARPP_WAKE_ENABLED=1)")
+    wt.add_argument("--wake-command", default=os.environ.get("HARPP_WAKE_CMD", ""), help="override agent invocation; {model}/{prompt} substituted")
+    wt.add_argument("--cooldown", type=int, default=int(os.environ.get("HARPP_WAKE_COOLDOWN", "60")))
+    wt.add_argument("--max-per-hour", dest="max_per_hour", type=int, default=int(os.environ.get("HARPP_WAKE_MAX_PER_HOUR", "20")))
+    wt.add_argument("--timeout", type=int, default=int(os.environ.get("HARPP_WAKE_TIMEOUT", "900")))
+    wt.add_argument("--max-retries", type=int, default=int(os.environ.get("HARPP_WAKE_MAX_RETRIES", "3")))
+    wt.add_argument("--model", default=os.environ.get("HARPP_WAKE_MODEL", harpp_wake.EXECUTION_MODEL))
+    wt.add_argument("--no-terminal", action="store_true",
+                    help="do not open a visible terminal for wake feedback (default: on)")
+
+    w = sub.add_parser("wake-relay", help="run as a LAN Wake-on-LAN relay: claim HARPP wake requests for configured runners and emit WoL magic packets")
+    w.add_argument("--interval", type=int, default=5, help="seconds between relay passes (default 5)")
+    w.add_argument("--once", action="store_true", help="run a single relay pass and exit (cron/testing)")
+    w.add_argument("--check", action="store_true", help="print relay configuration and exit")
+
+    ad = sub.add_parser("advisor", help="manage the ChatGPT Advisor (ideation) lane")
+    adsub = ad.add_subparsers(dest="acmd", required=True)
+    ads = adsub.add_parser("set")
+    ads.add_argument("key")
+    ads.add_argument("value")
+    adlogin = adsub.add_parser("login", help="one-time interactive ChatGPT login into the persistent advisor profile")
+    adlogin.add_argument("--profile", default=None)
+    adsub.add_parser("enable")
+    adsub.add_parser("disable")
+    adsub.add_parser("status")
+    adsub.add_parser("setup")
+
+    cm = sub.add_parser("cms", help="manage the CMS Assistant (draft-only content editing)")
+    cmsub = cm.add_subparsers(dest="cmd2", required=True)
+    cms_set = cmsub.add_parser("set")
+    cms_set.add_argument("key")
+    cms_set.add_argument("value")
+    cmsub.add_parser("enable")
+    cmsub.add_parser("disable")
+    cmsub.add_parser("status")
+    cmsub.add_parser("setup")
+    cms_cc = cmsub.add_parser("content-create")
+    cms_cc.add_argument("--title", required=True)
+    cms_cc.add_argument("--body", required=True)
+    cms_cc.add_argument("--type", default="post")
+    cms_cu = cmsub.add_parser("content-update")
+    cms_cu.add_argument("id", type=int)
+    cms_cu.add_argument("--title", default=None)
+    cms_cu.add_argument("--body", default=None)
+    cms_cg = cmsub.add_parser("content-get")
+    cms_cg.add_argument("id", type=int)
+    cms_cl = cmsub.add_parser("content-list")
+    cms_cl.add_argument("--q", default=None)
+    cms_cl.add_argument("--type", default="post")
+    cms_cl.add_argument("--status", default=None)
+    cms_cl.add_argument("--limit", type=int, default=20)
+    cms_cl.add_argument("--offset", type=int, default=0)
+    cms_cl.add_argument("--author-id", type=int, default=None)
+    cmsub.add_parser("drafts", help="list assistant drafts awaiting human review")
+    cms_pg = cmsub.add_parser("page-get")
+    cms_pg.add_argument("id", type=int)
+    cms_ps = cmsub.add_parser("page-save")
+    cms_ps.add_argument("id", type=int)
+    cms_ps.add_argument("--document-file", required=True)
+
+    ib = sub.add_parser("inbox", help="read (or clear) the accumulated harness inbox")
+    ib.add_argument("--clear", action="store_true")
+    ib.add_argument("--inbox", default=None, help="override the inbox path (default machine-global)")
+
+    idem = sub.add_parser("idempotency", help="manage server-side idempotency keys")
+    idemsub = idem.add_subparsers(dest="icmd", required=True)
+    idr = idemsub.add_parser("release", help="delete a stuck idempotency key (owner/admin) so its scope can be re-claimed")
+    idr.add_argument("--key", required=True, help="the idempotency key to release, e.g. wake-message-566")
+    idr.add_argument("--scope", default="harpp_message", help="idempotency scope (default harpp_message)")
+
+    jb = sub.add_parser("job", help="track/monitor delegated model jobs (auto-report on completion)")
+    jsub = jb.add_subparsers(dest="jcmd", required=True)
+    jl2 = jsub.add_parser("launch", help="spawn a delegated model command AND track it in one step (auto-report on completion)")
+    jl2.add_argument("--model", required=True, help="provider-qualified model id, e.g. openai-codex/gpt-5.6-sol")
+    jl2.add_argument("--task", required=True, help="short description of the work being done")
+    jl2.add_argument("--conversation", type=int, required=True, help="conversation id to auto-report to")
+    jl2.add_argument("--log", default=None, help="path to write the process output (monitor reads growth/markers here)")
+    jl2.add_argument("--verify", default=None, help="verification command; exit 0 = pass")
+    jl2.add_argument("--marker", default=None, help="success marker string to search for in the log (post-launch)")
+    jl2.add_argument("--repo", default=None, help="repo path for git status / auto-commit (default: configured workspace)")
+    jl2.add_argument("--commit", action="store_true", help="auto commit + push on verified completion")
+    jl2.add_argument("--quiet", action="store_true", help="skip the start confirmation message")
+    jl2.add_argument("--timeout", type=int, default=0, help="hard kill the job after N seconds (0 = no deadline)")
+    jl2.add_argument("--cwd", default=None, help="working directory for the spawned command (default: configured workspace)")
+    jl2.add_argument("--no-terminal", action="store_true", help="do not open a visible terminal for live feedback")
+    jl2.add_argument("--authority-level", default=None, help="job authority level (default: configured HARPP authority, else L2)")
+    jl2.add_argument("command", nargs=argparse.REMAINDER, help="command to run, after --")
+    jl2.set_defaults(func=cmd_job_launch)
+    jt = jsub.add_parser("track", help="register an already-running model process")
+    jt.add_argument("--pid", type=int, required=True, help="pid of the running model process")
+    jt.add_argument("--model", required=True, help="provider-qualified model id, e.g. openai-codex/gpt-5.6-sol")
+    jt.add_argument("--task", required=True, help="short description of the work being done")
+    jt.add_argument("--conversation", type=int, required=True, help="conversation id to auto-report to")
+    jt.add_argument("--log", default=None, help="path to the model's log file")
+    jt.add_argument("--verify", default=None, help="verification command; exit 0 = pass")
+    jt.add_argument("--marker", default=None, help="success marker string to search for in the log")
+    jt.add_argument("--repo", default=None, help="repo path for git status / auto-commit")
+    jt.add_argument("--commit", action="store_true", help="auto commit + push on verified completion")
+    jt.add_argument("--timeout", type=int, default=0, help="hard kill the job after N seconds (0 = no deadline)")
+    jt.add_argument("--authority-level", default=None, help="job authority level (default: configured HARPP authority, else L2)")
+    jt.set_defaults(func=cmd_job_track)
+    jl = jsub.add_parser("list", help="list tracked jobs + status")
+    jl.set_defaults(func=cmd_job_list)
+    ju = jsub.add_parser("untrack", help="drop a job from the registry")
+    ju.add_argument("id", help="job id")
+    ju.set_defaults(func=cmd_job_untrack)
+
+    wf = sub.add_parser("workflow", help="governed multi-stage workflows (architect->implement->review->gate)")
+    wsub = wf.add_subparsers(dest="wcmd", required=True)
+    ws = wsub.add_parser("start", help="start a multi-stage workflow from a JSON manifest")
+    ws.add_argument("--title", default="")
+    ws.add_argument("--conversation", type=int, required=True, help="conversation id to report to")
+    ws.add_argument("--manifest", required=True, help="JSON manifest with a non-empty 'stages' array")
+    ws.add_argument("--workspace", default=None, help="working dir for stages (default: configured workspace)")
+    ws.add_argument("--model", default=None, help="temporary model preference for every workflow stage")
+    ws.add_argument("--max-repairs", type=int, default=None,
+                    help="bounded auto-repair rounds on stage failure (default from manifest, else 3; 0 disables)")
+    ws.add_argument("--max-total-cycles", type=int, default=None)
+    ws.add_argument("--max-browser-repairs", type=int, default=None)
+    ws.add_argument("--max-tool-retries", type=int, default=None)
+    ws.add_argument("--max-network-retries", type=int, default=None)
+    ws.add_argument("--contract-revision", type=int, default=0)
+    ws.add_argument("--authority-level", default=None,
+                    help="configured workflow authority (default from config harpp_authority, else L2)")
+    ws.add_argument("--dry-run", action="store_true",
+                    help="run schema + runtime preflight and report, without persisting/launching")
+    ws.set_defaults(func=cmd_workflow_start)
+    wv = wsub.add_parser("validate", help="validate a workflow manifest against the versioned schema + preflight")
+    wv.add_argument("--manifest", required=True, help="JSON workflow manifest to validate")
+    wv.add_argument("--workspace", default=None, help="workspace to preflight against")
+    wv.set_defaults(func=cmd_workflow_validate)
+    wl = wsub.add_parser("list", help="list workflows + status")
+    wl.set_defaults(func=cmd_workflow_list)
+    wh = wsub.add_parser("show", help="show a workflow's full state")
+    wh.add_argument("id")
+    wh.set_defaults(func=cmd_workflow_show)
+    wr = wsub.add_parser("resume", help="reconstruct and re-land a workflow after a crash")
+    wr.add_argument("id")
+    wr.set_defaults(func=cmd_workflow_resume)
+
+    args = p.parse_args()
+
+    if args.cmd == "config":
+        if args.action == "set":
+            if not args.key or not args.value:
+                sys.exit("harpp config set requires KEY and VALUE")
+            path = harpp_client.save_config({args.key: args.value})
+            print(f"saved {args.key} -> {path}")
+        else:
+            cfg = harpp_client.load_config()
+            if args.key:
+                val = cfg.get(args.key, "")
+                print("<redacted>" if args.key == "bridge_key" or args.key.endswith("_api_key") else val)
+            else:
+                print(json.dumps(
+                    {k: ("<redacted>" if k == "bridge_key" or k.endswith("_api_key") else v)
+                     for k, v in cfg.items()}, indent=2))
+    elif args.cmd == "check":
+        cfg = harpp_client.load_config()
+        print(f"base_url={cfg['base_url']} tenant_id={cfg['tenant_id']} bridge_key=<redacted> OK")
+    elif args.cmd == "self-test":
+        import unittest
+        import tests.test_harpp_bridge as t
+        import tests.test_harpp_wake as tw
+        suite = unittest.TestSuite([
+            unittest.defaultTestLoader.loadTestsFromModule(t),
+            unittest.defaultTestLoader.loadTestsFromModule(tw),
+        ])
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
+        sys.exit(0 if result.wasSuccessful() else 1)
+    elif args.cmd == "decision":
+        if args.dcmd == "record":
+            print(json.dumps(harpp_wake.record_local_decision(
+                task=args.task, decision=args.decision, constraints=args.constraint,
+                additional_requirements=args.additional, source=args.source,
+                applied_to=args.applied_to), indent=2))
+        elif args.dcmd == "submit":
+            print(json.dumps(harpp_client.submit_decision(
+                title=args.title, body=args.body, context=args.context,
+                requested_decision=args.requested_decision, priority=args.priority,
+                source=args.source, workbench_state=args.workbench_state, decision_key=args.decision_key), indent=2))
+        elif args.dcmd == "list":
+            if args.remote or args.state or args.priority or args.workbench_state:
+                print(json.dumps(harpp_client.list_decisions(
+                    state=args.state, priority=args.priority, workbench_state=args.workbench_state, limit=args.limit), indent=2))
+            else:
+                records = harpp_wake.load_decisions()
+                print(json.dumps({"count": len(records[-args.limit:]), "decisions": records[-args.limit:]}, indent=2))
+        elif args.dcmd == "view":
+            print(json.dumps(harpp_client.view_decision(args.id, rationale=args.rationale), indent=2))
+        elif args.dcmd == "decide":
+            print(json.dumps(harpp_client.record_decision(args.id, args.decision, rationale=args.rationale), indent=2))
+        elif args.dcmd == "ack":
+            print(json.dumps(harpp_client.acknowledge_decision(args.id, rationale=args.rationale), indent=2))
+        elif args.dcmd == "cancel":
+            print(json.dumps(harpp_client.cancel_decision(args.id, rationale=args.rationale), indent=2))
+        else:
+            print(json.dumps(harpp_client.apply_decision(args.id, rationale=args.rationale), indent=2))
+    elif args.cmd == "msg":
+        if args.mcmd == "send":
+            print(json.dumps(harpp_client.send_message(
+                body=args.body, conversation_id=args.conversation_id, title=args.title,
+                harness_session_id=args.harness_session_id,
+                idempotency_key=args.idempotency_key), indent=2))
+        else:
+            print(json.dumps(harpp_client.poll_messages(
+                conversation_id=args.conversation_id, after=args.after, limit=args.limit), indent=2))
+    elif args.cmd == "status":
+        print(json.dumps(harpp_client.post_status(
+            message=args.message, status=args.status, workbench_state=args.workbench_state,
+            harness_session_id=args.harness_session_id), indent=2))
+    elif args.cmd == "watch":
+        watch_loop(once=args.once, interval=args.interval, inbox=args.inbox,
+                   autoprocess=True, log=args.log,
+                   wake=args.wake or os.environ.get("HARPP_WAKE_ENABLED", "") == "1",
+                   wake_command=args.wake_command or None, cooldown=args.cooldown,
+                   max_per_hour=args.max_per_hour, timeout=args.timeout,
+                   model=args.model or None, max_retries=args.max_retries,
+                   open_terminal=not args.no_terminal and os.environ.get("HARPP_WAKE_TERMINAL", "1") != "0")
+    elif args.cmd == "wake-relay":
+        cmd_wake_relay(args)
+    elif args.cmd == "advisor":
+        cmd_advisor(args)
+    elif args.cmd == "cms":
+        cmd_cms(args)
+    elif args.cmd == "inbox":
+        inbox_cmd(clear=args.clear, path=args.inbox)
+    elif args.cmd == "idempotency":
+        if args.icmd == "release":
+            print(json.dumps(harpp_client.release_idempotency(
+                scope=args.scope, idempotency_key=args.key), indent=2))
+    elif args.cmd == "job":
+        args.func(args)
+    elif args.cmd == "workflow":
+        args.func(args)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except harpp_client.HarppError as exc:
+        sys.stderr.write(f"harpp: {exc}\n")
+        sys.exit(1)

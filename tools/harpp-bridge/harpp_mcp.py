@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""HARPP bridge MCP server (zero-dependency, stdlib only).
+
+Exposes the HARPP harness bridge as MCP tools over stdio (newline-delimited
+JSON-RPC), so any MCP client (VS Code Copilot Chat, Pi, Claude, etc.) can call:
+
+  harpp_submit_decision      - raise a decision-request to the owner
+  harpp_list_decisions       - poll pending/any decisions (state/workbench filter)
+  harpp_acknowledge_decision - harness received the owner decision
+  harpp_apply_decision       - harness applied the decision (closes it)
+  harpp_send_message         - send a message into a HARPP conversation
+  harpp_poll_messages        - poll for new owner messages (cursor)
+  harpp_post_status          - post a harness status/heartbeat update
+
+Run:  python3 tools/harpp-bridge/harpp_mcp.py
+Config: see harpp_client.load_config (env or ~/.config/harpp/config.json).
+Diagnostics go to stderr; stdout is reserved for the MCP protocol.
+"""
+import json
+import sys
+
+from harpp_client import (
+    HarppError,
+    acknowledge_decision,
+    apply_decision,
+    approve_run,
+    artifact_bundle_for_decision,
+    get_decision,
+    list_decisions,
+    list_runners,
+    load_config,
+    memory_search,
+    poll_messages,
+    post_status,
+    reject_run,
+    run_status,
+    send_message,
+    submit_decision,
+)
+
+SERVER_NAME = "harpp-bridge"
+SERVER_VERSION = "1.4.0"
+PROTOCOL_VERSION = "2024-11-05"
+
+TOOLS = [
+    {
+        "name": "harpp_submit_decision",
+        "description": "Raise a decision-request to the HARPP owner (creates a decision + notification + push). "
+                       "Use when the harness needs a human decision, e.g. BLOCKED/ARCHITECTURE_DECISION_REQUIRED.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Short decision title"},
+                "body": {"type": "string", "description": "Full request body"},
+                "context": {"type": "string", "description": "Optional context/situation"},
+                "requested_decision": {"type": "string", "description": "What decision is requested"},
+                "priority": {"type": "string", "enum": ["low", "normal", "high", "critical"], "default": "normal"},
+                "source": {"type": "string", "default": "harness"},
+                "workbench_state": {"type": "string", "default": "ARCHITECTURE_DECISION_REQUIRED"},
+                "decision_key": {"type": "string", "description": "Optional idempotency key"},
+            },
+            "required": ["title", "body"],
+        },
+    },
+    {
+        "name": "harpp_list_decisions",
+        "description": "List decisions (e.g. poll for owner decisions).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "state": {"type": "string", "description": "Filter by lifecycle state, e.g. PENDING, DECIDED"},
+                "priority": {"type": "string", "enum": ["low", "normal", "high", "critical"]},
+                "workbench_state": {"type": "string", "description": "e.g. ARCHITECTURE_DECISION_REQUIRED"},
+                "limit": {"type": "integer", "description": "1..100, default 25"},
+            },
+        },
+    },
+    {
+        "name": "harpp_acknowledge_decision",
+        "description": "Mark a decision as acknowledged by the harness (after reading the owner's decision).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "description": "Decision id"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "harpp_apply_decision",
+        "description": "Report that the harness applied the decision (ACKNOWLEDGED -> APPLIED -> CLOSED).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "description": "Decision id"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "harpp_send_message",
+        "description": "Send a message into an existing HARPP conversation (owner sees it in the HARPP messenger). The harness cannot create conversations — only the owner can — so conversation_id is required.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "body": {"type": "string", "description": "Message text"},
+                "conversation_id": {"type": "integer", "description": "Existing conversation id (required; the harness cannot auto-create conversations)"},
+                "title": {"type": "string", "description": "Optional message title"},
+                "harness_session_id": {"type": "string"},
+                "idempotency_key": {"type": "string", "description": "Stable delivery key; retries with the same key and payload return the original message"},
+            },
+            "required": ["body", "conversation_id"],
+        },
+    },
+    {
+        "name": "harpp_poll_messages",
+        "description": "Poll for new owner messages since a cursor (id).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "conversation_id": {"type": "integer"},
+                "after": {"type": "integer", "description": "Message id cursor (default 0)"},
+                "limit": {"type": "integer", "default": 25},
+            },
+        },
+    },
+    {
+        "name": "harpp_post_status",
+        "description": "Post a harness status/heartbeat update (creates a notification for the owner).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "Status message"},
+                "status": {"type": "string", "description": "e.g. running, blocked, done"},
+                "workbench_state": {"type": "string"},
+                "harness_session_id": {"type": "string"},
+            },
+            "required": ["message"],
+        },
+    },
+    {
+        "name": "harpp_get_run",
+        "description": "Get the live status of a HARPP work run (state, runner, result).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "integer", "description": "Work run id"},
+            },
+            "required": ["run_id"],
+        },
+    },
+    {
+        "name": "harpp_list_runners",
+        "description": "List registered HARPP runners and their health/status (offline when heartbeat is stale).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "harpp_get_artifact_bundle",
+        "description": "Get the approved ADR + decision + downloadable files bundle for an approved decision.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "decision_id": {"type": "integer", "description": "Decision id"},
+            },
+            "required": ["decision_id"],
+        },
+    },
+    {
+        "name": "harpp_get_decision",
+        "description": "Get a single HARPP decision's full detail (title, body, decision, lifecycle_state, adr).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "description": "Decision id"},
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "harpp_memory_search",
+        "description": "Search HARPP's approved ADRs/decisions/artifacts to cite prior approved work.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Search query (approved ADRs/decisions/artifacts)"},
+                "limit": {"type": "integer", "default": 5, "description": "1..20, default 5"},
+                "include_historical": {"type": "boolean", "default": False, "description": "Include historical/unknown records tagged NOT AUTHORITATIVE (default false; stale-is-worse-than-none)"},
+                "budget_limit": {"type": "integer", "description": "Token budget cap for the result set (500..20000, default 8000)"},
+            },
+            "required": ["q"],
+        },
+    },
+    {
+        "name": "harpp_approve_run",
+        "description": "Owner approves a risk-gated HARPP run (AWAITING_APPROVAL -> SUCCEEDED + artifact bundle) using the approval_token surfaced at completion.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "integer", "description": "Work run id awaiting approval"},
+                "approval_token": {"type": "string", "description": "One-time approval token returned by run completion"},
+            },
+            "required": ["run_id", "approval_token"],
+        },
+    },
+    {
+        "name": "harpp_reject_run",
+        "description": "Owner rejects a risk-gated HARPP run (AWAITING_APPROVAL -> CANCELLED) with a rationale.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "integer", "description": "Work run id awaiting approval"},
+                "rationale": {"type": "string", "description": "Rejection rationale"},
+            },
+            "required": ["run_id", "rationale"],
+        },
+    },
+]
+
+TOOL_IMPLS = {
+    "harpp_submit_decision": lambda c, a: submit_decision(config=c, **a),
+    "harpp_list_decisions": lambda c, a: list_decisions(config=c, **a),
+    "harpp_acknowledge_decision": lambda c, a: acknowledge_decision(a["id"], config=c, rationale=a.get("rationale", "")),
+    "harpp_apply_decision": lambda c, a: apply_decision(a["id"], config=c, rationale=a.get("rationale", "")),
+    "harpp_send_message": lambda c, a: send_message(config=c, **a),
+    "harpp_poll_messages": lambda c, a: poll_messages(config=c, **a),
+    "harpp_post_status": lambda c, a: post_status(config=c, **a),
+    "harpp_get_run": lambda c, a: run_status(a["run_id"], config=c),
+    "harpp_list_runners": lambda c, a: list_runners(config=c),
+    "harpp_get_artifact_bundle": lambda c, a: artifact_bundle_for_decision(a["decision_id"], config=c),
+    "harpp_get_decision": lambda c, a: get_decision(a["id"], config=c),
+    "harpp_memory_search": lambda c, a: memory_search(a["q"], config=c, limit=a.get("limit", 5), include_historical=a.get("include_historical", False), budget_limit=a.get("budget_limit")),
+    "harpp_approve_run": lambda c, a: approve_run(a["run_id"], a["approval_token"], config=c),
+    "harpp_reject_run": lambda c, a: reject_run(a["run_id"], config=c, rationale=a.get("rationale", "Rejected.")),
+}
+
+
+def _text(content, is_error=False):
+    return {
+        "content": [{"type": "text", "text": json.dumps(content, indent=2) if not isinstance(content, str) else content}],
+        "isError": is_error,
+    }
+
+
+def handle_message(message):
+    """Handle one JSON-RPC message. Returns a response dict or None for notifications."""
+    if not isinstance(message, dict):
+        return None
+    method = message.get("method")
+    msg_id = message.get("id")
+    params = message.get("params") or {}
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0", "id": msg_id,
+            "result": {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            },
+        }
+    if method in ("notifications/initialized", "initialized"):
+        return None  # notification
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": TOOLS}}
+    if method == "tools/call":
+        name = params.get("name")
+        args = params.get("arguments") or {}
+        if name not in TOOL_IMPLS:
+            return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32602, "message": f"unknown tool: {name}"}}
+        try:
+            result = TOOL_IMPLS[name](load_config(), args)
+            return {"jsonrpc": "2.0", "id": msg_id, "result": _text(result)}
+        except HarppError as exc:
+            return {"jsonrpc": "2.0", "id": msg_id, "result": _text(
+                {"error": str(exc), "status": exc.status, "payload": exc.payload}, is_error=True)}
+        except Exception as exc:  # noqa: BLE001
+            return {"jsonrpc": "2.0", "id": msg_id, "result": _text({"error": f"{type(exc).__name__}: {exc}"}, is_error=True)}
+    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+def main():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except Exception as exc:  # noqa: BLE001
+            sys.stderr.write(f"bad json: {exc}\n")
+            sys.stderr.flush()
+            continue
+        response = handle_message(message)
+        if response is not None:
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

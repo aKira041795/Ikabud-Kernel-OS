@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "renderers": {
+    "entity.list.post": {
+      "template": "entity-views/post-list.disyl",
+      "controls": ["columns"],
+      "context_keys": ["posts"]
+    },
+    "entity.detail.post": {
+      "template": "entity-views/post-detail.disyl",
+      "controls": ["show_metadata"],
+      "context_keys": ["post"]
+    },
+    "entity.detail.composition": {
+      "template": "entity-views/composition.disyl",
+      "controls": ["source"],
+      "context_keys": ["composition"]
+    }
+  }
+}

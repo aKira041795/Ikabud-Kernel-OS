@@ -39,9 +39,16 @@ way were harness faults.
 ## Database and schema
 
 - **Probe the schema; never guess a column.** `SHOW COLUMNS FROM <table>` first.
-  A guessed `users.tenant_id` (which does not exist — tenant DBs are separate) produced an
-  empty id, a silently wrong URL (`/users//role`) and a meaningless `301`.
-- Tenant tables have **no `tenant_id`**; the tenant is the database.
+  A guessed `users.tenant_id` produced an empty id, a silently wrong URL (`/users//role`) and a
+  meaningless `301` — the kernel/auth-owned `users` table has no such column.
+- **Do not generalise from that one table.** Tenant-scoped tables broadly **do** carry `tenant_id`:
+  measured on tenant 54, **12 of 12** `cms_akira_*` tables have it, `NOT NULL`, inside their composite
+  unique keys (`UNIQUE (tenant_id, slug)`, `UNIQUE (tenant_id, media_key)`, …). The dedicated
+  per-tenant database is the isolation boundary; `tenant_id` is defence-in-depth on top of it. Both are
+  true at once, and treating them as mutually exclusive produced a false architectural invariant that
+  propagated into a research brief and two independent model answers before anyone measured the schema.
+  **Authoritative rule: `docs/architecture/adr-002-tenancy-invariant.md`.**
+- To know which applies to a given table, run `SHOW COLUMNS`. Never infer it from the owning module.
 
 ## Capability context
 
@@ -59,9 +66,16 @@ way were harness faults.
   `vendor/bin/phpstan analyse <file>` reports nothing and looks like a pass — which is how
   a real error reached CI after "targeted PHPStan passed". Use:
   `vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G <file>`.
-- A **repo-wide local** PHPStan run reports ~424 environment-related errors that CI's PHP 8.3
-  does not; local totals are not comparable to CI's. Judge by the config-scoped per-file run,
-  or by CI.
+- A **repo-wide local** PHPStan run reports ~424 errors that CI does not. The cause is **not** the PHP
+  version: PHP 8.3 and 8.5 report identical totals (2766 unbaselined / 424 baselined), so "CI runs 8.3"
+  does not explain it. The cause is **ignored local modules** sitting under the config's `paths:` —
+  `modules/*` is git-ignored (`.gitignore:10`), so `modules/daily-ledger` (0 tracked files) is analysed
+  locally and absent from CI's checkout. All 424 are in that module, which is why CI is green.
+- Hence: reproduce the gate by restricting the config's path set to tracked files —
+  `php8.3 vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G kernel src $(git ls-files 'modules/*.php')`.
+  Do **not** widen it to `$(git ls-files '*.php')`: that adds `tests/`, `scripts/` and `tools/`, which the
+  gate never analyses, and inflates the total (590 vs 424) — a different file set is not a comparable
+  measurement. Never regenerate the baseline from a run whose path set differs from CI's.
 - **Inserting lines shifts line numbers and can surface a baseline-suppressed error.**
   When a pre-existing error appears right after an insert, that is why — fix the underlying
   omission rather than editing `phpstan-baseline.neon`. `reportUnmatchedIgnoredErrors: false`

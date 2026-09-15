@@ -1,0 +1,140 @@
+Implemented S5.
+
+### Changes
+
+- `tools/harpp-bridge/harpp_wake.py:1626-1651`
+  - `verify` is now the sole completion gate.
+  - Markers are informational only.
+  - Passing verification produces `claim_status=RE_DERIVED`.
+  - Missing verification produces `UNVERIFIED`; failed verification produces `CONTRADICTED`.
+- `tools/harpp-bridge/harpp_wake.py:2324-2342`
+  - Added manifest `evidence: required|none` validation.
+  - Unevidenced stages are explicit and cannot pass.
+- `tools/harpp-bridge/harpp_wake.py:2372-2415`
+  - Structured stage results require `verify:PASSED` and `RE_DERIVED`.
+- Updated all six manifests: 21/21 stages now have `evidence: "required"` and a real `verify`.
+- Documented semantics in `tools/harpp-bridge/README.md:262-270`.
+
+### Marker-only falsification
+
+Before implementation, the new test failed as required:
+
+```text
+job ... reported ... (DONE)
+AssertionError: 'DONE' != 'FAILED'
+Ran 1 test
+FAILED (failures=1)
+FALSIFICATION_EXIT=1
+```
+
+After implementation:
+
+```text
+job ... reported ... (FAILED)
+Ran 19 tests
+OK
+```
+
+Added:
+
+- `test_monitor_rejects_marker_only_without_rederived_verification`
+- `test_passing_verify_succeeds_when_informational_marker_is_missing`
+
+Existing marker-dependent assertions and synthetic successful workflow fixtures were updated to require verification evidence; no test or gate was weakened.
+
+### Models
+
+Changed:
+
+- Four `roadmap-slices.json` stages:
+  - `openai-codex/gpt-5.4` → `openai-codex/gpt-5.6-sol`
+- Five corresponding stale textual references in workflow stage prompts.
+
+Left:
+
+- `openai-codex/gpt-5.6-sol`: confirmed by current `PI_PROVIDER=openai-codex`, `PI_MODEL=gpt-5.6-sol`, and recorded T3 architecture policy.
+- `deepseek/deepseek-v4-flash`: confirmed by `~/.pi/agent/settings.json` (`defaultProvider=deepseek`, enabled `deepseek-v4-flash`) and bridge model allow-list.
+
+Proof:
+
+```text
+grep -rn 'gpt-5\.4' tools/harpp-bridge/workflows/
+GREP_EXIT=1
+MATCHES=0
+```
+
+All six manifests validated successfully.
+
+### Safe bridge tests
+
+```text
+HARPP_NOTIFY=0
+HARPP_DRY_RUN=1
+HARPP_CONFIG=/tmp/harpp-s5-sandbox/config/config.json
+HARPP_BIN=/tmp/harpp-s5-sandbox/bin/harpp
+
+Ran 294 tests in 5.879s
+OK
+```
+
+Notification-formatting tests temporarily enabled notification logic while API transport remained forced dry-run. No network request could be delivered.
+
+Explicit decision-route proof:
+
+```text
+HARPP_STUB invoked: decision submit --title test-only --body test-only
+STUB_DECISION_CALLS=1
+REAL_SERVICE_CALLS=0
+```
+
+The real `harpp` executable was never resolved or invoked.
+
+### Harness suites
+
+Final results, zero skips:
+
+```text
+ai-project          11/11
+ai-loop              8/8
+ai-run              35/35
+ai-autonomy         46/46
+ai-project-metrics  16/16
+ai-contract-lint     3/3
+```
+
+The repository’s current suites contain 11 and 35 cases respectively, rather than the older contract counts of 6 and 31.
+
+Static checks:
+
+```text
+python3 -m py_compile ...  PASS
+git diff --check           PASS
+```
+
+No PHP files were touched, so PHP lint/PHPStan were not applicable.
+
+### Metric table
+
+Written to `.ai/projects/harpp-gen4/metrics.json`:
+
+```text
+slices dispatched           5
+slices completed            4
+runs completed              5
+runs running                1
+runs silent/failed/abandoned 0
+lanes                       deepseek=3, deterministic-release-evidence=1, codex=2
+wall-clock S2               694s
+wall-clock S3               694s
+wall-clock S6               720s
+wall-clock S4               1502s
+wall-clock S5               null (currently running)
+claims RE_DERIVED           23
+claims CONTRADICTED         0
+claims UNVERIFIED           5
+chair decisions             19
+chair decisions incorrect   3
+cost/tokens/director minutes null (not derivable)
+```
+
+No unevidenced product stages remain and no live decision was created.

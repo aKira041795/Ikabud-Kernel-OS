@@ -385,7 +385,7 @@ class DatabaseManager
 
             $password = $this->tenantDbPasswordFromRow($row, $tenantId);
 
-            return [
+            $dbConfig = [
                 'driver' => (string)($row['db_driver'] ?? 'mysql'),
                 'host' => (string)($row['db_host'] ?? 'localhost'),
                 'port' => (string)($row['db_port'] ?? '3306'),
@@ -395,6 +395,21 @@ class DatabaseManager
                 'charset' => (string)($row['db_charset'] ?? 'utf8mb4'),
                 'options' => ($this->config['database']['options'] ?? null),
             ];
+
+            // Tenants always own a unique database; shared-DB tenancy is discontinued.
+            // A tenant connection that resolves to the kernel/base app DB must fail closed
+            // instead of silently serving tenant data out of the control plane.
+            // Mirrors the guard already applied on the dbForTenant() path.
+            if (function_exists('tenantRejectBaseDbConnection')) {
+                $isolation = tenantRejectBaseDbConnection($dbConfig);
+                if (empty($isolation['ok'])) {
+                    throw new \UnexpectedValueException(
+                        (string)($isolation['error'] ?? 'Tenant DB connection resolves to the base app DB')
+                    );
+                }
+            }
+
+            return $dbConfig;
         } catch (\Throwable $e) {
             ($this->logger)(
                 'Tenant DB resolution failed: ' . $e->getMessage(),
@@ -491,6 +506,29 @@ class DatabaseManager
                     // Exponential back-off: 50ms, 100ms, 200ms …
                     usleep(50000 * (1 << ($attempt - 1)));
                 }
+            }
+
+            // Post-connect verification by live connected identity (not config equality)
+            // so host/DNS/socket aliases cannot bypass tenant isolation. Applies to a
+            // resolved tenant only; a genuine kernel/CLI context legitimately uses the
+            // base database and is left untouched.
+            if (
+                $tenantTarget !== null
+                && $this->db instanceof PDO
+                && function_exists('tenantConnectedDatabaseIsBaseDb')
+                && tenantConnectedDatabaseIsBaseDb($this->db)
+            ) {
+                ($this->logger)(
+                    'Tenant DB connected identity resolves to the base app DB',
+                    'error',
+                    $this->tenantDbFailureContext((int)$tenantTarget, ['reason' => 'base_db_connected_identity'])
+                );
+                $this->db = null;
+                $this->dbTenantTarget = null;
+                $this->dbLastVerified = null;
+                throw new \RuntimeException(
+                    'Tenant ' . $tenantTarget . ' resolved to the kernel base database; refusing to serve tenant data from the control plane.'
+                );
             }
         }
 

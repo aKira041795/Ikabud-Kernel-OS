@@ -55,6 +55,7 @@ requireWritableCacheDirectory(
     $root . '/storage/cache/disyl-fragments',
     'media fragment-cache fixture root'
 );
+requireDatabaseTables(app()->db(), ['cms_akira_media']);
 
 $tenantIds = [];
 for ($attempt = 0; $attempt < 40 && count($tenantIds) < 2; $attempt++) {

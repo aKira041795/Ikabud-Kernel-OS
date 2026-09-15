@@ -111,6 +111,45 @@ function cawSeedTransitionPolicy(): void
     ]]);
 }
 
+/**
+ * Seed the operator read authority for run introspection. The surface that
+ * declares this capability is administrator-only; the contribution role set,
+ * this policy row, and the shell's local gate all name the same roles.
+ * The active policy version may have been cloned by the permissions UI, so the
+ * declaration joins the currently active version rather than version 1 only.
+ */
+function cawSeedRunsPolicy(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
+    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
+        'actor' => app()->user(),
+    ]);
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+        null,
+        $scope,
+        $resolver,
+        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
+    );
+    $activeRows = $registry->activePolicyRows();
+    $policyVersion = $activeRows === [] ? 1 : (int) ($activeRows[0]['policy_version'] ?? 1);
+
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
+        'policy_version' => $policyVersion,
+        'capability_id' => 'akira.workflow.runs@1',
+        'capability_version' => '1',
+        'provider' => CAW_WORKFLOW_MODULE_ID,
+        'caller_module' => CAW_WORKFLOW_MODULE_ID . ',cms-akira-shell',
+        'allowed_roles' => 'admin,administrator,superadmin',
+        'provider_activation_required' => true,
+        'requires_protocol' => 'v1',
+        'is_active' => true,
+    ]]);
+}
+
 final class CawWorkflowException extends RuntimeException
 {
     public function __construct(string $message, public readonly int $httpStatus = 422, public readonly ?int $retryAfter = null)
@@ -500,3 +539,4 @@ function caw_cap_akira_workflow_runs_1(mixed $payload, string $capabilityId = 'a
 
 cawEnsureDefinition();
 cawSeedTransitionPolicy();
+cawSeedRunsPolicy();

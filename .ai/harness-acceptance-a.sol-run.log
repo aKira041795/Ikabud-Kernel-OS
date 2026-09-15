@@ -1,0 +1,100 @@
+## Status
+
+**PASS** — simulator and standing-contract sections completed. No blocked items.
+
+## Files created/modified
+
+- `.ai/harpp-sim/harpp`
+- `.ai/harpp-sim/director-answer`
+- `.ai/harpp-sim/config.json`
+- `.ai/harpp-sim/README.md`
+- `.ai/harpp-sim/round-trip.log`
+- `.ai/ai-autonomy-harness.contract.md`
+
+No changes to `tools/ai-autonomy.php` or `tests/ai_autonomy_test.php`.
+
+## Round-trip evidence
+
+Full transcript: `.ai/harpp-sim/round-trip.log`
+
+Key results:
+
+```text
+plan                         exit 0
+defer                        exit 0  DELIVERY: harpp
+director-answer              exit 0  lifecycle_state: DECIDED
+status --remote              exit 0  HARPP:DECIDED
+resume --from-harpp          exit 0
+status                       exit 0  RESOLVED
+suppressed defer             exit 4  director NOT notified
+suppressed local artifact    exit 0  exists
+duplicate msg send           exit 1  refused
+illegal apply transition     exit 1  refused
+```
+
+The store records:
+
+```text
+NOTIFIED → VIEWED → DECIDED → ACKNOWLEDGED → APPLIED
+```
+
+The simulator’s envelopes were confirmed against `harpp_client.py` and the HARPP watch loop: nested `data.decisions`, `lifecycle_state`, and submit `data.id`.
+
+## `~/.config/harpp` comparison
+
+Before and after were identical:
+
+```text
+config.json
+mtime=1789052200
+sha256=6888412aa021d5a2b66896e5d522c2f6191c5a3c1891eabfdd2243a2bfc786f8
+
+decisions.json
+mtime=1788235632
+sha256=0d5f597613430f1077060a8dd6c9b3c2615a6db2b9ef7f67ea28dd8ff3e59ffd
+```
+
+The simulator itself was never given these paths and performs no network or HARPP configuration access.
+
+## Contract verification
+
+Four sections occur before Architectural constraints:
+
+```text
+297:## Runbook (unattended slice)
+325:## Simulation harness
+337:## Completion record
+448:## Contract template for new work
+500:## Architectural constraints
+```
+
+Seven required headings remain:
+
+```text
+40:## Objective
+500:## Architectural constraints
+520:## Files likely affected
+529:## Acceptance criteria
+551:## Required tests
+566:## Risks
+576:## Forbidden changes
+```
+
+Parser verification reported every required section present/non-empty. Path bullets are path-first, with directory paths ending in `/`.
+
+## Tests
+
+```text
+php tests/ai_autonomy_test.php
+27/27 passed
+EXIT_CODE=0
+
+php tools/ai-autonomy.php plan --contract=.ai/ai-autonomy-harness.contract.md
+EXIT_CODE=0
+
+python3 .ai/harpp-sim/harpp decision list --remote
+{"data":{"decisions":[]},"ok":true}
+EXIT_CODE=0
+```
+
+**BLOCKED:** None.

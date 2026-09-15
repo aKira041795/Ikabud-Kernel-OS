@@ -1,0 +1,14 @@
+PLAN S4 lane=deepseek/deepseek-v4-flash contract=.ai/projects/harpp-gen4/slices/s4-metrics.md
+COMMIT-CHECK before S4: exit=0
+LEDGER start harpp-gen4-s4-20260914051323-095234
+LEDGER finish harpp-gen4-s4-20260914051323-095234 exit=0 status=completed
+CLAIMS harpp-gen4-s4-20260914051323-095234 extracted=7 (UNVERIFIED)
+VERIFY harpp-gen4-s4-20260914051323-095234 exit=0 statuses=RE_DERIVED,RE_DERIVED,RE_DERIVED,RE_DERIVED,RE_DERIVED,RE_DERIVED,RE_DERIVED
+ADVANCE S4: all claims RE_DERIVED
+PLAN S5 lane=openai-codex/gpt-5.6-sol contract=.ai/projects/harpp-gen4/slices/s5-first-real-run.md
+COMMIT-CHECK before S5: exit=0
+LEDGER start harpp-gen4-s5-20260914051616-73c40c
+LEDGER finish harpp-gen4-s5-20260914051616-73c40c exit=0 status=completed
+CLAIMS harpp-gen4-s5-20260914051616-73c40c extracted=1 (UNVERIFIED)
+VERIFY harpp-gen4-s5-20260914051616-73c40c exit=0 statuses=UNVERIFIED
+STOP S5: claims were not all RE_DERIVED: UNVERIFIED; block-record-exit=0

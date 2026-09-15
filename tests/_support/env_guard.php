@@ -79,6 +79,24 @@ function requireCapabilityAuthorizationPolicies(PDO $db, array $requirements): v
     }
 }
 
+/**
+ * Require module-owned tables before a contract test performs fixture mutations.
+ *
+ * @param list<string> $tableNames
+ */
+function requireDatabaseTables(PDO $db, array $tableNames): void
+{
+    $query = $db->prepare(
+        'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+    );
+    foreach ($tableNames as $tableName) {
+        $query->execute([$tableName]);
+        if ((int) $query->fetchColumn() === 0) {
+            testEnvironmentSkip("required database table is absent: {$tableName}");
+        }
+    }
+}
+
 /** @param list<string> $moduleIds */
 function requireTenantModulesActive(int $tenantId, array $moduleIds): void
 {
@@ -130,5 +148,49 @@ function requireTenantFixture(int $tenantId): void
 
     if ($database === null) {
         testEnvironmentSkip("tenant {$tenantId} has no resolvable database configuration");
+    }
+}
+
+/**
+ * Refuse to run a test against a provisioned (live) tenant database.
+ *
+ * Tenants always own a unique database, and module tests must never read, write or
+ * delete real tenant data. Resolution is deliberately conservative: only databases
+ * registered in `kernel_tenant_db_connections`, other than the base/control app
+ * database, are treated as live. Synthetic fixture tenants and CI (which provisions
+ * no tenant databases) therefore keep running normally.
+ */
+function requireNotLiveTenantDatabase(): void
+{
+    $baseName = strtolower(trim((string) ($_ENV['DB_DATABASE'] ?? '')));
+
+    try {
+        $live = app()->controlDb()
+            ->query('SELECT db_name FROM kernel_tenant_db_connections')
+            ->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable) {
+        return;
+    }
+
+    $live = array_values(array_filter(
+        array_map(static fn (mixed $name): string => strtolower(trim((string) $name)), $live),
+        static fn (string $name): bool => $name !== '' && $name !== $baseName
+    ));
+
+    if ($live === []) {
+        return;
+    }
+
+    try {
+        $current = strtolower(trim((string) app()->db()->query('SELECT DATABASE()')->fetchColumn()));
+    } catch (Throwable) {
+        return;
+    }
+
+    // No escape hatch: a provisioned tenant database is refused unconditionally.
+    // A per-test bypass here would re-open the failure this guard exists to prevent —
+    // module tests once destroyed a live tenant's posts.
+    if (in_array($current, $live, true)) {
+        testEnvironmentSkip("resolved database '{$current}' is a provisioned tenant database; refusing to run module tests against live tenant data");
     }
 }

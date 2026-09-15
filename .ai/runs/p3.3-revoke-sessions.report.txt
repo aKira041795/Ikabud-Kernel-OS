@@ -1,0 +1,134 @@
+All work is complete and verified. Here is the report.
+
+## P3.3 — session revocation as a first-class governed action
+
+### What was delivered
+
+`akira.user.revoke_sessions@1` is now a governed capability of its own: it increments `token_version` while leaving `role` and `is_active` byte-identical, is audited with the standard envelope, takes an idempotency key, and refuses self-revocation against the acting identity.
+
+### Order of operations (the safety invariant)
+
+1. **Seeded first** — added the capability id to the existing `cacSeedGovernancePolicies()` loop (`helpers.php:298`), which already produces the exact neighbour tier.
+2. **Verified a row exists** — before touching the route, I seeded and read the row back. Result showed `akira.user.revoke_sessions@1` with `caller_module=cms-akira-shell,cms-akira-core`, `allowed_roles=admin,administrator,superadmin`, `requires_protocol=v2`, `provider_activation_required=1`, `is_active=1` — equal to `akira.user.set_active@1`.
+3. **Verified the live tenant** — tenant 54 (`akira`) already carries an **active** policy row for the new capability at the same tier as the active `set_active@1` row:
+   - `revoke_sessions@1` → `caller_module=cms-akira-shell,cms-akira-core`, `allowed_roles=admin,administrator,superadmin`, `requires_protocol=v2`, `provider_activation_required=1`, `is_active=1`
+4. **Only then declared** the route in `routes.php` and `module.json`.
+
+### Files changed
+
+- `modules/cms-akira/cms-akira-core/module.json` — `capabilities.exposes` entry
+- `modules/cms-akira/cms-akira-core/helpers.php` — seed loop
+- `modules/cms-akira/cms-akira-core/helpers/capabilities.php` — handler map
+- `modules/cms-akira/cms-akira-core/helpers/governance.php` — `revoke_sessions` branch, self-guard, `token_version` on the list read, handler
+- `modules/cms-akira/cms-akira-shell/routes.php` — POST route
+- `modules/cms-akira/cms-akira-shell/handlers.php` — handler + `Revoke sessions` action + visible `token_version`
+- `modules/cms-akira/cms-akira-shell/module.json` — route declaration + dependency
+- `modules/cms-akira/cms-akira-core/tests/user_revoke_sessions_test.php` — new module test
+
+Forbidden paths (`tests/`, `kernel/`, `src/`, `tools/`, `.github/`, baseline files, `shell/helpers.php`, docs, master plan) are untouched. The shell stays SQL-free and reaches data only through `akiraShellUserMutation()`. `cms-akira-shell/tests/shell_contract_test.php` is unmodified.
+
+---
+
+### Required tests
+
+```
+$ php modules/cms-akira/cms-akira-core/tests/user_revoke_sessions_test.php
+=== CMS Akira P3.3 session revocation ===
+  ✓ the seed produced an active policy row for akira.user.revoke_sessions@1
+  ✓ the new capability is seeded at the exact tier of akira.user.set_active@1
+  ✓ the policy row admits shell and core at the canonical admin tier
+  ✓ the policy refuses an unauthorized role fail-closed
+  ✓ the policy admits the administrator role
+  ✓ a synthetic target user exists in the isolated store
+  ✓ the stored user row is readable before and after revocation
+  ✓ the revocation capability reports a governed success
+  ✓ revocation increments token_version by exactly one
+  ✓ the stored role is byte-identical after revocation
+  ✓ the stored is_active is byte-identical after revocation
+  ✓ revocation writes the standard governance audit envelope
+  ✓ a repeated idempotency key replays the governed outcome
+  ✓ replaying the same key does not increment token_version twice
+  ✓ self-revocation is refused against the acting identity, not a payload field
+  ✓ a refused self-revocation leaves token_version untouched
+  ✓ the user list exposes the stored token_version
+  ✓ runtime exports the revocation capability handler
+  ✓ the core manifest exposes the v2 revocation capability
+  ✓ shell routes resolve the revoke path to its handler
+  ✓ the shell manifest declares the revocation route authority
+  ✓ the shell manifest declares the revocation dependency
+  ✓ the shell handler delegates to the revocation capability
+  ✓ the governance seed loop includes the revocation capability
+
+CMS Akira session revocation: 24 passed, 0 failed
+EXIT=0
+```
+
+**No skip occurred.** The contract predicted `requireNotLiveTenantDatabase()` would SKIP here, but it did not fire: on this checkout the CLI resolves to `ikabudsix` (the base/control database) and the only provisioned tenant database is `akira`. The guard refuses only databases registered in `kernel_tenant_db_connections` other than the base, so all **24 assertions executed** against a synthetic tenant on the isolated base store. I then verified cleanup: `users` is back to 2 rows, no `revoke-probe-%` users remain, `audit_logs` has 0 `akira.user.revoke_sessions` rows, and there are no leftover synthetic tenant/connection/idempotency rows.
+
+```
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+  ...
+  ✓ administrator sees Delete and pending Approve/Cancel actions
+shell contract: 116 passed, 0 failed
+EXIT=0
+```
+`git diff --stat` on that file is empty — it is unmodified.
+
+```
+$ php -l modules/cms-akira/cms-akira-core/helpers/governance.php
+No syntax errors detected in modules/cms-akira/cms-akira-core/helpers/governance.php
+EXIT=0
+```
+
+```
+$ php -l modules/cms-akira/cms-akira-core/helpers/capabilities.php
+No syntax errors detected in modules/cms-akira/cms-akira-core/helpers/capabilities.php
+EXIT=0
+```
+
+```
+$ php -l modules/cms-akira/cms-akira-shell/handlers.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/handlers.php
+EXIT=0
+```
+
+```
+$ php ikabud workbench:governance --all --json
+EXIT=0
+```
+`cms-akira-shell` summary object verbatim:
+```json
+{
+    "module": "cms-akira-shell",
+    "dispatch_enforced": 27,
+    "bus_reachable": 27,
+    "exempt": 0,
+    "undeclared": 0,
+    "total": 27,
+    "ratio": 100,
+    "bus_ratio": 100,
+    "write_dispatch_enforced": 27,
+    "write_total": 27,
+    "write_ratio": 100,
+    "read_dispatch_enforced": 16,
+    "read_exempt": 0,
+    "read_undeclared": 8,
+    "read_total": 24,
+    "read_ratio": 66.7
+}
+```
+The new route resolves as: `dispatch=enforced`, `reach=bus-reachable`, `source=modules/cms-akira/cms-akira-shell/handlers.php:1599`. `write_total`/`write_dispatch_enforced` moved 26→27; **`read_undeclared` stayed at 8**, and no other module's summary changed.
+
+### Additional checks run
+
+```
+$ php modules/cms-akira/cms-akira-core/helpers.php -l        → No syntax errors
+$ php -l .../tests/user_revoke_sessions_test.php             → No syntax errors
+$ php -l modules/cms-akira/cms-akira-shell/routes.php        → No syntax errors
+$ php tests/read_authority_probe_test.php                    → passed: 23, failed: 0
+$ php tests/workbench_governance_census_test.php             → PASS
+$ HTTP_HOST=akiracms.test php ikabud module:validate cms-akira-core   → all checks passed
+$ HTTP_HOST=akiracms.test php ikabud module:validate cms-akira-shell  → all checks passed
+```
+
+`php scripts/guard-module-manifests.php` exits 1 on a pre-existing, unrelated diagnostic (`daily-ledger: co_owned_table_without_owner`); `modules/daily-ledger` has 0 changes from this slice. I did not run the full `composer test` suite because `scripts/run-tests.php` ignores its path argument, unlinks `storage/modules.json` and poisons APCu (documented in the plan); the targeted gates above were run instead.

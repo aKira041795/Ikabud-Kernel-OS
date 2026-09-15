@@ -1,0 +1,218 @@
+{
+    "contract_version": "1.0.0",
+    "blocks": [
+        {
+            "id": "hero",
+            "label": "Hero",
+            "category": "layout",
+            "schema": {
+                "props": {
+                    "eyebrow": {
+                        "type": "string",
+                        "label": "Eyebrow",
+                        "default": ""
+                    },
+                    "title": {
+                        "type": "string",
+                        "label": "Title",
+                        "default": "Slow publishing for people who read closely"
+                    },
+                    "subtitle": {
+                        "type": "string",
+                        "label": "Subtitle",
+                        "default": "Long-form writing, deliberate typography, and no algorithm deciding what you see next."
+                    },
+                    "cta_label": {
+                        "type": "string",
+                        "label": "Button label",
+                        "default": "Browse the archive"
+                    },
+                    "cta_href": {
+                        "type": "url",
+                        "label": "Button URL",
+                        "default": "/posts"
+                    }
+                }
+            },
+            "defaults": {
+                "eyebrow": "Independent essays & craft",
+                "title": "Slow publishing for people who read closely",
+                "subtitle": "Long-form writing, deliberate typography, and no algorithm deciding what you see next.",
+                "cta_label": "Browse the archive",
+                "cta_href": "/posts"
+            },
+            "slots": [],
+            "renderer": {
+                "template": "blocks/hero.disyl",
+                "context_keys": [
+                    "props"
+                ]
+            },
+            "contract_version": "1.0.0"
+        },
+        {
+            "id": "richtext",
+            "label": "Rich text",
+            "category": "content",
+            "schema": {
+                "props": {
+                    "title": {
+                        "type": "string",
+                        "label": "Title",
+                        "default": ""
+                    },
+                    "body": {
+                        "type": "string",
+                        "label": "Body",
+                        "default": ""
+                    }
+                }
+            },
+            "defaults": {
+                "title": "A thoughtful heading",
+                "body": "Write the passage here. Rich text supports paragraphs, links and lists."
+            },
+            "slots": [],
+            "renderer": {
+                "template": "blocks/richtext.disyl",
+                "context_keys": [
+                    "props"
+                ]
+            },
+            "contract_version": "1.0.0"
+        },
+        {
+            "id": "card-grid",
+            "label": "Card grid",
+            "category": "content",
+            "schema": {
+                "props": {
+                    "title": {
+                        "type": "string",
+                        "label": "Title",
+                        "default": ""
+                    },
+                    "items": {
+                        "type": "array",
+                        "label": "Cards",
+                        "default": [],
+                        "items": {
+                            "type": "object",
+                            "props": {
+                                "title": {
+                                    "type": "string",
+                                    "label": "Title"
+                                },
+                                "text": {
+                                    "type": "string",
+                                    "label": "Text"
+                                },
+                                "href": {
+                                    "type": "url",
+                                    "label": "Link"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "defaults": {
+                "title": "More to read",
+                "items": [
+                    {
+                        "title": "Start where you are",
+                        "text": "A short essay on making the first honest attempt.",
+                        "href": "/posts"
+                    },
+                    {
+                        "title": "On revision",
+                        "text": "Why the second draft is the real draft.",
+                        "href": "/posts"
+                    }
+                ]
+            },
+            "slots": [],
+            "renderer": {
+                "template": "blocks/card-grid.disyl",
+                "context_keys": [
+                    "props"
+                ]
+            },
+            "contract_version": "1.0.0"
+        },
+        {
+            "id": "quote",
+            "label": "Quote",
+            "category": "content",
+            "schema": {
+                "props": {
+                    "quote": {
+                        "type": "string",
+                        "label": "Quote",
+                        "default": ""
+                    },
+                    "cite": {
+                        "type": "string",
+                        "label": "Attribution",
+                        "default": ""
+                    }
+                }
+            },
+            "defaults": {
+                "quote": "Revision is not the correction of errors; it is the arrival of honest perspective.",
+                "cite": "Elena Vance"
+            },
+            "slots": [],
+            "renderer": {
+                "template": "blocks/quote.disyl",
+                "context_keys": [
+                    "props"
+                ]
+            },
+            "contract_version": "1.0.0"
+        },
+        {
+            "id": "cta",
+            "label": "Call to action",
+            "category": "layout",
+            "schema": {
+                "props": {
+                    "title": {
+                        "type": "string",
+                        "label": "Title",
+                        "default": ""
+                    },
+                    "subtitle": {
+                        "type": "string",
+                        "label": "Subtitle",
+                        "default": ""
+                    },
+                    "cta_label": {
+                        "type": "string",
+                        "label": "Button label",
+                        "default": ""
+                    },
+                    "cta_href": {
+                        "type": "url",
+                        "label": "Button URL",
+                        "default": "/"
+                    }
+                }
+            },
+            "defaults": {
+                "title": "Independent writing, delivered at the pace of thought.",
+                "subtitle": "Receive Akira's monthly dispatch with curated essays, interviews and typography specimens.",
+                "cta_label": "Subscribe",
+                "cta_href": "/posts"
+            },
+            "slots": [],
+            "renderer": {
+                "template": "blocks/cta.disyl",
+                "context_keys": [
+                    "props"
+                ]
+            },
+            "contract_version": "1.0.0"
+        }
+    ]
+}

@@ -1,0 +1,134 @@
+{
+    "id": "bf1-vacuity",
+    "contract": ".ai/bf1-vacuity.contract.md",
+    "contract_revision": "f935938469fcfd5c",
+    "allowed_count": 4,
+    "forbidden_count": 12,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T15:23:16+00:00",
+    "pid": 2579404,
+    "log": null,
+    "report": ".ai/bf1-vacuity.report.txt",
+    "status": "blocked",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/bf1-vacuity.contract.md",
+        ".ai/chair-decisions.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/standing-authorization-and-decisions.md"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/bf1-vacuity.contract.md": "file:c4eeaa7fd12835361b8622d4788d219a02a1c2e88d7b56f6a52e2555647bbcfd",
+        ".ai/chair-decisions.md": "file:2ff5efb0244564d25f2c1bd08636a4b530b92c5fb5c5e43b292ca1d25df35b79",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/bf1-vacuity.json",
+        ".ai/bf1-vacuity.report.txt"
+    ],
+    "harness_artifacts": [],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": {
+        "decision_ref": "CD-41",
+        "recorded_at": "2026-09-14T15:23:16+00:00",
+        "required_for_trust_surface": true
+    },
+    "trust_surface_hash": "a14c6c209accf674bf3e6dd9eca2c2f4332282026acb5b44e4de444b0132ad75",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+        "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "207dc1a2727284d16cf84fe9a5c7168fe3e7f4d261a5f07ed9a038c9d087935c",
+        "tools/harpp-bridge/harpp_wake.py": "a00797e966b79d52bbed51ae3e9626e50510c94cf9f401ad6e71b9db6e1ebaab"
+    },
+    "finished_at": "2026-09-14T15:31:16+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 19157,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/bf1-vacuity.contract.md",
+        ".ai/bf1-vacuity.report.txt",
+        ".ai/chair-decisions.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/bf1-vacuity.json",
+        ".ai/standing-authorization-and-decisions.md",
+        "tools/harpp-bridge/README.md",
+        "tools/harpp-bridge/harpp_wake.py",
+        "tools/harpp-bridge/tests/test_harpp_wake.py",
+        "tools/harpp-bridge/workflows/governed-loop-flash.json",
+        "tools/harpp-bridge/workflows/governed-loop.json",
+        "tools/harpp-bridge/workflows/harpp-module-repair-loop.json",
+        "tools/harpp-bridge/workflows/roadmap-slices.json",
+        "tools/harpp-bridge/workflows/standalone-harpp-loop.json",
+        "tools/harpp-bridge/workflows/standalone-harpp-remediation-loop.json"
+    ],
+    "scope_delta_paths": [
+        "tools/harpp-bridge/README.md",
+        "tools/harpp-bridge/harpp_wake.py",
+        "tools/harpp-bridge/tests/test_harpp_wake.py",
+        "tools/harpp-bridge/workflows/governed-loop-flash.json",
+        "tools/harpp-bridge/workflows/governed-loop.json",
+        "tools/harpp-bridge/workflows/harpp-module-repair-loop.json",
+        "tools/harpp-bridge/workflows/roadmap-slices.json",
+        "tools/harpp-bridge/workflows/standalone-harpp-loop.json",
+        "tools/harpp-bridge/workflows/standalone-harpp-remediation-loop.json"
+    ],
+    "scope_conformance": {
+        "ok": false,
+        "checked": [
+            "tools/harpp-bridge/README.md",
+            "tools/harpp-bridge/harpp_wake.py",
+            "tools/harpp-bridge/tests/test_harpp_wake.py",
+            "tools/harpp-bridge/workflows/governed-loop-flash.json",
+            "tools/harpp-bridge/workflows/governed-loop.json",
+            "tools/harpp-bridge/workflows/harpp-module-repair-loop.json",
+            "tools/harpp-bridge/workflows/roadmap-slices.json",
+            "tools/harpp-bridge/workflows/standalone-harpp-loop.json",
+            "tools/harpp-bridge/workflows/standalone-harpp-remediation-loop.json"
+        ],
+        "offending": [
+            {
+                "path": "tools/harpp-bridge/harpp_wake.py",
+                "reasons": [
+                    "path 'tools/harpp-bridge/harpp_wake.py' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"
+                ]
+            }
+        ],
+        "declared_harness_artifacts": []
+    },
+    "evidence_fingerprint": "2d64066b3ab6304f79e89bd7ca223ccac816b152abac926d8176b5df0b249944",
+    "evidence_unavailable_reason": null
+}

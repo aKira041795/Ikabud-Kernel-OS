@@ -1,0 +1,176 @@
+## Result
+
+**Status:** PASS
+
+### Changed
+
+- `modules/cms-akira/cms-akira-shell/module.json`
+  - Declared the three privilege-affecting POST routes.
+  - Existing `depends` and handler authorization/capability calls remain intact.
+- `.governance-baseline.json`
+  - Updated shell undeclared count from 15 to 12 after live proof.
+
+### A2 — Tenant policy verification before declaration
+
+Used `app()->dbForTenant(54)` with:
+
+```sql
+SELECT policy_version, capability_id, capability_version, provider,
+       caller_module, allowed_roles, grant_state, is_active
+FROM capability_authorization_policies
+WHERE is_active = 1
+  AND policy_version = (
+      SELECT MAX(policy_version)
+      FROM capability_authorization_policies
+      WHERE is_active = 1
+  )
+  AND capability_id IN (:c1, :c2, :c3)
+ORDER BY capability_id, capability_version, provider
+```
+
+Initial results:
+
+| Capability | Version | Provider | Caller modules | Roles | Grant |
+|---|---:|---|---|---|---|
+| `akira.policy.set_roles@1` | 1 | `cms-akira-core` | `cms-akira-shell,cms-akira-core` | `admin,administrator,superadmin` | granted, active |
+| `akira.user.set_active@1` | 1 | `cms-akira-core` | `cms-akira-shell,cms-akira-core` | `admin,administrator,superadmin` | granted, active |
+| `akira.user.update_role@1` | 1 | `cms-akira-core` | `cms-akira-shell,cms-akira-core` | `admin,administrator,superadmin` | granted, active |
+
+All three explicitly permitted caller `cms-akira-shell`.
+
+### Implementation
+
+```json
+"routes": {
+    "POST /cms-akira-shell/permissions": "akira.policy.set_roles@1",
+    "POST /cms-akira-shell/users/{id}/role": "akira.user.update_role@1",
+    "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1"
+}
+```
+
+### Governance verification
+
+Before:
+
+```text
+cms-akira-shell  Enforced 0  Bus-reach 15  Exempt 0  Undeclared 15  Total 15
+Akira            Enforced 5  Bus-reach 31  Exempt 0  Undeclared 28  Total 33
+```
+
+After:
+
+```text
+ENFORCED POST /cms-akira-shell/permissions
+ENFORCED POST /cms-akira-shell/users/{id}/role
+ENFORCED POST /cms-akira-shell/users/{id}/active
+
+cms-akira-shell  Enforced 3  Bus-reach 15  Exempt 0  Undeclared 12  Total 15
+Akira            Enforced 8  Bus-reach 31  Exempt 0  Undeclared 25  Total 33
+```
+
+Gate:
+
+```text
+GOVERNANCE GATE=PASS — neither routed nor non-HTTP debt grew.
+```
+
+Baseline diff:
+
+```diff
+-        "cms-akira-shell": 15,
++        "cms-akira-shell": 12,
+```
+
+No other baseline entry changed.
+
+### A4 — Live tenant 54 evidence
+
+Admin `charlienacario884`:
+
+```text
+POST /cms-akira-shell/permissions       -> 303 /cms-akira-shell/permissions?saved=1
+POST /cms-akira-shell/users/2/role      -> 303 /cms-akira-shell/users?saved=1
+POST /cms-akira-shell/users/2/active    -> 303 /cms-akira-shell/users?saved=1
+```
+
+The permission proof retained the same role set and created active policy version 2. User role and activity remained `author` and active; the two successful mutations incremented `token_version` from 0 to 2.
+
+Disallowed caller `akiraauthor`, role `author`, with valid CSRF:
+
+```text
+POST /cms-akira-shell/permissions       -> 403 role_not_allowed
+POST /cms-akira-shell/users/2/role      -> 403 role_not_allowed
+POST /cms-akira-shell/users/2/active    -> 403 role_not_allowed
+```
+
+Each response named its required capability. All three produced `route.authority.denied` records with:
+
+```text
+state=declared
+caller_module=cms-akira-shell
+actor_role=author
+reason=role_not_allowed
+```
+
+Before/after denial snapshot was identical:
+
+```json
+{
+  "max_policy": 2,
+  "policy": {
+    "policy_version": 2,
+    "allowed_roles": "admin,administrator,superadmin",
+    "grant_state": "granted",
+    "is_active": 1
+  },
+  "user": {
+    "id": 2,
+    "role": "author",
+    "is_active": 1,
+    "token_version": 2
+  }
+}
+```
+
+Thus the denied handler bodies did not mutate policy or user data.
+
+### Verification
+
+- `composer test`: **108 files — 99 passed, 9 skipped**, 0 failed.
+- Local skips:
+  - `capability_effect_invalidation_test`
+  - `durable_idempotency_test`
+  - `entity_fallback_test`
+  - `entity_view_render_cache_test`
+  - `error_page_contract_test`
+  - `eventbus_durable_outbox_test`
+  - `kernel_idempotency_capability_test`
+  - `runner_timeout_test`
+  - `tenant_entry_auth_shell_standard_test`
+- `php ikabud architecture:check`: all 6 checks passed.
+- PHPStan on shell handler: `[OK] No errors`.
+- `git diff --check`: clean.
+- `composer lint`: only reported the six gitignored `daily-ledger` files anticipated by the contract; no tracked task file failed lint.
+- Tenant health after web-context APCu/OPcache reset:
+  - `/` → 200
+  - `/posts` → 200
+  - `/login` → 200
+  - `storage/logs/error.log` → 0 bytes
+- `storage/modules.json` remains absent.
+- Temporary cache-reset endpoint removed.
+
+### Scope
+
+Only two tracked files changed. No schema, migration, core, Daily Ledger, other shell route, exemption, handler, or capability dependency changes. No commit, push, or branch operation performed.
+
+### Risks
+
+The live success proof intentionally created policy version 2 and incremented the fixture author’s token version; its logical role and active state are unchanged. The three active policy rows continue to permit `cms-akira-shell`.
+
+### Unresolved
+
+None. Acceptance steps not performed: **none**.
+
+### Recommended next state
+
+Ready for review.

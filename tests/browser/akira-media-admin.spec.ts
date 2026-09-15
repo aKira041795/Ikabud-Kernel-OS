@@ -1,16 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const TENANT = process.env.TENANT_URL ?? 'http://akiracms.test';
-const TENANT_USER = process.env.TENANT_USER ?? 'charlienacario884';
-const TENANT_PASS = process.env.TENANT_PASS ?? 'iKabud6123!#';
 
-async function login(page: Page): Promise<void> {
-    await page.goto(`${TENANT}/login`);
-    await page.fill('#username', TENANT_USER);
-    await page.fill('#password', TENANT_PASS);
-    await page.locator('button[type="submit"]').first().click();
-    await page.waitForURL(/\/cms-akira-shell(?:\/|$)/, { timeout: 20000 });
-}
+// Authenticated pages rely on the storageState written by auth.setup.ts. No spec
+// submits the login form here; the anonymous test below opts out of that state.
 
 async function expectAdminPage(page: Page, path: string, text: RegExp): Promise<void> {
     const response = await page.goto(`${TENANT}${path}`, { waitUntil: 'domcontentloaded' });
@@ -20,8 +13,6 @@ async function expectAdminPage(page: Page, path: string, text: RegExp): Promise<
 }
 
 test('tenant admin can list, upload, and delete media; provider rejects a disallowed type', async ({ page }) => {
-    await login(page);
-
     const initial = await page.goto(`${TENANT}/cms-akira-shell/media`, { waitUntil: 'domcontentloaded' });
     console.log(`[media] authorised GET /cms-akira-shell/media -> ${initial?.status()}`);
     expect(initial?.status()).toBe(200);
@@ -75,11 +66,16 @@ test('tenant admin can list, upload, and delete media; provider rejects a disall
     await expectAdminPage(page, '/cms-akira-shell/users', /user/i);
 });
 
-test('fresh anonymous shell login entry still reaches the login form', async ({ page }) => {
-    const response = await page.goto(`${TENANT}/cms-akira-shell/login`, { waitUntil: 'domcontentloaded' });
-    console.log(`[media/no-lockout] anonymous login -> ${response?.status()} at ${page.url()}`);
-    expect(response?.status()).not.toBe(403);
-    await page.waitForURL(/\/login$/, { timeout: 20000 });
-    await expect(page.locator('#username')).toBeVisible();
-    await expect(page.locator('#password')).toBeVisible();
+// Anonymous behaviour must run on a clean context, not the shared authenticated one.
+test.describe(() => {
+    test.use({ storageState: { cookies: [], origins: [] } });
+
+    test('fresh anonymous shell login entry still reaches the login form', async ({ page }) => {
+        const response = await page.goto(`${TENANT}/cms-akira-shell/login`, { waitUntil: 'domcontentloaded' });
+        console.log(`[media/no-lockout] anonymous login -> ${response?.status()} at ${page.url()}`);
+        expect(response?.status()).not.toBe(403);
+        await page.waitForURL(/\/login$/, { timeout: 20000 });
+        await expect(page.locator('#username')).toBeVisible();
+        await expect(page.locator('#password')).toBeVisible();
+    });
 });

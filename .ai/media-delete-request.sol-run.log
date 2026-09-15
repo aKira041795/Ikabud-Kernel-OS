@@ -1,0 +1,32 @@
+## RESULT
+
+- **Branch:** `feat/media-delete-request`
+- **Commit:** `fe629eede657be96a04fac4afa1b3a6d15a2bac3`
+- **Acceptance A1–A10:** PASS
+- **PHP lint:** PASS for every touched PHP file
+- **Governance gate:** PASS
+- **Forbidden/baseline files:** UNCHANGED
+
+### Runners
+
+- `composer test`: **PASS** — 110 passed, 0 failed, 26 skipped  
+  - `media_contract_test`: **SKIPPED** in this runner
+  - `shell_contract_test`: **RAN — PASS**
+- `php scripts/run-tests.php`: **PASS** — 110 passed, 0 failed, 26 skipped  
+  - `media_contract_test`: **SKIPPED** in this runner
+  - `shell_contract_test`: **RAN — PASS**
+
+### Required direct contracts
+
+- `media_contract_test`: **RAN — PASS**, 54 passed, 0 failed
+- `shell_contract_test`: **RAN — PASS**, 116 passed, 0 failed
+
+The media test used the prescribed same-filesystem directory rename. The original `storage/cache/disyl-fragments` was restored as **`www-data:www-data 2755`**; the hold directory is absent.
+
+A supplemental full-runner attempt with the writable fragment root made media pass but exposed two unrelated existing fixture failures in builder/post tests; the canonical runner passes above.
+
+### Named follow-up
+
+**Media deletion reference count:** deferred pending a governed cross-module capability for post/composition references. No forbidden cross-module table reads were added.
+
+The contract contains no predefined “exact result block” template; the structured result above reports all requested fields.

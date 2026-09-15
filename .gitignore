@@ -103,6 +103,9 @@ public/debug-opcache.php
 /test_*.php
 test-results/
 
+# ── Playwright storageState (holds a live session cookie — never commit) ──
+/tests/browser/.auth/
+
 # ── Runtime storage (regenerate per install, never committed) ───────
 storage/backups/
 storage/cache/

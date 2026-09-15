@@ -1,0 +1,20 @@
+Verification complete. The report is written to `.ai/guardrail-ladder-cost-verify.report.txt` (555 lines, all claims with CLAIM/COMMAND/OBSERVED and exit codes).
+
+## Result
+
+| Deliverable | Verdict | Key evidence |
+|---|---|---|
+| **D1** repair ladder | HOLDS | `php tests/ai_loop_test.php` → **17/17, exit 0**. Tests 12–16: L1 linked new run (`predecessor=…`), L2 promotion with no `rung=L1`, exhaustion L1→L2, L4 stop with `contract_amended=false verifier_amended=false`, verifier rung refused pre-dispatch (exit 3) |
+| **D2** cost from artefacts | HOLDS | Test 35 binds a session and derives 21 tokens/$0.033 from JSONL; test 36 explicit `null` + reason. I bound **this real session's** artefact (94026 tokens/$0.000584142) and `metrics` reported it (100155/$0.000734). Real `metrics` on `harpp-gen4` returns `null` + "predates runner usage binding … not estimated". No pricing table or invented constant in the cost path |
+| **D3** acknowledged block | HOLDS | Refuses exit 3 without decision, with a non-resolving ref, and for a live run; acknowledges `guardrail-scope-integrity` once (CD-29), leaves `status=blocked`/`scope_conformance.ok=false` and the sha256 byte-identical; second ack refused; new blocked run blocks again |
+| **Slice A** | HOLDS EXACTLY | `plan`: `tools/`, `tools/ai-*.php`, `**/*.php` → 2/2/2, `docs/` → 0. `check`: `tools/ai-run.php` → ESCALATE L4/exit 3; benign → RECORD L2/exit 0. Loop A-F2 blocks/advances/ignores; rule-2 hash gate blocks on mismatch |
+| **Suites** | 146 assertions, 0 failed, **0 skipped** | ai-loop 17, ai-project 18, ai-run 49, ai-autonomy 59, ai-contract-lint 3 — all exit 0 |
+
+## Findings
+
+- **No defect found in the tree.** I modified no source file; the tracked-change set is unchanged.
+- **R1 (report defect, not tree):** the prior report's D1 provenance quote is stale — it omitted the successor's `predecessor_run_id`. The exact command now yields three lines including the link; test 12 asserts it correctly. Reloaded in the report.
+- **O1/O2 (observations):** real run records carry `usage: null` + reason (no recorded session was exposed at their dispatch); the legacy Sol record `guardrail-ladder-cost.json` lacks the `runner_session` key but has an explicit null usage + reason — a historical wrinkle, not an invented figure.
+- **O3:** real grep confirms no placeholder/pricing/interpolation literal in the cost-reporting path; the only monetary literals are advisory lane-routing notes in `ai-autonomy.php`.
+
+Method limit noted in the report: non-vacuity was not re-derived by mutation; the claims are the suites' own assertions plus live command re-derivations of every deliverable.

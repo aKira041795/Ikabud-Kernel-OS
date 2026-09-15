@@ -1,0 +1,133 @@
+# Admin chrome slice — implementation report
+
+## What was built
+
+`akira.shell.admin_page@1` is exposed by `cms-akira-shell` as a **thin wrapper over `akiraShellPage()`**. `/cms-akira-seo` and `/cms-akira-navigation` render their body as a content fragment and hand it to that capability through the bus. One chrome implementation, three consumers. `akiraShellPage()` was not modified.
+
+Files changed:
+
+| File | Change |
+|---|---|
+| `modules/cms-akira/cms-akira-shell/module.json` | exposes `akira.shell.admin_page@1` (first-wins) |
+| `modules/cms-akira/cms-akira-shell/helpers.php` | `cms_akira_shell_capability_handlers()` + `akiraShellCapAdminPage()` + `akiraShellSeedAdminPagePolicy()` |
+| `modules/cms-akira/cms-akira-seo/module.json` | depends on the chrome cap; sidebar `active_key: "seo"` |
+| `modules/cms-akira/cms-akira-seo/templates/admin.disyl` | fragment (no doctype/head/body/header/main/tailwind) |
+| `modules/cms-akira/cms-akira-seo/handlers.php` | `akiraSeoRender()` wraps fragment via `akiraSeoShellChrome()` |
+| `modules/cms-akira/cms-akira-navigation/module.json` | depends on the chrome cap; sidebar `active_key: "navigation"` |
+| `modules/cms-akira/cms-akira-navigation/templates/admin.disyl` | fragment |
+| `modules/cms-akira/cms-akira-navigation/handlers.php` | `akiraNavigationRender()` wraps fragment via `akiraNavigationShellChrome()` |
+| `modules/cms-akira/cms-akira-shell/tests/admin_page_capability_test.php` | **new** gate (existing tests untouched) |
+
+The capability handler is literally:
+
+```php
+return ['html' => akiraShellPage($title, $body, ['active' => $active])];
+```
+
+No navigation list is copied and no second page builder exists in either module.
+
+## Decisions a reviewer will probe
+
+- **Active keys.** The contract says the keys are `seo`/`navigation` and to confirm them. They did **not** exist: `kernelContributionNormalize()` leaves `active_key` empty and `akiraShellPage()` falls back to the contribution id (`cms-akira-seo.metadata`, `cms-akira-navigation.menus`). I confirmed this in code, then added the explicit `active_key` fields to the two sidebar contributions and passed `seo`/`navigation` — exactly the keys the contract names. Verified live: both sidebars highlight the current surface.
+- **The title.** The shell renders the page title as its own `<h1>`. I removed the duplicate `<h1>` from each fragment (so each page has one `<h1>`), but the title text is preserved by being passed as the capability `title`; the description paragraph stays in the fragment. I checked this explicitly: rendered pages have `h1 count=1`, `SEO metadata` / `Navigation` titles, and the original descriptions.
+- **If the capability call throws.** The wrapper catches `Throwable` (and an empty result) and returns a chrome-free document that still contains the fragment plus an alert and a link back to the dashboard. It never blanks the page and never recreates the old three-link header. The module's own admin gate already ran before render, so this is a degradation path, not an authorization bypass.
+- **Policy.** Seeded via `cacActivePolicyVersion()` (no literal), provider `cms-akira-shell`, `caller_module = cms-akira-shell,cms-akira-seo,cms-akira-navigation`, `allowed_roles = admin,administrator,superadmin`. Confirmed live on tenant 54: an **active** row at `policy_version = 30` (the tenant's active version), `cms-akira-shell`/`cms-akira-seo`/`cms-akira-navigation` allowed, `cms-akira-theme` refused `disabled_caller`, `author` refused `role_not_allowed`. This is real live confirmation, not inference.
+- **`cms-akira-theme` is out of scope.** Untouched. It remains the third offender with its own PHP-built chrome at `cms-akira-theme/helpers.php:1344`.
+
+## Required test evidence
+
+```
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+shell contract: 116 passed, 0 failed
+
+$ php modules/cms-akira/cms-akira-shell/tests/admin_page_capability_test.php
+=== CMS Akira shell admin-page capability ===
+  ✓ shell module.json exposes akira.shell.admin_page@1
+  ✓ the exposed chrome capability declares first-wins dispatch
+  ✓ the shell capability handler map points at the thin wrapper handler
+  ✓ the capability handler delegates to akiraShellPage()
+  ✓ the capability handler carries no second page builder, navigation list or palette
+  ✓ the policy seed uses the tenant active policy version, not a literal
+  ✓ the policy seed pins no literal policy_version
+  ✓ the seed names the capability, the three callers, the admin tier and the provider
+  ✓ cms-akira-seo template is a content fragment with no second document chrome
+  ✓ cms-akira-seo declares the chrome capability dependency
+  ✓ cms-akira-seo sidebar contribution names the seo active key
+  ✓ cms-akira-seo render path calls the chrome capability with its own caller identity
+  ✓ cms-akira-navigation template is a content fragment with no second document chrome
+  ✓ cms-akira-navigation declares the chrome capability dependency
+  ✓ cms-akira-navigation sidebar contribution names the navigation active key
+  ✓ cms-akira-navigation render path calls the chrome capability with its own caller identity
+SKIP: resolved database 'akira' is a provisioned tenant database; refusing to run module tests against live tenant data
+```
+**Which assertions ran:** 16 static, database-free assertions ran and passed. The live policy/authorization/bus half did **not** run here (guard SKIP) — the live half is what still needs a non-live tenant.
+
+```
+$ php modules/cms-akira/cms-akira-seo/tests/seo_surface_test.php
+CMS Akira SEO surface: 12 passed, 0 failed
+
+$ php modules/cms-akira/cms-akira-navigation/tests/navigation_surface_test.php
+CMS Akira navigation surface: 8 passed, 0 failed
+
+$ php _lint_disyl.php modules/cms-akira/cms-akira-seo/templates/admin.disyl
+  ✓ 96 file(s) valid
+
+$ php _lint_disyl.php modules/cms-akira/cms-akira-navigation/templates/admin.disyl
+  ✓ 96 file(s) valid
+
+$ php -l modules/cms-akira/cms-akira-shell/helpers.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/helpers.php
+```
+`php -l` was also run and clean on `cms-akira-seo/handlers.php`, `cms-akira-navigation/handlers.php`, and the new test.
+
+```
+$ php ikabud workbench:governance --all --json
+```
+Census for **`cms-akira-shell` only** (unchanged from baseline):
+```json
+{
+  "summary": {
+    "module": "cms-akira-shell",
+    "dispatch_enforced": 27, "bus_reachable": 27, "exempt": 0, "undeclared": 0,
+    "total": 27, "ratio": 100, "bus_ratio": 100,
+    "write_dispatch_enforced": 27, "write_total": 27, "write_ratio": 100,
+    "read_dispatch_enforced": 16, "read_exempt": 2, "read_undeclared": 8,
+    "read_total": 26, "read_ratio": 61.5
+  },
+  "non_http_summary": {
+    "module": "cms-akira-shell", "declared": 0, "unscoped": 0,
+    "unresolved": 0, "total": 0, "ratio": 0
+  }
+}
+```
+
+## Supplementary live verification (since the required test SKIPs here)
+
+Ran `php /tmp/admin_chrome_live_probe.php` under `akiracms.test` (tenant 54, active policy version 30):
+```
+capability_registered=yes
+cacActivePolicyVersion=30
+live_row={"policy_version":30,"caller_module":"cms-akira-shell,cms-akira-seo,cms-akira-navigation","allowed_roles":"admin,administrator,superadmin","is_active":1}
+allow[cms-akira-shell]=yes
+allow[cms-akira-seo]=yes
+allow[cms-akira-navigation]=yes
+deny_theme=disabled_caller
+deny_author=role_not_allowed
+seo_has_sidebar=yes seo_doctypes=1 seo_h1=1 seo_active_seo=yes seo_has_upsert=no
+nav_has_sidebar=yes nav_doctypes=1 nav_h1=1 nav_active_navigation=yes nav_has_create=yes
+nonadmin_len=1746 nonadmin_sidebar=no nonadmin_error=yes blank=no
+```
+(`seo_has_upsert=no` is expected with no entity selected; with a record present the upsert form, `expected_updated_at`, delete form and all field attributes render — verified separately.)
+
+Form-field preservation was proven by diffing `git show HEAD:` against the new fragments: every `name`, `action`, `method`, `maxlength`, `pattern`, `placeholder`, `required`, `rows` and every label text is byte-identical. The only removed attribute is the document `<meta name="viewport">`.
+
+## Still needs a live HTTP check
+
+- A browser/HTTP click-through on a non-provisioned tenant with the modules enabled, confirming the capability is registered by `loadModuleRoutes`, the row is seeded at that tenant's active version, and both pages carry the sidebar and the active highlight. The CLI probe above exercises the same bus/registry/handler path; what it does not exercise is the real HTTP session/cookie + CSRF field rendering.
+- The non-admin HTTP path should be confirmed to return the fallback, not a blank page.
+
+## Regression checks (all pass)
+
+`tests/capability_authority_audit_test.php` (18/0), `tests/manifest_schema_v1_test.php` (16/0), `tests/module_route_authority_test.php` (29/0), `tests/contribution_registry_test.php` (30/0), `tests/module_suite_certification_test.php` (15/0), `tests/capability_authorization_policy_migration_test.php` (18/0), `tests/manifest_architecture_policy_test.php` (7/0), `tests/module_route_declaration_runtime_test.php`, `tests/read_authority_probe_test.php` (23/0), plus `scripts/run-tests.php --dir=` over the shell (7 pass / 2 pre-existing skip), SEO (1 pass / 2 pre-existing skip) and navigation (1 pass / 2 pre-existing skip) module test dirs.
+
+`scripts/guard-module-manifests.php` exits 1 on a **pre-existing** `daily-ledger` co-ownership finding unrelated to this slice (none of its files were touched).

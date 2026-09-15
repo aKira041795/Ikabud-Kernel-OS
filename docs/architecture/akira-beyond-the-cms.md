@@ -14,6 +14,11 @@ from substrate work into two parallel tracks; Workbench promoted to product item
 over-claim removed, since the claim worth making concerns where the guarantees live, not whether
 anyone else could make them.
 
+amended: 2026-09-13 (chair) — P2 entry-point scope advanced: the CLI entry point can now
+establish a real tenant authority scope, so governed capabilities are reachable *and audited*
+from CLI. Two instrument-integrity findings recorded below, both of which are evidence for
+Workbench's #2 ranking.
+
 Depends on: [kernel-substrate-thesis.md](kernel-substrate-thesis.md).
 
 The ecosystem has four deliberately different jobs: **Kernel = authority substrate; Akira = the
@@ -148,6 +153,33 @@ counts as debt only when the transport is statically certain *and* no scope reac
 else stays `unresolved` — visible, but neither claimed as governed nor manufactured into debt.
 **This is the honest limit of the instrument, and it is not a claim of coverage.**
 
+**A concrete mechanism behind part of that remainder (measured and shipped 2026-09-13).**
+"Unprovable scope" was the wrong description for at least one entry-point class. The CLI could not
+load tenant-enabled modules **at all**, so module capabilities could not register — they were not
+*unscoped*, they were *unreachable*. Measured under the CLI's own bootstrap (the same requires
+`ikabud` uses):
+
+```text
+enabled modules inside withScope(54, CLI):   1   (gui-settings)
+cms-akira-theme enabled:                     NO
+capability:call akira.theme.activate@1:      Capability not found
+```
+
+`AuthorityScopeResolver::withScope()` establishes the *capability authority* scope but does **not**
+set the *tenant context*, and `getEnabledModules()` filters on per-tenant `_enabled` resolved through
+`app()->tenant()->current()` — which is NULL in CLI. **Shipped:** `withCliTenantModuleScope()`
+requires an explicitly established tenant and throws on mismatch rather than falling back, and
+`getEnabledModules()` now keeps a **scope-keyed** cache (`cli-tenant:N` vs `ambient`) so an
+ambient-first call can neither poison nor be poisoned by a scoped load. The CLI also requires
+explicit authority (`--actor`, `--actor-role`, `--caller-module`) and fails closed without it; a
+denied role stays denied (`role_not_allowed`, exit 1).
+
+Demonstrated on tenant 54: the governed call now executes and is audited with
+`actor_source: cli:admin`, `actor_module_user_id: 1` and a correlation ID — the CLI drives the
+capability path rather than bypassing it. **This moves one entry point from unreachable to
+scope-provable. It does not reduce the 94 unresolved static sites**, whose transport remains
+statically unprovable, and no claim is made otherwise.
+
 #### Standing authority architecture findings
 
 These C6 findings were architectural work, not P2 status footnotes. Each is recorded with how it
@@ -176,10 +208,16 @@ them — an explicit authority scope replacing ambient `app()->db()` resolution 
 (#118, #119); declaration/revocation shipped with the grant lifecycle and narrowing-only seeding;
 and the inventory now reaches beyond HTTP.
 
-**Route coverage is the one step still open.** Measured 2026-09-12 after two slices: Akira is at
+**Route coverage is the one step still open.** Measured 2026-09-12 after two slices: Akira was at
 **28/33** dispatch-enforced (23 of the 25 open writes declared; `cms-akira-core`'s 5 were already
 declared). **57 business writes remain undeclared** — 5 in Akira and 52 in `daily-ledger` (the module
 has 56 write routes; 4 are auth infrastructure, excluded from the denominator by `isBusiness()`).
+
+*That 28/33 is a dated measurement, not the current figure.* Re-measured 2026-09-13 it is **32/37**
+(4 more write routes exist and all 4 are declared), with `daily-ledger` unchanged at 0/52 — so the
+57 undeclared writes still hold. The dated figures are kept rather than overwritten, because a
+metric that is silently restated cannot be audited; where two appear, both carry their measurement
+date.
 
 The five Akira holdouts are not one category:
 
@@ -191,6 +229,9 @@ The five Akira holdouts are not one category:
   is a stop condition in the closing slice that was too broad. Each handler already calls the very
   capability its route would declare, so the narrower policy is already in force and declaring would
   *mirror* it rather than narrow it. They are a small, known follow-up.
+  **Status 2026-09-13:** still undeclared, and now genuinely actionable — the blocker was that the
+  bus was unreachable from CLI, and that is fixed. Routing `theme:activate` through the capability it
+  already calls is ordinary follow-up work, not blocked design.
 
 **Architectural boundary found while deciding the above.** The authority model covers
 **tenant-scoped** surfaces only. `AuthorityScopeResolver::forApplication()` derives the subject tenant
@@ -305,10 +346,22 @@ First, read authority was not merely unused — it was **untested**. Across all 
 ever exercised one. It works, and was proven so before it was relied on. The size of the gap was also
 understated: **107 undeclared GET routes** exist repo-wide, not 16.
 
-Second, the instrument cannot see reads at all. `GovernanceCensus::isBusiness()` returns false for any
-non-write method, so the summary ratio is **byte-identical with and without** a read declaration —
-including after nine were added. The headline "28/33" is a **write** figure presented as an authority
-figure. That is reported, not yet fixed.
+Second, the instrument could not see reads at all: `GovernanceCensus::isBusiness()` returned false
+for any non-write method, so the summary ratio was **byte-identical with and without** a read
+declaration — including after nine were added — and the headline figure was a **write** figure
+presented as an authority figure. **Fixed 2026-09-13.** The census now publishes three separate
+measures on three separate denominators and refuses to merge them:
+
+| Measure | Akira, 2026-09-13 |
+|---|---|
+| WRITE authority coverage | **32 / 37 = 86.5%** (5 undeclared) |
+| READ authority coverage | **9 / 47 = 19.1%** (38 undeclared) |
+| NON-HTTP authority coverage | 1 / 95 = 1.1% (94 unresolved) |
+
+The separation is guarded by a test that fails if reads are hidden again, and the guard was verified
+by falsification — reverting the read classification fails the test. A read declaration now moves the
+read figure and provably leaves the write figure unchanged, which is what makes the two independently
+meaningful.
 
 What remains, in the order the panel and the owner ranked it:
 
@@ -379,6 +432,21 @@ Reason:           grant excludes publication
 Required actor:   human / editor
 Policy revision:  12
 ```
+
+**Supporting evidence, and an uncomfortable kind (2026-09-13).** Two operator-facing instruments were
+found to disagree with the system they described, and both were *confidently wrong* rather than
+absent — which is the worse failure. `php ikabud theme:activate` printed `✓ Theme '...' activated.`
+while writing a **legacy setting key no runtime path reads**; `theme:current` read that same key, so
+the two commands agreed with each other and disagreed with the running site, which was rendering a
+different theme than the instrument named. In the same window `php ikabud theme:validate` reported
+`✓ All checks passed` for a theme that the **activation** gate rejects with 422 — two validators, one
+authority, and the permissive one facing the operator. Neither was a crash. Both were well-formatted,
+confident, and wrong.
+
+This is why Workbench is #2 and not a dashboard afterthought: **an instrument that lies is worse than
+no instrument.** It also sharpens the discipline rule — the only defence that worked here was
+verifying the harness before believing the finding, and re-deriving a defect by reintroducing it
+rather than trusting a passing run.
 
 **Panel verdict, and how the owner resolved it (2026-09-12).** An independent two-model debate
 (`.ai/akira-direction-synthesis.md`) converged on admin surface → one bounded machine actor → proof
@@ -469,12 +537,34 @@ Names a substrate claim? -- no --> reject or defer
 Define the falsifiable two-domain demonstration --> govern implementation
 ```
 
+### Metric labelling discipline
+
+Coverage vocabulary is not interchangeable, and collapsing it is how a project fools itself.
+Workbench must use these words with exactly these meanings and never as synonyms:
+
+```text
+measured    — computed from artifacts actually inspected in this run
+declared    — asserted by a manifest, independent of whether it holds at runtime
+enforced    — the declaration was checked before the handler body executed
+reachable   — a bus call exists inside the handler; proves nothing about request authority
+exempt      — explicitly excused with a recorded reason; not the same as governed
+unresolved  — the instrument could not determine this; never counted as covered, never as debt
+inferred    — derived indirectly; must be labelled as such, never presented as measured
+```
+
+Three coverage measures are published separately — write, read, non-HTTP — because they have
+different denominators and semantics. **No merged percentage is published**: a single figure reads as
+total authority coverage when it is one of three. This is the surface-measurement lesson applied to
+the instrument itself — *do not confuse artifact counts with system capability* — and it stands on the
+rule that **an instrument that lies is worse than no instrument.**
+
 **No substrate primitive is considered general until it is demonstrated in at least two materially
 different domains: publication and financial operations.** The risk of "break new ground" is
 inventing something unfalsifiable; every pillar must therefore be demonstrable in Akira, challenged
 by Daily Ledger, measurable by Workbench, and breakable by a test that fails when the claim is false.
 
-**Where that bar stands (2026-09-12): not yet met.** Route coverage is **28/33** in publication
-(Akira) and **0/52** in financial operations (`daily-ledger`); 57 business writes across both remain
-undeclared. The primitive is real, and enforced where declared — it is not yet *general*, and this
-document claims no more than that.
+**Where that bar stands (updated 2026-09-13): not yet met.** Write authority coverage is **32/37**
+in publication (Akira) and **0/52** in financial operations (`daily-ledger`); 57 business writes across
+both remain undeclared. Read authority is now measured separately and is far weaker — **9/47** in
+publication — which the previous single figure could not express. The primitive is real, and enforced
+where declared; it is not yet *general*, and this document claims no more than that.

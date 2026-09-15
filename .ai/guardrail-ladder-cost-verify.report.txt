@@ -1,0 +1,557 @@
+SLICE B — INDEPENDENT L2 VERIFICATION
+contract: .ai/guardrail-ladder-cost.contract.md · revision a86d8f8d22f8f2d8
+working tree: /var/www/html/ikabudsix  ·  branch: feat/akira-editorial-and-authority-coverage
+lane: deepseek/deepseek-v4-flash (this verification session, PI provider deepseek/deepseek-v4-flash)
+date: 2026-09-14 (UTC 07:18–07:22)
+method: independent re-derivation. I ran the real commands against the tree as it is and report what
+they actually output, including exit codes. I did not re-implement and I did not modify any tree file.
+Nothing was committed, staged or pushed. No CMS-bootstrapping suite was run; only the pure suites.
+
+VERDICT
+  D1 (repair ladder)          — HOLDS. Suite 17/17, exit 0. L1 links, L2 promotes (no L1 replay),
+                                exhaustion promotes, L4 stops with contract_amended=false /
+                                verifier_amended=false, declared verifier path refused before dispatch.
+  D2 (cost from artefacts)    — HOLDS. Real PI session artefact bound and exact tokens/cost derived,
+                                or explicit null + reason. `metrics` reports both. No invented figure.
+  D3 (acknowledged block)     — HOLDS. Refuses (3) without a resolvable decision and for a live run;
+                                acknowledges one run once; run record byte-identical afterwards.
+  Slice A behaviours          — HOLD EXACTLY (plan refusals 2/2/2, docs/ 0; check L4/3 and L2/0;
+                                loop A-F2 blocks/advances/ignores; rule-2 hash gate refuses on mismatch).
+  Suites                      — ai-loop 17/17, ai-project 18/18, ai-run 49/49, ai-autonomy 59/59,
+                                ai-contract-lint 3/3; 146 assertions, 0 failed, 0 skipped, all exit 0.
+
+  Defects in the TREE: none found. One DEFECT IN THE PRIOR REPORT'S EVIDENCE and two observations are
+  recorded at the end.
+
+================================================================================
+C0 — TREE / LANE CONTEXT
+================================================================================
+CLAIM: This verification ran against the real working tree, whose tools are the implemented Slice B
+       revision. The required suites are pure and do not bootstrap the CMS.
+COMMAND: cd /var/www/html/ikabudsix && git branch --show-current; php -v | head -1
+OBSERVED: feat/akira-editorial-and-authority-coverage
+PHP 8.5.10 (cli) (built: Aug 28 2026 07:25:54) (NTS)   [the contract requires PHP 8.3-compatible;
+this tree runs on 8.5 and the required suites pass. The harness fingerprints resolved the tools;
+ai-loop fingerprint reported tools/ai-loop.php — f7c52763e2c4…, tools/ai-project.php — c270bb2eceff…
+and the suite subprocesses invoked /usr/bin/php8.5.]
+
+================================================================================
+C1 — FIRST CLAIM: `plan` REFUSES THIS CONTRACT (rule 1 intact)
+================================================================================
+CLAIM: Rule 1 is not weakened: `plan` refuses this director-authorised contract because its scope names
+       the verifier trust surface. Exit 2.
+COMMAND: php tools/ai-autonomy.php plan --contract=.ai/guardrail-ladder-cost.contract.md; echo "EXIT=$?"
+OBSERVED: ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-loop.php' reaches 'tools/ai-loop.php'; entry 'tools/ai-project.php' reaches 'tools/ai-project.php'; entry 'tools/ai-run.php' reaches 'tools/ai-run.php'; entry 'tools/ai-autonomy.php' reaches 'tools/ai-autonomy.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+
+================================================================================
+D1 — THE S7 REPAIR LADDER
+================================================================================
+CLAIM: `php tests/ai_loop_test.php` passes, exit 0, 17 of 17, zero skips.
+COMMAND: php tests/ai_loop_test.php; echo "EXIT_CODE=$?"
+OBSERVED:
+══════════════════════════════════════
+  ai-loop
+  Started: 2026-09-14 07:18:05
+══════════════════════════════════════
+  🧬 tools/ai-loop.php — f7c52763e2c4...
+  🧬 tools/ai-project.php — c270bb2eceff...
+... (sections 1–11 pass) ...
+── S7 bounded repair ladder: promote, link evidence, and stop at L4 ──
+  ✅ 12. an implementation failure is repaired at L1 and completes as a linked new run
+  ✅ 13. an approach failure visibly promotes directly to L2, never replays L1
+  ✅ 14. exhausted/same failure promotes L1 -> L2 rather than replaying L1
+  ✅ 15. a contract-changing condition files L4 and stops without amending contract/verifier
+  ✅ 16. a rung declaring a verifier path is structurally refused before dispatch
+  ✅ 17. ladder refuses to advance when the failed attempt supplies no new evidence
+══════════════════════════════════════
+  RESULTS
+  17/17 passed
+  Assertions: 17
+
+  Suite: ai-loop
+  Time: 16.78s
+══════════════════════════════════════
+EXIT_CODE=0
+
+The per-rung event streams below are the loop's own stdout, captured in the suite's result file. The
+extraction command is re-derivable after the suite run:
+
+COMMAND: php -r '$d=json_decode(file_get_contents("test_results/ai-loop.json"),true); foreach($d["results"] as $r){ if(preg_match("/^1[2-6]\./",$r["label"])){ $s=$r["detail"]; $c=strpos($s,"\nrecords="); if($c!==false){$s=substr($s,0,$c);} $c=strpos($s,"\ndecision="); if($c!==false){$s=substr($s,0,$c);} echo "===== ".$r["label"]." [".$r["status"]."] =====\n".$s."\n\n"; } }'
+
+--- Test 12: L1 repair completes as a LINKED new run ---
+OBSERVED: ===== 12. an implementation failure is repaired at L1 and completes as a linked new run [pass] =====
+PLAN S1 lane=fixture contract=/tmp/ikabud-ai-repair-c55f21b0de32/projects/repair/slices/s1.md max_repairs=1
+COMMIT-CHECK before S1: exit=0
+LEDGER start repair-s1-20260914072013-b7b3c3
+LEDGER finish repair-s1-20260914072013-b7b3c3 exit=7 status=failed
+SCOPE OK delta=0
+PROMOTION initial -> L1 trigger=implementation
+LEDGER start repair-s1-20260914072013-cf21b0 predecessor=repair-s1-20260914072013-b7b3c3 rung=L1 change="distinct L1 method"
+LEDGER finish repair-s1-20260914072013-cf21b0 exit=0 status=completed
+SCOPE OK delta=0
+CLAIMS repair-s1-20260914072013-cf21b0 extracted=1 (UNVERIFIED)
+VERIFY repair-s1-20260914072013-cf21b0 exit=0 statuses=RE_DERIVED
+REPAIR COMPLETE L1 S1: all claims RE_DERIVED
+PROJECT COMPLETE repair
+
+The successor record carries the predecessor link and the repair provenance:
+COMMAND: php -r '$d=json_decode(file_get_contents("test_results/ai-loop.json"),true); foreach($d["results"] as $r){ if(str_starts_with($r["label"],"12.")){ preg_match("/records=(\[.*\])$/s",$r["detail"],$m); foreach(json_decode($m[1],true) as $rec){ echo "id=",$rec["id"]," predecessor_run_id=",json_encode($rec["predecessor_run_id"])," repair=",json_encode($rec["repair"],JSON_UNESCAPED_SLASHES)," status=",$rec["status"],"\n"; } } }'
+OBSERVED: id=repair-s1-20260914072013-b7b3c3 predecessor_run_id=null repair=null status=failed
+id=repair-s1-20260914072013-cf21b0 predecessor_run_id="repair-s1-20260914072013-b7b3c3" repair={"level":"L1","approach_change":"distinct L1 method","previous_failure":"implementation compile-error"} status=completed
+
+--- Test 13: approach failure promotes directly to L2, NEVER replays L1 ---
+OBSERVED: ===== 13. an approach failure visibly promotes directly to L2, never replays L1 [pass] =====
+LEDGER finish repair-s1-20260914072014-9ab3e3 exit=7 status=failed
+SCOPE OK delta=0
+PROMOTION initial -> L2 trigger=approach skipped-unavailable-rungs
+LEDGER start repair-s1-20260914072015-c3b21f predecessor=repair-s1-20260914072014-9ab3e3 rung=L2 change="distinct L2 method"
+LEDGER finish repair-s1-20260914072015-c3b21f exit=0 status=completed
+...
+REPAIR COMPLETE L2 S1: all claims RE_DERIVED
+(no `rung=L1` appears anywhere in the stream)
+
+--- Test 14: exhaustion promotes L1 -> L2 rather than repeating L1 ---
+OBSERVED: ===== 14. exhausted/same failure promotes L1 -> L2 rather than replaying L1 [pass] =====
+LEDGER finish repair-s1-20260914072016-0021f1 exit=7 status=failed
+PROMOTION initial -> L1 trigger=implementation
+LEDGER start repair-s1-20260914072016-38289e predecessor=repair-s1-20260914072016-0021f1 rung=L1 change="distinct L1 method"
+LEDGER finish repair-s1-20260914072016-38289e exit=7 status=failed
+SCOPE OK delta=0
+PROMOTION L1 -> L2 trigger=implementation
+LEDGER start repair-s1-20260914072016-0eb01a predecessor=repair-s1-20260914072016-38289e rung=L2 change="distinct L2 method"
+LEDGER finish repair-s1-20260914072016-0eb01a exit=0 status=completed
+...
+REPAIR COMPLETE L2 S1: all claims RE_DERIVED
+(`rung=L1` appears exactly once — the L1 attempt is not replayed)
+
+--- Test 15: L4 stops WITHOUT amending contract or verifier ---
+OBSERVED: ===== 15. a contract-changing condition files L4 and stops without amending contract/verifier [pass] =====
+LEDGER finish repair-s1-20260914072017-6f9a74 exit=7 status=failed
+SCOPE OK delta=0
+PROMOTION initial -> L4 trigger=contract
+L4 STOP S1: decision=L4-S1-001 contract_amended=false verifier_amended=false reason=contract acceptance-needs-widening
+STOP S1: run status failed; block-record-exit=0
+
+The filed decision, from the same result file:
+COMMAND: php -r '$d=json_decode(file_get_contents("test_results/ai-loop.json"),true); foreach($d["results"] as $r){ if(str_starts_with($r["label"],"15.")){ preg_match("/\ndecision=(\{.*\})$/s",$r["detail"],$m); echo $m[1],"\n"; } }'
+OBSERVED: {"id":"L4-S1-001","slice":"S1","run_id":"repair-s1-20260914072017-6f9a74","reason":"contract acceptance-needs-widening","requested_decision":"keep the fixed envelope or authorise a separately recorded future contract","contract_amended":false,"verifier_amended":false,"filed_at":"2026-09-14T07:20:18+00:00"}
+
+--- Test 16: a rung declaring a verifier path is STRUCTURALLY REFUSED BEFORE DISPATCH ---
+OBSERVED: ===== 16. a rung declaring a verifier path is structurally refused before dispatch [pass] =====
+LEDGER finish repair-s1-20260914072018-0f0837 exit=7 status=failed
+SCOPE OK delta=0
+PROMOTION initial -> L1 trigger=implementation
+RUNG REFUSED L1: verifier preflight path=tools/ai-loop.php exit=3 {"verdict":"ESCALATE","authority_level":"L4","action":"repair L1: distinct L1 method","paths":["tools/ai-loop.php"],"reasons":["path 'tools/ai-loop.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"]}
+L4 STOP S1: decision=L4-S1-001 contract_amended=false verifier_amended=false
+STOP S1: run status failed; block-record-exit=0
+
+SECONDARY LIVE RE-DERIVATION (ad-hoc fixture harness, not a repo file). I regenerated the same five
+scenarios as real fixtures and ran `php tools/ai-loop.php … --max-repairs=1` directly. Exit codes were
+0 for l1/l2/exhaust and 3 for l4/refuse; the event streams were identical in shape:
+  l1     exit_code=0  PROMOTION initial -> L1 trigger=implementation ; LEDGER start … predecessor=… rung=L1 ; REPAIR COMPLETE L1
+  l2     exit_code=0  PROMOTION initial -> L2 trigger=approach skipped-unavailable-rungs ; REPAIR COMPLETE L2
+  exhaust exit_code=0 PROMOTION initial -> L1 ; … exit=7 ; PROMOTION L1 -> L2 ; REPAIR COMPLETE L2
+  l4     exit_code=3  PROMOTION initial -> L4 trigger=contract ; L4 STOP … contract_amended=false verifier_amended=false
+  refuse exit_code=3  PROMOTION initial -> L1 ; RUNG REFUSED L1: verifier preflight path=tools/ai-loop.php exit=3 ; L4 STOP
+
+WHAT EACH TEST GUARDS (revert condition stated, per the contract's report format):
+  12 fails if predecessor/repair provenance stops being written or the successor is not a new linked run.
+  13 fails if an approach failure can be routed through L1 (replay) instead of promoting to L2.
+  14 fails if exhaustion re-runs the L1 method instead of advancing the level.
+  15 fails if `contract_amended`/`verifier_amended` can become true, or the contract file bytes change.
+  16 fails if the declared rung path is dispatched instead of refused by the ai-autonomy preflight.
+
+================================================================================
+D2 — COST AND TOKENS FROM ARTEFACTS
+================================================================================
+CLAIM: A run record either binds a real runner session artefact (deriving exact tokens/cost from its
+       JSONL) or records an explicit null WITH a stated reason. `metrics` reports it. No placeholder or
+       invented figure exists in the cost path.
+COMMAND: php tests/ai_run_test.php; echo "EXIT_CODE=$?"
+OBSERVED: 49/49 passed, Assertions: 49, EXIT_CODE=0 (tests 35 and 36 both pass)
+
+--- Test 35: runner session bound, exact tokens/cost derived from the JSONL artefact ---
+COMMAND: php -r '$d=json_decode(file_get_contents("test_results/ai-run.json"),true); foreach($d["results"] as $r){ if(str_starts_with($r["label"],"35.")){ preg_match("/record=(\{.*\})$/s",$r["detail"],$m); $rec=json_decode($m[1],true); echo json_encode(["runner_session"=>$rec["runner_session"],"usage"=>$rec["usage"],"usage_unavailable_reason"=>$rec["usage_unavailable_reason"]],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n"; } }'
+OBSERVED:
+{
+    "runner_session": {
+        "session_id": "fixture-session",
+        "session_file": "/tmp/ikabud-ai-run-73cdc2c47601/runner-session.jsonl",
+        "provider": "fixture",
+        "model": "model"
+    },
+    "usage": {
+        "input_tokens": 11,
+        "output_tokens": 7,
+        "cache_read_tokens": 3,
+        "cache_write_tokens": 0,
+        "reasoning_tokens": 2,
+        "total_tokens": 21,
+        "cost_usd": 0.033,
+        "messages": 1,
+        "source": "bound_pi_session_jsonl",
+        "session_id": "fixture-session",
+        "session_file": "/tmp/ikabud-ai-run-73cdc2c47601/runner-session.jsonl"
+    },
+    "usage_unavailable_reason": null
+}
+The fixture JSONL is written by the test itself with exactly those numbers (11/7/3/0/2/21, cost.total
+0.033); the ledger sums the JSONL and does nothing else. There is no pricing table in the path — see the
+source audit below.
+
+--- Test 36: absent/mismatched usage is explicit null WITH a reason ---
+COMMAND: php -r '$d=json_decode(file_get_contents("test_results/ai-run.json"),true); foreach($d["results"] as $r){ if(str_starts_with($r["label"],"36.")){ $rec=json_decode($r["detail"],true); echo json_encode(["lane"=>$rec["lane"],"runner_session"=>$rec["runner_session"],"usage"=>$rec["usage"],"usage_unavailable_reason"=>$rec["usage_unavailable_reason"]],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n"; } }'
+OBSERVED:
+{
+    "lane": "no-such-lane",
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "exposed Pi session belongs to lane deepseek/deepseek-v4-flash, not run lane no-such-lane"
+}
+(`usage` key present and null; a non-empty reason string; no figure.)
+
+--- REAL binding: the actual verification session's own Pi artefact ---
+COMMAND:
+runs=$(mktemp -d /tmp/verify-d2-runs-XXXXXX)
+php tools/ai-run.php start --contract=.ai/builder-spec-truth.contract.md --lane=deepseek/deepseek-v4-flash --name=real-session-probe --runs-dir="$runs"
+sleep 1
+php tools/ai-run.php finish --id=real-session-probe --exit=0 --log=/dev/null --runs-dir="$runs" >/dev/null
+php -r '$r=json_decode(file_get_contents($argv[1]),true); echo json_encode(["runner_session"=>$r["runner_session"],"usage"=>$r["usage"],"usage_unavailable_reason"=>$r["usage_unavailable_reason"]],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n";' "$runs/real-session-probe.json"
+rm -rf "$runs"
+OBSERVED:
+{
+    "runner_session": {
+        "session_id": "01a09ec7-a3c0-7707-9902-621aab807f0a",
+        "session_file": "/home/kajagogoo/.pi/agent/sessions/--var-www-html-ikabudsix--/2026-09-14T07-17-58-848Z_01a09ec7-a3c0-7707-9902-621aab807f0a.jsonl",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+    },
+    "usage": {
+        "input_tokens": 389,
+        "output_tokens": 965,
+        "cache_read_tokens": 92672,
+        "cache_write_tokens": 0,
+        "reasoning_tokens": 682,
+        "total_tokens": 94026,
+        "cost_usd": 0.000584142,
+        "messages": 1,
+        "source": "bound_pi_session_jsonl",
+        "session_id": "01a09ec7-a3c0-7707-9902-621aab807f0a",
+        "session_file": "/home/kajagogoo/.pi/agent/sessions/--var-www-html-ikabudsix--/2026-09-14T07-17-58-848Z_01a09ec7-a3c0-7707-9902-621aab807f0a.jsonl"
+    },
+    "usage_unavailable_reason": null
+}
+These are the real tokens recorded in this verification session's JSONL, not a table or an estimate.
+
+--- `metrics` reports a real bound artefact end-to-end ---
+COMMAND (temp project whose slice contract is the temp run's contract):
+php tools/ai-project.php metrics --project=probe --projects-dir="$base/projects" --runs-dir="$base/runs"
+OBSERVED:
+METRICS probe — derived from artefacts only
+...
+cost (usd)                  0.000734
+tokens total                100155
+...
+(exit 0; the run record carried usage source=bound_pi_session_jsonl, total_tokens=100155,
+ cost_usd=0.000734171 — `metrics` summed the bound artefact.)
+
+--- `metrics` on the real project in the tree ---
+COMMAND: php tools/ai-project.php metrics --project=harpp-gen4; echo "EXIT=$?"
+OBSERVED (excerpt):
+contract violations         null — run harpp-gen4-s4-20260914045055-cd664e predates changed-path scope conformance; the total is not derivable
+cost (usd)                  null — run harpp-gen4-s4-20260914045055-cd664e: run record predates runner usage binding; project totals are null, not estimated
+tokens total                null — run harpp-gen4-s4-20260914045055-cd664e: run record predates runner usage binding; project totals are null, not estimated
+director minutes            null — director-minutes.json is absent; the director has not logged any minutes (not zero)
+EXIT=0
+This is the required honest answer: a missing or legacy usage artefact yields null + a stated reason,
+never a figure.
+
+--- No placeholder / invented figure: source audit ---
+COMMAND: grep -n "pricing\|estimate\|placeholder\|interpolat\|wall.clock\|cost_usd" tools/ai-run.php tools/ai-project.php
+OBSERVED (key lines): tools/ai-run.php:534 comment "Sum only usage objects actually present in the
+bound JSONL during this run. No pricing table, interpolation, wall-clock conversion or placeholder is
+permitted."; tools/ai-project.php:630 reason "...; project totals are null, not estimated";
+tools/ai-project.php:655 "incorrect decisions are never estimated". The only monetary literals in the
+tree's tools are advisory lane-cost comments in tools/ai-autonomy.php (e.g. the "$0.45/$3.20" lane note
+and the `routine_reasoning.max_cost_usd: 0.02` routing policy). Neither is on the cost/token reporting
+path and neither is emitted as a metric. No hardcoded token or cost constant exists in ai-run.php or
+ai-project.php.
+A real `grep` for invented constants in the two cost tools returned no matches.
+
+AUDIT OF THE RUN RECORDS THEMSELVES:
+guardrail-ladder-cost-flash.json   usage=null reason="runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+guardrail-ladder-cost.json         usage=null reason="run carries no bound runner session artefact"   (see observation O2)
+guardrail-ladder-cost-verify.json  usage=null reason="runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+guardrail-scope-integrity.json     usage=null reason=(none)   (legacy pre-feature record)
+harpp-gen4-*.json, s2s3-*.json     usage=null reason=(none)   (legacy pre-feature records; metrics states "predates runner usage binding")
+No record anywhere carries a non-null invented usage object; the only non-null usage objects in the
+tree are produced by the test fixture and by the real-session probe above.
+
+================================================================================
+D3 — THE ACKNOWLEDGED-BLOCK ROUTE (CD-29)
+================================================================================
+CLAIM: The route refuses (exit 3) without a resolvable director decision and for a still-running run;
+       acknowledges one named run once; records the reason verbatim, the decision and the timestamp; and
+       leaves `status: blocked` and `scope_conformance.ok: false` byte-for-byte unchanged.
+COMMAND: php tests/ai_run_test.php (tests 37–42 all pass; 49/49 total, exit 0)
+The routes below are re-derived with real commands against a temp copy of the REAL blocked run
+.ai/runs/guardrail-scope-integrity.json. (The temp dir is used so the tree's existing ack ledger is not
+touched.)
+
+COMMAND:
+proof=$(mktemp -d /tmp/verify-d3-XXXXXX)
+cp .ai/runs/guardrail-scope-integrity.json "$proof/"
+before=$(sha256sum "$proof/guardrail-scope-integrity.json" | cut -d' ' -f1)
+
+# (a) no director decision
+php tools/ai-run.php commit-check --acknowledge-block=guardrail-scope-integrity --reason="independent verify" --runs-dir="$proof"; echo "EXIT=$?"
+
+# (b) non-resolving decision ref
+php tools/ai-run.php commit-check --acknowledge-block=guardrail-scope-integrity --reason="x" --director-decision=CD-9999 --runs-dir="$proof"; echo "EXIT=$?"
+
+# (c) still-running run
+printf '%s\n' '{"id":"live-run","status":"running","started_at":"2026-09-14T07:00:00+00:00","pid":'"$$"',"scope_conformance":{"ok":false}}' > "$proof/live-run.json"
+php tools/ai-run.php commit-check --acknowledge-block=live-run --reason="still running?" --director-decision=CD-29 --runs-dir="$proof"; echo "EXIT=$?"
+rm -f "$proof/live-run.json"
+
+# (d) acknowledge once
+php tools/ai-run.php commit-check --acknowledge-block=guardrail-scope-integrity --reason="structurally blocked: created the baseline it could not have" --director-decision=CD-29 --runs-dir="$proof"; echo "EXIT=$?"
+after=$(sha256sum "$proof/guardrail-scope-integrity.json" | cut -d' ' -f1)
+php -r '$r=json_decode(file_get_contents($argv[1]),true); echo "status=",$r["status"]," scope_conformance.ok=",var_export($r["scope_conformance"]["ok"],true),"\n";' "$proof/guardrail-scope-integrity.json"
+echo "before=$before"; echo "after =$after"
+
+# (e) acknowledge the same run a second time
+php tools/ai-run.php commit-check --acknowledge-block=guardrail-scope-integrity --reason="again" --director-decision=CD-29 --runs-dir="$proof"; echo "EXIT=$?"
+rm -rf "$proof"
+
+OBSERVED:
+=== (a) no decision ===
+REFUSED: --director-decision must resolve to a recorded decision in .ai/decisions/ or .ai/chair-decisions.md
+EXIT=3
+=== (b) non-resolving decision ===
+REFUSED: --director-decision must resolve to a recorded decision in .ai/decisions/ or .ai/chair-decisions.md
+EXIT=3
+=== (c) still-running run ===
+REFUSED: run live-run is still running; a live run cannot be acknowledged as a historical block
+EXIT=3
+=== (d) acknowledge once ===
+ACKNOWLEDGED BLOCK guardrail-scope-integrity
+  reason:   structurally blocked: created the baseline it could not have
+  decision: CD-29
+  recorded: 2026-09-14T07:19:21+00:00
+  immutable: status=blocked scope_conformance.ok=false sha256=347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47
+COMMIT-CHECK — /tmp/verify-d3-wFZX2t
+  ELIGIBLE — all 1 run(s) are completed
+EXIT=0
+status=blocked scope_conformance.ok=false
+before=347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47
+after =347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47
+=== (e) second acknowledgement ===
+REFUSED: blocked run guardrail-scope-integrity was already acknowledged once
+EXIT=3
+The ack artefact written in the temp dir (verbatim reason, decision, timestamp, observed state+hash):
+{
+    "schema": "ark.ai-block-acknowledgements.v1",
+    "acknowledgements": [
+        {
+            "run_id": "guardrail-scope-integrity",
+            "block_reason": "structurally blocked: created the baseline it could not have",
+            "director_decision": "CD-29",
+            "acknowledged_at": "2026-09-14T07:19:21+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47"
+        }
+    ]
+}
+Refusals (a)–(c) wrote no ack artefact (the temp dir contained only guardrail-scope-integrity.json).
+
+--- The suite's own synthetic equivalents (37–42), verbatim from the run result ---
+OBSERVED:
+===== 37. acknowledgement refuses without a resolvable director decision (exit 3) [pass] =====
+exit: 3
+output:
+REFUSED: --director-decision must resolve to a recorded decision in .ai/decisions/ or .ai/chair-decisions.md
+
+===== 38. one blocked run is acknowledged verbatim and commit-check becomes eligible [pass] =====
+exit: 0
+output:
+ACKNOWLEDGED BLOCK slice-a-block
+  reason:   baseline unavailable — acknowledged verbatim
+  decision: CD-29
+  recorded: 2026-09-14T07:18:43+00:00
+  immutable: status=blocked scope_conformance.ok=false sha256=37297f91ba4b782475aa23f408ffaf832098b49bd160963d0ef7f0777dbba018
+COMMIT-CHECK — /tmp/ikabud-ai-run-73cdc2c47601/ack-runs
+  ELIGIBLE — all 1 run(s) are completed
+
+===== 39. acknowledgement does not mutate status, scope conformance, or any run-record byte [pass] =====
+before_sha=37297f91ba4b782475aa23f408ffaf832098b49bd160963d0ef7f0777dbba018 after_sha=37297f91ba4b782475aa23f408ffaf832098b49bd160963d0ef7f0777dbba018
+
+===== 40. a named blocked run can be acknowledged only once [pass] =====
+exit: 3
+output:
+REFUSED: blocked run slice-a-block was already acknowledged once
+
+===== 41. a new blocked run blocks again; acknowledgement is not a general unblock [pass] =====
+exit: 3
+output:
+COMMIT-CHECK — /tmp/ikabud-ai-run-73cdc2c47601/ack-runs
+  NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+  BLOCK  new-block  blocked  age=0s  pid=0
+
+===== 42. a still-running run cannot be acknowledged (exit 3) [pass] =====
+exit: 3
+output:
+REFUSED: run live is still running; a live run cannot be acknowledged as a historical block
+
+--- The tree's real ack ledger is itself consistent ---
+COMMAND: php -r '$d=json_decode(file_get_contents(".ai/runs/.acknowledged-blocks.v1"),true); foreach($d["acknowledgements"] as $a){ echo $a["run_id"]," -> ",$a["run_record_sha256"]," decision=",$a["director_decision"]," status=",$a["run_status_observed"]," ok=",var_export($a["scope_conformance_ok_observed"],true),"\n"; }'; sha256sum .ai/runs/guardrail-scope-integrity.json .ai/runs/guardrail-ladder-cost-flash.json
+OBSERVED: guardrail-scope-integrity -> 347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47 decision=CD-29 status=blocked ok=false
+guardrail-ladder-cost-flash -> 7257ee6926affeb9bb227abcf2623cc3bd74873e83b830574573879ded43c504 decision=CD-31 status=blocked ok=false
+347c1e5fa754beb2b8ff1e43e693b605f4b48a633b18ef95603fc7987dc9ef47  .ai/runs/guardrail-scope-integrity.json
+7257ee6926affeb9bb227abcf2623cc3bd74873e83b830574573879ded43c504  .ai/runs/guardrail-ladder-cost-flash.json
+(recorded and actual hashes agree; CD-29 and CD-31 both exist as ## headings in .ai/chair-decisions.md.)
+
+================================================================================
+SLICE A — RE-CONFIRMED EXACTLY
+================================================================================
+CLAIM: Contract scopes that cover the trust surface are refused (exit 2) for `tools/`, `tools/ai-*.php`
+       and `**/*.php`, while `docs/` is accepted (exit 0). The positive control proves this is targeted,
+       not a blanket tightening.
+COMMAND: AI_AUTONOMY_SHOW_SCOPE_PROOFS=1 php tests/ai_autonomy_test.php; (suite exit 0), extracting
+         PLAN_SCOPE_PROOF lines.
+OBSERVED:
+PLAN_SCOPE_PROOF tools/ internal_exit=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools' reaches 'tools/ai-run.php'; entry 'tools' reaches 'tools/ai-autonomy.php'; entry 'tools' reaches 'tools/ai-project.php'; entry 'tools' reaches 'tools/ai-loop.php'; entry 'tools' reaches 'tools/ai-contract-lint.php'; entry 'tools' reaches 'tools/harpp-bridge/harpp_wake.py' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+PLAN_SCOPE_PROOF_END
+PLAN_SCOPE_PROOF tools/ai-*.php internal_exit=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-*.php' reaches 'tools/ai-run.php'; entry 'tools/ai-*.php' reaches 'tools/ai-autonomy.php'; entry 'tools/ai-*.php' reaches 'tools/ai-project.php'; entry 'tools/ai-*.php' reaches 'tools/ai-loop.php'; entry 'tools/ai-*.php' reaches 'tools/ai-contract-lint.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+PLAN_SCOPE_PROOF_END
+PLAN_SCOPE_PROOF **/*.php internal_exit=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry '**/*.php' reaches 'tools/ai-run.php'; entry '**/*.php' reaches 'tools/ai-autonomy.php'; entry '**/*.php' reaches 'tools/ai-project.php'; entry '**/*.php' reaches 'tools/ai-loop.php'; entry '**/*.php' reaches 'tools/ai-contract-lint.php'; entry '**/*.php' reaches 'kernel/Workbench/Development/DevelopmentTaskContract.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+PLAN_SCOPE_PROOF_END
+PLAN_SCOPE_PROOF docs/ internal_exit=0
+... (a full plan manifest is emitted, i.e. the contract is PLANNED) ...
+PLAN_SCOPE_PROOF_END
+SUITE_EXIT_CODE=0
+
+CLAIM: `check` escalates the exact trust-surface path to L4/exit 3 while a benign in-scope path records
+       L2/exit 0.
+COMMAND: php tools/ai-autonomy.php check 'widen the command allowlist' --path=tools/ai-run.php --contract=.ai/guardrail-scope-integrity.contract.md; echo "EXIT=$?"; php tools/ai-autonomy.php check 'benign in-scope probe' --path=docs/testing/guardrail-note.md --contract=.ai/builder-spec-truth.contract.md; echo "EXIT=$?"
+OBSERVED:
+VERDICT: ESCALATE
+level: L4
+action: widen the command allowlist
+paths:
+  - tools/ai-run.php
+reasons:
+  - path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT=3
+VERDICT: RECORD
+level: L2
+action: benign in-scope probe
+paths:
+  - docs/testing/guardrail-note.md
+reasons:
+  - path 'docs/testing/guardrail-note.md' matched 'docs/testing' by directory prefix
+EXIT=0
+
+CLAIM: The loop's A-F2 gate still BLOCKS an out-of-scope write (exit 3), ADVANCES an all-in-scope run
+       (exit 0), and does not attribute a modification that pre-dated dispatch (exit 0).
+COMMAND: AI_LOOP_SHOW_SCOPE_PROOFS=1 php tests/ai_loop_test.php (suite exit 0), extracting SCOPE_PROOF blocks.
+OBSERVED:
+SCOPE_PROOF_OUT_OF_SCOPE internal_exit=3
+... LEDGER finish fixture-s1-… exit=0 status=blocked
+SCOPE BLOCKED delta=1 offending=.ai/loop-scope-probe-….txt
+STOP S1: scope conformance failed: .ai/loop-scope-probe-….txt; block-record-exit=0
+SCOPE_PROOF_END
+SCOPE_PROOF_IN_SCOPE internal_exit=0
+... LEDGER finish fixture-s1-… exit=0 status=completed
+SCOPE OK delta=1
+CLAIMS fixture-s1-… extracted=1 (UNVERIFIED)
+VERIFY fixture-s1-… exit=0 statuses=RE_DERIVED
+ADVANCE S1: all claims RE_DERIVED
+PROJECT COMPLETE fixture
+SCOPE_PROOF_END
+SCOPE_PROOF_PRE_EXISTING internal_exit=0
+... LEDGER finish fixture-s1-… exit=0 status=completed
+SCOPE OK delta=0
+CLAIMS fixture-s1-… extracted=1 (UNVERIFIED)
+VERIFY fixture-s1-… exit=0 statuses=RE_DERIVED
+ADVANCE S1: all claims RE_DERIVED
+PROJECT COMPLETE fixture
+SCOPE_PROOF_END
+SUITE_EXIT_CODE=0
+
+CLAIM: Rule 2's hash gate still moves and still refuses on mismatch, naming the changed trust-surface
+       files.
+COMMAND: proof=$(mktemp -d /tmp/verify-hashgate-XXXXXX); php -r '$r=["id"=>"gate-probe","status"=>"completed","started_at"=>date(DATE_ATOM),"finished_at"=>date(DATE_ATOM),"pid"=>0,"trust_surface_hash"=>str_repeat("0",64),"trust_surface_files"=>["tools/ai-run.php"=>str_repeat("0",64)],"scope_conformance"=>["ok"=>true]]; file_put_contents($argv[1]."/gate-probe.json", json_encode($r)."\n");' "$proof"; php tools/ai-run.php commit-check --runs-dir="$proof"; echo "EXIT=$?"; rm -rf "$proof"
+OBSERVED:
+COMMIT-CHECK — /tmp/verify-hashgate-ngYQzS
+  NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+  BLOCK  gate-probe  trust_surface_mismatch  age=0s  pid=0  changed=tools/ai-run.php,tools/ai-autonomy.php,tools/ai-project.php,tools/ai-loop.php,tools/ai-contract-lint.php,kernel/Workbench/Development/DevelopmentTaskContract.php,tools/harpp-bridge/harpp_wake.py
+EXIT=3
+
+================================================================================
+ALL REQUIRED SUITES — ZERO SKIPS
+================================================================================
+COMMAND: for t in ai_loop_test ai_project_test ai_run_test ai_autonomy_test ai_contract_lint_test; do php tests/$t.php >/dev/null 2>&1; printf '%-24s EXIT=%s\n' "$t" "$?"; done
+OBSERVED:
+ai_loop_test             EXIT=0
+ai_project_test          EXIT=0
+ai_run_test              EXIT=0
+ai_autonomy_test         EXIT=0
+ai_contract_lint_test    EXIT=0
+
+COMMAND: php -r '$map=["ai-loop"=>"ai_loop_test.php","ai-project"=>"ai_project_test.php","ai-run"=>"ai_run_test.php","ai-autonomy"=>"ai_autonomy_test.php","ai-contract-lint"=>"ai_contract_lint_test.php"]; foreach($map as $name=>$file){ $d=json_decode(file_get_contents("test_results/$name.json"),true); echo str_pad($name,18),json_encode($d["summary"],JSON_UNESCAPED_SLASHES),"\n"; }'
+OBSERVED:
+ai-loop           {"passed":17,"failed":0,"skipped":0,"total":17,"assertions":17,"exit_code":0}
+ai-project        {"passed":18,"failed":0,"skipped":0,"total":18,"assertions":18,"exit_code":0}
+ai-run            {"passed":49,"failed":0,"skipped":0,"total":49,"assertions":49,"exit_code":0}
+ai-autonomy       {"passed":59,"failed":0,"skipped":0,"total":59,"assertions":59,"exit_code":0}
+ai-contract-lint  {"passed":3,"failed":0,"skipped":0,"total":3,"assertions":3,"exit_code":0}
+Total: 146 assertions, 0 failed, 0 skipped.
+
+================================================================================
+DEFECTS / DISCREPANCIES / OBSERVATIONS
+================================================================================
+No defect was found in the implementation or in any test. I did not modify any file.
+
+R1 — REPORT DEFECT (not a tree defect): the prior report `.ai/guardrail-ladder-cost.report.txt`, under
+     "A repair successor carries its provenance", quoted this command output:
+         "predecessor_run_id":null
+         "repair":{"level":"L1",...}
+     That is stale/incomplete: it shows only the INITIAL run's null predecessor and omits the
+     SUCCESSOR's link. Re-running the exact command against the current result file yields three lines:
+         "predecessor_run_id":null
+         "predecessor_run_id":"repair-s1-20260914072013-b7b3c3"
+         "repair":{"level":"L1","approach_change":"distinct L1 method","previous_failure":"implementation compile-error"}
+     The tree is correct and test 12 asserts the successor link; the prior report's quoted evidence is
+     not reproducible and should not be relied on. Reloaded here as required.
+
+O1 — OBSERVATION (lane binding in recorded runs): every real run record in .ai/runs currently carries
+     `usage: null` with a reason (or, for legacy records, a reason supplied by `metrics`). The only
+     non-null usage objects I produced were the test fixture (test 35) and my real-session probe
+     (94026 tokens / $0.000584142, then 100155 / $0.000734 via `metrics`). This is expected: the
+     recorded runs predate or did not expose a session. It is not a defect and no figure is invented.
+
+O2 — OBSERVATION (legacy record shape): .ai/runs/guardrail-ladder-cost.json (the Sol attempt) has the
+     `usage` key present but null, with reason "run carries no bound runner session artefact", yet has
+     NO `runner_session` key at all. The current start code always writes both keys
+     (tools/ai-run.php:766-768), so this is a start-record written before the current code and finished
+     by it. `ai-project.php` reads `$record['runner_session'] ?? null` and reports the usage reason
+     correctly. It is a provenance wrinkle on a historical record, not an invented figure and not a
+     D2 defect under the contract's forbidden list.
+
+O3 — NO INVENTED FIGURE: the cost/token path in tools/ai-run.php (`usageFromBoundSession`, line 534+)
+     sums only usage objects present in the bound JSONL, and tools/ai-project.php (`deriveMetrics`,
+     line 607+) sets project totals to null with a reason when any matched run lacks numeric usage. A
+     real grep for pricing/estimate/placeholder/interpolation/hardcoded constants in those two files
+     found no reporting-path literal. The only monetary literals in the tools are advisory lane-cost
+     notes and a routing policy in tools/ai-autonomy.php, which are not emitted as metrics.
+
+METHOD LIMITS: non-vacuity was not re-derived by mutation in this run. The claims above are the suites'
+own assertions, each observed to pass against the tree, plus live command re-derivations of every
+deliverable. The prior report's mutation table was not independently re-executed.

@@ -1,0 +1,7 @@
+{# Block: hero — context: props #}
+<section class="hero" data-ark-block="hero">
+  {if props.eyebrow}<p class="t-kicker hero__kicker">{props.eyebrow | esc_html}</p>{/if}
+  <h1 class="t-display hero__title">{props.title | esc_html}</h1>
+  {if props.subtitle}<p class="t-lead hero__lead">{props.subtitle | esc_html}</p>{/if}
+  {if props.cta_label}<a class="btn" href="{props.cta_href | esc_url | esc_attr}">{props.cta_label | esc_html}</a>{/if}
+</section>

@@ -17,23 +17,63 @@ function catThemeHealth(array $params = []): void
 }
 
 /** @param Throwable $error */
-function catThemeJsonError(Throwable $error): void
+/**
+ * Unwrap a capability failure down to the theme exception that actually explains it.
+ *
+ * The capability bus wraps anything a handler throws in a generic
+ * CapabilityCallException ("Capability call failed"), which hides the cause. Every
+ * admin surface must report the inner reason: the theme studio previously showed only
+ * the wrapper, so a rejected theme looked like an unexplained failure.
+ *
+ * @return array{status: int, message: string, retryAfter: int|null}
+ */
+function catThemeFailureDetail(Throwable $error): array
 {
-    $status = 500;
-    $message = 'Theme operation failed.';
-    $retryAfter = null;
     for ($cursor = $error; $cursor instanceof Throwable; $cursor = $cursor->getPrevious()) {
         if ($cursor instanceof CatThemeException) {
-            $status = $cursor->httpStatus;
-            $message = $cursor->getMessage();
-            $retryAfter = $cursor->retryAfter;
-            break;
+            return [
+                'status' => $cursor->httpStatus,
+                'message' => $cursor->getMessage(),
+                'retryAfter' => $cursor->retryAfter,
+            ];
         }
     }
-    if ($retryAfter !== null) {
-        header('Retry-After: ' . $retryAfter);
+    return ['status' => 500, 'message' => 'Theme operation failed.', 'retryAfter' => null];
+}
+
+function catThemeJsonError(Throwable $error): void
+{
+    $detail = catThemeFailureDetail($error);
+    if ($detail['retryAfter'] !== null) {
+        header('Retry-After: ' . $detail['retryAfter']);
     }
-    app()->json(['ok' => false, 'error' => $message], $status);
+    app()->json(['ok' => false, 'error' => $detail['message']], $detail['status']);
+}
+
+/**
+ * Route a theme read through the governed `akira.theme.read@1` capability.
+ *
+ * The JSON handlers below and the Theme Studio page already admit the same role
+ * set (catThemeAdmin(): admin, editor, administrator, superadmin). Dispatching
+ * through the bus makes that same decision the recorded one the census and the
+ * route guard measure; it does not change who is admitted. A failure is returned
+ * as a readable payload rather than escaping as an uncaught capability error.
+ *
+ * @param array<string, mixed> $payload
+ * @return array<string, mixed>
+ */
+function catThemeReadViaBus(string $operation, array $payload = []): array
+{
+    try {
+        $result = app()->cap()->call(
+            'akira.theme.read@1',
+            $payload + ['operation' => $operation],
+            ['caller' => ['module' => 'cms-akira-theme', 'user' => app()->user()], 'mode' => 'first']
+        );
+    } catch (Throwable $error) {
+        return ['ok' => false, 'error' => catThemeFailureDetail($error)['message']];
+    }
+    return is_array($result) ? $result : ['ok' => false, 'error' => 'Theme read failed'];
 }
 
 /** @param array<string, string> $params */
@@ -47,7 +87,7 @@ function catThemeResolveJson(array $params = []): void
         app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
         return;
     }
-    app()->json(cat_cap_akira_theme_resolve_1([]));
+    app()->json(catThemeReadViaBus('resolve'));
 }
 
 /** @param array<string, string> $params */
@@ -61,7 +101,7 @@ function catThemeRegistryJson(array $params = []): void
         app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
         return;
     }
-    app()->json(cat_cap_akira_theme_registry_1([]));
+    app()->json(catThemeReadViaBus('registry'));
 }
 
 /** @param array<string, string> $params */
@@ -75,7 +115,7 @@ function catThemeBlocksJson(array $params = []): void
         app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
         return;
     }
-    app()->json(cat_cap_akira_theme_blocks_1([]));
+    app()->json(catThemeReadViaBus('blocks'));
 }
 
 /** @param array<string, string> $params */
@@ -96,7 +136,7 @@ function catThemeValidateJson(array $params = []): void
         app()->json(['ok' => false, 'error' => $error->getMessage()], 422);
         return;
     }
-    app()->json(cat_cap_akira_theme_validate_1(['theme_slug' => $slug]));
+    app()->json(catThemeReadViaBus('validate', ['theme_slug' => $slug]));
 }
 
 /** @param array<string, string> $params */
@@ -138,8 +178,9 @@ function catThemeAdminPage(array $params = []): void
         return;
     }
 
-    $themes = catThemeRegistryRows();
-    $resolved = catThemeResolveActive();
+    $themesResult = catThemeReadViaBus('registry');
+    $themes = is_array($themesResult['themes'] ?? null) ? $themesResult['themes'] : [];
+    $resolved = catThemeReadViaBus('resolve');
     $active = $resolved['ok'] ? (string) $resolved['theme_slug'] : CAT_THEME_FALLBACK;
     $previous = catThemePreviousSetting();
 
@@ -173,9 +214,34 @@ function catThemeAdminPage(array $params = []): void
             }
             $value = $savedValues[$sectionId][$fieldId] ?? ($control['default'] ?? '');
             $type = (string)($control['type'] ?? 'text');
-            $inputType = in_array($type, ['color', 'number'], true) ? $type : 'text';
-            $fields .= '<label class="block"><span class="mb-1 block text-sm font-semibold text-slate-700">' . catThemeEscape($control['label'] ?? $fieldId) . '</span>'
-                . '<input class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-akira-500 focus:ring-akira-500" type="' . catThemeEscape($inputType) . '" name="values[' . catThemeEscape($sectionId) . '][' . catThemeEscape($fieldId) . ']" value="' . catThemeEscape($value) . '"></label>';
+            $name = 'values[' . catThemeEscape($sectionId) . '][' . catThemeEscape($fieldId) . ']';
+            $inputClass = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-akira-500 focus:ring-akira-500';
+            $field = '';
+            if ($type === 'select') {
+                $options = '';
+                foreach (is_array($control['options'] ?? null) ? $control['options'] : [] as $option) {
+                    if (!is_scalar($option)) {
+                        continue;
+                    }
+                    $option = (string)$option;
+                    $selected = (string)$value === $option ? ' selected' : '';
+                    $options .= '<option value="' . catThemeEscape($option) . '"' . $selected . '>' . catThemeEscape($option) . '</option>';
+                }
+                $field = '<select class="' . $inputClass . '" name="' . $name . '">' . $options . '</select>';
+            } else {
+                $inputType = in_array($type, ['color', 'number'], true) ? $type : 'text';
+                $constraints = is_array($control['constraints'] ?? null) ? $control['constraints'] : [];
+                $numericAttributes = '';
+                if ($inputType === 'number') {
+                    foreach (['min', 'max', 'step'] as $attribute) {
+                        if (isset($constraints[$attribute]) && is_numeric($constraints[$attribute])) {
+                            $numericAttributes .= ' ' . $attribute . '="' . catThemeEscape($constraints[$attribute]) . '"';
+                        }
+                    }
+                }
+                $field = '<input class="' . $inputClass . '" type="' . catThemeEscape($inputType) . '" name="' . $name . '" value="' . catThemeEscape($value) . '"' . $numericAttributes . '>';
+            }
+            $fields .= '<label class="block"><span class="mb-1 block text-sm font-semibold text-slate-700">' . catThemeEscape($control['label'] ?? $fieldId) . '</span>' . $field . '</label>';
         }
         $studio .= '<fieldset class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><legend class="px-2 text-lg font-bold text-slate-900">' . catThemeEscape($section['label'] ?? $sectionId) . '</legend><div class="grid gap-4">' . $fields . '</div></fieldset>';
     }
@@ -274,7 +340,8 @@ function catThemeActivateForm(array $params = []): void
         ]);
         header('Location: /cms-akira-theme', true, 303);
     } catch (Throwable $error) {
-        http_response_code(422);
-        echo catThemePage('Theme activation failed', '<p>' . catThemeEscape($error->getMessage()) . '</p>');
+        $detail = catThemeFailureDetail($error);
+        http_response_code($detail['status']);
+        echo catThemePage('Theme activation failed', '<p>' . catThemeEscape($detail['message']) . '</p>');
     }
 }
