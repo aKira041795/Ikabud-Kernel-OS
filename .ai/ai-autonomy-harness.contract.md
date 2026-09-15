@@ -422,11 +422,29 @@ A dispatched lane run is bracketed by the ledger in `tools/ai-run.php`; its reco
 `.ai/runs/<id>.json`. The dispatch protocol is **`start` → run → `finish` → `status`**:
 
 ```
-php tools/ai-run.php start  --contract=<path> --lane=<model> --name=<id> [--log=<path>] [--report=<path>]
-# the dispatcher runs the lane and observes the exit code
-php tools/ai-run.php finish --id=<id> --exit=<observed code>
+php tools/ai-run.php start  --contract=<path> --lane=<model> --name=<id> --log=<path> --report=<path>
+# the dispatcher runs the lane and observes the lane's OWN exit code — never a pipeline's
+set -o pipefail                       # or read ${PIPESTATUS[0]} immediately after the pipeline
+pi … 2>&1 | tee "<path>"
+EXIT=$?
+php tools/ai-run.php finish --id=<id> --exit=$EXIT --log=<path> --report=<path>
 php tools/ai-run.php status [--gate]
+php tools/ai-watch.php --watch        # WHILE it runs — nothing else watches the process
 ```
+
+**Two traps cost a run its true outcome (both observed 2026-09-15).** First, `--log` is optional in the
+signature but must be treated as **mandatory**: all 49 records written before this note carry
+`"log": null`, so not one byte of lane output was ever captured, and a `blocked` verdict had nothing to
+read. Second, **never take the exit code from a pipeline** — in `pi … | tee "$RPT" | tail -30`, `$?` is
+**`tail`'s** status and is therefore always `0`, so a crashed lane is recorded as a successful one. Set
+`set -o pipefail`, or read `${PIPESTATUS[0]}` immediately after the pipeline, and pass that to `finish`.
+
+**Nothing in the harness watches a running process.** `tools/ai-loop.php` contains no reference to a pid,
+a liveness check, a log or a timeout, and the ledger reconciles a dead pid only when `status` is polled.
+Run `php tools/ai-watch.php --watch` alongside a dispatch: it reports what is in flight, whether the
+owning pid is really alive, and whether the single-dispatch rule is being honoured, exiting `3` on a stale
+`running` record or on two concurrent live runs. It is strictly read-only, so reconciliation authority
+stays in `ai-run.php` alone.
 
 **Never infer run state from the size of a log file or from `pgrep`.** `pi` can exit 0 having written
 **0 bytes** to stdout — a *silent* success, indistinguishable from death — and the run executes inside a
