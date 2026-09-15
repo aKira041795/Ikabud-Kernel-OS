@@ -2458,3 +2458,70 @@ currently records.
 
 **Authority:** CD-48 (prohibitions keep their force; over-broad mechanisms get repaired).
 **Owner intervention:** not required.
+
+---
+
+## CD-52 — the scope gate fired on my own contract's prose; the out-of-scope artifact is KEPT, with provenance
+
+**Issue:** the run `view-contract-drift` completed with `exit=0` and **7 re-derived claims, 0 contradicted**, but the
+scope gate flagged it **BLOCKED, delta=7**: the executor had also written
+`modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php`, a path absent from the contract's
+`Files likely affected`.
+
+**Options considered.**
+
+- **A — delete the artifact and commit only what the envelope authorised.** Cleanest on its face. But the module test
+  is the **only executed evidence for acceptance criteria 4 and 5** (the fail-open path, and errors-vs-warnings in the
+  wiring). The root test cannot cover them: it is a `pure_test`, so it may not contain `bootstrap.php` and has no
+  `app()`. Deleting it would discard the slice's strongest verification to satisfy a boundary **my own defective prose
+  created**.
+- **B — keep it, amend the slice contract to rev 2, and record why.** Chosen.
+- **C — retroactively widen the envelope without a record.** Rejected outright: that is laundering an overreach, and
+  it is indistinguishable from CD-48's refused pattern of moving a boundary to agree with what was already done.
+
+**Chosen: B.** The distinction that makes B available rather than C is the **record**: the path is added to the
+contract as an explicit revision, and this decision states the reason, so a reviewer sees the boundary move and why.
+The artifact is also a **test addition**, which the autonomy policy names as *not* drift, and it was independently
+re-verified by the Chair (`10 passed, 0 failed`, `exit 0`) rather than accepted from the report.
+
+**The gate worked and should be said plainly.** The scope check caught a real envelope breach on the very first slice
+that exercised it for this class of mistake. The breach was mine, in the contract, not the executor's: my
+`Required tests` section discussed *"a module test under `modules/cms-akira/cms-akira-theme/tests/`"* as an option while
+`Files likely affected` never authorised that path. **Prose that names a path authorises the path** — the same class
+of defect as the prose-in-a-scope-section error recorded earlier in this programme.
+
+**Authority:** CD-8 (decidability is authority: the Chair decides, records and continues).
+**Owner intervention:** not required.
+
+---
+
+## CE-09 — Chair error: a `Required tests` line named a path the envelope did not authorise
+
+Recorded as a Chair error, not a harness defect. The contract's `Required tests` section invited a module test under
+`modules/cms-akira/cms-akira-theme/tests/` without listing that path in `Files likely affected`. The executor took the
+invitation; the scope gate refused the result.
+
+**Rule to carry forward:** every path a contract *mentions anywhere* — prose included — must appear in
+`Files likely affected`, or the contract must not mention it. A contract is read by an executor looking for what it
+may do, and any path it names reads as permission.
+
+---
+
+## Harness finding — a screen refusal is reported as `command_not_allowlisted`
+
+Observed while verifying CD-52. Two claimed commands were refused by the verifier with
+`reason: command_not_allowlisted`:
+
+```
+php tests/akira_theme_safe_fallback_test.php        # matches the pattern, but contains MODE_INTEGRATION
+php modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+```
+
+The first **does** match the `php tests/<name>.php` allowlist pattern; it fails the `pure_test` screen (it contains
+`MODE_INTEGRATION`). `commandIsAllowlisted()` collapses a screen refusal into the same verdict as an unmatched
+command, so the verifier reports the wrong reason. The effect is a diagnosable-looking message that sends a reader to
+the pattern table instead of the screen — which is exactly where it sent me on first reading.
+
+**Not repaired here** (it is the verifier's trust surface, so it needs its own authorisation). Recorded with its
+evidence so it is not re-derived. The honest reason would distinguish `test_file_impure` / `test_file_missing` from a
+command that no rule matches at all.

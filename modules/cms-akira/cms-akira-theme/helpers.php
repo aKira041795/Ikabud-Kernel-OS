@@ -558,6 +558,74 @@ function catThemeValidate(string $slug): array
     }
     $result['checks']['disyl_lint'] = $lintErrors === [];
 
+    // Declared entity-view fields must agree with the module's registered
+    // contract. The contract is the source of truth; a declaration that names a
+    // field the contract does not carry is an error. A declaration for a view
+    // with no registered contract at all is a warning (fail-open).
+    $entityViewDeclarations = [];
+    $entityViewMap = catThemeReadJson($dir . '/entity-view-map.json');
+    if (is_array($entityViewMap) && is_array($entityViewMap['entity_views'] ?? null)) {
+        $entityViewDeclarations = $entityViewMap['entity_views'];
+    }
+
+    $entityViewContracts = null;
+    try {
+        if (function_exists('app') && ($app = app()) !== null && method_exists($app, 'entityViews')) {
+            $entityViewResolver = $app->entityViews();
+            if (is_object($entityViewResolver) && method_exists($entityViewResolver, 'registeredViewContracts')) {
+                $entityViewContracts = $entityViewResolver->registeredViewContracts();
+            }
+        }
+    } catch (Throwable) {
+        $entityViewContracts = null;
+    }
+
+    if (
+        $entityViewDeclarations === []
+        || !is_array($entityViewContracts)
+        || $entityViewContracts === []
+        || !class_exists(\Ikabud\Kernel\Services\ThemeViewContractDrift::class)
+    ) {
+        // Fail-open: a CLI bootstrap registers no module capabilities, and a theme
+        // may be validated for a module whose views are not loaded. Skip the check
+        // and record it as skipped — never an error, and never a manufactured pass.
+        $result['checks']['entity_view_contract'] = 'skipped';
+    } else {
+        $registeredFields = [];
+        foreach ($entityViewContracts as $viewKey => $contract) {
+            $fields = is_array($contract) ? ($contract['fields'] ?? null) : null;
+            if ($fields === '*' || $fields === ['*']) {
+                $registeredFields[(string) $viewKey] = ['*'];
+            } elseif (is_array($fields)) {
+                $registeredFields[(string) $viewKey] = array_values(array_filter($fields, 'is_string'));
+            } else {
+                $registeredFields[(string) $viewKey] = [];
+            }
+        }
+
+        $driftFindings = \Ikabud\Kernel\Services\ThemeViewContractDrift::compare($entityViewDeclarations, $registeredFields);
+        $contractFieldErrors = 0;
+        foreach ($driftFindings as $finding) {
+            $entity = (string) ($finding['entity'] ?? '');
+            $view = (string) ($finding['view'] ?? '');
+            $field = (string) ($finding['field'] ?? '');
+            $label = $entity . '.' . $view;
+            $reason = (string) ($finding['reason'] ?? '');
+            if ($reason === \Ikabud\Kernel\Services\ThemeViewContractDrift::REASON_FIELD_NOT_IN_CONTRACT) {
+                $result['errors'][] = "entity-view-map '{$label}' declares field '{$field}' not present in the registered contract.";
+                $contractFieldErrors++;
+            } elseif ($reason === \Ikabud\Kernel\Services\ThemeViewContractDrift::REASON_CONTRACT_NOT_REGISTERED) {
+                $declaredEntry = $entityViewDeclarations[$entity][$view] ?? null;
+                $declaredFields = is_array($declaredEntry) ? ($declaredEntry['fields'] ?? null) : null;
+                $declaredLabel = is_array($declaredFields)
+                    ? implode(', ', array_filter($declaredFields, 'is_string'))
+                    : '';
+                $result['warnings'][] = "entity-view-map '{$label}' declares fields ({$declaredLabel}) but no entity view contract is registered for '{$label}'.";
+            }
+        }
+        $result['checks']['entity_view_contract'] = $contractFieldErrors === 0;
+    }
+
     $result['fallback_available'] = catThemeIsArkVisible(CAT_THEME_FALLBACK);
     if (!$result['fallback_available']) {
         $result['warnings'][] = 'Canonical fallback theme is unavailable.';
