@@ -139,6 +139,39 @@ dispatch.
 **Still unfixed — two trust-surface items:** a real heartbeat/hang-timeout in `ai-loop.php`, and a `commit-check`
 message that distinguishes `completed` from `blocked-and-acknowledged`. Both need owner authorisation (CD-59).
 
+## Chair decision CD-60 — the block was the harness, not the contracts
+
+**Issue.** 20 of 49 runs sit `blocked` and are waived through by acknowledgement. Is the conformance gate
+miscalibrated, are the contracts badly written, or is the harness unable to hear what it demands?
+
+**Options, and the evidence that decides between them.**
+
+- *Tighten the acknowledgement route* — **rejected.** Reading all 20, the agents were *right*: CD-53, CD-56 and CD-58
+each argue that the edit "is authorised by this contract's Acceptance criteria", and the contract does ground it in
+prose. Making acknowledgement harder would have blocked correct work, not bad work.
+- *Blame the contracts* — **partly true.** CD-51, CD-52, CD-55 and CD-57 are genuine authoring errors: scope omitted
+a path the prose required, or listed a prohibited one.
+- *The harness cannot hear the justification it demands* — **the dominant, mechanical cause.** A relative L4 trigger
+resolves to L3 only when `isGrounded($justification, $contract)` holds (`ai-autonomy.php:1074-1082`: the
+justification must be a verbatim substring of a contract `constraints`/`acceptance` line), and
+`scopeConformance()` never passes one. So `module.json` — needed by almost every module slice — **blocks
+unconditionally, whatever the contract says.**
+
+**Chosen:** treat the harness as the root cause; deliver the preventive half now and escalate the mechanical half.
+
+**Delivered:** `tools/ai-authority-preflight.php` — read-only; asks the ledger's own per-path question for every
+`allowed_scope` entry and exits `3` when one will escalate. Validated against history, not asserted: it reproduces
+the exact path `finish` flagged for `admin-shell-integrity`, and of the blocked contracts that still exist,
+**4 of 4 are predicted** (2 more could not be tested — those contract files no longer exist, which the tool reports
+correctly rather than counting as a miss).
+
+**Escalated (CD-59):** pass a justification through `scopeConformance()`, so a grounded justification stops being
+invisible to the ledger. Until then every L4-trigger path blocks regardless of the contract, and acknowledgement
+remains the only remedy — which is precisely why the gate read clean while 41% of runs were blocked.
+
+Authority: this project, director instruction 2026-09-15. Owner intervention: not required for the pre-flight;
+required for the CD-59 trust-surface change.
+
 ## Outstanding owner decisions (do not block the project)
 
 | ID | Question | Effect if unanswered |

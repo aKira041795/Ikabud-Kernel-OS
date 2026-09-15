@@ -422,6 +422,7 @@ A dispatched lane run is bracketed by the ledger in `tools/ai-run.php`; its reco
 `.ai/runs/<id>.json`. The dispatch protocol is **`start` → run → `finish` → `status`**:
 
 ```
+php tools/ai-authority-preflight.php --contract=<path>   # must exit 0 BEFORE anything is dispatched
 php tools/ai-run.php start  --contract=<path> --lane=<model> --name=<id> --log=<path> --report=<path>
 # the dispatcher runs the lane and observes the lane's OWN exit code — never a pipeline's
 set -o pipefail                       # or read ${PIPESTATUS[0]} immediately after the pipeline
@@ -445,6 +446,17 @@ Run `php tools/ai-watch.php --watch` alongside a dispatch: it reports what is in
 owning pid is really alive, and whether the single-dispatch rule is being honoured, exiting `3` on a stale
 `running` record or on two concurrent live runs. It is strictly read-only, so reconciliation authority
 stays in `ai-run.php` alone.
+
+**Ask the authority question before the dispatch, not after it.** `finish` decides conformance by asking, per
+changed path, `php tools/ai-autonomy.php check "run changed path" …`. `php tools/ai-authority-preflight.php
+--contract=<path>` asks the identical question for every `allowed_scope` entry ahead of time and exits `3` when any
+of them will escalate — converting a post-hoc block into a pre-dispatch decision. It is needed because of a live
+defect: a relative L4 trigger (a `module.json` edit is classified "public API/capability contract change") resolves
+to L3 only when `isGrounded($justification, $contract)` holds — `ai-autonomy.php:1074-1082` requires a justification
+that is a **verbatim substring** of a contract `constraints`/`acceptance` line — and `scopeConformance()` builds its
+per-path argv **without a justification**. **A path can therefore be in `allowed_scope`, be required by the
+contract's own acceptance criteria, and still be unconditionally blocked.** Until that channel is authorised
+(CD-59), obtain the director decision *before* `start`: `--dispatch-at` makes a later authorisation inert.
 
 **Never infer run state from the size of a log file or from `pgrep`.** `pi` can exit 0 having written
 **0 bytes** to stdout — a *silent* success, indistinguishable from death — and the run executes inside a
