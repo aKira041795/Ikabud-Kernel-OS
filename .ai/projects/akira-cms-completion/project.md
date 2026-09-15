@@ -54,6 +54,19 @@ user needs, not by count. If you want raw parity, that is a different project an
 Sequencing note: **P1 and P2 can run in parallel with P3** because they touch chrome and IA while P3 touches surface
 behaviour. **P0 must precede P3** — building against an unmeasured gap list is how the first audit went wrong.
 
+### Dependency reality — both defects the director reported are governance-blocked
+
+| Defect the director reported | Phase | Blocked by |
+|---|---|---|
+| Theme Studio renders without the sidebar | P1 | **CD-58.** Confirmed live: `/cms-akira-theme` answers `403`, `Required authority: akira.theme.read@1`, `Reason: unknown_role`. The capability's caller allowlist refuses the caller. |
+| Sidebar is a flat 20-link list (IA) | P2 | **CD-59.** Grouping needs a `group` field on sidebar contributions — a `module.json` edit — which the ledger blocks unconditionally. |
+| Other admin pages lack the sidebar | P1 | **Not blocked.** `345fcaa` covered seo + navigation; any remainder is measurable and fixable now. |
+
+Both things the director noticed by hand are the two things that cannot proceed without an owner decision. That is
+not a coincidence, and it is the most important fact about this project's critical path: **the gates are the
+bottleneck, not implementation capacity.** The revised plan therefore front-loads every unblocked slice and puts
+the decisions first rather than last.
+
 ## Standing constraints
 
 - One writer per file. Never dispatch two lanes concurrently (the ledger's `finish` absorbs the other run's delta).
@@ -73,6 +86,25 @@ behaviour. **P0 must precede P3** — building against an unmeasured gap list is
 - Report `SKIP` as `SKIP`. A skip is not a pass.
 - **`php tools/ai-watch.php --watch` while a slice is dispatched.** Nothing else in the harness monitors a running
   process (see the defect record below), so an unwatched dispatch is an unobserved one.
+
+### Measurement harness — the parts that bit us (2026-09-15)
+
+Three separate sweeps have now been invalidated by auth, so the mechanics are recorded rather than rediscovered:
+
+- **Admin pages are session-authenticated; the API login is not.** `POST /api/v1/auth/login` returns a **JWT and no
+  `Set-Cookie`**, so a `curl` cookie jar cannot authenticate an admin page — every route answers the kernel 403
+  "Forbidden — Ikabud Kernel OS". Measuring the admin UI therefore needs either the HTML login form plus a CSRF
+  token, or a real browser session.
+- **The login identity is the email**, `charlienacario884@gmail.com` — not the username. `akiraadmin` and `ikabud6`
+  both answer `401`. This is a correction: the recorded credential was the username form and was wrong.
+- **The limiter trips after ~5 attempts** and then answers `429` to every login for the retry window. Log in **once
+  per run**, and never retry a `401` blindly.
+- **`scripts/akira-admin-affordance-probe.sh` asserts a known-good page before reporting anything.** It aborted
+  (exit 2) rather than emit a 20-row "everything is missing" table. Three sweeps have been invalidated by auth;
+  this is the first that refused to lie.
+- **The marker set is unproven.** No authenticated admin page has yet been read, so whether these surfaces use
+  `<table>` at all is unknown — the probe's own markers are the first thing to validate once a session exists.
+  An unvalidated marker produces exactly the false gap report this project exists to prevent.
 
 ## Harness defect found and fixed: nothing monitored a running process
 
@@ -174,11 +206,12 @@ required for the CD-59 trust-surface change.
 
 ## Outstanding owner decisions (do not block the project)
 
-| ID | Question | Effect if unanswered |
-|---|---|---|
-| **CD-55** | Does the absolute prohibition cover *additive, non-weakening* changes to the capability registry? | `ModuleInstallService.php:78` stays defective with no lawful route |
-| **CD-58** | How does a capability gain a caller? (governed grant / operator command / unrestricted presentation caps) | Theme Studio cannot join the shared shell; the `widening_refused` class persists |
-| **CD-59** | May the ledger gain a heartbeat, per-run log capture and a hang timeout? (trust-surface change) | Monitoring stays observational only; a hung run still holds the dispatch slot indefinitely, and `blocked` stays untriageable |
+| ID | Question | Recommendation | Effect if unanswered |
+|---|---|---|---|
+| **CD-58** | How does a capability gain a caller? | Let a **presentation-only** capability (`*.shell.admin_page@1`, `*.theme.read@1`) name additional callers without a policy-version bump. These expose no data and no mutation, so the allowlist protects nothing while blocking every new admin page. | Theme Studio cannot join the shared shell; the `widening_refused` class persists into every new admin surface |
+| **CD-59a** | May `scopeConformance()` forward a justification to the per-path check? | **Yes — recommended first.** `isGrounded()` already demands a justification that is a verbatim substring of a contract `acceptance`/`constraints` line, and `finish` never supplies one, so every relative-L4 path (`module.json`) blocks unconditionally. This is a channel repair, not a weakening: nothing in the taxonomy changes and every call stays auditable. | Every slice touching a `module.json` blocks, so P2 and most of P3 cannot run at all |
+| **CD-59b** | May the ledger gain a heartbeat, a hang timeout and an honest `commit-check` message? | Yes. A hung slice currently holds the single dispatch slot indefinitely, and `commit-check` prints "all N run(s) are completed" while 41% are blocked. | Monitoring stays observational; a hung run is never reaped, and the gate keeps asserting something its own records contradict |
+| **CD-55** | Does the absolute prohibition cover *additive, non-weakening* changes to the capability registry? | Yes — additive registrations should be L2, not L4. | `ModuleInstallService.php:78` stays defective with no lawful route |
 
 Both are recorded with options and recommendations. Work proceeds around them; neither is on the critical path for
 P0–P4.
