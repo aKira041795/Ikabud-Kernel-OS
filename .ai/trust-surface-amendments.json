@@ -318,6 +318,45 @@
                 "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
             ],
             "trust_surface_files_changed_by_route": false
+        },
+        {
+            "id": "TSA-0011",
+            "reason": "Two over-broad prohibition mechanisms repaired under the owner's ruling CD-48 (prohibition is fine but allow leeway): the authority matcher now tokenises a path instead of substring-matching it, so 'authority' is not 'auth'; and isExistingTestPath() decides from the dispatch baseline instead of a post-run file_exists(), so a run-created test is an addition while a test present at dispatch keeps the prohibition's full force. Reach was preserved by adversarial verification, which found and repaired lost coverage for OAuth/OAuth2/authenticator/unauthorized/reauthentication paths. No prohibition was removed, softened or re-classified.",
+            "director_decision": "CD-48",
+            "acting_context": {
+                "provider": null,
+                "model": null,
+                "session_id": null,
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-15T00:56:39+00:00",
+            "trust_surface_hash": "86119019db360232eb0afc71fe9c778ae19494f394c83f7dc6c7cc400c0a10af",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+                "tools/ai-autonomy.php": "0cd46680641222b1c5518bfe5481ebd353358024337e1584d4e92591c860ab39",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+                "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+                "tools/ai-run.php": "b53dad08bb5d076c65189dcb697cac2666fbd4c6a9a017cb68a78b7864cacc00",
+                "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+            },
+            "supersedes_hashes": [
+                "0b1957d16ee273120e5d6dbce66b352b85db1ff1c00e1d779ed6a6d7a1103fd9",
+                "2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764",
+                "57404611513cea7c7b20a1b05861dbef9c003abb367febee8e73f2e6da7c3b3e",
+                "6ec30b419a6c7914ec6be6b4dd585d3851ec44a76a6537ef1293aa3ee5d7fdec",
+                "7b84a2daec6a02a61c96ab8466d7cb363d62bb7aeea8580956a9a7b9ba097175",
+                "82a49e3aa29d200cb56b77bd882ff4f561bca01e294be3ac5e0b02d9bb861887",
+                "86119019db360232eb0afc71fe9c778ae19494f394c83f7dc6c7cc400c0a10af",
+                "9139f93c68776c77add7aa2e1e5f5b58fe4f2516448d018b4b3b269dd484c457",
+                "a14c6c209accf674bf3e6dd9eca2c2f4332282026acb5b44e4de444b0132ad75",
+                "ac235c5bbab3ea0124dfa9ea1800497c51c44aa5d6f0fef765275d0f003edd9c",
+                "b6283e553824bbd32eba2c89c652e4bcdba46d7664e01e5547929a736a97bdf3",
+                "dfb4c3a61c18fb8922f2468064bc0baf21a673454b7ba030611a03eeea6d71cb",
+                "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
+            ],
+            "trust_surface_files_changed_by_route": false
         }
     ]
 }

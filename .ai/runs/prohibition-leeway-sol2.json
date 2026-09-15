@@ -1,0 +1,330 @@
+{
+    "id": "prohibition-leeway-sol2",
+    "contract": ".ai/prohibition-leeway.contract.md",
+    "contract_revision": "e666a2d9e954b587",
+    "allowed_count": 3,
+    "forbidden_count": 7,
+    "lane": "openai-codex/gpt-5.6-sol",
+    "started_at": "2026-09-15T00:51:40+00:00",
+    "pid": 2835175,
+    "log": null,
+    "report": ".ai/runs/prohibition-leeway-sol2.report.txt",
+    "status": "completed",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/chair-decisions.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/prohibition-leeway.contract.md",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/.acknowledged-blocks.v1",
+        ".ai/runs/prohibition-leeway-sol.json",
+        ".ai/runs/prohibition-leeway.json",
+        ".ai/standing-authorization-and-decisions.md",
+        "tests/ai_autonomy_test.php",
+        "tools/ai-autonomy.php",
+        "tools/ai-run.php"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/chair-decisions.md": "file:660bf24176b75acfa14cdceb94049bda9d2ff5b6f50b2db7a9428dad5a9dd933",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/prohibition-leeway.contract.md": "file:d38f204866f3d7e1e2050325a6fc071ac5d1febcd47de05bbaa15f9f4d766d17",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/runs/.acknowledged-blocks.v1": "file:9feb0cd7b3e9c20cb337727f2c19a7ba60a6c7c385378a0ea5fa9dd3cda0dc8a",
+        ".ai/runs/prohibition-leeway-sol.json": "file:4649517922385bd9ad75b8046dafdecff674d8bb617d7817adf21ceb388dec73",
+        ".ai/runs/prohibition-leeway.json": "file:84202539d2447e469900ce4b82197a6e87195d1ee37468779678398d8b176b29",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1",
+        "tests/ai_autonomy_test.php": "file:105e8e3a3d6fec71a8df8f8b9e8f9bb41609f502fc66385223d3805ecefb32fa",
+        "tools/ai-autonomy.php": "file:0cd46680641222b1c5518bfe5481ebd353358024337e1584d4e92591c860ab39",
+        "tools/ai-run.php": "file:b53dad08bb5d076c65189dcb697cac2666fbd4c6a9a017cb68a78b7864cacc00"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/prohibition-leeway-sol2.json",
+        ".ai/runs/prohibition-leeway-sol2.report.txt"
+    ],
+    "harness_artifacts": [],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": {
+        "decision_ref": "CD-48",
+        "recorded_at": "2026-09-15T00:51:40+00:00",
+        "required_for_trust_surface": true
+    },
+    "trust_surface_hash": "86119019db360232eb0afc71fe9c778ae19494f394c83f7dc6c7cc400c0a10af",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+        "tools/ai-autonomy.php": "0cd46680641222b1c5518bfe5481ebd353358024337e1584d4e92591c860ab39",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "b53dad08bb5d076c65189dcb697cac2666fbd4c6a9a017cb68a78b7864cacc00",
+        "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+    },
+    "declared_exceptions": [
+        {
+            "what": "add taxonomy assertions to the existing autonomy test",
+            "why": "the two matcher repairs must be proved by driving the real CLI, and every existing taxonomy assertion already lives in that file; a second file would fork the evidence",
+            "scope": [
+                {
+                    "path": "tests/ai_autonomy_test.php",
+                    "kind": "file"
+                }
+            ],
+            "decided_when": "2026-09-15T00:00:00+00:00",
+            "authority": "CD-48"
+        }
+    ],
+    "finished_at": "2026-09-15T00:55:03+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 1945,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/chair-decisions.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/prohibition-leeway.contract.md",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/.acknowledged-blocks.v1",
+        ".ai/runs/prohibition-leeway-sol.json",
+        ".ai/runs/prohibition-leeway-sol2.json",
+        ".ai/runs/prohibition-leeway-sol2.report.txt",
+        ".ai/runs/prohibition-leeway.json",
+        ".ai/standing-authorization-and-decisions.md",
+        "tests/ai_autonomy_test.php",
+        "tools/ai-autonomy.php",
+        "tools/ai-run.php"
+    ],
+    "scope_delta_paths": [],
+    "scope_conformance": {
+        "ok": true,
+        "checked": [],
+        "offending": [],
+        "declared_harness_artifacts": []
+    },
+    "evidence_fingerprint": "bef2b81d2a7885167130b7ffd233a6f3641265c5346178fbb3164d79b0238ecb",
+    "evidence_unavailable_reason": null,
+    "claim_verification": {
+        "verified_at": "2026-09-15T00:56:29+00:00",
+        "contract_revision": "e666a2d9e954b587",
+        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-prohibition-leeway-sol2-1",
+                "run": "prohibition-leeway-sol2",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/prohibition-leeway-sol2.report.txt",
+                    "line": 1,
+                    "text": "CLAIM: php tests/ai_autonomy_test.php completed with 78/78 passed."
+                },
+                "executor_claim": {
+                    "passed": 78,
+                    "total": 78,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 78,
+                        "total": 78
+                    },
+                    "binding": {
+                        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-prohibition-leeway-sol2-2",
+                "run": "prohibition-leeway-sol2",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_run_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/prohibition-leeway-sol2.report.txt",
+                    "line": 15,
+                    "text": "CLAIM: php tests/ai_run_test.php completed with 79/79 passed."
+                },
+                "executor_claim": {
+                    "passed": 79,
+                    "total": 79,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 79,
+                        "total": 79
+                    },
+                    "binding": {
+                        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-prohibition-leeway-sol2-3",
+                "run": "prohibition-leeway-sol2",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/prohibition-leeway-sol2.report.txt",
+                    "line": 29,
+                    "text": "CLAIM: php tests/ai_project_test.php completed with 18/18 passed."
+                },
+                "executor_claim": {
+                    "passed": 18,
+                    "total": 18,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 18,
+                        "total": 18
+                    },
+                    "binding": {
+                        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-prohibition-leeway-sol2-4",
+                "run": "prohibition-leeway-sol2",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tools/ai-autonomy.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/prohibition-leeway-sol2.report.txt",
+                    "line": 43,
+                    "text": "CLAIM: php -l tools/ai-autonomy.php reports No syntax errors detected."
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-prohibition-leeway-sol2-5",
+                "run": "prohibition-leeway-sol2",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tools/ai-run.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/prohibition-leeway-sol2.report.txt",
+                    "line": 48,
+                    "text": "CLAIM: php -l tools/ai-run.php reports No syntax errors detected."
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-prohibition-leeway-sol2-6",
+                "run": "prohibition-leeway-sol2",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tests/ai_autonomy_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/prohibition-leeway-sol2.report.txt",
+                    "line": 53,
+                    "text": "CLAIM: php -l tests/ai_autonomy_test.php reports No syntax errors detected."
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "1d8fcc2486278745ca43364bfe4405571d51fd46",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            }
+        ]
+    }
+}

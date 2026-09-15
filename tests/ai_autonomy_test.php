@@ -292,6 +292,118 @@ $singleSource = $decidableEntries > 0
     && count($reasonList) === count(array_unique($reasonList));
 $h->test('28. every path-decidable taxonomy entry escalates and the printed set is its projection', $taxonomyFailures === [] && $singleSource, "decidable entries={$decidableEntries}\nfailures=" . encodeForDetail($taxonomyFailures) . "\nreasons=" . encodeForDetail($reasonList));
 
+// ── CD-48: authority matching is token-exact, and an existing test is decided at dispatch ───────
+// Repair A reads a path as a sequence of tokens so `authority` is not `auth`. Repair B moves when
+// the existing-test question is asked (dispatch baseline, supplied by the run-finish caller) so a
+// test file the run CREATED is an addition. Neither matcher inspects what a diff does; with no new
+// input every verdict stays what it was before.
+$h->section('CD-48 — authority matches whole tokens and creation is not an edit');
+$authorityContractText = <<<'MD'
+# CONTRACT — CD-48 authority token fixture
+## Objective
+Probe the authority token matcher and the dispatch baseline without widening scope.
+## Architectural constraints
+- auth, authorisation, policy and security weakening are explicitly authorised for this fixture.
+## Files likely affected
+- `kernel/` — kernel
+- `tests/` — tests
+- `docs/` — docs
+- `modules/` — modules
+## Acceptance criteria
+- auth, authorisation, policy and security weakening are explicitly authorised for this fixture.
+## Required tests
+- `php -l tools/ai-autonomy.php`
+## Risks
+- none
+## Forbidden changes
+- `forbidden/` — never touch
+MD;
+$authorityContract = $fixture . '/cd48-authority-contract.md';
+file_put_contents($authorityContract, $authorityContractText);
+$authorityReason = 'auth, authorisation, policy or security weakening';
+$existingTestReason = 'disabling, skipping, deleting or weakening an existing test or gate';
+/** @param array<string,mixed> $data @return list<string> */
+$reasonText = static fn (array $data): array => is_array($data['reasons'] ?? null) ? array_values(array_map('strval', $data['reasons'])) : [];
+$checkJson = static function (array $extra) use ($run, $authorityContract): array {
+    $r = $run(array_merge(['check', 'cd48 probe', '--json'], $extra, ["--contract={$authorityContract}"]));
+    $payload = json_decode($r['output'], true);
+    return ['run' => $r, 'data' => is_array($payload) ? $payload : []];
+};
+$flaggedBy = static fn (array $data, string $needle): bool => str_contains(implode("\n", $reasonText($data)), $needle);
+
+// Criterion 1 — the false positive that cost S2 its run is gone.
+$falsePositive = $checkJson(['--path=modules/gui-settings/tests/gui_settings_route_authority_test.php']);
+$h->test('60. an authority-named route test no longer reports the authority prohibition', !$flaggedBy($falsePositive['data'], $authorityReason), runDetail($falsePositive['run']) . "\npayload=" . encodeForDetail($falsePositive['data']));
+// Criterion 1 with criterion 5: created at that path, it is an addition, not a prohibition of any kind.
+$falsePositiveCreated = $checkJson(['--path=modules/gui-settings/tests/gui_settings_route_authority_test.php', '--existed-at-dispatch=0']);
+$h->test('60a. a test created at an authority-named path records as an addition, flagging neither authority nor existing-test', ($falsePositiveCreated['run']['code'] ?? -1) === 0 && ($falsePositiveCreated['data']['verdict'] ?? null) === 'RECORD' && !$flaggedBy($falsePositiveCreated['data'], $authorityReason) && !$flaggedBy($falsePositiveCreated['data'], $existingTestReason), runDetail($falsePositiveCreated['run']) . "\npayload=" . encodeForDetail($falsePositiveCreated['data']));
+
+// Criterion 2 — reach is preserved: every protected token still fires.
+$protectedTokenPaths = ['kernel/JWT.php', 'kernel/Capabilities/CapabilityAuthorizationRegistry.php', 'tests/auth_owned_reserved_role_validation_test.php',
+    'kernel/Http/SecurityHeaders.php', 'tests/capability_policy_lifecycle_test.php', 'tests/CapabilityAuthorization_probe.php',
+    'tests/authn_probe.php', 'tests/authz_probe.php', 'tests/authentication_probe.php', 'tests/authorisation_probe.php',
+    'tests/authorization_probe.php', 'tests/oauth_probe.php', 'tests/oauth2_probe.php',
+    'tests/Authenticator.php', 'tests/UnauthorizedAccess.php', 'tests/Reauthenticate.php',
+    'tests/policies_probe.php', 'tests/passwords_probe.php', 'tests/session_probe.php'];
+$reachFailures = [];
+foreach ($protectedTokenPaths as $probePath) {
+    $probe = $checkJson(['--path=' . $probePath]);
+    if (($probe['run']['code'] ?? -1) !== 3 || !$flaggedBy($probe['data'], $authorityReason)) {
+        $reachFailures[] = $probePath . ': exit ' . ($probe['run']['code'] ?? '?') . ' payload=' . encodeForDetail($probe['data']);
+    }
+}
+$h->test('61. every enumerated authority token still trips the absolute authority prohibition', $reachFailures === [], "failures=" . encodeForDetail($reachFailures));
+
+// Criterion 3 — the token boundary is exact.
+$boundaryCases = ['tests/authority_probe.php' => false, 'tests/authorities_probe.php' => false, 'tests/auth_probe.php' => true, 'tests/auth-owned-probe.php' => true];
+$boundaryFailures = [];
+foreach ($boundaryCases as $probePath => $expected) {
+    $probe = $checkJson(['--path=' . $probePath]);
+    $flagged = $flaggedBy($probe['data'], $authorityReason);
+    if ($flagged !== $expected) { $boundaryFailures[] = $probePath . ': expected ' . ($expected ? 'flagged' : 'not flagged') . ', got ' . ($flagged ? 'flagged' : 'not flagged') . ' payload=' . encodeForDetail($probe['data']); }
+}
+$h->test('62. authority and authorities are not protected tokens while auth and auth-owned are', $boundaryFailures === [], "failures=" . encodeForDetail($boundaryFailures));
+
+// Criterion 4 — a test present at dispatch keeps the prohibition's full, absolute force.
+$existingAtDispatch = $checkJson(['--path=tests/entity_fallback_test.php', '--existed-at-dispatch=1']);
+$h->test('63. a test present at dispatch is still flagged as an absolute existing-test prohibition', ($existingAtDispatch['run']['code'] ?? -1) === 3 && ($existingAtDispatch['data']['authority_level'] ?? null) === 'L4' && $flaggedBy($existingAtDispatch['data'], $existingTestReason), runDetail($existingAtDispatch['run']) . "\npayload=" . encodeForDetail($existingAtDispatch['data']));
+// Criterion 5 — the same path absent at dispatch is the addition the comment always named.
+$absentAtDispatch = $checkJson(['--path=tests/entity_fallback_test.php', '--existed-at-dispatch=0']);
+$h->test('64. the same test absent at dispatch is an addition, not an existing-test prohibition', ($absentAtDispatch['run']['code'] ?? -1) === 0 && ($absentAtDispatch['data']['verdict'] ?? null) === 'RECORD' && !$flaggedBy($absentAtDispatch['data'], $existingTestReason), runDetail($absentAtDispatch['run']) . "\npayload=" . encodeForDetail($absentAtDispatch['data']));
+
+// Criterion 6 — with no new input the default question is unchanged: file_exists() at that moment.
+$defaultExisting = $checkJson(['--path=tests/entity_fallback_test.php']);
+$defaultCreated = $checkJson(['--path=tests/no_such_created_probe_test.php']);
+$h->test('65. without the dispatch flag an existing test still flags and an absent one still records', ($defaultExisting['run']['code'] ?? -1) === 3 && $flaggedBy($defaultExisting['data'], $existingTestReason) && ($defaultCreated['run']['code'] ?? -1) === 0 && !$flaggedBy($defaultCreated['data'], $existingTestReason), runDetail($defaultExisting['run']) . "\n" . runDetail($defaultCreated['run']));
+// Criterion 6 — the default authority verdict differs from the legacy substring only on the named tokens.
+$legacyAuthority = static fn (string $path): bool => preg_match('#kernel/Capabilities|CapabilityAuthorization|SecurityHeaders|auth|JWT|policy#i', $path) === 1;
+$deliberate = [
+    'modules/gui-settings/tests/gui_settings_route_authority_test.php' => false,
+    'docs/architecture/ark-authority-adr.md' => false,
+    'tests/authority_probe.php' => false,
+    'tests/authorities_probe.php' => false,
+    'docs/kernel/passwords-lock-audit-2026-07-05.md' => true,
+    'docs/kernel/session-lock-audit-2026-07-05.md' => true,
+];
+$untouched = ['kernel/JWT.php', 'kernel/Capabilities/CapabilityAuthorizationRegistry.php', 'tests/auth_owned_reserved_role_validation_test.php',
+    'kernel/Http/SecurityHeaders.php', 'tests/capability_policy_lifecycle_test.php', 'tests/auth_probe.php',
+    'tests/auth-owned-probe.php', 'tests/oauth_probe.php', 'tests/oauth2_probe.php',
+    'tests/Authenticator.php', 'tests/UnauthorizedAccess.php', 'tests/Reauthenticate.php'];
+$defaultFailures = [];
+foreach ($deliberate as $probePath => $expected) {
+    $probe = $checkJson(['--path=' . $probePath]);
+    $flagged = $flaggedBy($probe['data'], $authorityReason);
+    if ($flagged !== $expected) { $defaultFailures[] = "deliberate {$probePath}: expected " . ($expected ? 'flagged' : 'not flagged') . ', got ' . ($flagged ? 'flagged' : 'not flagged'); }
+}
+foreach ($untouched as $probePath) {
+    $probe = $checkJson(['--path=' . $probePath]);
+    $flagged = $flaggedBy($probe['data'], $authorityReason);
+    if ($flagged !== $legacyAuthority($probePath)) { $defaultFailures[] = "untouched {$probePath}: legacy=" . ($legacyAuthority($probePath) ? 'flagged' : 'not flagged') . ', new=' . ($flagged ? 'flagged' : 'not flagged'); }
+}
+$h->test('66. the default authority verdict changes only on the enumerated deliberate token exceptions', $defaultFailures === [], "failures=" . encodeForDetail($defaultFailures));
+$malformedDispatch = $run(['check', 'cd48 probe', '--path=tests/entity_fallback_test.php', '--existed-at-dispatch=maybe', "--contract={$authorityContract}"]);
+$h->test('67. a malformed --existed-at-dispatch is refused with exit 2 and the field named', $malformedDispatch['code'] === 2 && str_contains($malformedDispatch['output'], '--existed-at-dispatch'), runDetail($malformedDispatch));
+
 $h->section('Stop invariant is checkable');
 $stopZero = $run(['stop-report', '--remaining=0']);
 $stopBlocked = $run(['stop-report', '--remaining=3', '--stop-reason=CONTRACT_BLOCKED']);

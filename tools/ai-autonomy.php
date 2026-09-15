@@ -917,12 +917,91 @@ function pathMatches(string $path, array $entry): bool
     return $entry['kind'] === 'file' ? $path === $entry['path'] : $path === $entry['path'] || str_starts_with($path, $entry['path'] . '/');
 }
 
-/** A test path that already exists is a verification artefact whose edit weakens verification. */
-function isExistingTestPath(string $path): bool
+/**
+ * Does a token occurrence at `$pos` occupy whole-token boundaries? A path is a sequence of tokens,
+ * not a string: a boundary is a path delimiter (`/`, `_`, `.`, `-`), an end of the path, or a
+ * CamelCase transition (a lowercase letter followed by an uppercase one). The CamelCase boundary is
+ * what keeps `AppAuthProvider` and `AuthenticationException` protected while `authority` stays out:
+ * there `auth` is followed by lowercase `o`, so it is not a boundary.
+ */
+function authorityTokenAt(string $path, int $pos, int $length): bool
+{
+    $before = $pos === 0
+        || in_array($path[$pos - 1], ['/', '_', '.', '-'], true)
+        || (ctype_lower($path[$pos - 1]) && ctype_upper($path[$pos]));
+    if (!$before) { return false; }
+    $after = $pos + $length;
+    return $after >= strlen($path)
+        || in_array($path[$after], ['/', '_', '.', '-'], true)
+        || ctype_upper($path[$after]);
+}
+
+/** Does the path contain `$needle` as one whole token, case-insensitively? */
+function authorityTokenMatches(string $path, string $needle): bool
+{
+    $lowerPath = strtolower($path);
+    $lowerNeedle = strtolower($needle);
+    $length = strlen($lowerNeedle);
+    $offset = 0;
+    while (($pos = strpos($lowerPath, $lowerNeedle, $offset)) !== false) {
+        if (authorityTokenAt($path, $pos, $length)) { return true; }
+        $offset = $pos + 1;
+    }
+    return false;
+}
+
+/**
+ * Does the normalized path name a whole-token authority mechanism? The old matcher tested the path
+ * as a raw string, so the bare alternative `auth` matched `..._authority_test.php` and flagged a
+ * file whose name only NAMES authority coverage as an authorisation-weakening change.
+ *
+ * The protected set is explicit. `kernel/Capabilities` (a two-token path phrase),
+ * `CapabilityAuthorization`, `SecurityHeaders`, `auth`, `JWT` and `policy` preserve exactly what the
+ * old pattern covered for genuine paths. The auth-family tokens `authn`, `authz`, `authentication`,
+ * `authorisation`, `authorization`, `oauth`, `oauth2` and `policies` are enumerated because the old
+ * `auth`/`policy` substring silently caught them once they were written as a token. OAuth needs its
+ * own explicit tokens because `auth` begins one character into that genuine authentication token.
+ * The verb/agent and negative/renewal forms are explicit for the same reason: they are genuine auth
+ * path tokens which the old substring caught, but a whole-token `auth` does not. `passwords` and
+ * `session` are auth-family additions named here so the family is enumerated rather than implied.
+ * `authority` is
+ * deliberately NOT a token: it names the subject of authority coverage, not an authentication
+ * mechanism, and its removal is the entire point of this repair.
+ */
+function isAuthorityFamilyPath(string $path): bool
+{
+    // One token, matched whole. Delimiters are `/`, `_`, `.`, `-`, an end of the path, or a
+    // CamelCase transition.
+    static $tokens = ['auth', 'jwt', 'policy', 'securityheaders', 'capabilityauthorization',
+        'authn', 'authz', 'authentication', 'authenticate', 'authenticates', 'authenticated',
+        'authenticating', 'authenticatable', 'authenticator', 'authenticators',
+        'authorisation', 'authorise', 'authorises', 'authorised', 'authorising', 'authoriser', 'authorisers',
+        'authorization', 'authorize', 'authorizes', 'authorized', 'authorizing', 'authorizer', 'authorizers',
+        'oauth', 'oauth2', 'reauthenticate', 'reauthenticates', 'reauthenticated', 'reauthenticating', 'reauthentication',
+        'unauthenticated', 'unauthorised', 'unauthorized',
+        'policies', 'passwords', 'session'];
+    foreach ($tokens as $token) {
+        if (authorityTokenMatches($path, $token)) { return true; }
+    }
+    // The kernel Capabilities prefix is a two-token path phrase, matched as a whole.
+    return authorityTokenMatches($path, 'kernel/Capabilities');
+}
+
+/**
+ * A test path that already exists is a verification artefact whose edit weakens verification.
+ *
+ * `$existedAtDispatch` moves only WHEN the question is asked: the run-finish caller supplies the
+ * dispatch baseline, so a test file this run CREATED is judged an addition (what this comment always
+ * said) while a test present at dispatch keeps the prohibition's full force. A caller that supplies
+ * no baseline (`plan`, an ordinary `check`) keeps today's answer exactly: the file has not been
+ * created yet at that point, so `file_exists()` remains the right question.
+ */
+function isExistingTestPath(string $path, ?bool $existedAtDispatch = null): bool
 {
     $isTest = preg_match('#^tests/.*_test\.php$#', $path) === 1
         || preg_match('#^modules/[^/]+/tests/.*\.php$#', $path) === 1;
-    return $isTest && file_exists($path);
+    if (!$isTest) { return false; }
+    return $existedAtDispatch ?? file_exists($path);
 }
 
 /**
@@ -936,14 +1015,14 @@ function isGateConfigPath(string $path): bool
 }
 
 /** Decide one taxonomy matcher for one normalized path. */
-function taxonomyMatcherMatches(string $matcher, string $path): bool
+function taxonomyMatcherMatches(string $matcher, string $path, ?bool $existedAtDispatch = null): bool
 {
     return match ($matcher) {
         'ddl' => preg_match('#(^|/)migrations(/|$)#i', $path) === 1 || str_ends_with(strtolower($path), '.sql'),
         'dependency' => preg_match('#(^|/)(composer\.json|composer\.lock|package\.json|package-lock\.json)$#', $path) === 1,
         'module_manifest' => preg_match('#(^|/)module\.json$#', $path) === 1,
-        'authority' => preg_match('#kernel/Capabilities|CapabilityAuthorization|SecurityHeaders|auth|JWT|policy#i', $path) === 1,
-        'existing_test' => isExistingTestPath($path),
+        'authority' => isAuthorityFamilyPath($path),
+        'existing_test' => isExistingTestPath($path, $existedAtDispatch),
         'gate_config' => isGateConfigPath($path),
         'gate_baseline' => preg_match('#(^|/)phpstan-baseline\.neon$#', $path) === 1,
         'trust_surface' => isTrustSurfacePath($path),
@@ -958,14 +1037,14 @@ function taxonomyMatcherMatches(string $matcher, string $path): bool
  * @param list<string> $paths
  * @return list<array{reason:string,class:string,path:string,matcher:string}>
  */
-function sensitiveMatches(array $paths): array
+function sensitiveMatches(array $paths, ?bool $existedAtDispatch = null): array
 {
     $matches = [];
     foreach (l4Taxonomy() as $entry) {
         if (!$entry['decidable']) { continue; }
         foreach ($paths as $path) {
             foreach ($entry['matchers'] as $matcher) {
-                if (taxonomyMatcherMatches($matcher, $path)) {
+                if (taxonomyMatcherMatches($matcher, $path, $existedAtDispatch)) {
                     $matches[] = ['reason' => $entry['reason'], 'class' => $entry['class'], 'path' => $path, 'matcher' => $matcher];
                 }
             }
@@ -1006,7 +1085,7 @@ function isGrounded(?string $justification, array $contract): bool
  * @param array<string,mixed> $contract
  * @param list<string> $paths
  */
-function commandCheck(array $contract, string $action, array $paths, string $level, ?string $justification, bool $json, ?string $dispatchAt = null): int
+function commandCheck(array $contract, string $action, array $paths, string $level, ?string $justification, bool $json, ?string $dispatchAt = null, ?bool $existedAtDispatch = null): int
 {
     $level = strtoupper($level);
     if (!in_array($level, ['L0', 'L1', 'L2', 'L3', 'L4'], true)) { throw new InvalidArgumentException("offending field --level: '{$level}'"); }
@@ -1036,7 +1115,7 @@ function commandCheck(array $contract, string $action, array $paths, string $lev
         }
     }
     if ($resolved !== 'L4') {
-        $matches = array_merge(sensitiveMatches($paths), trustSurfaceMatches(trustSurfaceMentions($action)));
+        $matches = array_merge(sensitiveMatches($paths, $existedAtDispatch), trustSurfaceMatches(trustSurfaceMentions($action)));
         $unique = [];
         foreach ($matches as $match) { $unique[$match['matcher'] . '|' . $match['path']] = $match; }
         $matches = array_values($unique);
@@ -1361,8 +1440,14 @@ function main(): int
         return commandPlan(loadContract($path), $path, option($p['options'], 'decisions-dir', DEFAULT_DECISIONS_DIR) ?? DEFAULT_DECISIONS_DIR, isset($p['flags']['json']), option($p['options'], 'emit-manifest'), isset($p['flags']['manifest']));
     }
     if ($command === 'check') {
-        validateArgumentNames($p, ['path', 'level', 'justify', 'contract', 'dispatch-at'], ['json']); $path = option($p['options'], 'contract', DEFAULT_CONTRACT) ?? DEFAULT_CONTRACT;
-        return commandCheck(loadContract($path), implode(' ', $p['positionals']), $p['options']['path'] ?? [], option($p['options'], 'level', 'L2') ?? 'L2', option($p['options'], 'justify'), isset($p['flags']['json']), option($p['options'], 'dispatch-at'));
+        validateArgumentNames($p, ['path', 'level', 'justify', 'contract', 'dispatch-at', 'existed-at-dispatch'], ['json']); $path = option($p['options'], 'contract', DEFAULT_CONTRACT) ?? DEFAULT_CONTRACT;
+        $existedRaw = option($p['options'], 'existed-at-dispatch');
+        $existedAtDispatch = null;
+        if ($existedRaw !== null) {
+            if (!in_array($existedRaw, ['0', '1'], true)) { throw new InvalidArgumentException("offending field --existed-at-dispatch: '{$existedRaw}' (expected 0 or 1)"); }
+            $existedAtDispatch = $existedRaw === '1';
+        }
+        return commandCheck(loadContract($path), implode(' ', $p['positionals']), $p['options']['path'] ?? [], option($p['options'], 'level', 'L2') ?? 'L2', option($p['options'], 'justify'), isset($p['flags']['json']), option($p['options'], 'dispatch-at'), $existedAtDispatch);
     }
     if ($command === 'defer') {
         validateArgumentNames($p, ['task', 'question', 'why', 'option', 'recommend', 'priority', 'impact', 'done', 'evidence', 'state', 'resume', 'git-head', 'by-role', 'by-model', 'by-harness', 'id', 'retry', 'contract', 'decisions-dir'], []);

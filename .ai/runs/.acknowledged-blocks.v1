@@ -90,6 +90,24 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "8c51373ae097ec06ea43f9e212d9cb833085f6ade709e18e5fbd339a861c0233"
+        },
+        {
+            "run_id": "prohibition-leeway",
+            "block_reason": "CD-48 authorises these two trust-surface repairs (owner ruling 2026-09-15: prohibition is fine but allow leeway). The block itself is correct and is NOT disputed: a run may never modify the verifier trust surface, so this change is the Chair's, made under the owner's ruling. Provenance note, stated rather than hidden: the flash run was killed when its terminal was cleaned up, so its exit code was never observed; I passed --exit=1 to close the record and the ledger classified the run blocked on scope regardless. The partial work it left was independently verified before adoption - both repairs behave, tests/ai_autonomy_test.php 78/78, ai_run_test 79/79, ai_project_test 18/18, and the new --existed-at-dispatch flag refuses malformed values.",
+            "director_decision": "CD-48",
+            "acknowledged_at": "2026-09-15T00:41:38+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "08ed2251402432d8669335611d0a24ad0ce355006f4a4cbae9eac876da8a58e8"
+        },
+        {
+            "run_id": "prohibition-leeway-sol",
+            "block_reason": "Sol's first pass produced the verified repair but no usable report: its claim blocks went to stdout interleaved with its own tool output, so the extractor bound 9 claims with no command on any of them. I transcribed that stdout and then deleted it rather than let polluted bytes stand as evidence; the evidence was re-obtained by a second Sol pass (prohibition-leeway-sol2, completed, 6/6 RE_DERIVED). The trust-surface change this run made is authorised by CD-48.",
+            "director_decision": "CD-48",
+            "acknowledged_at": "2026-09-15T00:56:39+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "4649517922385bd9ad75b8046dafdecff674d8bb617d7817adf21ceb388dec73"
         }
     ]
 }

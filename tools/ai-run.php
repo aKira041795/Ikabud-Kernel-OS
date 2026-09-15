@@ -688,6 +688,30 @@ function workingTreeChangedPaths(): array
     return ['ok' => true, 'paths' => array_values(array_unique($paths)), 'error' => null];
 }
 
+/**
+ * Of these repository-relative paths, which are already tracked in HEAD? At run-finish this tells a
+ * file the run CREATED from a committed file it MODIFIED, which is the question `file_exists()` gets
+ * wrong after the fact. The dispatch baseline supplies the paths that were already changed at
+ * dispatch; this supplies the rest of "present at dispatch". A git failure resolves toward
+ * protection (every path is reported as tracked), never toward permitting an edit.
+ *
+ * @param list<string> $paths
+ * @return list<string>
+ */
+function pathsTrackedInHead(array $paths): array
+{
+    if ($paths === []) { return []; }
+    $arguments = ['git', 'ls-tree', '-r', '-z', '--name-only', 'HEAD', '--'];
+    foreach ($paths as $path) { $arguments[] = $path; }
+    $run = executeArgv($arguments, dirname(__DIR__), 20);
+    if ($run['timed_out'] || $run['exit_code'] !== 0) { return $paths; }
+    $tracked = [];
+    foreach (explode("\0", $run['output']) as $entry) {
+        if ($entry !== '') { $tracked[] = $entry; }
+    }
+    return array_values(array_intersect($paths, $tracked));
+}
+
 /** @param list<string> $paths @return array<string,string> */
 function changedPathFingerprints(array $paths): array
 {
@@ -840,7 +864,7 @@ function validatedHarnessArtifact(string $raw, array $contract): string
  * @param list<string> $paths
  * @return array{ok:bool,checked:list<string>,offending:list<array{path:string,reasons:list<string>}>,authorised_exceptions?:list<array<string,mixed>>}
  */
-function scopeConformance(string $contract, string $expectedRevision, array $paths, ?string $dispatchAt = null): array
+function scopeConformance(string $contract, string $expectedRevision, array $paths, ?string $dispatchAt = null, ?array $baselinePaths = null): array
 {
     try {
         $finishContract = loadContract($contract);
@@ -854,9 +878,19 @@ function scopeConformance(string $contract, string $expectedRevision, array $pat
 
     $offending = [];
     $authorised = [];
+    // `existed at dispatch` is decided from the dispatch baseline the runner already holds, never
+    // from the filesystem (whose `file_exists()` answer is post-run) and never from the diff (the
+    // matcher may not inspect the change). A path that was already changed at dispatch sets it
+    // directly; a path that was committed before dispatch but modified during the run is still
+    // present at HEAD, so it counts as existing too. Only a path absent from both is an addition.
+    $trackedAtHead = $baselinePaths === null ? [] : pathsTrackedInHead($paths);
     foreach ($paths as $path) {
         $arguments = [PHP_BINARY, dirname(__DIR__) . '/tools/ai-autonomy.php', 'check', 'run changed path', '--path=' . $path, '--contract=' . $contract];
         if ($dispatchAt !== null && trim($dispatchAt) !== '') { $arguments[] = '--dispatch-at=' . $dispatchAt; }
+        if ($baselinePaths !== null) {
+            $existedAtDispatch = in_array($path, $baselinePaths, true) || in_array($path, $trackedAtHead, true);
+            $arguments[] = $existedAtDispatch ? '--existed-at-dispatch=1' : '--existed-at-dispatch=0';
+        }
         $arguments[] = '--json';
         $run = executeArgv($arguments, dirname(__DIR__), 20);
         $payload = json_decode($run['output'], true);
@@ -1059,7 +1093,8 @@ function commandFinish(array $options, bool $json): int
             (string) ($record['contract'] ?? ''),
             (string) ($record['contract_revision'] ?? ''),
             $delta,
-            is_string($record['started_at'] ?? null) ? (string) $record['started_at'] : null
+            is_string($record['started_at'] ?? null) ? (string) $record['started_at'] : null,
+            $baseline
         );
         $conformance['declared_harness_artifacts'] = $declaredArtifacts;
     }
