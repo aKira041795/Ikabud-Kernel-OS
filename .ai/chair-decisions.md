@@ -2645,3 +2645,83 @@ could not, and it is the strongest argument for the live-verification step being
 afterthought. **A passing test proves the assertions ran; it does not prove the feature works.**
 
 **Authority:** CD-8 (decidability is authority). **Owner intervention:** not required.
+
+---
+
+## CD-55 — the capability registry is unfixable by any contract, and my contract tried to authorise it
+
+**What happened.** I authored `.ai/active-policy-version.contract.md` to fix the pinned-`policy_version` defect class
+across the suite. Its `Files likely affected` listed `kernel/Capabilities/CapabilityAuthorizationRegistry.php` and
+`tests/active_policy_version_test.php`. The run completed `exit=0` and the scope gate **BLOCKED** it on three offences,
+two of them absolute:
+
+```
+kernel/Capabilities/CapabilityAuthorizationRegistry.php
+  trips an absolute prohibition: auth, authorisation, policy or security weakening (no justification can authorise it)
+tests/active_policy_version_test.php
+  trips an absolute prohibition: auth, authorisation, policy or security weakening
+modules/cms-akira/cms-akira-theme/tests/theme_read_authority_test.php
+  path is outside the approved scope
+```
+
+**The guard was right and my contract was unlawful.** `isAuthorityFamilyPath()` matches on path tokens, so
+`…AuthorizationRegistry…` and `…active_policy_version…` are refused. No contract of mine can authorise these, and no
+escalation can obtain permission. I attempted to authorise the authorisation surface, which is precisely what the
+absolute list exists to prevent.
+
+**The consequential finding: the change was purely ADDITIVE and it STRENGTHENS authority.** The executor's edit was
++50 lines — a new static `activePolicyVersionForCurrentScope()`, no existing line touched, read-only, returning an int.
+It cannot grant access; it makes declarations *visible* so they are actually enforced. The guard cannot distinguish
+that from a weakening, because it classifies **paths, not diffs**. The permanent consequence:
+
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php` can never be changed by any contract again.
+- **`kernel/Services/ModuleInstallService.php:78` carries the same pinned-`policy_version => 1` defect on a kernel
+  path.** Its default `policySeeder` writes rows at version 1, so a late module install against a tenant whose active
+  version has advanced lands an invisible policy — the identical failure that returned HTTP 403 to every operator.
+  **There is no lawful route to fix it.** This is the one live defect this programme has found that the harness cannot
+  act on.
+- `modules/cms-akira/cms-akira-shell/helpers.php:11` pins a literal `30` — the fossil of somebody hitting this bug,
+  reading the tenant's version off the database and hardcoding it.
+
+**Severity, stated honestly: the class fix is PREVENTIVE, not corrective.** Measurement showed every affected
+capability already carries a correct active row at v30 (`akira.seo.*`, `akira.search.*`, `akira.post.publish|unpublish`,
+`akira.theme.activate` — all `admin,administrator,superadmin`). Their authority *is* in force; the version-1 rows are
+inert dead weight. The single demonstrated live victim was `akira.user.revoke_sessions@1`, already fixed in `6605efb`.
+I therefore reverted the whole slice rather than add `function_exists` guards and duplication across ten files for a
+preventive change with no live symptom and no lawful home for its clean design.
+
+**OWNER DECISION REQUIRED — one question, two options.** Does the absolute prohibition intend to cover *additive,
+non-weakening* changes to the capability registry?
+
+- **A — keep it absolute (no change).** `ModuleInstallService.php:78` stays defective forever. New capabilities
+  installed late on an advanced-version tenant will be invisible and 403 every operator, and the only remedy is a
+  manual database write outside the product. Acceptable only if late module installs are considered out of scope.
+- **B — refine the matcher to classify the DIFF, not only the path**, so an additive, non-semantic change to an
+  authority file is `RECORD` rather than an absolute refusal, while every weakening (role-set edits, grant-state
+  changes, `authorize()` logic) stays absolutely refused. This is a change to the verifier's own prohibition list, so
+  it is an owner decision and cannot be made by a contract.
+
+**Recommendation: B.** The prohibition's purpose is to prevent weakening. A gate that also forbids strengthening
+cannot be satisfied by any future work on authority, and it has now blocked a repair whose entire effect is that
+declared authority becomes enforceable. Option A leaves a known 403-every-operator defect with no route.
+
+**Authority:** none available — CD-8 does not reach an absolute prohibition. Filed for the owner.
+**Owner intervention:** REQUIRED (this is the decision).
+
+---
+
+## CE-10 — Chair error: a contract that authorised the authorisation surface
+
+Same class as CE-09 but more serious: I listed absolutely-prohibited paths in `Files likely affected`. A contract is a
+permission envelope, and mine asked for permission it could not grant. **Rule:** before authoring, run the taxonomy
+against every candidate path and drop any path the driver classifies absolute.
+
+## CE-11 — Chair error: I took the live site down by reverting a shared interface
+
+Reverting `kernel/Capabilities/CapabilityAuthorizationRegistry.php` while ten module helpers still called its new
+method produced **HTTP 500 on every route**, including the public site. I caught it on the next check and restored
+`6605efb`.
+
+**Rule:** an interface change is one change. Revert it together with every caller, or not at all — a partial revert of
+a shared surface is worse than either endpoint. And **check the live site immediately after any revert that touches a
+shared interface**, not after the next commit.
