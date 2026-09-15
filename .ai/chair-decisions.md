@@ -2378,3 +2378,38 @@ own report format was wrong, and the fix is to the instruction, not the code. If
 
 **Authority:** CD-48 governs leeway on mechanisms; this is a correction to my authoring.
 **Owner intervention:** not required.
+
+## CD-50 — the evidence parser cannot tell a result from a statement about a result
+
+**Found while verifying the 2026-09-15 brief update, from that run's own claims.**
+
+`php tools/ai-run.php verify --run=brief-update` returned **2 CONTRADICTED** claims — `php
+tests/ai_autonomy_test.php` and `php tests/ai_run_test.php`, each *"claimed exit_code=3 observed 0"*. Both suites
+exit 0 (re-measured directly). The contradiction is an artifact of the evidence parser:
+
+```php
+if (preg_match('/\bexit\s*[=:]?\s*(\d+)\b/i', $line, $matches) === 1) { $evidence['exit_code'] = ...; }
+```
+
+`parseEvidence()` runs on **every** line and merges its findings into the most recently declared command. The
+two suites' own assertion labels read *"…refuses absent and unknown decisions with exit 3"* and
+*"commit-check: running -> exit 3, run named with its state"*, so **a test that asserts about an exit code sets
+its own claim's expected exit code** — and then contradicts itself.
+
+**This is the CD-48 class again: the rule is fine, the mechanism is over-broad.** Recording that a command's
+exit code is evidence is correct; treating any line *mentioning* an exit code as that command's result is not.
+The same shape applies to the other `parseEvidence()` keys.
+
+**Consequence, measured rather than predicted:** two of the seven suites — the two that assert about exit codes,
+which are also the two largest — **cannot serve as evidence in a transcript report**. They re-derive as
+CONTRADICTED whatever the report says, because their own output poisons the claim. Any slice evidenced by them
+through the loop would block.
+
+**Not repaired here.** The fix is a trust-surface change requiring a director decision, and declaring it before
+fixing it is the discipline that produced CD-46 and CD-48. Recorded in the brief as limit **§3.23** so a reviewer
+sees it. **The document update itself is unaffected:** its content was verified directly — the seven suites exit
+0, the lint summary is as printed, and the decision/amendment counts were read from the files — so the
+contradicted claims are an artifact of *how the report was parsed*, not of what it reported.
+
+**Authority:** CD-48 (mechanisms get leeway) identifies the class; the repair needs its own authorisation.
+**Owner intervention:** not required.

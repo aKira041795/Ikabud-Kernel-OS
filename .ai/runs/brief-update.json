@@ -1,0 +1,443 @@
+{
+    "id": "brief-update",
+    "contract": ".ai/brief-update-2026-09-15.contract.md",
+    "contract_revision": "07aaeecdbfb0cdd2",
+    "allowed_count": 1,
+    "forbidden_count": 7,
+    "lane": "openai-codex/gpt-5.6-sol",
+    "started_at": "2026-09-15T02:26:48+00:00",
+    "pid": 2885809,
+    "log": null,
+    "report": ".ai/runs/brief-update.report.txt",
+    "status": "completed",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/brief-update-2026-09-15.contract.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/standing-authorization-and-decisions.md"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/brief-update-2026-09-15.contract.md": "file:a257388a46b05f71cbecd90ab3d23149b9b85900427f5aadf71ee62d6ea33094",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/brief-update.json",
+        ".ai/runs/brief-update.report.txt"
+    ],
+    "harness_artifacts": [],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": null,
+    "trust_surface_hash": "86119019db360232eb0afc71fe9c778ae19494f394c83f7dc6c7cc400c0a10af",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+        "tools/ai-autonomy.php": "0cd46680641222b1c5518bfe5481ebd353358024337e1584d4e92591c860ab39",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "b53dad08bb5d076c65189dcb697cac2666fbd4c6a9a017cb68a78b7864cacc00",
+        "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+    },
+    "finished_at": "2026-09-15T02:36:03+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 52256,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/brief-update-2026-09-15.contract.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/brief-update.json",
+        ".ai/runs/brief-update.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        "docs/reviews/harness-independent-evaluation-brief.md"
+    ],
+    "scope_delta_paths": [
+        "docs/reviews/harness-independent-evaluation-brief.md"
+    ],
+    "scope_conformance": {
+        "ok": true,
+        "checked": [
+            "docs/reviews/harness-independent-evaluation-brief.md"
+        ],
+        "offending": [],
+        "declared_harness_artifacts": []
+    },
+    "evidence_fingerprint": "fd3e0a083f2dd9981195f847c239910989ba826ee6162e5bef5c15a028b5c0fb",
+    "evidence_unavailable_reason": null,
+    "claim_verification": {
+        "verified_at": "2026-09-15T02:38:36+00:00",
+        "contract_revision": "07aaeecdbfb0cdd2",
+        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-brief-update-1",
+                "run": "brief-update",
+                "type": "CONTRACT_CONFORMANCE",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tools/ai-contract-lint.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 1,
+                    "text": "$ php tools/ai-contract-lint.php"
+                },
+                "executor_claim": [],
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 3,
+                    "observed": {
+                        "exit_code": 3
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    },
+                    "reason": "nothing_to_compare"
+                },
+                "status": "UNVERIFIED"
+            },
+            {
+                "claim_id": "CLM-brief-update-2",
+                "run": "brief-update",
+                "type": "BROWSER_JOURNEY",
+                "re_derivable": false,
+                "subject": {
+                    "command": "playwright-rate-limit-cap                            parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 60,
+                    "text": "playwright-rate-limit-cap                            parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown"
+                },
+                "executor_claim": [],
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "not_re_derivable_by_pure_tool"
+                },
+                "status": "UNVERIFIED"
+            },
+            {
+                "claim_id": "CLM-brief-update-3",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 91,
+                    "text": "$ php tests/ai_autonomy_test.php"
+                },
+                "executor_claim": {
+                    "exit_code": 3,
+                    "passed": 78,
+                    "total": 78
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 78,
+                        "total": 78
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    },
+                    "mismatches": {
+                        "exit_code": {
+                            "claimed": 3,
+                            "observed": 0
+                        }
+                    }
+                },
+                "status": "CONTRADICTED"
+            },
+            {
+                "claim_id": "CLM-brief-update-4",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_run_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 210,
+                    "text": "$ php tests/ai_run_test.php"
+                },
+                "executor_claim": {
+                    "exit_code": 3,
+                    "passed": 79,
+                    "total": 79
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 79,
+                        "total": 79
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    },
+                    "mismatches": {
+                        "exit_code": {
+                            "claimed": 3,
+                            "observed": 0
+                        }
+                    }
+                },
+                "status": "CONTRADICTED"
+            },
+            {
+                "claim_id": "CLM-brief-update-5",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 334,
+                    "text": "$ php tests/ai_project_test.php"
+                },
+                "executor_claim": {
+                    "passed": 18,
+                    "total": 18
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 18,
+                        "total": 18
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-brief-update-6",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_metrics_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 383,
+                    "text": "$ php tests/ai_project_metrics_test.php"
+                },
+                "executor_claim": {
+                    "passed": 16,
+                    "total": 16
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 16,
+                        "total": 16
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-brief-update-7",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_contract_lint_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 430,
+                    "text": "$ php tests/ai_contract_lint_test.php"
+                },
+                "executor_claim": {
+                    "exit_code": 0,
+                    "passed": 3,
+                    "total": 3
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 3,
+                        "total": 3
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-brief-update-8",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_loop_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 458,
+                    "text": "$ php tests/ai_loop_test.php"
+                },
+                "executor_claim": {
+                    "passed": 18,
+                    "total": 18
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 18,
+                        "total": 18
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-brief-update-9",
+                "run": "brief-update",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_glob_scope_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 508,
+                    "text": "$ php tests/ai_autonomy_glob_scope_test.php"
+                },
+                "executor_claim": {
+                    "passed": 5,
+                    "total": 5
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 5,
+                        "total": 5
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-brief-update-10",
+                "run": "brief-update",
+                "type": "CONTRACT_CONFORMANCE",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tools/ai-contract-lint.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 535,
+                    "text": "$ php tools/ai-contract-lint.php"
+                },
+                "executor_claim": [],
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 3,
+                    "observed": {
+                        "exit_code": 3
+                    },
+                    "binding": {
+                        "rev": "baa02f10e981fd766623652ad43e44284bbdfc4d",
+                        "dirty": true
+                    },
+                    "reason": "nothing_to_compare"
+                },
+                "status": "UNVERIFIED"
+            },
+            {
+                "claim_id": "CLM-brief-update-11",
+                "run": "brief-update",
+                "type": "BROWSER_JOURNEY",
+                "re_derivable": false,
+                "subject": {
+                    "command": "playwright-rate-limit-cap                            parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown",
+                    "command_source": "declared",
+                    "source": ".ai/runs/brief-update.report.txt",
+                    "line": 594,
+                    "text": "playwright-rate-limit-cap                            parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown"
+                },
+                "executor_claim": [],
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "not_re_derivable_by_pure_tool"
+                },
+                "status": "UNVERIFIED"
+            }
+        ]
+    }
+}

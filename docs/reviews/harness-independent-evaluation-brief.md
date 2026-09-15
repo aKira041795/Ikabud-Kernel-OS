@@ -1,16 +1,17 @@
 # Independent Evaluation Brief — Ikabud Autonomous Development Harness
 
-**Prepared:** 2026-09-14 · **Revised:** 2026-09-14 (evening — after the day's guardrail work) · **Repo:** `/var/www/html/ikabudsix` · **Branch:** `feat/akira-editorial-and-authority-coverage`
-**Commits under review:** `995553a` (HEAD); `git log --oneline` prints the full range. The four commits the
-earlier revision named — `ed48fff` (enforcement), `ba80298` (scope-path semantics), `d36b85f` (browser suite),
-`328da57` (run ledger) — remain in scope, and everything after them through HEAD is new work.
+**Prepared:** 2026-09-14 · **Revised:** 2026-09-15 (after the first GEN4-R1 measurements) · **Repo:** `/var/www/html/ikabudsix` · **Branch:** `feat/akira-editorial-and-authority-coverage`
+**Commits under review:** `baa02f1` (HEAD), with `995553a` the previous revision's tree. **Fourteen commits**
+landed between them (`git rev-list --count 995553a..baa02f1` → `14`). The four commits the earlier revision
+named — `ed48fff` (enforcement), `ba80298` (scope-path semantics), `d36b85f` (browser suite), `328da57` (run
+ledger) — remain in scope, and everything after them through HEAD is new work.
 **Audience:** an independent senior engineer who has never seen this repository.
 **Time-box:** 2–4 hours. Everything in §3 runs in under two minutes except the optional browser suite.
 
-> **Revision note.** This brief was first written in the morning of 2026-09-14. Every measured value it
-> recorded was re-measured in the evening of the same day, on tree `995553a`; where a value moved, the old
-> value is kept beside the new one. Numbers taken from a named artefact rather than re-run are labelled
-> `NOT RE-MEASURED`. The author of this revision is the executing lane, not the independent reviewer;
+> **Revision note.** This brief was first written in the morning of 2026-09-14 and revised that evening on
+> tree `995553a`. It is revised again on 2026-09-15 on tree `baa02f1`, fourteen commits later; where a value
+> moved, the old value is kept beside the new one. Numbers taken from a named artefact rather than re-run are
+> labelled `NOT RE-MEASURED`. The author of this revision is the executing lane, not the independent reviewer;
 > these are the harness author's own re-measurements and are labelled as such.
 
 ---
@@ -55,11 +56,11 @@ harmful actions impossible rather than merely discouraged.
 | **Loop** | `tools/ai-loop.php` | Dispatches slices; checks commit eligibility; enforces scope conformance and the bounded repair ladder (L1–L4); advances only when every claim is `RE_DERIVED` |
 | **Project** | `tools/ai-project.php` | `status` / `next` / `obligations` / `transition` / `retry` / `metrics` — metrics derived from artefacts, never estimated |
 | **Corpus lint** | `tools/ai-contract-lint.php` | Measures conformance of every contract in `.ai/` |
-| **Trust-surface record** | `.ai/trust-surface-amendments.json` | Seven director-authorised amendments to the verifier's trust surface (TSA-0001…TSA-0007) |
-| **Decision record** | `.ai/chair-decisions.md` | Forty recorded Chair decisions (CD-1…CD-40; eleven when this brief was first written) |
-| **Test suites** | `tests/ai_*.php` | Six passing pure suites: `ai_autonomy` 59, `ai_run` 67, `ai_project` 18, `ai_contract_lint` 3, `ai_loop` 18, `ai_autonomy_glob_scope` 5 assertions (all exit 0; the first two were **46** and **19** when first written). `ai_project_metrics` is **15/16, exit 1** (one stale assertion — see §3.17) |
+| **Trust-surface record** | `.ai/trust-surface-amendments.json` | Eleven director-authorised amendments to the verifier's trust surface, TSA-0001…TSA-0011 (was seven, TSA-0001…TSA-0007) |
+| **Decision record** | `.ai/chair-decisions.md` | Forty-nine recorded Chair decisions, CD-1…CD-49 (was forty, CD-1…CD-40; eleven when this brief was first written) |
+| **Test suites** | `tests/ai_*.php` | Seven passing suites: `ai_autonomy` 78, `ai_run` 79, `ai_project` 18, `ai_project_metrics` 16, `ai_contract_lint` 3, `ai_loop` 18, `ai_autonomy_glob_scope` 5 assertions (all exit 0). Previous values: `ai_autonomy` 59, `ai_run` 67, and `ai_project_metrics` 15/16 at exit 1; the first two were **46** and **19** when first written. See C6 and §3.17. |
 | **Director channel** | HARPP — in-tree bridge at `tools/harpp-bridge/`, external service resolved through `PATH` | Where L4 decisions are filed for a human to answer |
-| **Project state** | `.ai/projects/harpp-gen4/` | Slice table, `state.json`, `metrics.json`; the worked end-to-end example (§7.5) |
+| **Project state** | `.ai/projects/harpp-gen4/`; `.ai/projects/gen4-r1/` | The worked end-to-end example (§7.5), and the frozen-apparatus measurement programme (§7.6): slice tables, state and derived metrics |
 
 ### 1.3 The authority ladder
 
@@ -227,11 +228,11 @@ running?" is answered from the process, never from a file's size.
 **Failure mode:** if `finish --exit=0` with no report classified as `completed` rather than `silent`, or
 `--gate` returned `0`, the ledger would be repeating the inference error it replaced.
 
-### C6 — The suites pass (one does not)
+### C6 — All seven suites pass
 
-The first revision cited only the two suites that existed then; it measured `46/46` and `19/19`. Both grew, and
-four more suites were added. The honest statement is that six suites are green and **one assertion in the
-seventh is red**:
+The first revision cited only the two suites that existed then; it measured `46/46` and `19/19`. By the
+2026-09-14 evening revision those had grown to `59/59` and `67/67`, four more green suites had been added, and
+`ai_project_metrics_test` was red at `15/16`. All seven are now green:
 
 ```bash
 for f in ai_autonomy_test ai_run_test ai_project_test ai_project_metrics_test \
@@ -240,26 +241,25 @@ for f in ai_autonomy_test ai_run_test ai_project_test ai_project_metrics_test \
   echo "$f: exit=$code $(echo "$out" | grep -oE '[0-9]+/[0-9]+ passed' | tail -1)"
 done
 ```
-**Measured (2026-09-14 evening, HEAD `995553a`):**
+**Measured (2026-09-15, HEAD `baa02f1`):**
 
 ```
-ai_autonomy_test:            exit=0  59/59 passed
-ai_run_test:                 exit=0  67/67 passed
+ai_autonomy_test:            exit=0  78/78 passed   (was 59/59; first revision 46/46)
+ai_run_test:                 exit=0  79/79 passed   (was 67/67; first revision 19/19)
 ai_project_test:             exit=0  18/18 passed
-ai_project_metrics_test:     exit=1  15/16 passed   <- assertion 3 (see §3.17)
+ai_project_metrics_test:     exit=0  16/16 passed   (was exit=1, 15/16; see §3.17)
 ai_contract_lint_test:       exit=0   3/3 passed
 ai_loop_test:                exit=0  18/18 passed
 ai_autonomy_glob_scope_test: exit=0   5/5 passed
 ```
 
-**Old value kept:** the first revision measured `exit=0 46/46 passed` and `exit=0 19/19 passed`. The growth is
-real; so is the red. A reviewer must not read "the suites pass" here.
+The previously red metrics suite is green. Commit `02a4559` corrected the stale `runs_by_status` expectation by
+adding `'blocked' => 0`; it retained the strict full-array `===` comparison and names seven required keys where
+it previously named six. **The correction strengthened the assertion rather than weakening it.**
 
 **Failure mode:** if a suite's summary is not `N/N passed`, or its exit is non-zero, the harness's own gate is
-not clean. `ai_project_metrics_test` is **currently red on assertion 3** — its hand-computed expected
-`runs_by_status` map omits the `blocked` status that `tools/ai-project.php metrics` now emits. The suite is
-deterministic (re-run twice, `15/16` each time); it is a stale test expectation, not a flake. It is recorded
-rather than fixed because fixing it would edit `tests/` — outside this documentation slice's forbidden scope.
+not clean. The historical red result remains visible because a repaired instrument must not erase the evidence
+that it was once unclean.
 
 ### C7 — Corpus conformance is measured, and gates only live work
 
@@ -267,9 +267,11 @@ rather than fixed because fixing it would edit `tests/` — outside this documen
 php tools/ai-contract-lint.php; echo "exit=$?"
 ```
 **Expected:** a line per contract plus a summary; exit `3` (because live contracts currently fail).
-**Measured (2026-09-14 evening, HEAD `995553a`):**
-`total=78 live=43 stale=5 unknown=30 live_parse_failures=39 live_with_phantoms=3 with_phantoms=4 missing_status=17`.
-**Old value kept (first revision):**
+**Measured (2026-09-15, HEAD `baa02f1`):**
+`SUMMARY total=85 live=46 stale=5 unknown=34 live_parse_failures=40 live_with_phantoms=3 with_phantoms=4 missing_status=17`.
+**Old values kept:** the 2026-09-14 evening revision measured
+`total=78 live=43 stale=5 unknown=30 live_parse_failures=39 live_with_phantoms=3 with_phantoms=4 missing_status=17`;
+the first revision measured
 `total=65 live=36 stale=4 unknown=25 live_parse_failures=31 live_with_phantoms=3 with_phantoms=4 missing_status=17`.
 
 A stale contract failing to parse **must not** affect the exit code — history is allowed to be unparseable.
@@ -420,10 +422,12 @@ print('recorded amendments:', len(d))
 for a in d: print(' ', a['id'], a['director_decision'], a['trust_surface_hash'][:12])
 PY
 ```
-**Measured (2026-09-14 evening, HEAD `995553a`):** the first command exits **`3`** with
+**Measured (2026-09-15, HEAD `baa02f1`):** the first command exits **`3`** with
 `REFUSED: --director-decision must name a recorded decision in .ai/decisions/ or a ## CD-<n> heading … No
-trust-surface file was changed.` The second exits `0` and prints **seven** amendments: TSA-0001…TSA-0007,
-under director decisions `CD-28` (×4), `CD-33` (×1), `CD-37` (×2).
+trust-surface file was changed.` The second exits `0` and prints **eleven** amendments: TSA-0001…TSA-0011,
+under director decisions `CD-28` (×4), `CD-33` (×1), `CD-37` (×2), `CD-41` (×1), `CD-44` (×1),
+`gen4-r1-d1` (×1), and `CD-48` (×1). **Old value kept:** the 2026-09-14 evening revision measured seven,
+TSA-0001…TSA-0007, under `CD-28` (×4), `CD-33` (×1), and `CD-37` (×2).
 **Expected exit codes:** `3`, then `0`.
 **Failure mode:** if `amend` records with an unrecorded decision, the Chair has authorised itself (rule 4
 fails); if no amendment is recorded, the change has no audit trail (rot risk, CD-27).
@@ -531,11 +535,12 @@ gate blames the harness for its own writes and every real loop run blocks (the d
 
 ## 3. The honest limits — read this before forming a view
 
-**This section has GROWN, deliberately.** The first revision recorded **ten** limits (§3.1–§3.10). This
-revision keeps all ten and adds **seven** today's work produced (§3.11–§3.17): **ten → seventeen**. No limit
-was deleted or softened; each existing limit is now marked *open*, *partially closed*, or *closed*, and a
-closure is stated with the evidence that closed it. *(The section is split in this document: §3.1–§3.8 appear
-here; §3.9–§3.17 appear after §6, as originally written for §3.9–§3.10.)*
+**This section has GROWN, deliberately.** The first revision recorded **ten** limits (§3.1–§3.10); the
+2026-09-14 evening revision kept them and added seven (§3.11–§3.17), **ten → seventeen**. This revision keeps
+all seventeen and adds five measured on 2026-09-15 (§3.18–§3.22), **seventeen → twenty-two**. No limit was
+deleted or softened; each existing limit is marked *open*, *partially closed*, or *closed*, and a closure is
+stated with the evidence that closed it. *(The section is split in this document: §3.1–§3.8 appear here;
+§3.9–§3.22 appear after §6, as originally written for §3.9–§3.10.)*
 
 **A reviewer who finds unlisted weaknesses here should discount this entire document.** These are the ones we
 know about.
@@ -584,9 +589,9 @@ instead of asserting that a report looked convincing — but only for the claim 
 
 ### 3.2 The corpus is mostly non-conformant
 
-**Status: open.** 39 of 43 live contracts fail to parse (was 31 of 36 when first written;
-`php tools/ai-contract-lint.php`, `total=78 live=43 live_parse_failures=39`). The runnable set is therefore
-small. Autonomy is real for **work
+**Status: open.** 40 of 46 live contracts fail to parse (was 39 of 43 in the 2026-09-14 evening revision,
+and 31 of 36 when first written; `php tools/ai-contract-lint.php`,
+`total=85 live=46 live_parse_failures=40`). The runnable set is therefore small. Autonomy is real for **work
 authored under the harness** (all contracts written this session parse cleanly) and largely unavailable for
 the legacy corpus. Retrofit is deliberately just-in-time, not bulk, because **an envelope is an authority
 boundary — fabricating one from a stale contract authorises scope its author never approved.**
@@ -704,7 +709,7 @@ verified.
 | 14 | A slice id could be declared by a *comment* in a contract's first 12 lines (`(S6)`) | `retry --slice=S5` collision (CD-34) | Mitigated; the prose-scan root cause is open |
 | 15 | A verification run reused the authoring slice's scope, pre-authorising a verifier edit | Chair review while re-queuing S5 (CD-35) | Fixed — scope narrowed to the run's footprint |
 | 16 | The `pi` runner makes a recoverable tool-call error fatal, yielding a 0-byte run | The first `gpt-oss-120b` attempt (CD-39) | **Open, outside the trust surface** (the runner, not this repo) |
-| 17 | The metrics suite's assertion 3 is stale — it omits the `blocked` status | Running the suite while preparing this brief | **Open** — §3.17 |
+| 17 | The metrics suite's assertion 3 was stale — it omitted the `blocked` status | Running the suite while preparing this brief | **Fixed** — strict `===` retained and required keys increased 6 → 7; §3.17 |
 
 **Findings against the harness and against the Chair, not only the executor.** Row 13 was the harness blaming
 itself for its own writes; rows 12 and 15 were the Chair finding the guardrail's own boundary wrong. The
@@ -811,28 +816,33 @@ more of it that moves downward, the less the Chair needs to *understand* every d
 **Status: open.** `harpp-gen4` completed all five slices, but only **S5** ran with the full guardrail set
 (trust-surface rules, scope conformance, the ladder, declared artefacts). S2/S3/S4/S6 advanced earlier under
 weaker guardrails, so *five done slices* is not *five slices proven under today's rules* (CD-38). The
-programme's own bar (CD-15) is **10–20 complete bounded slices across executors**; the sample under the current
-rules is **one**. A completed project is a different kind of evidence from a repeated one, and no streak has
-been demonstrated.
+programme's own bar (CD-15) is **10–20 complete bounded slices across executors**; the GEN4-R1 sample under the
+current rules is now **two slices, S1 and S2** (was one), both completed. A completed project is a different
+kind of evidence from a repeated one, and two slices are still not a streak.
 
-### 3.12 One vacuity path is open: an exit-0 command is accepted as evidence
+### 3.12 One vacuity path was open: an exit-0 command was accepted as evidence
 
-**Status: open.** `_run_verify()` maps a shell exit `0` to `RE_DERIVED` with no non-vacuity requirement, so a
-verifier consisting of `true` — any command that always exits 0 — advances a job on the Python side. This is
-B-F1 (CD-23), recorded as "accepted, not independently re-run", and it is the last hole of the "no error
-signal" class: it restores *false confidence* rather than merely inconvenience. The claim machinery
-distinguishes `RE_DERIVED` from `UNVERIFIED`, but cannot itself tell a real test from a vacuous one. Treat any
-claim whose command has no chance of failing as unverified in substance, whatever its status field says.
+**Status: closed, with the original limit retained.** `_run_verify()` previously mapped a shell exit `0` to
+`RE_DERIVED` with no non-vacuity requirement, so a verifier consisting of `true` — any command that always
+exited 0 — could advance a job on the Python side. This was B-F1 (CD-23), originally recorded as "accepted, not
+independently re-run": the last hole of the "no error signal" class restored *false confidence* rather than
+merely inconvenience.
+
+Before GEN4-R1 was dispatched, CD-41 required this hole closed and TSA-0008 recorded the repair: constant-true
+verification shapes are denied, and an evidence-required stage needs a negative control; a non-falsifiable
+control is `UNPROVEN`. The old warning still governs review: any claimed verifier with no demonstrated chance
+of failing is unverified in substance, whatever status field it reports.
 
 ### 3.13 The trust surface is defined by file, not by semantic role
 
 **Status: open.** The verifier is protected as an enumerated list of *files* (the `trust_surface_files` map in
 `.ai/trust-surface-amendments.json`), so **improving the harness's own plumbing repeatedly required director
-authorisation**. The file records **seven** amendments — TSA-0001…TSA-0007: four under `CD-28`, one under
-`CD-33`, two under `CD-37` (command in C11). None was caused by a defect in the work the harness was judging;
-every one was the harness discovering that its own mechanics were under-specified (CD-38). A definition by
-*file* over-triggers: a change that does not touch verification semantics still needs the owner. A
-definition by **semantic role** is the fix, and it is not built.
+authorisation**. The file now records **eleven** amendments — TSA-0001…TSA-0011 (was seven,
+TSA-0001…TSA-0007): four under `CD-28`, one under `CD-33`, two under `CD-37`, and one each under `CD-41`,
+`CD-44`, `gen4-r1-d1`, and `CD-48` (command in C11). None was caused by a defect in the work the harness was
+judging; each concerns the harness's mechanics or admissible evidence surface. A definition by *file*
+over-triggers: a change that does not touch verification semantics still needs the owner. A definition by
+**semantic role** is the fix, and it is not built.
 
 ### 3.14 A block must be adjudicated by class, not by convenience
 
@@ -874,15 +884,88 @@ because the run's log is 0 bytes. "Cheap" is a property of the workload, not onl
 work belongs on a fixed-cost or metered-per-use lane, not a daily-capped burst lane. The model policy
 (`php tools/ai-autonomy.php models`) states the cost shapes but enforces no context-budget gate.
 
-### 3.17 The harness's own metrics suite is red on one assertion
+### 3.17 The harness's own metrics suite was red on one assertion
 
-**Status: open.** `php tests/ai_project_metrics_test.php` → **exit 1, 15/16 passed**, deterministically
-(re-run twice at HEAD `995553a`). Assertion 3 hand-computes an expected `runs_by_status` map that omits the
-`blocked` status `tools/ai-project.php metrics` now emits. It is a stale test expectation, not a product
-failure, but the harness's own instrument is not clean, and this brief must say so rather than cite "the
-suites pass". Fixing it edits `tests/`, which this documentation slice's forbidden scope excludes. See C6.
+**Status: closed.** `php tests/ai_project_metrics_test.php` now reports **exit 0, 16/16 passed, zero skips**
+(was exit 1, 15/16 passed, deterministically re-run twice at HEAD `995553a`). Commit `02a4559` corrected the
+stale `runs_by_status` expectation by adding `'blocked' => 0`. The strict full-array `===` comparison remains,
+and the expectation names seven required keys where it previously named six: **the assertion was strengthened,
+not weakened**. This is GEN4-R1 S1 evidence; see C6.
+
+### 3.18 The harness's own report format was undocumented
+
+**Status: partially closed — the authoring instruction is corrected; the extractor is unchanged.** Measured on
+2026-09-15 and recorded as CD-49: `tools/ai-run.php` has no handling of `CLAIM:`, `COMMAND:` or `OBSERVED:`.
+`parseCommandLine()` strips only a leading `>` or `$`, so `COMMAND: php tests/x.php` classifies as nothing and
+binds no command. Reports written to the templates the contract author prescribed therefore extracted claims
+with `command_source: null`, and `verify` returned `no_command_declared` for every one.
+
+The binding shapes are a `$`-prefixed command line with its output beneath it, or a line carrying the command
+and its result together. Current instructions now prescribe the first. **This was the contract author's defect,
+not the executor's and not a defect in the extractor:** executors wrote the requested shape; the untested
+convention was inert. A report convention is a mechanism; an untested mechanism is a belief. A reviewer should
+inspect old reports and contracts for the inert labels rather than assume their prose claims ever bound.
+
+### 3.19 The allowlist can admit a command that cannot be verified
+
+**Status: open.** Measured on 2026-09-15: `php ikabud workbench:governance --all --json` was admitted to the
+allowlist under TSA-0010 and binds as a claim, but `verify` returns **`nothing_to_compare`**. The verifier has no
+census observation, so a declared census can never re-derive. Being *allowed* is not the same as being
+*re-derivable*, and only the second makes evidence.
+
+S2 worked around this by asserting the census inside a pure test, where the comparison target is the test's own
+pass/fail counts. The successful workaround does not close the general gap. The failed offer of the census as a
+standalone claim was an **authoring defect**; the absence of a census comparison is the apparatus limit a
+reviewer must account for.
+
+### 3.20 The ledger's liveness model trusts a pid that may be a shell
+
+**Status: open — recorded, not repaired.** A run started from an interactive shell records that shell's pid.
+The **two** 2026-09-15 reproductions are **`NOT RE-MEASURED` in this revision**; they are supplied as measured
+evidence by `.ai/brief-update-2026-09-15.contract.md`. Killing the executor can therefore leave a ledger row reading `running` with no
+`finished_at` while the recorded shell remains alive. `status` reconciles only a **dead** pid to `abandoned`.
+A reviewer cannot treat `running` as proof that the executor is alive; in this launch shape it proves only that
+the recorded pid is alive.
+
+### 3.21 An `abandoned` run has no unblock route
+
+**Status: open — recorded, not repaired.** `--acknowledge-block` requires both `status=blocked` and
+`scope_conformance.ok=false`, while only `failed` and `silent` runs are excused when a successor links to them.
+An `abandoned` run satisfies neither route. A genuinely dead run can therefore wedge commit eligibility
+permanently. Reviewers should treat recovery from executor death as unimplemented, not as a ledger state the
+normal repair ladder can discharge.
+
+### 3.22 The ledger is blind to concurrent runs, and a late `finish` misattributes
+
+**Status: open.** With two overlapping runs, a late `finish` absorbed the other run's files into its own
+changed-path delta — **`delta=6` where its true delta was `3`**. Those 2026-09-15 probe values are
+**`NOT RE-MEASURED` in this revision**; they are supplied as measured evidence by
+`.ai/brief-update-2026-09-15.contract.md`. The dispatch-time baseline
+assumes one run per working tree, and nothing compares concurrent baselines. The failure is silent, leaving the
+record's scope conformance unusable as evidence of what its own executor changed. Until runs are isolated or
+concurrency is represented, a reviewer must reject per-run scope attribution whenever working-tree runs
+overlap.
 
 ---
+
+### 3.23 The evidence parser cannot tell a result from a statement about a result
+
+**Status: open.** `parseEvidence()` matches `exit N` on **every** line and merges its findings into the most
+recently declared command, so a suite whose own assertions *mention* an exit code sets that claim's expected
+exit code to the value it asserts about — and then contradicts itself.
+
+**Measured (2026-09-15), from the brief-update run's own claims.** `php tests/ai_autonomy_test.php` and
+`php tests/ai_run_test.php` both returned **`CONTRADICTED`** (`claimed exit_code=3 observed 0`) while both
+suites exit `0`. The cause is their assertion labels: *"✅ 49. trust-surface amend refuses absent and unknown
+decisions with exit 3"* and *"✅ 22. commit-check: running -> exit 3, run named with its state"*. Recorded
+as **CD-50**.
+
+**What it means for a reviewer.** The two suites that assert *about* exit codes — the two largest — **cannot
+serve as evidence in a transcript report**: they re-derive as `CONTRADICTED` whatever the report says, because
+their own output poisons the claim. A slice evidenced by them through the loop would block. This is the
+**mechanism-is-over-broad** class of CD-48 again: recording a command's exit code as evidence is correct;
+treating any line *mentioning* an exit code as that command's result is not. It is **recorded, not repaired** —
+the fix is a trust-surface change and requires its own director authorisation.
 
 ## 7. Review disposition — independent review of 2026-09-14
 
@@ -969,17 +1052,67 @@ machinery the review said to build before widening the surface. **What was built
 advance had never been shown end to end. Completion was established by 7/7 re-derived claims plus proven scope
 conformance, not asserted — CD-25 invariant 3 held in practice.
 
-**What remains, stated rather than implied:** repeatability (§3.11), the open vacuity path (§3.12), semantic
-verification (§3.10), the file-not-role trust surface (§3.13), the unbuilt disposition mechanism (§3.14), cost
-and token capture (the derivation path exists, but the ledger binds no runner session to a run — CD-18), and
-the red metrics assertion (§3.17). The review's order — commit safety, then claim re-derivation, then corpus
-retrofit — was followed, and no new capability surface was added ahead of the measurement programme (CD-15).
+**What remained at the 2026-09-14 evening revision, stated rather than implied:** repeatability (§3.11), the
+then-open vacuity path (§3.12), semantic verification (§3.10), the file-not-role trust surface (§3.13), the
+unbuilt disposition mechanism (§3.14), cost and token capture (the derivation path exists, but the ledger binds
+no runner session to a run — CD-18), and the then-red metrics assertion (§3.17). **Current closure kept beside
+that historical list:** B-F1 was closed before GEN4-R1 under CD-41, and §3.17 is now closed by commit
+`02a4559`. The review's order — commit safety, then claim re-derivation, then corpus retrofit — was followed,
+and no new capability surface was added ahead of the measurement programme (CD-15).
 
-> **The pattern worth keeping.** Every trust-surface amendment (seven records; CD-38 counts five distinct
-> changes) was caused by the harness discovering that **its own mechanics were under-specified**; none was
-> caused by a defect in the work it was judging. The invariant held; the plumbing around it kept failing. That
-> is the better of the two possible failure modes, and it is the honest answer to whether the architecture is
-> sound.
+> **The pattern worth keeping.** At that revision the trust-surface record held seven amendments (CD-38
+> counts five distinct changes); it now holds eleven, TSA-0001…TSA-0011. They concern the harness's mechanics
+> or admissible evidence surface, not defects in the work being judged. The invariant held; the plumbing around
+> it kept failing. That is the better of the two possible failure modes, and it is the honest answer to whether
+> the architecture is sound.
+
+### 7.6 Dated update — 2026-09-15: freeze, leeway, and the first two measurements
+
+**The apparatus was frozen before the first GEN4-R1 dispatch, deliberately** (CD-41). B-F1 was closed first;
+then the rules were held still so failures could be counted rather than erased. A harness that changes after
+every failure can never fail the same way twice, and its success distribution would be a rehearsal rather than
+a measurement.
+
+Two later trust-surface interventions were owner-decided and bounded:
+
+- **TSA-0010, decision `gen4-r1-d1`:** the command allowlist gained two ordinary-work evidence shapes — a
+  bounded module-test path, retaining the existing app-bootstrap purity screen, and the bounded
+  `php ikabud workbench:governance --all --json` census shape. The existing rules, including the `php -r`
+  refusal, were not relaxed.
+- **TSA-0011, CD-48:** the owner ruled verbatim, *"prohibition is fine but allow leeway. pure prohibition
+  stifles the harness"*. Two over-broad **mechanisms** were repaired without removing either prohibition. The
+  `authority` matcher now tokenises a path instead of substring-matching it, so `authority` is no longer
+  `auth`; `isExistingTestPath()` now decides from the **dispatch baseline** instead of a post-run
+  `file_exists()`, so a run can create a test while a test present at dispatch remains protected. Neither
+  repair inspects *what a diff does*: one fixes **how a path is read**, the other **when a question is asked**.
+
+That repair was not accepted on its authored examples alone. Adversarial verification found that the tokenised
+matcher passed every assertion it had been given while silently losing coverage for **OAuth, OAuth2,
+authenticator, unauthorized, and reauthentication** paths. The fixed-cost judgement lane found and repaired
+that real hole. This is the concrete argument for spending judgement capacity on review rather than on
+transcription: a green authored test suite proved only that the implementation met its author's incomplete
+examples.
+
+**Distribution so far, measured by `php tools/ai-project.php metrics --project=gen4-r1`:** 2 slices dispatched
+and 2 completed; 9 completed runs and 2 blocked; 13 claims `RE_DERIVED`, 0 `CONTRADICTED`, and 14 `UNVERIFIED`;
+2 contract violations; 49 Chair decisions, of which 8 are recorded incorrect (CE-01…CE-08). **Every blocked
+attempt in this measured distribution was an authoring defect: none was the work and none was the apparatus.**
+The authoring failures are named because aggregate counts hide the lesson: a criterion demanded a
+demonstration but supplied no command; prose inside a scope section was parsed as a scope entry; a timestamp
+was written from memory instead of read from the clock; the inert `CLAIM:` / `COMMAND:` / `OBSERVED:` format
+was prescribed (§3.18); and a census was offered as a standalone claim even though the verifier had nothing to
+compare (§3.19). Where those failures exposed apparatus limits, those limits remain attributed separately in
+§3.18–§3.22 rather than being reassigned to the work.
+
+**S2 completed through the harness's own gate:** 2/2 claims `RE_DERIVED`, `scope OK delta=0`. These values are
+**`NOT RE-MEASURED`** here; provenance is `.ai/runs/gen4-r1-s2-final.json`. Its evidence test,
+`tests/gui_settings_route_authority_declaration_test.php`, is genuinely pure: no application bootstrap and no
+database. It states its residual gap rather than hiding it: the live tenant policy row was verified separately
+and belongs to Chair provenance, not to the run's claims. The criterion was decomposed by provenance, not
+dropped.
+
+The honest reading is still not a streak (§3.11). It is a small distribution that has already separated work
+defects, authoring defects, and apparatus defects more sharply than the earlier narrative did.
 
 ---
 
@@ -988,11 +1121,12 @@ retrofit — was followed, and no new capability surface was added ahead of the 
 ```
 .github/instructions/ai-autonomy-escalation.instructions.md   policy (normative)
 .ai/ai-autonomy-harness.contract.md                          standing contract + runbook
-.ai/chair-decisions.md                                       CD-1 … CD-40
-.ai/trust-surface-amendments.json                            TSA-0001 … TSA-0007 (director-authorised)
+.ai/chair-decisions.md                                       CD-1 … CD-49 (was CD-1 … CD-40)
+.ai/trust-surface-amendments.json                            TSA-0001 … TSA-0011 (was TSA-0001 … TSA-0007; director-authorised)
 .ai/review-implementations.sol.md                            the 2026-09-14 independent review
 .ai/runs/                                                    run records + reports (the measurement source)
 .ai/projects/harpp-gen4/                                     the worked project (state, slices, metrics)
+.ai/projects/gen4-r1/                                        frozen-apparatus measurement programme
 .ai/decisions/                                               filed L4 decision records
 tools/ai-autonomy.php  tools/ai-run.php  tools/ai-contract-lint.php
 tools/ai-loop.php      tools/ai-project.php
@@ -1000,6 +1134,8 @@ tools/harpp-bridge/                                          the director-channe
 tests/ai_autonomy_test.php  tests/ai_run_test.php  tests/ai_project_test.php
 tests/ai_project_metrics_test.php  tests/ai_contract_lint_test.php
 tests/ai_loop_test.php  tests/ai_autonomy_glob_scope_test.php
+tests/gui_settings_route_authority_declaration_test.php      S2's pure evidence test (new since `995553a`)
+modules/gui-settings/tests/gui_settings_route_authority_test.php  S2's module test (new since `995553a`)
 kernel/Workbench/Development/DevelopmentTaskContract.php     the parser
 ```
 
