@@ -57,5 +57,6 @@ return [
         '/cms-akira-shell/settings' => 'cms-akira-shell:akiraShellSettingsUpdate',
         '/cms-akira-shell/users/{id}/role' => 'cms-akira-shell:akiraShellUserUpdateRole',
         '/cms-akira-shell/users/{id}/active' => 'cms-akira-shell:akiraShellUserSetActive',
+        '/cms-akira-shell/users/{id}/revoke' => 'cms-akira-shell:akiraShellUserRevokeSessions',
     ],
 ];

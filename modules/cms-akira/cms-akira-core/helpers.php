@@ -295,7 +295,7 @@ function cacSeedGovernancePolicies(): void
         return;
     }
     $rows = [];
-    foreach (['akira.policy.set_roles@1', 'akira.user.update_role@1', 'akira.user.set_active@1'] as $capabilityId) {
+    foreach (['akira.policy.set_roles@1', 'akira.user.update_role@1', 'akira.user.set_active@1', 'akira.user.revoke_sessions@1'] as $capabilityId) {
         $rows[] = [
             'policy_version' => 1, 'capability_id' => $capabilityId, 'capability_version' => '1',
             'provider' => 'cms-akira-core', 'caller_module' => 'cms-akira-shell,cms-akira-core',

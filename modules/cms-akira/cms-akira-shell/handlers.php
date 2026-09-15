@@ -1576,11 +1576,13 @@ function akiraShellUsers(array $params = []): void
             $options .= '<option value="' . $role . '"' . (($row['role'] ?? '') === $role ? ' selected' : '') . '>' . $role . '</option>';
         }
         $active = (int)($row['is_active'] ?? 0) === 1;
-        $body .= '<div class="grid gap-4 border-b border-slate-100 px-5 py-4 last:border-0 lg:grid-cols-[1.2fr_1.2fr_1fr_auto_auto] lg:items-center"><div><strong>' . akiraShellEscape($row['full_name'] ?? '') . '</strong><code class="block text-xs text-slate-400">#' . $id . ' ' . akiraShellEscape($row['username'] ?? '') . '</code></div><span class="text-sm text-slate-500">' . akiraShellEscape($row['email'] ?? '') . '</span><span class="text-xs text-slate-400">' . akiraShellEscape($row['created_at'] ?? '') . '</span>'
+        $tokenVersion = (int)($row['token_version'] ?? 0);
+        $body .= '<div class="grid gap-4 border-b border-slate-100 px-5 py-4 last:border-0 lg:grid-cols-[1.2fr_1.2fr_1fr_auto_auto_auto] lg:items-center"><div><strong>' . akiraShellEscape($row['full_name'] ?? '') . '</strong><code class="block text-xs text-slate-400">#' . $id . ' ' . akiraShellEscape($row['username'] ?? '') . '</code></div><span class="text-sm text-slate-500">' . akiraShellEscape($row['email'] ?? '') . '</span><span class="text-xs text-slate-400">' . akiraShellEscape($row['created_at'] ?? '') . '<code class="block">token_version ' . $tokenVersion . '</code></span>'
             . '<form method="post" action="/cms-akira-shell/users/' . $id . '/role" class="flex gap-2">' . akiraShellCsrfField() . '<input type="hidden" name="idempotency_key" value="user-role-' . bin2hex(random_bytes(8)) . '"><select name="role" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">' . $options . '</select><button class="rounded-xl bg-akira-600 px-3 py-2 text-xs font-semibold text-white">Save role</button></form>'
-            . '<form method="post" action="/cms-akira-shell/users/' . $id . '/active">' . akiraShellCsrfField() . '<input type="hidden" name="idempotency_key" value="user-active-' . bin2hex(random_bytes(8)) . '"><input type="hidden" name="is_active" value="' . ($active ? '0' : '1') . '"><button class="rounded-xl border px-3 py-2 text-xs font-semibold ' . ($active ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700') . '">' . ($active ? 'Deactivate' : 'Activate') . '</button></form></div>';
+            . '<form method="post" action="/cms-akira-shell/users/' . $id . '/active">' . akiraShellCsrfField() . '<input type="hidden" name="idempotency_key" value="user-active-' . bin2hex(random_bytes(8)) . '"><input type="hidden" name="is_active" value="' . ($active ? '0' : '1') . '"><button class="rounded-xl border px-3 py-2 text-xs font-semibold ' . ($active ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700') . '">' . ($active ? 'Deactivate' : 'Activate') . '</button></form>'
+            . '<form method="post" action="/cms-akira-shell/users/' . $id . '/revoke">' . akiraShellCsrfField() . '<input type="hidden" name="idempotency_key" value="user-revoke-' . bin2hex(random_bytes(8)) . '"><button class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Revoke sessions</button></form></div>';
     }
-    echo akiraShellPage('Users', '<p class="mb-5 text-sm text-slate-500">Manage existing tenant identities. Role and activity changes revoke current sessions by incrementing token_version.</p><div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">' . $body . '</div>', ['active' => 'users']);
+    echo akiraShellPage('Users', '<p class="mb-5 text-sm text-slate-500">Manage existing tenant identities. Role and activity changes revoke current sessions by incrementing token_version. Revoke sessions signs a user out everywhere without changing their role or activation.</p><div class="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">' . $body . '</div>', ['active' => 'users']);
 }
 
 /** @param array<string,mixed> $params */
@@ -1592,6 +1594,11 @@ function akiraShellUserUpdateRole(array $params = []): void
 function akiraShellUserSetActive(array $params = []): void
 {
     akiraShellUserMutation('akira.user.set_active@1', $params);
+}
+/** @param array<string,mixed> $params */
+function akiraShellUserRevokeSessions(array $params = []): void
+{
+    akiraShellUserMutation('akira.user.revoke_sessions@1', $params);
 }
 
 /** @param array<string,mixed> $params */

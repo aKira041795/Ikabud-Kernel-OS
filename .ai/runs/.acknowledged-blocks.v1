@@ -126,6 +126,24 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "3876f6c02a9c73cd206362d78d5e4e8e058ea376c039609882e8847ffede9c6b"
+        },
+        {
+            "run_id": "view-contract-drift",
+            "block_reason": "The out-of-scope path is a test addition invited by the contract's own Required tests prose (CE-09). It is the only executed evidence for acceptance criteria 4 and 5. Kept and legitimised by contract revision 2 under CD-52, not by silently widening the envelope.",
+            "director_decision": "CD-52",
+            "acknowledged_at": "2026-09-15T04:07:22+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "31f2da340048cb5ccbb2c578402251bf548afe6d14f12464b125f111c89cfd5b"
+        },
+        {
+            "run_id": "p3.3-revoke-sessions",
+            "block_reason": "Both module.json edits are authorised by this contract's Acceptance criteria #1 and #4. The L4 classification is a proven defect: isGrounded() matches per physical line so a wrapped authorisation is unmatchable, and finish() has no flag to supply a justification at all. Shipped work independently verified: 24/0, shell contract 116/0 unmodified, 6 claims RE_DERIVED / 0 contradicted.",
+            "director_decision": "CD-53",
+            "acknowledged_at": "2026-09-15T04:24:58+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "bd405ef6bd2ef92fb989859e2f2d29d7f33635e66cd38021073e4b5f682d38bf"
         }
     ]
 }

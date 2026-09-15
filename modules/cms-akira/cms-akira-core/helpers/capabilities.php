@@ -18,6 +18,7 @@ function cms_akira_core_capability_handlers(): array
         'akira.user.list@1' => 'cac_cap_akira_user_list_1',
         'akira.user.update_role@1' => 'cac_cap_akira_user_update_role_1',
         'akira.user.set_active@1' => 'cac_cap_akira_user_set_active_1',
+        'akira.user.revoke_sessions@1' => 'cac_cap_akira_user_revoke_sessions_1',
         'akira.module.list@1' => 'cac_cap_akira_module_list_1',
         'akira.module.manage@1' => 'cac_cap_akira_module_manage_1',
         'akira.site.settings.get@1' => 'cac_cap_akira_site_settings_get_1',

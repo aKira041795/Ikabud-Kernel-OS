@@ -2525,3 +2525,53 @@ the pattern table instead of the screen — which is exactly where it sent me on
 **Not repaired here** (it is the verifier's trust surface, so it needs its own authorisation). Recorded with its
 evidence so it is not re-derived. The honest reason would distinguish `test_file_impure` / `test_file_missing` from a
 command that no rule matches at all.
+
+---
+
+## CD-53 — P3.3 session revocation verified; and `isGrounded()` cannot match a wrapped line
+
+**P3.3 shipped and verified.** `akira.user.revoke_sessions@1` is a real governed capability now: exposed in
+`cms-akira-core`, handler in the capability map, seeded by `cacSeedGovernancePolicies()` at tier parity with
+`akira.user.set_active@1` (`admin,administrator,superadmin`, `caller_module: cms-akira-shell,cms-akira-core`), route
+`POST /cms-akira-shell/users/{id}/revoke` declared, and a `Revoke sessions` control on the users page. Verified by
+me, not from the report: new test **24 passed / 0 failed**, `shell_contract_test` **116 passed / 0 failed
+UNMODIFIED**, both manifests valid JSON, 6 ledger claims `RE_DERIVED` / **0 contradicted**. The test asserts the two
+things that define the slice — `role` and `is_active` **byte-identical** read from the stored row
+(`user_revoke_sessions_test.php:135-136`), and idempotent replay not double-incrementing `token_version`.
+
+**The block, and why it did not mean the work was unauthorised.** `finish` classified both `module.json` edits as
+`public API/capability contract change` (L4) with *"justification is absent or not grounded in contract
+acceptance/constraints"*. Two proven defects sit underneath that message, and the second is the one that matters:
+
+- **D-1 — `isGrounded()` matches per PHYSICAL LINE** (`tools/ai-autonomy.php:1074-1083`, iterating
+  `$contract['acceptance']` as lines). Markdown hard-wraps at ~100 columns, so an authorisation phrase that spans a
+  wrap is **unmatchable no matter how clearly the contract states it**. Falsified by controlled probe, same contract,
+  same path, only the needle varying:
+
+  | justification | position in the contract | verdict |
+  |---|---|---|
+  | `Revocation increments` | inside one physical line | **RECORD / L3** ✓ |
+  | `has a handler in the capability handler map` | spans the line 124→125 wrap | **ESCALATE / L4** ✗ |
+  | `exposed by` | 10 chars, under the 12-char floor | ESCALATE (correct by design) |
+
+- **D-2 — `finish` has no route to supply a justification at all.** Its flags are `--id --exit [--log] [--report]
+  [--runs-dir] [--json]`; it calls the taxonomy with `null`, so every dispatched slice that edits a `module.json` is
+  **guaranteed** L4 regardless of how the contract authorises it. The only resolution is the post-hoc
+  `--acknowledge-block`, which is a decision record rather than a mechanism.
+
+Together these mean the failure message blames the *justification* for a defect in the *contract's line wrapping*, on
+a path the run cannot reach. **This is the highest-value harness repair available**: routing a declared capability
+change is the bread and butter of this programme, and today every such slice blocks.
+
+**Not repaired — it is the verifier trust surface, which the plan lists as an ABSOLUTE prohibition.** No contract can
+authorise it, so it needs its own recorded decision. Recorded here with a falsifiable reproduction so it is not
+re-derived, and so a reviewer can run the probe above and confirm it independently.
+
+**A self-inflicted error on the way to it, recorded because it nearly became a false finding.** My first probe passed
+`--level=L4` explicitly. `commandCheck` seeds `$resolved = $level` (`:1098`) and every taxonomy block is guarded by
+`if ($resolved !== 'L4')` — so asserting L4 **skips the entire evaluation** and returns `ESCALATE` with an **empty
+`reasons` list**. I saw all three cases escalate identically and the empty `reasons:` was the tell that stopped me
+recording it: an escalation with no stated reason is a skipped check, not a failed one. **An empty reason list is
+never evidence of a real refusal.**
+
+**Authority:** CD-8 (decidability is authority). **Owner intervention:** not required for P3.3; required only if D-1/D-2 are to be repaired.

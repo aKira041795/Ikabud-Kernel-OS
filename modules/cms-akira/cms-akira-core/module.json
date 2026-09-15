@@ -115,6 +115,15 @@
                 "description": "Activate or deactivate a tenant user and invalidate their sessions"
             },
             {
+                "id": "akira.user.revoke_sessions@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "description": "Revoke a tenant user's live sessions without changing their role or activation"
+            },
+            {
                 "id": "akira.module.list@1",
                 "priority": 50,
                 "modes": [
