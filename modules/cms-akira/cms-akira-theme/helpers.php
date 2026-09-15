@@ -13,6 +13,7 @@ const CAT_THEME_INVALIDATION = 'theme.active';
 function cms_akira_theme_capability_handlers(): array
 {
     return [
+        'akira.theme.read@1' => 'cat_cap_akira_theme_read_1',
         'akira.theme.resolve@1' => 'cat_cap_akira_theme_resolve_1',
         'akira.theme.registry@1' => 'cat_cap_akira_theme_registry_1',
         'akira.theme.validate@1' => 'cat_cap_akira_theme_validate_1',
@@ -51,6 +52,66 @@ function catSeedThemeMutationPolicies(): void
 }
 
 catSeedThemeMutationPolicies();
+
+/**
+ * Activation-time, idempotent seed for the theme read policy.
+ *
+ * The five GET routes that serve the JSON read surface and the Theme Studio
+ * admin page declare `akira.theme.read@1` as their required authority. Dispatch
+ * authority is fail-closed, so the policy row must exist BEFORE the declaration
+ * is relied on or every operator is refused with a 403.
+ *
+ * The role set is exactly what catThemeAdmin() already admits:
+ * admin, editor, administrator, superadmin. Any wider set would grant access
+ * nobody has today; any narrower set would 403 an operator who works today. The
+ * change is *when* the decision is made, not *who* gets in.
+ *
+ * `caller_module` is the explicit `cms-akira-theme` provider: it is both the
+ * route dispatcher and the caller in each handler's bus call. An empty value
+ * would invert the meaning and permit ANY caller, not none.
+ *
+ * The permissions UI clones the active policy set into a new version, so a seed
+ * pinned to version 1 lands inactive once the active version advances. Join the
+ * currently active version, matching cacSeedShellReadPolicies() in
+ * cms-akira-core and guiSettingsSeedApplyPolicy() in gui-settings rather than
+ * the older version-1 template.
+ */
+function catSeedThemeReadPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
+    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
+        'actor' => app()->user(),
+    ]);
+    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
+        null,
+        $scope,
+        $resolver,
+        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
+    );
+    $activeRows = $registry->activePolicyRows();
+    $policyVersion = $activeRows === [] ? 1 : (int)($activeRows[0]['policy_version'] ?? 1);
+
+    $rows = [];
+    $rows[] = [
+        'policy_version' => $policyVersion,
+        'capability_id' => 'akira.theme.read@1',
+        'capability_version' => '1',
+        'provider' => 'cms-akira-theme',
+        'caller_module' => 'cms-akira-theme',
+        'allowed_roles' => 'admin,editor,administrator,superadmin',
+        'provider_activation_required' => true,
+        'requires_protocol' => 'v1',
+        'is_active' => true,
+    ];
+
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+}
+
+catSeedThemeReadPolicies();
 
 final class CatThemeException extends RuntimeException
 {
@@ -1057,6 +1118,35 @@ function catThemeMutateCustomize(array $payload): array
         }
         throw $error;
     }
+}
+
+/**
+ * Governed read surface for the theme JSON routes and the Theme Studio page.
+ *
+ * The capability returns exactly the projections the module's read handlers have
+ * always served; `operation` selects which projection. A payload-supplied
+ * tenant_id is rejected for the same reason the individual read capabilities
+ * reject it: tenant identity comes from kernel context, never request data.
+ *
+ * @return array<string, mixed>
+ */
+function cat_cap_akira_theme_read_1(mixed $payload, string $capabilityId = 'akira.theme.read@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $payload = is_array($payload) ? $payload : [];
+    if (array_key_exists('tenant_id', $payload)) {
+        return ['ok' => false, 'error' => 'tenant_id is supplied by kernel context'];
+    }
+
+    return match ((string)($payload['operation'] ?? '')) {
+        'resolve' => cat_cap_akira_theme_resolve_1([]),
+        'registry' => cat_cap_akira_theme_registry_1([]),
+        'blocks' => cat_cap_akira_theme_blocks_1([]),
+        'validate' => cat_cap_akira_theme_validate_1(['theme_slug' => $payload['theme_slug'] ?? null]),
+        default => ['ok' => false, 'error' => 'Unknown theme read operation'],
+    };
 }
 
 /** @return array<string, mixed> */

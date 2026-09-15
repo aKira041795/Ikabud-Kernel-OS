@@ -848,33 +848,41 @@ $h->test(
     'rules in table: ' . substr_count($aiRunToolSource, "['exec' =>") . '; claim: ' . json_encode($moduleTestClaim, JSON_UNESCAPED_SLASHES)
 );
 
-// Criterion 2 — a module test whose source contains the app bootstrap is refused by the SAME screen,
-// because the module rule passes the full matched path. Executing it would poison APCu and 503 the
-// live tenant, so the hazardous report is only run when the screen is actually wired; a regression
-// fails the assertion without running the app-bootstrapping file.
-$moduleImpurePath = dirname(__DIR__) . '/modules/gui-settings/tests/gui_settings_route_authority_test.php';
-$moduleImpureSource = is_file($moduleImpurePath) ? (string) file_get_contents($moduleImpurePath) : '';
+// Criterion 2 (CORRECTED 2026-09-15, CD-51) — the module screen is HAZARD-targeted, not
+// bootstrap-targeted. The old assertion required a module test containing `bootstrap.php` to be
+// refused, on the rationale that an app-bootstrapping test poisons the APCu module cache and 503s
+// the live tenant. That rationale is FALSE and was already refuted once (2026-09-11): `apc.enable_cli`
+// is Off, so a CLI process has no APCu segment at all (`apcu_enabled()` is false in CLI), and every
+// kernel key is app-root scoped via `Cache::scopedKey()` (PR #116). Re-measured 2026-09-15: three
+// app-bootstrapping module tests ran with the live tenant healthy at 200/200/200 and error.log empty.
+// The REAL hazard is the database: in CLI no host resolves, so app()->db() falls back to the
+// configured database -- the live tenant on this checkout -- and the repository records that module
+// tests once destroyed live tenant posts. So the screen refuses a test that REACHES the database
+// without requireNotLiveTenantDatabase(), and admits one that never reaches it or that takes the
+// guard. This assertion proves BOTH directions behaviourally, through the real code path: a refusal
+// without its positive control cannot tell a working screen from a broken one.
+$moduleUnguardedCommand = 'php modules/cms-akira/cms-akira-theme/tests/theme_dedicated_tenant_test.php';
+$moduleGuardedCommand = 'php modules/cms-akira/cms-akira-core/tests/post_page_cache_invalidation_test.php';
 $moduleScreenWired = str_contains($aiRunToolSource, "'screen' => 'module_test'")
-    && str_contains($aiRunToolSource, 'testFileIsPure($matches[1])');
-if ($moduleScreenWired && str_contains($moduleImpureSource, $moduleBootstrapMarker)) {
-    $moduleImpureClaim = $widenedClaim('widened-module-impure', 'php modules/gui-settings/tests/gui_settings_route_authority_test.php');
-    $moduleImpureVerification = $widenedVerification($moduleImpureClaim);
-    $h->test(
-        '29b. a module test that bootstraps the app is refused, not executed',
-        ($moduleImpureClaim['status'] ?? null) === 'UNVERIFIED'
-            && ($moduleImpureVerification['reason'] ?? null) === 'command_not_allowlisted'
-            && ($moduleImpureVerification['method'] ?? null) === null
-            && ($moduleImpureVerification['observed_exit'] ?? null) === null,
-        'fixture modules/gui-settings/tests/gui_settings_route_authority_test.php contains ' . $moduleBootstrapMarker
-            . '; claim: ' . json_encode($moduleImpureClaim, JSON_UNESCAPED_SLASHES)
-    );
-} else {
-    $h->test(
-        '29b. a module test that bootstraps the app is refused, not executed',
-        false,
-        'the module purity screen is not wired; the app-bootstrapping fixture was deliberately NOT executed'
-    );
-}
+    && str_contains($aiRunToolSource, 'moduleTestIsTenantSafe($matches[1])');
+$unguardedClaim = $widenedClaim('widened-module-unguarded', $moduleUnguardedCommand);
+$unguardedVerification = $widenedVerification($unguardedClaim);
+$guardedClaim = $widenedClaim('widened-module-guarded', $moduleGuardedCommand);
+$guardedVerification = $widenedVerification($guardedClaim);
+$h->test(
+    '29b. a module test that reaches the app database unguarded is refused; a guarded one is admitted',
+    $moduleScreenWired
+        && ($unguardedClaim['status'] ?? null) === 'UNVERIFIED'
+        && ($unguardedVerification['reason'] ?? null) === 'command_not_allowlisted'
+        && ($unguardedVerification['method'] ?? null) === null
+        && ($unguardedVerification['observed_exit'] ?? null) === null
+        && ($guardedClaim['type'] ?? null) === 'TEST_RESULT'
+        && ($guardedClaim['status'] ?? null) === 'RE_DERIVED'
+        && ($guardedVerification['observed_exit'] ?? null) === 0,
+    'screen wired: ' . var_export($moduleScreenWired, true)
+        . '; unguarded: ' . json_encode($unguardedClaim, JSON_UNESCAPED_SLASHES)
+        . '; guarded: ' . json_encode($guardedClaim, JSON_UNESCAPED_SLASHES)
+);
 
 // Criterion 2b — a module path that does not exist is refused by the same screen, never attempted.
 $moduleMissingClaim = $widenedClaim('widened-module-missing', 'php modules/gui-settings/tests/no_such_module_test_xyz.php');

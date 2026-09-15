@@ -50,6 +50,31 @@ function catThemeJsonError(Throwable $error): void
     app()->json(['ok' => false, 'error' => $detail['message']], $detail['status']);
 }
 
+/**
+ * Route a theme read through the governed `akira.theme.read@1` capability.
+ *
+ * The JSON handlers below and the Theme Studio page already admit the same role
+ * set (catThemeAdmin(): admin, editor, administrator, superadmin). Dispatching
+ * through the bus makes that same decision the recorded one the census and the
+ * route guard measure; it does not change who is admitted. A failure is returned
+ * as a readable payload rather than escaping as an uncaught capability error.
+ *
+ * @return array<string, mixed>
+ */
+function catThemeReadViaBus(string $operation, array $payload = []): array
+{
+    try {
+        $result = app()->cap()->call(
+            'akira.theme.read@1',
+            $payload + ['operation' => $operation],
+            ['caller' => ['module' => 'cms-akira-theme', 'user' => app()->user()], 'mode' => 'first']
+        );
+    } catch (Throwable $error) {
+        return ['ok' => false, 'error' => catThemeFailureDetail($error)['message']];
+    }
+    return is_array($result) ? $result : ['ok' => false, 'error' => 'Theme read failed'];
+}
+
 /** @param array<string, string> $params */
 function catThemeResolveJson(array $params = []): void
 {
@@ -61,7 +86,7 @@ function catThemeResolveJson(array $params = []): void
         app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
         return;
     }
-    app()->json(cat_cap_akira_theme_resolve_1([]));
+    app()->json(catThemeReadViaBus('resolve'));
 }
 
 /** @param array<string, string> $params */
@@ -75,7 +100,7 @@ function catThemeRegistryJson(array $params = []): void
         app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
         return;
     }
-    app()->json(cat_cap_akira_theme_registry_1([]));
+    app()->json(catThemeReadViaBus('registry'));
 }
 
 /** @param array<string, string> $params */
@@ -89,7 +114,7 @@ function catThemeBlocksJson(array $params = []): void
         app()->json(['ok' => false, 'error' => 'Administrator role required.'], 403);
         return;
     }
-    app()->json(cat_cap_akira_theme_blocks_1([]));
+    app()->json(catThemeReadViaBus('blocks'));
 }
 
 /** @param array<string, string> $params */
@@ -110,7 +135,7 @@ function catThemeValidateJson(array $params = []): void
         app()->json(['ok' => false, 'error' => $error->getMessage()], 422);
         return;
     }
-    app()->json(cat_cap_akira_theme_validate_1(['theme_slug' => $slug]));
+    app()->json(catThemeReadViaBus('validate', ['theme_slug' => $slug]));
 }
 
 /** @param array<string, string> $params */
@@ -152,8 +177,9 @@ function catThemeAdminPage(array $params = []): void
         return;
     }
 
-    $themes = catThemeRegistryRows();
-    $resolved = catThemeResolveActive();
+    $themesResult = catThemeReadViaBus('registry');
+    $themes = is_array($themesResult['themes'] ?? null) ? $themesResult['themes'] : [];
+    $resolved = catThemeReadViaBus('resolve');
     $active = $resolved['ok'] ? (string) $resolved['theme_slug'] : CAT_THEME_FALLBACK;
     $previous = catThemePreviousSetting();
 

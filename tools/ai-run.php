@@ -91,7 +91,7 @@ const PYTHON_SHAPE_ENV = [
 /**
  * The allowlist, as data rather than scattered conditionals. Each rule is an anchored pattern plus
  * the executable (`exec`) that runs it; the `pure_test`, `module_test` and `bridge_test` screens
- * additionally refuse a named test file that may bootstrap the app or that does not exist. The
+ * additionally refuse a named test file that does not exist or that reaches the application database unguarded. The
  * security boundary is the whole table, so it can be read in one place and refused consistently.
  *
  * The module test and governance census entries are the two shapes ordinary product work needs
@@ -1340,6 +1340,42 @@ function testFileIsPure(string $relativePath): bool
 }
 
 /**
+ * A module test MAY bootstrap the application; what it must not do is reach the application
+ * DATABASE unguarded.
+ *
+ * Corrected 2026-09-15 (CD-51). The previous screen refused any module test containing
+ * `bootstrap.php`, on the rationale that an app-bootstrapping test "poisons the APCu module cache and
+ * 503s the live tenant". That rationale is FALSE and was already refuted once (2026-09-11):
+ * `apc.enable_cli=Off`, so a CLI process has no APCu segment at all, and every kernel key is
+ * app-root-scoped via `Cache::scopedKey()` (PR #116), so no CLI run can poison the web cache. Measured
+ * again on 2026-09-15: `apcu_enabled()` is `false` in CLI, and three app-bootstrapping module tests
+ * ran with the live tenant healthy at 200/200/200 and `error.log` empty.
+ *
+ * The REAL hazard is the database. In CLI no host resolves, so `app()->db()` falls back to the
+ * configured database -- which on this checkout IS the live tenant -- and the repository records that
+ * module tests once destroyed a live tenant's posts. `requireNotLiveTenantDatabase()`
+ * (tests/_support/env_guard.php) refuses a provisioned tenant database unconditionally, with no
+ * bypass.
+ *
+ * So the screen admits a test that either never reaches the application database, or takes that guard.
+ * A test that reaches the database without it is refused, and that refusal is strictly better aimed
+ * than the one it replaces: it catches the dangerous shape and stops refusing the harmless one.
+ */
+function moduleTestIsTenantSafe(string $relativePath): bool
+{
+    $path = dirname(__DIR__) . '/' . $relativePath;
+    $content = @file_get_contents($path);
+    if ($content === false) {
+        return false;
+    }
+    $reachesDb = preg_match('#\bPDO\b|app\(\s*\)\s*->\s*db|dbForTenant|->controlDb\s*\(#', $content) === 1;
+    if (!$reachesDb) {
+        return true;
+    }
+    return str_contains($content, 'requireNotLiveTenantDatabase');
+}
+
+/**
  * The first allowlist rule a command matches, with its capture groups, or null. This is the single
  * place the table is interpreted: `commandIsAllowlisted()` and `argvForCommand()` both read this
  * verdict, so the executable a command runs can never disagree with the rule that permitted it.
@@ -1362,7 +1398,7 @@ function matchingAllowlistRule(string $command): ?array
         }
         // The module rule captures the full path, so the screen is applied to exactly the file that
         // would run: a module test that bootstraps the app (or does not exist) is refused here.
-        if ($screen === 'module_test' && !testFileIsPure($matches[1])) {
+        if ($screen === 'module_test' && !moduleTestIsTenantSafe($matches[1])) {
             return null;
         }
         if ($screen === 'bridge_test' && !is_file(dirname(__DIR__) . '/tools/harpp-bridge/tests/' . $matches[1] . '.py')) {

@@ -117,6 +117,15 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "ec966e1378364b34368686114502f9a52a05dae9ed63a9fb31f924aa5966159e"
+        },
+        {
+            "run_id": "theme-read-authority",
+            "block_reason": "Blocked because the approved scope omitted modules/cms-akira/cms-akira-theme/handlers.php, which the executor edited - correctly: that is where this module's handlers live and a capability handler belongs beside them. The scope omission was mine; the contract is now corrected. The manifest change is required and authorised by the slice objective (declaring read authority for six routes needs a capability to declare against). The work was verified independently: census read_undeclared 6 -> 0, its test 16/0/0, and gen4-r1's verification run re-derived 3/3.",
+            "director_decision": "CD-51",
+            "acknowledged_at": "2026-09-15T03:27:31+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "3876f6c02a9c73cd206362d78d5e4e8e058ea376c039609882e8847ffede9c6b"
         }
     ]
 }

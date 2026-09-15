@@ -2413,3 +2413,48 @@ contradicted claims are an artifact of *how the report was parsed*, not of what 
 
 **Authority:** CD-48 (mechanisms get leeway) identifies the class; the repair needs its own authorisation.
 **Owner intervention:** not required.
+
+## CD-51 — the APCu rationale for refusing module tests was false; the real hazard is the database
+
+**Owner brief 2026-09-15:** *"if harness is all about theory but cannot do a module implementation, start to
+finish, this is an exercise in futility."* Asking why module work could not be evidenced exposed that the
+answer I had been giving — and writing into contracts and the evaluation brief — is untrue.
+
+**The claim I had repeated:** *"a module test that bootstraps the CMS app poisons the APCu module cache and
+503s the live tenant."* It is the stated reason `testFileIsPure()` refuses any test containing `bootstrap.php`,
+which refused **38 of 44** module tests and made integration behaviour unevidenceable.
+
+**It is false, and was already refuted once.** `docs`-level memory and the repository record both say so:
+`apc.enable_cli` is **Off**, so a CLI process has **no APCu segment at all**; and every kernel APCu key is
+app-root-scoped by `Cache::scopedKey()` (PR #116), which is what actually fixed the cross-application collision
+that caused the 503 — a *sibling checkout* sharing an FPM pool, not a test run.
+
+**Re-measured 2026-09-15, rather than cited:**
+- `apcu_enabled()` in CLI → **`false`**; `apc.enable_cli => Off`; `apc.enabled => On`.
+- `Cache::scopedKey()` present (`kernel/Cache.php:73`).
+- Three app-bootstrapping module tests executed: all exit 0, two `SKIP` on the tenant guard, and the live tenant
+  stayed **200 / 200 / 200** with `error.log` empty.
+
+**The real hazard, which the false rule was not screening for.** In CLI no host resolves, so `app()->db()`
+falls back to the configured database — **which on this checkout IS the live tenant `akira`**. That is not
+speculation: `tests/_support/env_guard.php:163` records *"module tests once destroyed a live tenant's posts"*,
+and `requireNotLiveTenantDatabase()` refuses a provisioned tenant database **unconditionally, with no bypass**.
+
+**The fix, which is a narrowing rather than a loosening.** `moduleTestIsTenantSafe()` now refuses a module test
+that **reaches the application database without that guard**, and admits one that either never reaches it or
+takes it. Measured effect: **27 of 44 module tests admissible, up from 6** — and the refusal is aimed at the
+dangerous shape instead of a harmless one. Assertion 29b proves **both directions** through the real code path,
+so a broken screen cannot pass as a working one. This is CD-48's ruling applied to my own rule: the rule stays,
+the mechanism that could not tell the work from the harm is repaired.
+
+**The lesson, recorded because it is the one I keep relearning.** I had a refuted theory, in writing, in my own
+memory, and I propagated it into contracts and into a document whose entire credibility rests on honesty about
+limits. **A safety rule whose premise is never re-measured becomes a superstition that costs capability** — and
+worse, it *displaced* the screening that would have addressed the actual hazard.
+
+**Consequence for the evaluation brief:** §3's statement that integration behaviour cannot be evidenced is now
+wrong and must be revised — the constraint is narrower (guarded database access) and better aimed than the brief
+currently records.
+
+**Authority:** CD-48 (prohibitions keep their force; over-broad mechanisms get repaired).
+**Owner intervention:** not required.
