@@ -1,0 +1,56 @@
+{
+  "schema": "harpp2.milestone:v1",
+  "_why": "A milestone, not an item list. Six requirements, each with its own gate, so a machine can exhaust them one at a time and a reader can see WHICH requirement is unmet. Written 2026-09-17 after reproducing the editor's state: it renders and saves, but offers no preview anywhere (iframes: [], no [data-theme-preview]) and its colour fields do not show their values - so the operator cannot see what a change does without saving and leaving the page.",
+  "project": "akira-theme-editor",
+  "deliverable": "The Akira Theme Studio editor is usable: an operator can SEE the theme, CHANGE it, SEE the change before saving, keep it, or discard it.",
+  "url": "http://akiracms.test/cms-akira-theme",
+  "artifact": "test-results/akira-theme-editor.png",
+  "requirements": [
+    {
+      "id": "R1",
+      "statement": "The editor shows a preview of the theme being edited.",
+      "gate": "npx playwright test tests/browser/akira-theme-editor.spec.ts -g \"R1\"",
+      "evidence": "tests/browser/akira-theme-editor.spec.ts + test-results/akira-theme-editor.png",
+      "measured_before": "no preview surface exists (iframes: [], previewish: [])"
+    },
+    {
+      "id": "R2",
+      "statement": "Every colour field shows its current value where the operator can read it.",
+      "gate": "npx playwright test tests/browser/akira-theme-editor.spec.ts -g \"R2\"",
+      "evidence": "the 22 colour fields, each with a readable value",
+      "measured_before": "22 colour inputs carry correct values in the DOM (#005c55, ...) but render as boxes that show nothing"
+    },
+    {
+      "id": "R3",
+      "statement": "Changing a colour updates the preview before anything is saved.",
+      "gate": "npx playwright test tests/browser/akira-theme-editor.spec.ts -g \"R3\"",
+      "evidence": "preview token follows the edited value with no save",
+      "measured_before": "not possible - there is nothing to update"
+    },
+    {
+      "id": "R4",
+      "statement": "Saving keeps the values, and re-saving an unchanged form is safe.",
+      "gate": "npx playwright test tests/browser/akira-theme-editor.spec.ts -g \"R4\"",
+      "evidence": "POST /cms-akira-theme/customize round-trip",
+      "measured_before": "form exists (csrf token + idempotency key present); round-trip unverified"
+    },
+    {
+      "id": "R5",
+      "statement": "Unsaved changes can be discarded.",
+      "gate": "npx playwright test tests/browser/akira-theme-editor.spec.ts -g \"R5\"",
+      "evidence": "a discard/reset/revert control that restores loaded values",
+      "measured_before": "absent - the only controls are 'Save customization' and Activate"
+    },
+    {
+      "id": "R6",
+      "statement": "The editor loads and saves with no console errors and no failed requests.",
+      "gate": "npx playwright test tests/browser/akira-theme-editor.spec.ts -g \"R6\"",
+      "evidence": "console + network clean",
+      "measured_before": "already true - this is a regression guard, not new work"
+    }
+  ],
+  "gates": [
+    "php tests/theme_read_authority_test.php",
+    "composer test"
+  ]
+}

@@ -47,7 +47,13 @@ import json, sys
 m = json.load(open(sys.argv[1]))
 print("URL\t" + str(m.get("url", "")))
 print("ARTIFACT\t" + str(m.get("artifact", "")))
-for g in m.get("gates", []):
+# A milestone declares REQUIREMENTS (data, one gate each) and may add project-level gates.
+# The flat `gates` list remains supported so existing project manifests keep working unchanged.
+for r in m.get("requirements", []) or []:
+    gate = r.get("gate")
+    if gate:
+        print("GATE\t" + str(gate))
+for g in m.get("gates", []) or []:
     print("GATE\t" + g)
 PY
 )
