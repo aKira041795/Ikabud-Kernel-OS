@@ -1,0 +1,33 @@
+{
+    "id": "star-swarm",
+    "name": "Star Swarm",
+    "version": "1.0.0",
+    "description": "Themable Galaga-style fixed shooter rendered on a canvas. No database, no migrations, no tables.",
+    "author": "HARPP v2",
+    "_enabled": true,
+    "migrations": [],
+    "owns_tables": [],
+    "reads_tables": [],
+    "co_owns_tables": [],
+    "capabilities": {
+        "exposes": [],
+        "depends": [],
+        "routes": {}
+    },
+    "governance": {
+        "exemptions": [
+            {
+                "method": "GET",
+                "route": "/star-swarm",
+                "reason": "Anonymous public game page. Dispatch authority is fail-closed and refuses callers with an empty actor role (CD-56 Finding 1), so a capability declaration would 403 every visitor. The handler reads no tenant data; it renders a static DiSyL template and injects theme design tokens."
+            },
+            {
+                "method": "GET",
+                "route": "/star-swarm/",
+                "reason": "Trailing-slash anonymous public game page. Same exemption as GET /star-swarm: dispatch refuses empty-role callers, the handler reads no tenant data, and the page must be reachable without a login or a database write."
+            }
+        ]
+    },
+    "routes": true,
+    "events": []
+}

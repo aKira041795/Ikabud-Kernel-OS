@@ -1,0 +1,14 @@
+{
+    "project": "star-swarm",
+    "deliverable": "A themable Galaga-style space shooter served by the kernel at its own URL, playable in a browser, with the look proven by pixel evidence.",
+    "url": "http://akiracms.test/star-swarm/",
+    "artifact": "test-results/star-swarm.png",
+    "gates": [
+        "curl -fsS -o /dev/null http://akiracms.test/star-swarm/",
+        "php tests/star_swarm_concept_test.php",
+        "php tests/star_swarm_visual_test.php",
+        "npx playwright test tests/browser/star-swarm.spec.ts",
+        "php tests/star_swarm_shot_check.php",
+        "composer test"
+    ]
+}

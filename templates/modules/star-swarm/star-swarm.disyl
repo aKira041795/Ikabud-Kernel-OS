@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-star-swarm-theme="1">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>{page_title}</title>
+  <link rel="stylesheet" href="{game_css_url}">
+  <style>{token_css|raw}</style>
+</head>
+<body class="star-swarm-page">
+  <div id="star-swarm" class="star-swarm" data-star-swarm-root>
+    <header class="star-swarm__hud">
+      <div class="star-swarm__stat">
+        <span class="star-swarm__label">Score</span>
+        <span id="star-swarm-score" data-star-swarm="score">0</span>
+      </div>
+      <div class="star-swarm__stat">
+        <span class="star-swarm__label">Wave</span>
+        <span id="star-swarm-wave" data-star-swarm="wave">1</span>
+      </div>
+      <div class="star-swarm__stat">
+        <span class="star-swarm__label">Lives</span>
+        <span id="star-swarm-lives" data-star-swarm="lives">3</span>
+      </div>
+    </header>
+
+    <div class="star-swarm__stage">
+      <canvas id="star-swarm-canvas" class="star-swarm__canvas" width="800" height="600" tabindex="0" aria-label="Star Swarm play field"></canvas>
+
+      <div id="star-swarm-overlay" class="star-swarm__overlay" data-star-swarm="overlay">
+        <h1 class="star-swarm__title" data-star-swarm="overlay-title">Star Swarm</h1>
+        <p class="star-swarm__hint" data-star-swarm="overlay-hint">Arrows or A/D to move &middot; Space or Up to fire &middot; P to pause</p>
+        <button type="button" id="star-swarm-action" class="star-swarm__button" data-star-swarm="action">Start</button>
+      </div>
+    </div>
+
+    <div class="star-swarm__touch" aria-hidden="true">
+      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="left" aria-label="Move left">&#9664;</button>
+      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="fire" aria-label="Fire">&#9650;</button>
+      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="right" aria-label="Move right">&#9654;</button>
+    </div>
+  </div>
+  <script src="{game_js_url}" defer></script>
+</body>
+</html>

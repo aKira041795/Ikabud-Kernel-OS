@@ -1,0 +1,42 @@
+{
+    "schema": "harpp2.concept-contract:v1",
+    "project": "star-swarm",
+    "concept": "a colony, not a formation",
+    "_why": "Written because iteration 3 was marked 'all objective acceptance gates passed' while half the brief's sub-requirements were never built: the pillar probes were PROSE, so nothing could fail on them. This file is the requirement list as data, and tests/star_swarm_concept_test.php gates it. A requirement that is not in here is not enforced.",
+    "observability": {
+        "_why": "Behaviour cannot be probed honestly by pixel-guessing alone; the game exposes a minimal read-only surface.",
+        "required_state_fields": [
+            "enemies",
+            "mood",
+            "wave",
+            "nursery"
+        ],
+        "required_enemy_fields": [
+            "x",
+            "y",
+            "scale",
+            "class",
+            "role"
+        ]
+    },
+    "spec_probes": {
+        "_why": "Each name (or an alternative separated by |) must appear inside an expect(...) statement in tests/browser/star-swarm.spec.ts. Existence is checked mechanically here; strictness is checked by the chair and by the pixel thresholds themselves.",
+        "pairwiseMinDistance": "no two live enemies overlap (P1: it is a swarm)",
+        "centroidPath": "the colony centroid does not travel a straight line (P1: motion is emergent, not scripted)",
+        "dispersal": "killing enemies measurably displaces their neighbours (P1: it breaks apart when struck)",
+        "moodSamples|moods|mood": "state.mood takes >=2 distinct values across >=2 waves (P2: it has a mind)",
+        "moodCadence|cadence": "the oscillation cadence differs between waves (P2: behaviour changes, not just speed)",
+        "scaleBands": ">=3 distinct enemy scales are live at once (P3: the void reads as depth)",
+        "nurseryOrigin": "new-wave enemies originate near the nursery planet (P3: it lives in a place)",
+        "silhouetteClasses": ">=4 enemy classes separable by ink coverage and aspect ratio (P4: shape carries meaning)",
+        "roleCoverage": "threat/ally/reward/hazard resolve through theme tokens (P4: meaning never depends on hue)"
+    },
+    "invariants": {
+        "raster_assets": 0,
+        "dependency_manifests_unchanged": [
+            "package.json",
+            "composer.json"
+        ],
+        "_why": "No sprites and no new dependency is what makes this module themable and shippable on shared hosting."
+    }
+}
