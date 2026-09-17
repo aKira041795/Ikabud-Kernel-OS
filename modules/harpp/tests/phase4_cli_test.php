@@ -9,6 +9,7 @@ require $root . '/bootstrap.php';
 require_once $root . '/src/helpers/module-manager.php';
 $tenantId = (int)($_SERVER['argv'][1] ?? 1);
 app()->tenant()->setTenantId($tenantId);
+require __DIR__ . '/env-guard.php';
 loadModuleRoutes([]);
 require_once dirname(__DIR__) . '/handlers.php';
 

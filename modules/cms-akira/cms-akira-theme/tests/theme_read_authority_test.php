@@ -49,16 +49,19 @@ $exemptions = is_array($manifest['governance']['exemptions'] ?? null)
 
 $readCapability = 'akira.theme.read@1';
 
-// The four JSON read routes plus the Theme Studio admin page are declared; the
-// handler admits exactly the same role set for all five, so all five are
-// declared against the one read capability.
+// The theme module declares its four JSON read routes against
+// akira.theme.read@1. The Theme Studio admin page moved into the shared shell
+// (CD-58/59): the shell owns the document chrome and declares
+// `GET /cms-akira-theme` against its own admin-page capability, so the theme
+// module no longer routes it. Both declarations are asserted below and in the
+// census — the governance is unchanged, only its owner.
 $expectedDeclared = [
     'GET /api/v1/cms-akira-theme/resolve' => $readCapability,
     'GET /api/v1/cms-akira-theme/themes' => $readCapability,
     'GET /api/v1/cms-akira-theme/blocks' => $readCapability,
     'GET /api/v1/cms-akira-theme/themes/{slug}/validate' => $readCapability,
-    'GET /cms-akira-theme' => $readCapability,
 ];
+$expectedShellDeclared = ['GET /cms-akira-theme' => 'akira.shell.admin_page@1'];
 $expectedExempt = ['/api/v1/cms-akira-theme/health'];
 
 $declaredGetCount = 0;
@@ -67,6 +70,11 @@ foreach ($expectedDeclared as $key => $_) {
         ++$declaredGetCount;
     }
 }
+
+$shellManifest = json_decode((string) @file_get_contents(dirname($moduleDir) . '/cms-akira-shell/module.json'), true);
+$shellRoutes = is_array($shellManifest['capabilities']['routes'] ?? null)
+    ? $shellManifest['capabilities']['routes']
+    : [];
 
 // ── Capability existence + handler map ───────────────────────────────────────
 $handlerMap = function_exists('cms_akira_theme_capability_handlers')
@@ -97,9 +105,13 @@ $seedCallerModule = preg_match("/'caller_module'\s*=>\s*'([^']*)'/", $seedBody, 
     ? $callerMatch[1]
     : null;
 $seedPolicyVersion = str_contains($seedBody, "'policy_version' => \$policyVersion");
-$seedJoinsActiveVersion = str_contains($seedBody, 'activePolicyRows()')
-    && str_contains($seedBody, "\$activeRows[0]['policy_version']");
-$seedWired = preg_match('/^catSeedThemeReadPolicies\(\);\s*$/m', $helpersSource) === 1
+// Either the inline resolver (activePolicyRows) or the shared core helper
+// (cacActivePolicyVersion) is acceptable; both derive the ACTIVE version. What
+// is forbidden is a literal version pinned to 1 regardless of the active set.
+$seedJoinsActiveVersion = (str_contains($seedBody, 'activePolicyRows()')
+        && str_contains($seedBody, "\$activeRows[0]['policy_version']"))
+    || str_contains($seedBody, 'cacActivePolicyVersion()');
+$seedWired = str_contains($helpersSource, 'catSeedThemeReadPolicies();')
     && str_contains($seedBody, 'CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);');
 
 // The seed role set must EQUAL the set catThemeAdmin() already admits: not wider
@@ -156,16 +168,29 @@ if (function_exists('proc_open')) {
 $censusData = json_decode($censusStdout, true);
 $themeSummary = null;
 $themeOperations = [];
+$shellOperations = [];
 foreach (is_array($censusData) && is_array($censusData['modules'] ?? null) ? $censusData['modules'] : [] as $module) {
-    if (is_array($module) && ($module['module'] ?? null) === 'cms-akira-theme') {
+    if (!is_array($module)) {
+        continue;
+    }
+    if (($module['module'] ?? null) === 'cms-akira-theme') {
         $themeSummary = is_array($module['summary'] ?? null) ? $module['summary'] : null;
         $themeOperations = is_array($module['operations'] ?? null) ? $module['operations'] : [];
+    }
+    if (($module['module'] ?? null) === 'cms-akira-shell') {
+        $shellOperations = is_array($module['operations'] ?? null) ? $module['operations'] : [];
     }
 }
 $themeReads = [];
 foreach ($themeOperations as $operation) {
     if (is_array($operation) && in_array($operation['method'] ?? '', ['GET', 'HEAD', 'OPTIONS'], true)) {
         $themeReads[$operation['route']] = $operation['dispatch'] ?? null;
+    }
+}
+$shellReads = [];
+foreach ($shellOperations as $operation) {
+    if (is_array($operation) && in_array($operation['method'] ?? '', ['GET', 'HEAD', 'OPTIONS'], true)) {
+        $shellReads[$operation['route']] = $operation['dispatch'] ?? null;
     }
 }
 $akiraRollup = is_array($censusData) && is_array($censusData['akira'] ?? null) ? $censusData['akira'] : null;
@@ -179,9 +204,11 @@ $checks = [
         => array_keys($handlerMap) === $exposedIds,
     'the read handler dispatches the resolve/registry/blocks/validate projections'
         => $readOperationDispatch,
-    'all five read routes (four JSON + admin page) are declared against akira.theme.read@1'
+    'the theme module declares its four JSON read routes against akira.theme.read@1'
         => $declaredGetCount === count($expectedDeclared)
             && array_intersect_assoc($expectedDeclared, $routes) === $expectedDeclared,
+    'the shell declares the Theme Studio admin page against akira.shell.admin_page@1'
+        => array_intersect_assoc($expectedShellDeclared, $shellRoutes) === $expectedShellDeclared,
     'health is not silently undeclared: it carries a reasoned exemption'
         => !array_key_exists('GET /api/v1/cms-akira-theme/health', $routes)
             && count($exemptions) === 1
@@ -204,24 +231,27 @@ $checks = [
         => $writesIntact,
     'census subprocess exits 0 and emits parseable JSON'
         => $censusExit === 0 && is_array($censusData),
-    'census: cms-akira-theme reports read_undeclared 0, 5 dispatched, 1 exempt, 6 total'
+    'census: cms-akira-theme reports read_undeclared 0, 4 dispatched, 1 exempt, 5 total'
         => is_array($themeSummary)
             && (int) ($themeSummary['read_undeclared'] ?? -1) === 0
-            && (int) ($themeSummary['read_dispatch_enforced'] ?? -1) === 5
+            && (int) ($themeSummary['read_dispatch_enforced'] ?? -1) === 4
             && (int) ($themeSummary['read_exempt'] ?? -1) === 1
-            && (int) ($themeSummary['read_total'] ?? -1) === 6,
+            && (int) ($themeSummary['read_total'] ?? -1) === 5,
     'census: the account write_ratio is unchanged at 100 (read work moved only the read figure)'
         => is_array($akiraRollup)
             && (float) ($akiraRollup['write_ratio'] ?? -1) === 100.0
-            && (int) ($akiraRollup['dispatch_enforced'] ?? -1) === 47
-            && (int) ($akiraRollup['total'] ?? -1) === 47,
+            // 47 when this gate was written; the authorised P3.3 session-revocation
+            // route (POST /cms-akira-shell/users/{id}/revoke, f63f6bf) is the 48th.
+            // Read work must not move the write figure.
+            && (int) ($akiraRollup['dispatch_enforced'] ?? -1) === 48
+            && (int) ($akiraRollup['total'] ?? -1) === 48,
     'census: each of the six GET routes is governed (5 enforced, 1 exempt)'
         => ($themeReads['/api/v1/cms-akira-theme/resolve'] ?? null) === 'enforced'
             && ($themeReads['/api/v1/cms-akira-theme/themes'] ?? null) === 'enforced'
             && ($themeReads['/api/v1/cms-akira-theme/blocks'] ?? null) === 'enforced'
             && ($themeReads['/api/v1/cms-akira-theme/themes/{slug}/validate'] ?? null) === 'enforced'
-            && ($themeReads['/cms-akira-theme'] ?? null) === 'enforced'
-            && ($themeReads['/api/v1/cms-akira-theme/health'] ?? null) === 'exempt',
+            && ($themeReads['/api/v1/cms-akira-theme/health'] ?? null) === 'exempt'
+            && ($shellReads['/cms-akira-theme'] ?? null) === 'enforced',
 ];
 
 $passed = 0;

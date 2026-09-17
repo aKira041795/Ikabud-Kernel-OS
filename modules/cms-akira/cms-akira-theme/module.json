@@ -107,7 +107,6 @@
             "GET /api/v1/cms-akira-theme/themes": "akira.theme.read@1",
             "GET /api/v1/cms-akira-theme/blocks": "akira.theme.read@1",
             "GET /api/v1/cms-akira-theme/themes/{slug}/validate": "akira.theme.read@1",
-            "GET /cms-akira-theme": "akira.theme.read@1",
             "POST /api/v1/cms-akira-theme/customize": "akira.theme.customize@1",
             "POST /api/v1/cms-akira-theme/themes/{slug}/activate": "akira.theme.activate@1",
             "POST /cms-akira-theme/customize": "akira.theme.customize@1",

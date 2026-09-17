@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 define('PAGE_CACHE_INSTANCE', 'pagecache');
 define('PAGE_CACHE_TTL', 300); // 5 minutes — default for most pages
+define('PAGE_CACHE_DEFAULT_CONTENT_TYPE', 'text/html; charset=UTF-8');
 
 // ── Per-module TTL overrides (seconds) ───────────────────────────────
 // Static/CMS pages change infrequently and are event-invalidated on edit,
@@ -229,7 +230,7 @@ function pageCacheTags(string $uri, string $moduleId): array
 /**
  * Attempt to retrieve a cached full-page response.
  *
- * Returns ['html' => string, 'status' => int, 'etag' => string] or null.
+ * Returns a cached response entry, including content_type for new entries, or null.
  */
 function pageCacheGet(string $uri): ?array
 {
@@ -242,15 +243,72 @@ function pageCacheGet(string $uri): ?array
 }
 
 /**
- * Store a full-page response in the cache.
+ * Resolve the last Content-Type in a response header list.
+ *
+ * The nullable fallback lets callers distinguish an observed header from an
+ * absent one. Omitting it preserves the deterministic historical HTML type.
+ *
+ * @param list<string> $headers
  */
-function pageCacheSet(string $uri, string $html, string $moduleId, int $status = 200): void
+function pageCacheResolveContentType(
+    array $headers,
+    ?string $fallback = PAGE_CACHE_DEFAULT_CONTENT_TYPE
+): ?string {
+    $resolved = null;
+    foreach ($headers as $header) {
+        if (!str_contains($header, ':')) {
+            continue;
+        }
+        [$name, $value] = explode(':', $header, 2);
+        if (strcasecmp(trim($name), 'Content-Type') !== 0) {
+            continue;
+        }
+        $value = trim($value);
+        if ($value !== '' && !str_contains($value, "\r") && !str_contains($value, "\n")) {
+            $resolved = $value;
+        }
+    }
+
+    return $resolved ?? $fallback;
+}
+
+/**
+ * Determine whether a body is recognisably a complete HTML document.
+ */
+function pageCacheBodyIsHtml(string $body): bool
 {
+    return preg_match('/^\\s*(?:<!doctype\\s+html\\b|<html\\b)/i', $body) === 1;
+}
+
+/**
+ * Store a full-page response in the cache.
+ *
+ * A missing type is accepted only for recognisable HTML, preserving existing
+ * callers. An untyped non-HTML body is not cached: serving it with the HTML
+ * fallback would be unsafe.
+ */
+function pageCacheSet(
+    string $uri,
+    string $html,
+    string $moduleId,
+    int $status = 200,
+    ?string $contentType = null
+): void {
     if ($status !== 200) {
         return; // Only cache successful responses
     }
     if (strlen($html) < 100) {
         return; // Don't cache trivially small responses (redirects, errors)
+    }
+
+    $resolvedContentType = $contentType === null
+        ? null
+        : pageCacheResolveContentType(['Content-Type: ' . $contentType], null);
+    if ($resolvedContentType === null) {
+        if (!pageCacheBodyIsHtml($html)) {
+            return;
+        }
+        $resolvedContentType = pageCacheResolveContentType([]);
     }
 
     // Do not cache pages that contain a CSRF token — the cached token
@@ -266,6 +324,7 @@ function pageCacheSet(string $uri, string $html, string $moduleId, int $status =
         'html' => $html,
         'status' => $status,
         'etag' => $etag,
+        'content_type' => $resolvedContentType,
         'cached_at' => date('Y-m-d H:i:s'),
         'uri' => $uri,
         'module' => $moduleId,
@@ -310,6 +369,39 @@ function pageCacheHtmlHasCsrfToken(string $html): bool
 // ── Serve from cache ─────────────────────────────────────────────────
 
 /**
+ * Compute exactly the headers emitted for a cached response.
+ *
+ * Entries created before content-type persistence intentionally retain the
+ * historical text/html fallback.
+ *
+ * @param array<string, mixed> $entry
+ * @return list<string>
+ */
+function pageCacheServeHeaders(array $entry, bool $notModified = false): array
+{
+    $html = (string) ($entry['html'] ?? '');
+    $etag = '"' . (string) ($entry['etag'] ?? md5($html)) . '"';
+    if ($notModified) {
+        return [
+            'ETag: ' . $etag,
+            'Cache-Control: public, no-cache',
+            'X-Page-Cache: hit-304',
+        ];
+    }
+
+    $contentType = is_string($entry['content_type'] ?? null)
+        ? pageCacheResolveContentType(['Content-Type: ' . $entry['content_type']])
+        : pageCacheResolveContentType([]);
+
+    return [
+        'Content-Type: ' . $contentType,
+        'ETag: ' . $etag,
+        'Cache-Control: public, no-cache',
+        'X-Page-Cache: hit',
+    ];
+}
+
+/**
  * Serve a cached page directly. Returns true if served (caller should exit),
  * false if no cache entry exists.
  */
@@ -324,21 +416,18 @@ function pageCacheServe(string $uri): bool
 
     // ETag conditional: return 304 if client has current version
     $clientEtag = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
-    if ($clientEtag === $etag) {
+    $notModified = $clientEtag === $etag;
+    if ($notModified) {
         http_response_code(304);
-        header('ETag: ' . $etag);
-        header('Cache-Control: public, no-cache');
-        header('X-Page-Cache: hit-304');
-        return true;
+    } else {
+        http_response_code((int)($entry['status'] ?? 200));
     }
-
-    // Serve full response
-    http_response_code((int)($entry['status'] ?? 200));
-    header('Content-Type: text/html; charset=UTF-8');
-    header('ETag: ' . $etag);
-    header('Cache-Control: public, no-cache');
-    header('X-Page-Cache: hit');
-    echo $entry['html'];
+    foreach (pageCacheServeHeaders($entry, $notModified) as $responseHeader) {
+        header($responseHeader);
+    }
+    if (!$notModified) {
+        echo $entry['html'];
+    }
     return true;
 }
 

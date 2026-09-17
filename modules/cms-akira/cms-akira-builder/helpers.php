@@ -973,4 +973,6 @@ function cab_builder_cap_validate_1(mixed $payload, string $capabilityId = 'akir
     } return cabBuilderMutate('validate', $payload);
 }
 
-cabBuilderSeedMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    cabBuilderSeedMutationPolicies();
+}

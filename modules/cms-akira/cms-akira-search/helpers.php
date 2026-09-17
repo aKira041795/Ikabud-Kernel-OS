@@ -583,18 +583,7 @@ function casSearchSeedQueryPolicy(): void
         return;
     }
 
-    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
-    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
-        'actor' => app()->user(),
-    ]);
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
-        null,
-        $scope,
-        $resolver,
-        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
-    );
-    $activeRows = $registry->activePolicyRows();
-    $policyVersion = $activeRows === [] ? 1 : (int) ($activeRows[0]['policy_version'] ?? 1);
+    $policyVersion = function_exists('cacActivePolicyVersion') ? cacActivePolicyVersion() : 1;
 
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
         'policy_version' => $policyVersion,
@@ -609,6 +598,12 @@ function casSearchSeedQueryPolicy(): void
     ]]);
 }
 
-casSearchSeedMutationPolicies();
-casSearchSeedQueryPolicy();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    casSearchSeedMutationPolicies();
+}
+$casSearchPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate() || $casSearchPath === ''
+    || $casSearchPath === '/cms-akira-shell/search') {
+    casSearchSeedQueryPolicy();
+}
 casSearchRegisterLifecycleConsumer();

@@ -124,18 +124,7 @@ function cawSeedRunsPolicy(): void
         return;
     }
 
-    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
-    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
-        'actor' => app()->user(),
-    ]);
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
-        null,
-        $scope,
-        $resolver,
-        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
-    );
-    $activeRows = $registry->activePolicyRows();
-    $policyVersion = $activeRows === [] ? 1 : (int) ($activeRows[0]['policy_version'] ?? 1);
+    $policyVersion = function_exists('cacActivePolicyVersion') ? cacActivePolicyVersion() : 1;
 
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
         'policy_version' => $policyVersion,
@@ -537,6 +526,16 @@ function caw_cap_akira_workflow_runs_1(mixed $payload, string $capabilityId = 'a
     }
 }
 
-cawEnsureDefinition();
-cawSeedTransitionPolicy();
-cawSeedRunsPolicy();
+$cawReadPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+$cawMayMutate = !function_exists('cacRequestMayMutate') || cacRequestMayMutate();
+if ($cawMayMutate || $cawReadPath === '' || $cawReadPath === '/cms-akira-shell/workflow'
+    || $cawReadPath === '/cms-akira-shell/posts/new'
+    || (str_starts_with($cawReadPath, '/cms-akira-shell/posts/') && str_ends_with($cawReadPath, '/edit'))) {
+    cawEnsureDefinition();
+}
+if ($cawMayMutate) {
+    cawSeedTransitionPolicy();
+}
+if ($cawMayMutate || $cawReadPath === '' || $cawReadPath === '/cms-akira-shell/workflow') {
+    cawSeedRunsPolicy();
+}

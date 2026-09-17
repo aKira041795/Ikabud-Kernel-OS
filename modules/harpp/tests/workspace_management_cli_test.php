@@ -12,6 +12,7 @@ use Harpp\Services\HarppWorkspaceService;
 $h = new TestHarness('harpp-workspace-management');
 $tenantId = (int)($_SERVER['argv'][1] ?? 1);
 app()->tenant()->setTenantId($tenantId);
+require __DIR__ . '/env-guard.php';
 require_once $root . '/modules/harpp/helpers.php';
 $manifest = json_decode((string)file_get_contents(dirname(__DIR__) . '/module.json'), true, 512, JSON_THROW_ON_ERROR);
 $pdo = app()->dbForTenant($tenantId);

@@ -7,6 +7,7 @@ $logs = [$root.'/storage/logs/app.log', $root.'/storage/logs/error.log'];
 foreach ($logs as $log) { if (is_file($log)) file_put_contents($log, ''); }
 require $root.'/bootstrap.php';
 $tenantId=(int)($_SERVER['argv'][1]??1);app()->tenant()->setTenantId($tenantId);require_once dirname(__DIR__).'/helpers.php';
+require __DIR__ . '/env-guard.php';
 
 use Harpp\Services\HarppBridgeAuthService;
 use Harpp\Services\HarppBridgeService;

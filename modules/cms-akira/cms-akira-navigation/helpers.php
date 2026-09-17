@@ -51,7 +51,9 @@ function canSeedNavigationMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-canSeedNavigationMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    canSeedNavigationMutationPolicies();
+}
 
 function canCtx(): \Ikabud\Kernel\Contracts\ModuleContext
 {

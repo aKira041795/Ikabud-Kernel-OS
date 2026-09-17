@@ -201,6 +201,48 @@ function akiraShellAuthorizeTaxonomyManager(): bool
 }
 
 /**
+ * Render the theme-owned Theme Studio fragment in the shell-owned document.
+ *
+ * The route deliberately belongs to this module, whose existing caller grant
+ * authorizes the one shared chrome. Theme code remains responsible for its
+ * controls and governed reads; no caller is aliased and no policy is widened.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellThemeStudio(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+
+    $modules = getEnabledModules();
+    $theme = $modules['cms-akira-theme'] ?? null;
+    $handlersFile = is_array($theme) ? rtrim((string)($theme['_path'] ?? ''), '/') . '/handlers.php' : '';
+    if ($handlersFile === '' || !is_file($handlersFile)) {
+        http_response_code(503);
+        echo akiraShellPage('Theme Studio unavailable', '<p>The CMS Akira theme module is not enabled.</p>', ['active' => 'theme']);
+        return;
+    }
+
+    moduleWithContext('cms-akira-theme', static function () use ($handlersFile): void {
+        require_once $handlersFile;
+    });
+    $builder = 'catThemeAdminPageContent';
+    $content = moduleWithContext('cms-akira-theme', static fn (): mixed => $builder());
+    if (!is_array($content)) {
+        http_response_code(503);
+        echo akiraShellPage('Theme Studio unavailable', '<p>The Theme Studio content provider returned an invalid fragment.</p>', ['active' => 'theme']);
+        return;
+    }
+
+    echo akiraShellPage(
+        (string)($content['title'] ?? 'CMS Akira Theme Studio'),
+        (string)($content['body'] ?? ''),
+        ['active' => 'theme']
+    );
+}
+
+/**
  * Presentation only: authentication remains at the stable Kernel endpoint.
  * @param array<string,mixed> $params
  */
@@ -904,7 +946,7 @@ function akiraShellWorkflowConsole(array $params = []): void
     }
     try {
         $console = akiraShellWorkflowConsoleData();
-        if (($console['error'] ?? '') !== '') {
+        if ($console['error'] !== '') {
             http_response_code(403);
         }
         echo akiraShellPage('Workflow & approvals', akiraShellWorkflowConsoleHtml($console), ['active' => 'workflow']);

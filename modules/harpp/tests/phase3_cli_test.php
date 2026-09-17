@@ -5,6 +5,7 @@ declare(strict_types=1);
 $root=dirname(__DIR__,3);
 require $root.'/bootstrap.php';
 $tenantId=(int)($_SERVER['argv'][1]??1);app()->tenant()->setTenantId($tenantId);require_once dirname(__DIR__).'/helpers.php';
+require __DIR__ . '/env-guard.php';
 
 use Harpp\Services\HarppDecisionService;
 use Harpp\Services\HarppMessagingService;

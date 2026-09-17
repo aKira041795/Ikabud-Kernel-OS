@@ -62,6 +62,7 @@ $rows = [
         'name' => 'Alpha',
         'status' => 'draft',
         'quantity' => 3,
+        'tenant_id' => 'TENANT-SECRET-7',
         'meta' => ['skip' => true],
     ],
     [
@@ -69,6 +70,7 @@ $rows = [
         'name' => 'Beta',
         'status' => 'published',
         'quantity' => 5,
+        'tenant_id' => 'TENANT-SECRET-8',
         'meta' => ['skip' => true],
     ],
 ];
@@ -80,6 +82,13 @@ $view = [
     'action_methods' => ['archive' => 'POST'],
     'action_labels' => ['archive' => 'Archive Row'],
     'action_confirm' => ['archive' => 'Archive this row?'],
+    // The row-action POST payload is now governed by the declared list; only
+    // these fields may become hidden inputs. The row also carries `tenant_id`
+    // and `meta`, which must NOT become hidden inputs.
+    'action_payload_fields' => ['id', 'name', 'status', 'quantity'],
+    // A.2b: row-click and action-URL interpolation is governed by url_key_fields.
+    // Declaring `id` keeps the row-click target resolvable under the new contract.
+    'url_key_fields' => ['id'],
     'renderers' => [
         'name' => 'string',
         'status' => 'string',
@@ -101,6 +110,7 @@ t('renders hidden scalar row input: status', str_contains($html, '<input type="h
 t('renders hidden scalar row input: quantity', str_contains($html, '<input type="hidden" name="quantity" value="3">'));
 t('renders hidden scalar row inputs for second row context', str_contains($html, '<input type="hidden" name="name" value="Beta">') && str_contains($html, '<input type="hidden" name="quantity" value="5">'));
 t('does not render non-scalar row data as hidden input', !str_contains($html, 'name="meta"'));
+t('does not render an undeclared scalar row member as hidden input', !str_contains($html, 'name="tenant_id"') && !str_contains($html, 'TENANT-SECRET'), 'undeclared tenant_id leaked into the POST payload');
 t('renders submit button label', str_contains($html, '<button type="submit"') && str_contains($html, 'Archive Row</button>'));
 t('renders POST confirmation handler', str_contains($html, 'onsubmit="return confirm(') && str_contains($html, 'Archive this row?'));
 

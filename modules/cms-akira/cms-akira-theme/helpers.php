@@ -51,7 +51,9 @@ function catSeedThemeMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-catSeedThemeMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    catSeedThemeMutationPolicies();
+}
 
 /**
  * Activation-time, idempotent seed for the theme read policy.
@@ -82,18 +84,7 @@ function catSeedThemeReadPolicies(): void
         return;
     }
 
-    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
-    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
-        'actor' => app()->user(),
-    ]);
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
-        null,
-        $scope,
-        $resolver,
-        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
-    );
-    $activeRows = $registry->activePolicyRows();
-    $policyVersion = $activeRows === [] ? 1 : (int)($activeRows[0]['policy_version'] ?? 1);
+    $policyVersion = function_exists('cacActivePolicyVersion') ? cacActivePolicyVersion() : 1;
 
     $rows = [];
     $rows[] = [
@@ -111,7 +102,11 @@ function catSeedThemeReadPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-catSeedThemeReadPolicies();
+$catReadPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate() || $catReadPath === ''
+    || $catReadPath === '/cms-akira-theme' || str_starts_with($catReadPath, '/api/v1/cms-akira-theme')) {
+    catSeedThemeReadPolicies();
+}
 
 final class CatThemeException extends RuntimeException
 {
@@ -1460,4 +1455,7 @@ function catThemeEnforceMutationCsrf(): void
     }
 }
 
-catSeedActiveThemeRequestContext();
+$catContextPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if ($catContextPath === '' || !str_starts_with($catContextPath, '/cms-')) {
+    catSeedActiveThemeRequestContext();
+}

@@ -165,19 +165,16 @@ function catThemeActivateJson(array $params = []): void
     }
 }
 
-/** @param array<string, string> $params */
-function catThemeAdminPage(array $params = []): void
+/**
+ * Build only the Theme Studio-owned content fragment.
+ *
+ * The shell owns the GET route and document chrome; keeping this builder in the
+ * theme module preserves ownership of all theme controls and data access.
+ *
+ * @return array{title: string, body: string}
+ */
+function catThemeAdminPageContent(): array
 {
-    if (catThemeAdmin() === null) {
-        header('Location: /login', true, 303);
-        return;
-    }
-    if (catThemeAdmin() === []) {
-        http_response_code(403);
-        echo catThemePage('Access denied', '<p>Your Kernel role cannot administer CMS Akira themes.</p>');
-        return;
-    }
-
     $themesResult = catThemeReadViaBus('registry');
     $themes = is_array($themesResult['themes'] ?? null) ? $themesResult['themes'] : [];
     $resolved = catThemeReadViaBus('resolve');
@@ -261,7 +258,7 @@ function catThemeAdminPage(array $params = []): void
         . $studio . '<button class="rounded-xl bg-akira-600 px-5 py-3 font-bold text-white hover:bg-akira-700" type="submit">Save customization</button></form></section>'
         . '<section class="mt-10"><h2 class="text-xl font-bold">Installed themes</h2><ul class="mt-3 space-y-2">' . $items . '</ul>' . $rollback . '</section>'
         . '<p class="mt-6"><a href="/api/v1/cms-akira-theme/themes">Themes JSON</a> · <a href="/api/v1/cms-akira-theme/resolve">Resolve JSON</a></p>';
-    echo catThemePage('CMS Akira Theme Studio', $body);
+    return ['title' => 'CMS Akira Theme Studio', 'body' => $body];
 }
 
 /** @param array<string, string> $params */

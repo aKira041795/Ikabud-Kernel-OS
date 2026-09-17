@@ -59,7 +59,10 @@ final class HarppPasswordResetService
 
             $url = $this->resetUrl($rawToken);
             if (function_exists('write_log')) {
-                \write_log('HARPP password reset link issued', 'HARPP', ['module' => 'harpp', 'user_id' => (int)$user['id'], 'reset_url' => $url]);
+                // Never log the reset URL: it is a bearer token that grants account takeover to anyone
+                // who can read the logs. Only its hash is stored (harpp_password_resets.token). The event
+                // and the user id are what operations actually need. (CD-64, review §7)
+                \write_log('HARPP password reset link issued', 'HARPP', ['module' => 'harpp', 'user_id' => (int)$user['id']]);
             }
             $this->sendResetEmail($user, $url, $ttl);
             return HarppServiceResult::success([], $generic);

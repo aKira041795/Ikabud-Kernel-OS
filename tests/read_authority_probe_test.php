@@ -160,6 +160,11 @@ $expectedReads = [
     'GET /cms-akira-shell/search' => 'akira.search.query@1',          // akiraShellSearch — admin gate
     'GET /cms-akira-shell/settings' => 'akira.site.settings.get@1',   // akiraShellSettings — admin gate
     'GET /cms-akira-shell/backups' => 'akira.backup.list@1',          // akiraShellBackups — admin gate
+    // Theme Studio moved into the shared shell (CD-58/59). The shell owns the
+    // document chrome and routes /cms-akira-theme through akiraShellThemeStudio,
+    // which takes the same administrator gate before dispatch and is backed by
+    // the existing akira.shell.admin_page@1 policy row — no policy was widened.
+    'GET /cms-akira-theme' => 'akira.shell.admin_page@1',             // akiraShellThemeStudio — admin gate
 ];
 $actualReads = array_filter(
     (array) $shellDeclared,

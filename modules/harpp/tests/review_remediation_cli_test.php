@@ -7,6 +7,7 @@ require_once $root . '/tests/harness/TestHarness.php';
 $h = new TestHarness('harpp-review-remediation', TestHarness::MODE_INTEGRATION, 'localhost');
 $tenantId = (int)($_SERVER['argv'][1] ?? 1);
 app()->tenant()->setTenantId($tenantId);
+require __DIR__ . '/env-guard.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
 use Harpp\Services\HarppBridgeService;

@@ -26,6 +26,7 @@
             }
         ],
         "routes": {
+            "GET /cms-akira-theme": "akira.shell.admin_page@1",
             "GET /cms-akira-shell": "akira.post.admin.list@1",
             "GET /cms-akira-shell/posts": "akira.post.admin.list@1",
             "GET /cms-akira-shell/posts/new": "akira.taxonomy.list@1",

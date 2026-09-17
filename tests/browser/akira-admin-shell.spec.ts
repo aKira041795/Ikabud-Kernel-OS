@@ -5,6 +5,11 @@ const VIEWPORTS = [
     { name: 'short-600', width: 1280, height: 600 },
 ] as const;
 
+// Contiguous groups sized from the pre-change per-route timings. The expensive
+// permissions/authority routes make equal route counts notably unequal work.
+const PARTITION_ROUTE_COUNTS = [6, 4, 4, 6] as const;
+const PARTITION_COUNT = PARTITION_ROUTE_COUNTS.length;
+
 function pathname(href: string): string {
     return new URL(href, 'http://tenant.invalid').pathname;
 }
@@ -17,16 +22,33 @@ function screenshotName(viewport: string, route: string): string {
 }
 
 async function assertNoSignOutCollision(nav: Locator, signOut: Locator): Promise<void> {
-    const [navBox, signOutBox] = await Promise.all([nav.boundingBox(), signOut.boundingBox()]);
+    const geometry = await nav.evaluate((element) => {
+        const box = (target: Element | null) => {
+            if (!target || target.getClientRects().length === 0) {
+                return null;
+            }
+            const rect = target.getBoundingClientRect();
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        };
+        const links = [...element.querySelectorAll('a')];
+        const sidebarLinks = [...(element.closest('aside')?.querySelectorAll('a') ?? [])];
+        const signOutElement = sidebarLinks.find((link) => (link.textContent ?? '').trim() === 'Sign out') ?? null;
+
+        return {
+            navBox: box(element),
+            signOutBox: box(signOutElement),
+            links: links.map((link) => ({
+                label: link.innerText,
+                box: box(link),
+            })),
+        };
+    });
+    const { navBox, signOutBox } = geometry;
     expect(navBox, 'the navigation scrollport must have a measurable bounding box').not.toBeNull();
     expect(signOutBox, 'Sign out must have a measurable bounding box').not.toBeNull();
 
     const collisions: string[] = [];
-    for (const link of await nav.getByRole('link').all()) {
-        const [label, box] = await Promise.all([
-            link.innerText(),
-            link.boundingBox(),
-        ]);
+    for (const { label, box } of geometry.links) {
         expect(box, `navigation link ${JSON.stringify(label.trim())} must have a measurable bounding box`).not.toBeNull();
         if (box && navBox && signOutBox) {
             // A scrolled element's raw DOMRect extends beneath its overflow
@@ -49,6 +71,22 @@ async function assertNoSignOutCollision(nav: Locator, signOut: Locator): Promise
     }
 
     expect(collisions, `nav links colliding with Sign out: ${collisions.join(', ') || '(none)'}`).toEqual([]);
+}
+
+function partitionRoutes(routes: string[]): string[][] {
+    let start = 0;
+    const partitions = PARTITION_ROUTE_COUNTS.map((routeCount) => {
+        const partition = routes.slice(start, start + routeCount);
+        start += routeCount;
+        return partition;
+    });
+
+    expect(
+        partitions.flat(),
+        'shell route partitions must contain every discovered route exactly once and in discovery order',
+    ).toEqual(routes);
+
+    return partitions;
 }
 
 async function assertShell(page: Page, route: string, viewportName: string): Promise<void> {
@@ -93,28 +131,33 @@ async function assertShell(page: Page, route: string, viewportName: string): Pro
 }
 
 for (const viewport of VIEWPORTS) {
-    test(`shared admin shell is structurally sound at ${viewport.height}px`, async ({ page }) => {
-        await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        const landing = await page.goto('/cms-akira-shell?nocache=1', { waitUntil: 'domcontentloaded' });
-        expect(landing?.ok(), 'the dashboard must load successfully').toBeTruthy();
+    for (let partitionIndex = 0; partitionIndex < PARTITION_COUNT; partitionIndex += 1) {
+        test(`shared admin shell is structurally sound at ${viewport.height}px (partition ${partitionIndex + 1}/${PARTITION_COUNT})`, async ({ page }) => {
+            await page.setViewportSize({ width: viewport.width, height: viewport.height });
+            const landing = await page.goto('/cms-akira-shell?nocache=1', { waitUntil: 'domcontentloaded' });
+            expect(landing?.ok(), 'the dashboard must load successfully').toBeTruthy();
 
-        const nav = page.getByRole('navigation', { name: 'Akira administration' });
-        await expect(nav).toBeVisible();
-        const destinations = await nav.getByRole('link').evaluateAll((links) => links.map((link) => ({
-            href: (link as HTMLAnchorElement).href,
-            label: (link.textContent ?? '').trim(),
-        })));
-        expect(destinations.length, 'sidebar destination discovery must not silently match nothing').toBeGreaterThan(0);
+            const nav = page.getByRole('navigation', { name: 'Akira administration' });
+            await expect(nav).toBeVisible();
+            const destinations = await nav.getByRole('link').evaluateAll((links) => links.map((link) => ({
+                href: (link as HTMLAnchorElement).href,
+                label: (link.textContent ?? '').trim(),
+            })));
+            expect(destinations.length, 'sidebar destination discovery must not silently match nothing').toBeGreaterThan(0);
 
-        const routes = [...new Set([
-            ...destinations.map(({ href }) => pathname(href)),
-            '/cms-akira-theme',
-        ])];
-        for (const route of routes) {
-            const response = await page.goto(`${route}?nocache=1`, { waitUntil: 'domcontentloaded' });
-            expect(response?.ok(), `${route} must load successfully`).toBeTruthy();
-            expect(pathname(page.url()), `${route} must not redirect away from its admin surface`).toBe(route);
-            await assertShell(page, route, viewport.name);
-        }
-    });
+            const routes = [...new Set([
+                ...destinations.map(({ href }) => pathname(href)),
+                '/cms-akira-theme',
+            ])];
+            const partitions = partitionRoutes(routes);
+            console.log(`[shell coverage] ${viewport.name}: ${routes.length} asserted routes; partition ${partitionIndex + 1}/${PARTITION_COUNT}: ${partitions[partitionIndex].length}`);
+
+            for (const route of partitions[partitionIndex]) {
+                const response = await page.goto(`${route}?nocache=1`, { waitUntil: 'domcontentloaded' });
+                expect(response?.ok(), `${route} must load successfully`).toBeTruthy();
+                expect(pathname(page.url()), `${route} must not redirect away from its admin surface`).toBe(route);
+                await assertShell(page, route, viewport.name);
+            }
+        });
+    }
 }

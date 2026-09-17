@@ -101,12 +101,15 @@ $checks = [
         => is_array($censusModuleSummary)
             && (int) ($censusModuleSummary['undeclared'] ?? -1) === 0
             && (float) ($censusModuleSummary['write_ratio'] ?? -1) === 100.0,
-    'census: akira rollup reports undeclared 0, write_ratio 100 and dispatch_enforced == total == 47'
+    'census: akira rollup reports undeclared 0, write_ratio 100 and dispatch_enforced == total == 48'
         => is_array($censusAkira)
             && (int) ($censusAkira['undeclared'] ?? -1) === 0
             && (float) ($censusAkira['write_ratio'] ?? -1) === 100.0
-            && (int) ($censusAkira['dispatch_enforced'] ?? -1) === 47
-            && (int) ($censusAkira['total'] ?? -1) === 47,
+            // 47 at the time this gate was written; the authorised P3.3 session-revocation
+            // route (POST /cms-akira-shell/users/{id}/revoke, f63f6bf) is the 48th. The
+            // invariant — every routed write declared and enforced — is unchanged.
+            && (int) ($censusAkira['dispatch_enforced'] ?? -1) === 48
+            && (int) ($censusAkira['total'] ?? -1) === 48,
 ];
 
 $passed = 0;

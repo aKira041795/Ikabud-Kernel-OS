@@ -22,6 +22,59 @@ require_once __DIR__ . '/helpers/redirects.php';
 require_once __DIR__ . '/helpers/settings.php';
 
 /**
+ * Mutation declarations only need reconciling before a mutating request. Keeping
+ * them off GET/HEAD/OPTIONS removes write-policy database work from every public
+ * and administration render while preserving fail-closed dispatch: module
+ * helpers load before route authority is checked on the first mutation.
+ */
+function cacRequestMayMutate(): bool
+{
+    $method = strtoupper(trim((string) ($_SERVER['REQUEST_METHOD'] ?? '')));
+    return $method === '' || !in_array($method, ['GET', 'HEAD', 'OPTIONS'], true);
+}
+
+/** Normalised request path used to limit read-policy reconciliation to its surface. */
+function cacRequestPath(): string
+{
+    $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    return is_string($path) ? rtrim($path, '/') : '';
+}
+
+/**
+ * Whether a read capability can be used by the current Akira administration
+ * request. Unknown/non-HTTP contexts retain the historical reconcile-all path.
+ */
+function cacReadPolicyNeeded(string $capabilityId): bool
+{
+    if (cacRequestMayMutate()) {
+        return true;
+    }
+    $path = cacRequestPath();
+    if ($path === '' || (!str_starts_with($path, '/cms-akira-shell')
+        && !in_array($path, ['/cms-akira-theme', '/cms-akira-seo'], true))) {
+        return true;
+    }
+
+    return match ($capabilityId) {
+        'akira.post.admin.get@1' => str_starts_with($path, '/cms-akira-shell/posts/')
+            && str_ends_with($path, '/edit'),
+        'akira.post.admin.list@1' => in_array($path, [
+            '/cms-akira-shell', '/cms-akira-shell/posts', '/cms-akira-shell/workflow', '/cms-akira-seo',
+        ], true),
+        'akira.taxonomy.list@1' => $path === '/cms-akira-shell/categories'
+            || str_starts_with($path, '/cms-akira-shell/posts'),
+        'akira.content_type.list@1' => $path === '/cms-akira-shell/content-types',
+        'akira.policy.list@1' => in_array($path, ['/cms-akira-shell/permissions', '/cms-akira-shell/authority'], true),
+        'akira.user.list@1' => $path === '/cms-akira-shell/users',
+        'akira.module.list@1' => $path === '/cms-akira-shell/modules',
+        'akira.site.settings.get@1' => $path === '/cms-akira-shell/settings',
+        'akira.backup.list@1' => $path === '/cms-akira-shell/backups',
+        'akira.redirect.list@1' => $path === '/cms-akira-shell/redirects',
+        default => false,
+    };
+}
+
+/**
  * Activation-time, idempotent seed for the protocol-v2 mutation policy.
  * CapabilityAuthorizationRegistry is the legal kernel-owned channel: it
  * performs its own narrow KernelPDO escalation for its registry table.
@@ -59,7 +112,9 @@ function cacSeedPostMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-cacSeedPostMutationPolicies();
+if (cacRequestMayMutate()) {
+    cacSeedPostMutationPolicies();
+}
 
 /**
  * Govern only the draft-capable administration read surface. Public Post and
@@ -73,6 +128,9 @@ function cacSeedPostAdminReadPolicies(): void
     }
     $rows = [];
     foreach (['akira.post.admin.get@1', 'akira.post.admin.list@1'] as $capabilityId) {
+        if (!cacReadPolicyNeeded($capabilityId)) {
+            continue;
+        }
         $rows[] = [
             'policy_version' => 1,
             'capability_id' => $capabilityId,
@@ -85,7 +143,9 @@ function cacSeedPostAdminReadPolicies(): void
             'is_active' => true,
         ];
     }
-    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    if ($rows !== []) {
+        \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    }
 }
 
 cacSeedPostAdminReadPolicies();
@@ -101,19 +161,7 @@ function cacSeedShellReadPolicies(): void
         return;
     }
 
-    $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
-    $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
-        'actor' => app()->user(),
-    ]);
-    $registry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(
-        null,
-        $scope,
-        $resolver,
-        $resolver->failureReason() ?? 'missing_tenant_authority_scope'
-    );
-    $activeRows = $registry->activePolicyRows();
-    $policyVersion = $activeRows === [] ? 1 : (int)($activeRows[0]['policy_version'] ?? 1);
-
+    $policyVersion = null;
     $rows = [];
     foreach ([
         'akira.taxonomy.list@1' => ['contributor,author,editor,admin,administrator,superadmin', 'v1'],
@@ -130,6 +178,10 @@ function cacSeedShellReadPolicies(): void
         'akira.redirect.list@1' => ['admin,administrator,superadmin', 'v1'],
         'akira.redirect.create@1' => ['admin,administrator,superadmin', 'v2'],
     ] as $capabilityId => [$allowedRoles, $protocol]) {
+        if (!cacReadPolicyNeeded($capabilityId)) {
+            continue;
+        }
+        $policyVersion ??= cacActivePolicyVersion();
         $rows[] = [
             'policy_version' => $policyVersion,
             'capability_id' => $capabilityId,
@@ -142,7 +194,9 @@ function cacSeedShellReadPolicies(): void
             'is_active' => true,
         ];
     }
-    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    if ($rows !== []) {
+        \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    }
 }
 
 cacSeedShellReadPolicies();
@@ -180,7 +234,9 @@ function cacSeedTaxonomyMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-cacSeedTaxonomyMutationPolicies();
+if (cacRequestMayMutate()) {
+    cacSeedTaxonomyMutationPolicies();
+}
 
 /**
  * Activation-time, idempotent seed for the P1 governed content-type registry
@@ -216,7 +272,9 @@ function cacSeedContentTypeMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-cacSeedContentTypeMutationPolicies();
+if (cacRequestMayMutate()) {
+    cacSeedContentTypeMutationPolicies();
+}
 
 /**
  * Activation-time, idempotent seed for the P1 post <-> taxonomy assignment
@@ -250,7 +308,9 @@ function cacSeedPostTaxonomyMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-cacSeedPostTaxonomyMutationPolicies();
+if (cacRequestMayMutate()) {
+    cacSeedPostTaxonomyMutationPolicies();
+}
 
 /**
  * Activation-time, idempotent seed for the P1 post revision revert mutation
@@ -286,7 +346,9 @@ function cacSeedPostRevisionMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-cacSeedPostRevisionMutationPolicies();
+if (cacRequestMayMutate()) {
+    cacSeedPostRevisionMutationPolicies();
+}
 
 /**
  * The tenant's currently active policy version, or 1 when the store has none.
@@ -301,6 +363,11 @@ cacSeedPostRevisionMutationPolicies();
  */
 function cacActivePolicyVersion(): int
 {
+    static $version = null;
+    if (is_int($version)) {
+        return $version;
+    }
+
     try {
         $app = app();
         if (!is_object($app)) {
@@ -349,7 +416,9 @@ function cacSeedGovernancePolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-cacSeedGovernancePolicies();
+if (cacRequestMayMutate()) {
+    cacSeedGovernancePolicies();
+}
 
 // ── Scoped Context Helpers ───────────────────────────────────────
 

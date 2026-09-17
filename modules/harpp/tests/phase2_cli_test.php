@@ -7,6 +7,7 @@ require $root . '/bootstrap.php';
 
 $tenantId = (int)($_SERVER['argv'][1] ?? 1);
 app()->tenant()->setTenantId($tenantId);
+require __DIR__ . '/env-guard.php';
 if (!class_exists(\Harpp\Services\HarppAuthService::class)) {
     require dirname(__DIR__) . '/helpers.php';
 }

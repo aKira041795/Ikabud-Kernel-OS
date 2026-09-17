@@ -764,17 +764,20 @@ final class EntityViewResolver
 
         if (array_key_exists('visible_fields', $contract)) {
             $visible = $contract['visible_fields'];
+            // Malformed metadata renders nothing. Substituting the allowlist
+            // here would silently invent fields the contract never granted.
             if (!is_array($visible)) {
-                $visible = DefaultEntityRenderer::SAFE_FALLBACK_FIELDS;
-            } else {
-                foreach ($visible as $field) {
-                    if (!is_string($field)) {
-                        $visible = DefaultEntityRenderer::SAFE_FALLBACK_FIELDS;
-                        break;
-                    }
+                return [];
+            }
+            foreach ($visible as $field) {
+                if (!is_string($field)) {
+                    return [];
                 }
             }
             $visible = array_values(array_unique($visible));
+            if ($visible === ['*']) {
+                $visible = DefaultEntityRenderer::SAFE_FALLBACK_FIELDS;
+            }
             return $wildcard ? $visible : array_values(array_intersect($requestedFields, $visible));
         }
 

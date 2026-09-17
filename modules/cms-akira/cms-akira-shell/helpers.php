@@ -20,7 +20,10 @@ function akiraShellSeedKernelProvenancePolicy(): void
     ]]);
 }
 
-akiraShellSeedKernelProvenancePolicy();
+if (!function_exists('cacRequestPath') || cacRequestMayMutate()
+    || cacRequestPath() === '' || cacRequestPath() === '/cms-akira-shell/provenance') {
+    akiraShellSeedKernelProvenancePolicy();
+}
 
 /**
  * Seed the one shell chrome render authority. Module-owned administration
@@ -53,7 +56,10 @@ function akiraShellSeedAdminPagePolicy(): void
     ]]);
 }
 
-akiraShellSeedAdminPagePolicy();
+if (!function_exists('cacRequestPath') || cacRequestMayMutate()
+    || cacRequestPath() === '' || cacRequestPath() === '/cms-akira-theme') {
+    akiraShellSeedAdminPagePolicy();
+}
 
 /**
  * Capability handler map for the shell's exposed capabilities. The chrome
@@ -77,7 +83,7 @@ function cms_akira_shell_capability_handlers(): array
  * config or layout. A second page builder here would recreate the defect this
  * capability exists to remove.
  *
- * @param array<string, mixed> $payload
+ * @param mixed $payload
  * @return array{html: string}
  */
 function akiraShellCapAdminPage(mixed $payload = [], string $capabilityId = '', string $providerId = ''): array
@@ -187,7 +193,7 @@ function akiraPublicSitemapLastmod(mixed $value): ?string
     if (!$parsed instanceof DateTimeImmutable || $parsed->format('Y-m-d') !== $date) {
         return null;
     }
-    return isset($matches[2]) && $matches[2] !== '' ? $date . 'T' . $matches[2] : $date;
+    return isset($matches[2]) ? $date . 'T' . $matches[2] : $date;
 }
 
 /**
@@ -205,7 +211,7 @@ function akiraPublicSitemapUrlset(array $posts, string $origin, bool $truncated 
     }
     $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
     foreach ($posts as $post) {
-        if (!is_array($post) || $origin === '') {
+        if ($origin === '') {
             continue;
         }
         $url = trim((string) ($post['url'] ?? ''));
@@ -263,7 +269,7 @@ function akiraPublicSitemapPosts(): array
         // projection can drop an unsafe stored slug, and counting projections
         // would then skip a real post.
         $offset += $limit;
-        $total = is_array($result) ? (int) ($result['total'] ?? count($posts)) : count($posts);
+        $total = (int) ($result['total'] ?? count($posts));
         if ($offset >= $total) {
             break;
         }
@@ -410,8 +416,7 @@ function akiraPublicThemeRender(string $viewId, array $context): ?string
             // specific PHP map or persistence access is needed here.
             foreach ($resolved as $key => $value) {
                 $tokenKey = isset($tokens[$key]) ? $key : '--' . str_replace('_', '-', (string) $key);
-                if (isset($tokens[$tokenKey]) && is_array($tokens[$tokenKey])
-                    && is_scalar($value) && trim((string) $value) !== '') {
+                if (isset($tokens[$tokenKey]) && trim((string) $value) !== '') {
                     $tokens[$tokenKey]['default'] = $value;
                 }
             }
@@ -498,6 +503,8 @@ function akiraShellIsAdmin(): bool
 function akiraShellPage(string $title, string $body, array $data = []): string
 {
     $active = (string)($data['active'] ?? '');
+    $requestPath = parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    $requestPath = is_string($requestPath) ? rtrim($requestPath, '/') : '';
     $links = [
         ['id' => 'dashboard', 'route' => '/cms-akira-shell', 'label' => 'Dashboard', 'order' => 0],
         ['id' => 'posts', 'route' => '/cms-akira-shell/posts', 'label' => 'Posts', 'order' => 10],
@@ -526,7 +533,7 @@ function akiraShellPage(string $title, string $body, array $data = []): string
     $nav = '';
     foreach ($links as $link) {
         [$key, $url, $label] = [$link['id'], $link['route'], $link['label']];
-        $isActive = $key === $active;
+        $isActive = $key === $active || rtrim((string)$url, '/') === $requestPath;
         $classes = $isActive ? 'bg-akira-600 text-white shadow-lg shadow-akira-950/20' : 'text-slate-300 hover:bg-white/10 hover:text-white';
         $current = $isActive ? ' aria-current="page"' : '';
         $nav .= '<a href="' . $url . '"' . $current . ' class="flex items-center rounded-xl px-4 py-3 text-sm font-medium transition ' . $classes . '">' . $label . '</a>';
@@ -855,11 +862,11 @@ function akiraShellWorkflowRuns(string $slug): array
 /** @param array{rows:list<array<string,mixed>>,run_total:int,post_total:int,runs_available:bool,error:string} $console */
 function akiraShellWorkflowConsoleHtml(array $console): string
 {
-    $rows = is_array($console['rows'] ?? null) ? $console['rows'] : [];
-    $runTotal = (int) ($console['run_total'] ?? 0);
-    $postTotal = (int) ($console['post_total'] ?? count($rows));
-    $runsAvailable = ($console['runs_available'] ?? true) === true;
-    $error = trim((string) ($console['error'] ?? ''));
+    $rows = $console['rows'];
+    $runTotal = $console['run_total'];
+    $postTotal = $console['post_total'];
+    $runsAvailable = $console['runs_available'];
+    $error = trim($console['error']);
     $notice = (akiraShellQuery()['saved'] ?? '') === '1'
         ? '<div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">Workflow transition applied and re-read from the store.</div>' : '';
     $errorHtml = $error === '' ? '' : '<div role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">' . akiraShellEscape($error) . '</div>';

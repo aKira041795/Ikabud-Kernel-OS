@@ -3455,7 +3455,11 @@ function executeModuleHandler(
         if ($pageCacheActive && function_exists('pageCacheSet')) {
             $html = ob_get_clean();
             $responseCode = http_response_code();
-            pageCacheSet($requestUri, $html, $moduleId, (int)$responseCode);
+            // FPM exposes handler-set headers here; CLI headers_list() is empty.
+            // Null therefore means "not observed" and lets pageCacheSet() apply
+            // its deterministic HTML-only fallback without mislabelling non-HTML.
+            $contentType = pageCacheResolveContentType(headers_list(), null);
+            pageCacheSet($requestUri, $html, $moduleId, (int)$responseCode, $contentType);
             if ($pageCacheLock) {
                 pageCacheLockRelease($pageCacheLock);
                 $pageCacheLock = null;

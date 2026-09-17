@@ -8,6 +8,7 @@ foreach ($logs as $log) { if (is_file($log)) file_put_contents($log, ''); }
 require $root.'/bootstrap.php';
 $tenantId=(int)($_SERVER['argv'][1]??1);
 app()->tenant()->setTenantId($tenantId);
+require __DIR__ . '/env-guard.php';
 require_once dirname(__DIR__).'/helpers.php';
 require_once $root . '/tests/harness/TestHarness.php';
 
