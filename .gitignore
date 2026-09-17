@@ -55,11 +55,28 @@ modules/cms-akira/*
 !modules/cms-akira/cms-akira-profile-headless/**
 !modules/cms-akira/README.md
 
+# Star Swarm — bundled game module, authored in-tree like gui-settings rather than
+# installed at runtime. Allowlisted because the tracked public/star-swarm assets and
+# tests/star_swarm_* tests reference it: without this the module and its template are
+# absent on a fresh clone and the /star-swarm route does not exist.
+!modules/star-swarm/
+!modules/star-swarm/**
+!templates/modules/star-swarm/
+!templates/modules/star-swarm/**
+
 # ── Local agent/tool state ──────────────────────────────────────────
 /.ai/current-task.md
 /.ai/debate/
 /.ai/current-task.review-baseline.md
+/.ai/inbox.log
+/.ai/e2e/
 .lean-ctx/
+
+# ── HARPP v2 runtime state ────────────────────────────────────────
+# Lane logs and mutable item state. The records that matter are the escalation
+# hand-offs (tracked) and .ai/chair-decisions.md; these regenerate per run.
+/tools/harpp2/runs/
+/tools/harpp2/state/
 
 # ── Formatter / tool caches (never commit) ──────────────────────────
 .php-cs-fixer.cache

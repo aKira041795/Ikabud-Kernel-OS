@@ -1,10 +1,14 @@
 # Independent Evaluation Brief — Ikabud Autonomous Development Harness
 
-**Prepared:** 2026-09-14 · **Revised:** 2026-09-15 (after the first GEN4-R1 measurements) · **Repo:** `/var/www/html/ikabudsix` · **Branch:** `feat/akira-editorial-and-authority-coverage`
-**Commits under review:** `baa02f1` (HEAD), with `995553a` the previous revision's tree. **Fourteen commits**
-landed between them (`git rev-list --count 995553a..baa02f1` → `14`). The four commits the earlier revision
-named — `ed48fff` (enforcement), `ba80298` (scope-path semantics), `d36b85f` (browser suite), `328da57` (run
-ledger) — remain in scope, and everything after them through HEAD is new work.
+**Prepared:** 2026-09-14 · **Revised:** 2026-09-15 (after the first GEN4-R1 measurements) · **Revised again:
+2026-09-17** — the operating harness is now **HARPP v2**; read **§8** before judging anything. · **Repo:**
+`/var/www/html/ikabudsix` · **Branch:** `feat/akira-editorial-and-authority-coverage`
+**Commits under review:** `2ed552d` (HEAD as measured 2026-09-17), **twenty commits after** `baa02f1`, which was the
+target of the 2026-09-15 revision (`git rev-list --count baa02f1..HEAD` → `20`); `baa02f1` was itself fourteen
+commits after `995553a`, the tree of the first revision. The four commits named earlier — `ed48fff` (enforcement),
+`ba80298` (scope-path semantics), `d36b85f` (browser suite), `328da57` (run ledger) — remain in scope.
+**§1 and §2–§4 evaluate the v1 apparatus and are not retracted**; §8 records what changed and what has since been
+measured, and is the section a reviewer should read first.
 **Audience:** an independent senior engineer who has never seen this repository.
 **Time-box:** 2–4 hours. Everything in §3 runs in under two minutes except the optional browser suite.
 
@@ -1116,7 +1120,125 @@ defects, authoring defects, and apparatus defects more sharply than the earlier 
 
 ---
 
+## 8. Revision 2026-09-17 — HARPP v2, and what using the harness proved about it
+
+> **Author of this revision:** the executing chair, not the independent reviewer. Every number below is labelled
+> either `RE-MEASURED` (re-run for this revision) or `RECORDED` (taken from a named artefact). Treat all of it as
+> falsifiable by the commands in §8.7.
+
+### 8.1 What changed since §7's disposition
+
+The v1 apparatus evaluated in §1–§4 — `tools/ai-autonomy.php`, `ai-loop.php`, `ai-run.php`, `ai-project.php`,
+`ai-contract-lint.php`, `tools/harpp-bridge/` — **still exists and still runs, and nothing in §2–§4 is retracted.**
+What changed is the operating layer:
+
+- The v1 **commit gate became permanently unsatisfiable** (24 blocking runs; 22 with no clearing route under any
+  existing mechanism). It was **filed as a decision** (`ledger-commit-unsatisfiable-d1`) rather than fixed by wid-
+  ening a verifier or editing a baseline. *That refusal is the single most important thing in this revision: the
+  harness hit a wall and deferred instead of moving the wall.*
+- **The director froze v1 as the research record and built the execution core beside it** (CD-62). The motive is
+  recorded verbatim in the autonomy policy: *meta-work must not displace object-work.* Governance development had
+  begun to consume the time that was meant for product work.
+- **Two days of product work then ran through v2** (the Star Swarm game module), which is why this revision has
+  new evidence rather than new intentions.
+
+### 8.2 HARPP v2 — component inventory (`RE-MEASURED 2026-09-17`)
+
+| Component | Path | Role |
+|---|---|---|
+| **Constitution** | `tools/harpp2/CONSTITUTION.md` | One requirement; two modes, one executor; **exactly three stop conditions**; observe-before-judge; five primitives |
+| **Driver** | `tools/harpp2/harpp2.php` | Runs one objective: dispatch → read result → run acceptance gates → classify → verify / correct / hand off |
+| **Gate classifier** | `tools/harpp2/verify.php` | `classifyGateOutcome()` → `passed` · `flaky` · `failed`. Unit-testable in isolation |
+| **Item chain** | `tools/harpp2/chain.sh` | Item after item; executor ladder (`flash/low → sol/medium → sol/high`); per-item owner notice |
+| **Dispatch** | `tools/harpp2/dispatch.sh` | pty-safe lane dispatch; one-writer lock; away-mode guard |
+| **Project gate** | `tools/harpp2/e2e.sh` | **The only thing authorised to say a project is complete**; exit codes are the verdict |
+| **Repeatability gate** | `tools/harpp2/stability.sh` | Run a spec N times; fail unless all pass; names the failing assertion |
+| **Two-surface notice** | `tools/harpp2/say.sh` | Terminal inbox (`.ai/inbox.log`, tailed in the editor) *then* HARPP |
+| **One-command state** | `tools/harpp2/status.sh` | running · awaiting chair · last verdict · item states |
+| **Requirement list as data** | `tools/harpp2/projects/*.json` | `RE-MEASURED`: **2** manifests (project gates; concept contract with 9 probes) |
+| **Objectives** | `tools/harpp2/objectives/*.md` | `RE-MEASURED`: **11** objective briefs |
+| **Verdict bundles** | `.ai/e2e/*.json` | `RE-MEASURED`: **4** project verdicts, schema `harpp2.project-e2e:v1` |
+| **Decision record** | `.ai/chair-decisions.md` | `RE-MEASURED`: **77** entries (CD-1 … CD-77); amendments `RE-MEASURED`: **12** |
+
+### 8.3 What v2 has actually verified (`RE-MEASURED`)
+
+- **Project E2E: 6/6 gates PASS** for the Star Swarm module — live URL · concept gate · structural gate · browser
+  spec · screenshot-artifact gate · `composer test`. Bundle `.ai/e2e/star-swarm-20260916T133126Z.json`, delivered as
+  HARPP message **1103**. The gate is designed so a **project** can be declared complete by a machine whose verdict
+  is the gates' exit codes, not an executor's prose.
+- **A requirement list that is enforced.** `tools/harpp2/projects/star-swarm-concept.json` (9 probes) read by
+  `tests/star_swarm_concept_test.php`: **12 passed / 11 failed** the day it was written, **23/0** once the work was
+  done. Two iterations had previously been reported green while half their brief was unbuilt, because the
+  requirements lived in prose. *Prose is not enforcement.*
+- **Probes proven non-vacuous by falsification.** Disabling the game's separation routine (8 relaxation passes → 0)
+  made the spec fail with `no pair of settled live enemy bodies overlaps across ten samples`,
+  `Expected: >= 1.5, Received: -24.589…`; the file was restored and the restore verified by hash
+  (`422f8442574c0d7e…`). **A check that has never been shown to fail is not evidence.**
+- **Item record (`RECORDED`, 2026-09-17 08:40):** 9 items tracked — 8 `verified` (one closed by the chair after an
+  escalation, CD-75), 1 `running` (determinism work, dispatched 08:38:41 on `sol/medium`).
+
+### 8.4 Defects the harness found in itself — and fixed (this is the section to judge)
+
+The five below all share one shape: **the harness reported a reliable-looking verdict from an unreliable
+instrument.** In every case the product was fine and the check was not. Full narrative:
+`docs/testing/harness-lessons.md`.
+
+| # | Defect | Evidence | Fix |
+|---|---|---|---|
+| 1 | **A harness outage wore a product failure's clothes.** `globalSetup` spent one login per invocation; the limiter allows 5 per 300 s and the driver re-runs the acceptance per chunk. | Driver recorded `verified: 0, no_progress: 4`, escalated `irreversibility`; the same tree passed every gate minutes later. Reproduced: a five-run burst failed once with no probe involved. | Session reuse — **zero login POSTs**, proved over five consecutive runs; a refused login reuses the existing session and warns |
+| 2 | **A non-boundary finding had to claim a boundary.** `escalate()` accepts only authority/boundary/irreversibility, so "no product progress" was reported as `irreversibility`. | The escalation text: *"further blind changes would be high-impact"* — a ceiling that did not exist | `needsChair()` writes `**Boundary:** NONE`, records `boundary: false`; every escalation site audited |
+| 3 | **A flaky instrument was believed once.** One failure became "no progress". | Captured assertion: `a fired shot creates bright pixels above the ship`, `Expected: > 8, Received: 0`, while `state.bullets.length` had grown — a single sample racing the projectile through a 30×130 window | Acceptance **re-run once**; `classifyGateOutcome()` returns `flaky`; journals `flaky_verification`; unit-tested 3/3 |
+| 4 | **Requirements in prose were not enforced** — twice in one day. | Iteration 2 passed `verified` with a light play field and no pixel probes; iteration 3 passed with no `scale`, `class`, `role`, `nursery` and no probes for them | The requirement list became **data**, gated by a test (§8.3) |
+| 5 | **The owner notice carried a lie.** It first invented an acceptance filename from the slug (`php tests/<slug>_test.php` — a file that did not exist), then reported `(none declared in the objective)` because it grepped the *slug as a path*. | The inbox output itself | It reads the objective file; verified against the 6-command acceptance |
+
+**Two process defects, not code defects:** a dispatched run carried no watcher and the tree sat idle for **4h15m**
+while a delivered escalation was read by nobody (fixed: `status.sh`, the two-surface notice, and a `.resolved` marker
+so a closed item leaves the list); and **delivery had one surface** where the owner has two (fixed: `say.sh` speaks
+in the editor terminal when the owner is at the workstation, HARPP when away — the owner's own distinction).
+
+### 8.5 Where the lessons live (so this brief's findings survive the session)
+
+- `docs/testing/harness-lessons.md` — **7 lessons**, each as symptom → root cause → evidence → fix → rule,
+  **indexed by symptom** so retrieval matches the failure in front of it.
+- `.github/instructions/verification-harness.instructions.md` — a short normative section, **auto-loaded** into every
+  agent's context.
+- `.ai/chair-decisions.md` — CD-74, CD-75, CD-76 carry the provenance of this revision.
+- `/memories/repo/harpp2-harness-lessons.md` — agent memory: the rules, the tool inventory, the environment gotchas.
+
+### 8.6 Honest limits, updated
+
+- **The v1 commit gate is still unsatisfiable.** Product work verified on 2026-09-15 remains uncommitted under that
+  gate's rules; a decision is filed and **no baseline was edited**. This is unchanged from §3 and is the strongest
+  available evidence that the floor holds under pressure.
+- **Determinism is incomplete at the time of writing.** One flake was isolated and repaired (the shot probe, above);
+  the remaining probes still sample live animation once. An item to make them deterministic — with **repeatability as
+  a gate**, `stability.sh` at 10 runs — was **in flight when this revision was written** (`sol/medium`, 08:38:41).
+  Until it lands, "the suite passes" means *it passed when it was run*, which is exactly the claim §4 warns about.
+- **Message types are a convention, not a transport fact.** `harpp msg send` has no type field, so the type lives in
+  the title prefix (`E2E PASS:` · `E2E FAIL:` · `ITEM …`). A transport-level field remains a suggestion.
+- **The driver's own record for a chair-closed item is left intact.** `star-swarm-iteration-3b` still reads
+  `escalated, verified: 0, no_progress: 4`. It is *not* corrected, because that record is the evidence for §8.4's
+  rows 1–3; the closure lives beside it as a `.resolved` marker and in CD-75.
+- **All numbers in §8.2–§8.3 are re-measured on 2026-09-17.** Earlier values in §1.2 are unchanged and were not
+  re-run for this revision (`NOT RE-MEASURED`).
+
+### 8.7 What an independent reviewer should falsify next
+
+```bash
+cd /var/www/html/ikabudsix
+tools/harpp2/status.sh                                    # one command: what is happening now?
+php tests/star_swarm_concept_test.php                     # expect 23 passed, 0 failed
+tools/harpp2/e2e.sh star-swarm --no-send                  # expect 6/6 gates, fresh bundle written
+bash tools/harpp2/stability.sh tests/browser/star-swarm.spec.ts 10   # expect 10/10, or the flake named
+```
+
+Then break something on purpose: disable `separateColony()`'s relaxation loop, re-run the browser spec, and confirm
+the overlap probe fails; restore and verify the sha256. **If a check cannot be made to fail, it is decoration.**
+
+---
+
 ## Appendix A — Where things live
+
 
 ```
 .github/instructions/ai-autonomy-escalation.instructions.md   policy (normative)

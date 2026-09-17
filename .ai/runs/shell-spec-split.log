@@ -1,0 +1,90 @@
+Script started on 2026-09-15 22:06:34+08:00 [COMMAND="pi -p -a --thinking medium --model openai-codex/gpt-5.6-sol --name shell-spec-split @.ai/shell-spec-split.contract.md $'Implement the attached contract exactly. Read it ALL before editing anything.\nDiagnose the mechanism FIRST and prove which hypothesis is true before changing any code.\nDo not edit the tenant database. Do not weaken or remove an existing assertion.\nRun every Required test and report exact pass/fail/skip counts.'" <not executed on terminal>]
+Implemented the partitioning in `tests/browser/akira-admin-shell.spec.ts`.
+
+### Diagnosis
+
+Before editing, both monolithic shell tests exceeded the unchanged 30s timeout:
+
+- 900px: 31.5s — failed
+- 600px: 31.0s — failed
+
+Runtime discovery reported 20 unique routes, confirming the failure mechanism was test-budget exhaustion.
+
+### Implementation
+
+- Split each viewport into four five-route tests.
+- Preserved all existing route and shell assertions.
+- Preserved full-page screenshots for every route.
+- Added an exact flattened-union assertion so missing, reordered, or duplicated partition routes fail explicitly.
+- Added no timeout overrides, skips, fixmes, or early returns.
+
+### Required test results
+
+`npx playwright test tests/browser/akira-admin-shell.spec.ts`
+
+- Passed: 8
+- Failed: 0
+- Skipped: 0
+
+Final standalone durations:
+
+| Viewport | Partition | Duration |
+|---|---:|---:|
+| 900px | 1/4 | 8.5s |
+| 900px | 2/4 | 11.5s |
+| 900px | 3/4 | 9.3s |
+| 900px | 4/4 | 7.3s |
+| 600px | 1/4 | 9.9s |
+| 600px | 2/4 | 15.3s |
+| 600px | 3/4 | 12.1s |
+| 600px | 4/4 | 10.3s |
+
+`npx playwright test`
+
+- New suite total: 17 tests
+- Shell tests: 8
+- Passed: 17
+- Failed: 0
+- Skipped: 0
+
+### Coverage and screenshots
+
+- Original runtime-discovered route count: 20
+- Final asserted routes:
+  - desktop-900: 20
+  - short-600: 20
+- Produced screenshots: 40
+  - desktop-900: 20
+  - short-600: 20
+
+### Incomplete-partition proof
+
+Temporarily omitted `/cms-akira-shell` from partition 1. The selected shell test failed in 2.1s with:
+
+> shell route partitions must contain every discovered route exactly once and in discovery order
+
+Result: 0 passed, 1 failed. The temporary change was reverted, then both required green runs were completed.
+
+### Diff/config evidence
+
+```text
+tests/browser/akira-admin-shell.spec.ts | 70 ++++++++++++++++++++++-----------
+1 file changed, 46 insertions(+), 24 deletions(-)
+```
+
+`playwright.config.js` remains identical to HEAD:
+
+```text
+HEAD_BLOB=b2cbb64e1ee94cfaab9d130c841083a3f6cb872f
+WORKTREE_BLOB=b2cbb64e1ee94cfaab9d130c841083a3f6cb872f
+```
+
+The repository already contained unrelated modified forbidden files before this work; I did not modify them. My change is confined to `tests/browser/akira-admin-shell.spec.ts`.
+
+Script done on 2026-09-15 22:17:45+08:00 [COMMAND_EXIT_CODE="0"]
+[dispatch-lane] pi exited 0
+RUN shell-spec-split finished: completed
+  exit:      0
+  log:       2946 bytes (.ai/runs/shell-spec-split.log)
+  report:    0 bytes (.ai/runs/shell-spec-split.report.txt)
+  scope:     OK delta=1

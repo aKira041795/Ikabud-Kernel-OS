@@ -1,0 +1,277 @@
+# 1. VERDICT — **NEEDS_WORK**
+
+The architectural direction is generally sound, but this document is not ready for implementation:
+
+- It is explicitly marked **“DRAFT FOR REVIEW — not approved, not started.”**
+- It is a roadmap rather than the bounded, parser-compatible task contract required by `.ai/ai-autonomy-harness.contract.md`.
+- Three director decisions remain open.
+- Milestone membership and execution ordering still contradict each other.
+- Phases F and G depend on substrate primitives that are explicitly outside this plan, so Milestone 2 is not currently schedulable.
+- Several critical security and persistence contracts defer decisions until implementation or audit.
+
+Code-level claims about renderer behavior, theme validation, route counts, migrations, and tenant 54 could not be verified because no referenced implementation files were available within the permitted evidence set. They remain **UNVERIFIED**.
+
+---
+
+# 2. ARCHITECTURE
+
+## Sound decisions
+
+### Kernel/module boundaries
+
+The following boundaries are appropriate:
+
+- ARK remains a portable toolkit/reference while `akira-editorial` remains a product theme.
+- Themes do not access databases, authentication, tenant state, sessions, module services, or construct module routes.
+- Capability availability is presentation gating, not authorization.
+- Authorization occurs at dispatch/bus before handler execution.
+- Authority remains module-scoped rather than moving to a kernel-wide authority store.
+- Registry ownership is decided by consumer analysis rather than declared in advance.
+
+These align with `.ai/ark-direction.md`.
+
+### Tenant database separation
+
+The plan correctly requires:
+
+- Explicit tenant context and tenant DB selection.
+- No ambient DB selection or kernel fallback.
+- Per-module migration records in the tenant DB.
+- Tenant A/B isolation tests.
+- Store-resolution failure tests.
+- Tenant-scoped state and recovery.
+
+This is a strong baseline, but orchestration ownership remains underspecified.
+
+### Renderer boundary
+
+The principle that the renderer—not arbitrary row data—controls every emitted value is sound. Separating:
+
+- display fields,
+- POST action fields,
+- inline-edit context,
+- template context, and
+- URL interpolation keys
+
+is preferable to reusing one broad display allowlist.
+
+### Gating model
+
+The distinction between:
+
+1. capability availability,
+2. UI visibility,
+3. dispatch authorization, and
+4. handler execution
+
+is architecturally correct. The rule that Phase D surfaces cannot activate while a relied-upon seam is `unknown` is also appropriate.
+
+## Architectural concerns
+
+### Milestone/order contradiction remains
+
+Section 2 says Milestone 1 includes Phase I. Section 3 says Phase I moves to Milestone 2 and depends on H. Section 8 leaves this as an owner decision.
+
+Therefore, the claimed correction has not actually been normalized throughout the document. If I remains in Milestone 1, the owner’s D→E→F→G→H→I order is violated. If it moves to Milestone 2, Section 2 is wrong.
+
+### Phase A0 is not operationally defined
+
+The CSRF seam is assigned to an “explicit A0 prerequisite,” but A0 has no:
+
+- scope,
+- deliverables,
+- files,
+- acceptance criteria,
+- test command, or
+- completion state.
+
+Phase B also audits the CSRF API, creating overlapping ownership. A0 should discover and freeze the usable CSRF contract; B may document broader request seams but should not rediscover A’s prerequisite.
+
+### External primitive dependency blocks Milestone 2
+
+F and G are design-only until P3/P4 primitives exist, while those primitives are excluded as general substrate work. Consequently, Milestone 2 has dependencies without an implementation owner or supplying contract.
+
+That is acceptable for a roadmap, but not for a plan represented as ready to execute.
+
+### Profile orchestration could violate module boundaries
+
+Phase I packages multiple modules and provisions profile state, but it does not identify the orchestrator. The contract must establish that:
+
+- a kernel-owned installer coordinates module lifecycle calls, or
+- a profile module invokes governed capabilities exposed by owning modules.
+
+A profile module must not directly migrate or seed another module’s database tables. Cross-module installation needs an explicit saga/recovery model.
+
+### Migration ledger is recorded too late
+
+The stated sequence places “committed entry/status transition” after activation. For MySQL 5.7 non-transactional DDL, a durable `started/in_progress` record should exist before the first DDL operation. Otherwise a crash after DDL but before the final ledger write leaves no reliable recovery marker.
+
+Use forward recovery as the default. “Compensation” cannot safely imply that arbitrary DDL can be reversed.
+
+### Unknown seams versus milestone acceptance
+
+Milestone 1 allows Phase B seams to remain explicitly `unknown`, while Phase D/E must ship and may not rely on unknown seams. The contract needs a per-surface dependency matrix showing which seams must be resolved and which may remain unknown. Otherwise “B accepted” does not prove D/E can activate.
+
+---
+
+# 3. GAPS
+
+1. **No executable task envelope.**  
+   The seven required headings, explicit allowed paths, forbidden paths, and `harness:` block are absent.
+
+2. **Unresolved owner decisions.**  
+   Milestone 1 membership, L4 behavior, and the typed-adapter authorization remain open.
+
+3. **Malformed projection behavior unspecified.**  
+   The four named secondary schemas are identified, but absent/malformed behavior is merely requested, not decided. Each should have a fail-closed rule.
+
+4. **No source of truth for schema definitions.**  
+   It is unclear where `action_payload_fields`, `editable_context_fields`, `template_fields`, and `url_key_fields` live, who validates them, or whether unknown keys are rejected.
+
+5. **No route-inventory identity.**  
+   “Frozen, dated” is insufficient. The inventory needs a commit SHA, generation command, stable route identifier, and rules for aliases/dynamic routes.
+
+6. **No concrete role/principal model.**  
+   JWT transport, roles, grants, suspension, delegation, and service identities remain audit items. Phase E’s UI cannot be specified reliably until their canonical identifiers and precedence are known.
+
+7. **Policy seed semantics are incomplete.**  
+   “Narrowing-only” needs precise merge rules, versioning, ownership, replay behavior, and protection against accidentally restoring revoked grants.
+
+8. **Profile concurrency is underspecified.**  
+   Lock scope, idempotency-key storage, stale-lock handling, concurrent installer behavior, and crash-resume semantics are not defined.
+
+9. **Activation visibility boundary is unclear.**  
+   Routes must remain unroutable until installation succeeds, but the atomic mechanism coupling activation, cache invalidation, registry publication, and route exposure is not named.
+
+10. **Production-floor ownership is unclear.**  
+    Backup/export, redirects, sitemap/schema, images, and scheduling need explicit owning modules and persistence boundaries.
+
+11. **Baseline lacks the required commit SHA.**  
+    Section 9 records dates but not the commit required by the plan’s own objection-10 disposition.
+
+12. **Overbroad cache assertion.**  
+    “All cache/registry keys include tenant scope” conflicts with the narrower statement that tenant scope is required only for tenant-derived state. Global immutable registries should not be artificially tenant-keyed.
+
+13. **Current-task collision is real.**  
+    `.gitignore` confirms `.ai/current-task.md` is ignored, and the referenced current task contains an older contradictory plan. Any tooling treating that path as authoritative risks executing stale requirements.
+
+---
+
+# 4. RISKS
+
+## Migration and provisioning
+
+- MySQL 5.7 DDL auto-commit can leave schema, policy, capability, activation, and ledger state out of sync.
+- Recording only the final status makes crash recovery ambiguous.
+- Concurrent installs may duplicate seeds or expose routes prematurely.
+- “Compensation” may cause destructive rollback after data has already been backfilled.
+- Multi-module profiles can become an accidental distributed transaction or cross-module DB access path.
+
+## Seed failures
+
+- A policy seed could broaden authority during replay unless merge semantics are formally narrowing-only.
+- Seed version drift could overwrite tenant customization.
+- Capability registration succeeding while policy seed fails could leave an install partially visible.
+- Retrying after ambiguous failure could duplicate grants or lifecycle events.
+
+## MySQL 5.7 compatibility
+
+The listed exclusions are useful but incomplete. Tests should also cover:
+
+- DDL auto-commit behavior,
+- index and identifier limits,
+- charset/collation assumptions,
+- JSON-function availability,
+- lack of enforced `CHECK` constraints, and
+- migration behavior under the production SQL mode.
+
+## Security
+
+- CSRF behavior remains dependent on an undefined A0 seam.
+- Bearer JWT is correctly excluded from blanket CSRF requirements, but token transport, audience, expiry, replay, and tenant binding remain unspecified.
+- URL schemes and targets require allowlisting, not escaping alone.
+- Role-based visibility may leak sensitive metadata even when dispatch authorization later denies access.
+- Every principal, grant, policy lookup, idempotency key, and activation lookup must be tenant-bound.
+- Template context projection must prevent nested sensitive values, not only scalar top-level fields.
+
+## Idempotency
+
+- “Identical state/output” is too broad for timestamps, audit events, generated identifiers, and caches.
+- Idempotency should be defined as semantic equivalence with explicit exceptions.
+- Repeated activation should avoid duplicate transitions while still allowing legitimate reactivation after deactivation or version change.
+
+## Regression
+
+- P0 touches card/table/detail/compact rendering plus actions, inline edit, templates, and URLs.
+- Token-system consolidation may affect email, print, no-JS, and downstream module themes.
+- Registry relocation could break implicit consumers.
+- Dated route classifications can silently drift unless generated and gated.
+- The static-gate adapter could become permanent untyped debt unless narrowly scoped and removal-tracked.
+
+## Harness governance
+
+The decision artifact verifies that:
+
+- `default_if_no_response` was `stop`,
+- transport was local-only and not delivered, and
+- the chair nevertheless selected `split`.
+
+Thus the L4 governance concern is substantiated. Unattended execution should not begin until precedence and self-answer authority are explicitly resolved.
+
+---
+
+# 5. ACCEPTANCE
+
+## Strengths
+
+The strongest criteria are:
+
+- Whole-HTML negative assertions across all named emission channels.
+- Explicit tests for malformed metadata and `visible_fields: []`.
+- Authorization-before-handler assertions.
+- Tenant A/B and store-resolution failure tests.
+- Falsification tests for governance and forbidden-artifact gates.
+- Explicit MySQL 5.7 constraints.
+- Theme validation and DiSyL lint commands.
+
+## Corrections needed
+
+1. Resolve the Milestone 1/Phase I contradiction.
+2. Replace “all cache/registry keys” with “all tenant-derived cache/registry keys.”
+3. Define semantic idempotency per operation rather than requiring universally identical bytes/state.
+4. Pin every baseline to commit SHA, date, command, and result artifact.
+5. Give A0 concrete pass/fail criteria.
+6. Specify fail-closed behavior for every absent or malformed projection contract.
+7. Add a seam-to-surface matrix proving no activated D/E surface relies on `unknown`.
+8. Define installation lifecycle states such as:
+   `pending → migrating → backfilling → seeding → activating → active/failed`.
+9. Test crash recovery after every durable boundary, including after DDL but before ledger update.
+10. Add concurrent installation and activation tests using separate processes/connections.
+11. Add nested-object and encoded-value leakage tests, not only top-level scalar cases.
+12. Add explicit URL protocol, host, path, and redirect-target rejection tests.
+13. Make WCAG and responsive acceptance measurable through named tooling or deterministic browser assertions.
+14. Add regression commands and expected pass/fail/skip totals to each bounded phase contract.
+
+Several shipped-state assertions—including validator behavior, route counts, test totals, tenant 54 rendering, and current renderer implementation—remain **UNVERIFIED** from the permitted referenced files.
+
+---
+
+# 6. RECOMMENDATIONS
+
+Before implementation:
+
+1. **Obtain the three director decisions** and incorporate them into the body rather than leaving alternatives open.
+2. **Choose one milestone ordering** and update Sections 2, 3, 4, and 8 consistently.
+3. **Split this roadmap into bounded phase contracts**, beginning with A0 and A, each carrying the required harness block and explicit file scope.
+4. **Define A0 completely:** CSRF provider, trust boundary, failure behavior, browser-auth classification, and tests.
+5. **Formalize the four projection schemas** with location, validator, defaults, malformed handling, nesting rules, and ownership.
+6. **Create a seam dependency matrix** for every D/E surface and prohibit activation until all required seams are verified.
+7. **Specify the installer orchestrator and saga model**, preserving module-owned migrations and preventing cross-module DB access.
+8. **Write an in-progress ledger entry before DDL** and define forward recovery for every failure window.
+9. **Define policy-seed merge/version rules** so replay can never broaden authority or overwrite tenant-specific narrowing.
+10. **Pin the evidence baseline** by commit SHA, date, command, and retained output.
+11. **Replace broad idempotency language** with operation-specific semantic guarantees.
+12. **Resolve the L4 governance defect** before authorizing unattended execution.
+13. **Regenerate `.ai/current-task.md` only when a bounded phase contract is approved**, since the existing ignored file contains stale and contradictory requirements.
+
+Once these changes are made, A0/A can become implementation-ready independently; the entire nine-phase roadmap should not be treated as one executable task.

@@ -137,6 +137,37 @@ delegation. Drift is changing the objective or constraints the harness was told 
 | Adding tests | Skipping a phase and declaring completion |
 | Discarding a bad implementation | Editing a baseline or gate |
 
+## Objective preservation — meta-work must not displace object-work
+
+The contracted objective — the product plan — is the object-work. Contract interpretation, authority
+checks, measurement, telemetry, and verification are meta-work that exists to support it.
+
+If the harness can perform the next safe, authorised, reversible action toward the contracted outcome, it **MUST prefer that action over further governance analysis**. The governing question is *"what is the next thing I am already authorised to do?"* — not *"is everything sufficiently defined for me to proceed?"*
+
+Meta-work may support object-work only in these ways:
+
+- Meta-work **MAY** enable execution.
+- Meta-work **MAY** protect an invariant.
+- Meta-work **MAY** produce required evidence.
+- Meta-work **MAY** resolve an actual blocker.
+
+Meta-work may not displace object-work:
+
+- Meta-work **MUST NOT** become a substitute for execution.
+- Meta-work **MUST NOT** expand merely because a possible governance weakness exists.
+- Meta-work **MUST NOT** suspend authorised reversible work.
+- Meta-work **MUST NOT** turn every discovered ambiguity into director consultation.
+
+**Recorded limitation ≠ stop.** A discovered limitation is recorded and the work continues. It becomes
+blocking only when the defect actually prevents safe execution or credible final verification.
+
+A harness change — new doctrine, pillar, measurement, contract refinement, or Workbench feature — is
+justified only when a real project run demonstrates that its **absence blocked execution**. Every proposal
+must answer *"did the project actually stop because this was missing?"* If no, it is backlogged, not built.
+The product plan is the forcing function.
+
+This section **softens no absolute prohibition** in this file and **moves no L4**.
+
 ## Chair decisions are recorded, not escalated
 
 Record far more decisions than are escalated to the owner:

@@ -65,7 +65,7 @@ TXT
  */
 function preflightOptions(array $argv): ?array
 {
-    $options = ['contract' => '', 'json' => false, 'quiet' => false];
+    $options = ['contract' => '', 'json' => false, 'quiet' => false, 'justification' => '', 'paths' => ''];
     foreach (array_slice($argv, 1) as $arg) {
         if ($arg === '--json') {
             $options['json'] = true;
@@ -73,6 +73,15 @@ function preflightOptions(array $argv): ?array
             $options['quiet'] = true;
         } elseif (str_starts_with($arg, '--contract=')) {
             $options['contract'] = substr($arg, strlen('--contract='));
+        } elseif (str_starts_with($arg, '--justification=')) {
+            // Mirrors `finish --justification=`. Without this the pre-flight reports a BLOCK that
+            // `finish` no longer produces, i.e. the tool disagrees with the ledger it claims to mirror.
+            $options['justification'] = substr($arg, strlen('--justification='));
+        } elseif (str_starts_with($arg, '--paths=')) {
+            // Ad-hoc reachability probe. Answers "if this candidate option were chosen, would the harness
+            // be able to execute it?" BEFORE the option is put to the director. A decision that offers an
+            // unreachable option spends the director's attention on something that cannot be delivered.
+            $options['paths'] = substr($arg, strlen('--paths='));
         } elseif ($arg === '--help' || $arg === '-h') {
             preflightUsage();
             exit(PREFLIGHT_OK);
@@ -148,6 +157,16 @@ foreach ((array) ($envelope['allowed_scope'] ?? []) as $entry) {
     }
 }
 
+// An explicit --paths list replaces the contract's scope: this asks about a candidate OPTION, not about
+// the contract as written. Used to prove an option's reachability before drafting the decision.
+if ($options['paths'] !== '') {
+    $allowed = [];
+    foreach (explode(',', $options['paths']) as $candidate) {
+        $candidate = trim($candidate);
+        if ($candidate !== '') { $allowed[] = ['path' => $candidate, 'kind' => 'file']; }
+    }
+}
+
 $dispatchAt = date(DATE_ATOM);
 $rows = [];
 $willBlock = 0;
@@ -166,8 +185,9 @@ foreach ($allowed as $entry) {
         '--contract=' . $contract,
         '--dispatch-at=' . $dispatchAt,
         '--existed-at-dispatch=' . ($exists ? '1' : '0'),
-        '--json',
     ];
+    if ($options['justification'] !== '') { $argv2[] = '--justify=' . $options['justification']; }
+    $argv2[] = '--json';
     $result = preflightRun($argv2, $root);
     $payload = json_decode($result['output'], true);
 

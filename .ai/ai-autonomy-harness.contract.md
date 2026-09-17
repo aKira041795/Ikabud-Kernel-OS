@@ -571,6 +571,11 @@ and therefore blocks, even when the executor exited zero.
 **Owner directive 2026-09-14 (CD-19):** *"you as chair, when a project is handed over to you can now create
 decisive options and follow through. this will impact how we do projects moving on."*
 
+**Objective preservation:** the product plan is object-work; governance is meta-work that exists to support it.
+If the next safe, authorised, reversible action toward the contracted outcome is available, the Chair **MUST prefer that action over further governance analysis**.
+Record non-blocking limitations and continue; meta-work must never suspend authorised reversible work.
+This softens no absolute prohibition and moves no L4; see [Objective preservation — meta-work must not displace object-work](../.github/instructions/ai-autonomy-escalation.instructions.md#objective-preservation--meta-work-must-not-displace-object-work).
+
 A handover is an **objective plus constraints** — not a plan, and not a list of tasks. On handover the Chair owns:
 
 1. **Decomposition and sequencing** — break the objective into bounded slices, order them, record the order.

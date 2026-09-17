@@ -1,0 +1,54 @@
+Script started on 2026-09-15 18:06:31+08:00 [COMMAND="pi -p -a --thinking medium --model openai-codex/gpt-5.6-sol --name shell-journey-budget @.ai/shell-journey-budget.contract.md $'Implement the attached contract exactly. Read it ALL before editing anything.\nDiagnose the mechanism FIRST and prove which hypothesis is true before changing any code.\nDo not edit the tenant database. Do not weaken or remove an existing assertion.\nRun every Required test and report exact pass/fail/skip counts.'" <not executed on terminal>]
+## Status: BLOCKED on scope decision #102
+
+The in-scope optimization is implemented, but the required 30-second browser gate remains red.
+
+### Diagnosis and measurements
+
+`CapabilityAuthorizationRegistry::seedPolicy()` performs a query per declaration. Enabled module helpers invoke 20 policy-seed batches during every GET.
+
+For one isolated authenticated cold dashboard request:
+
+- **Before:** 1.572s
+- **After:** 1.035s
+- **Improvement:** 34%
+- SQL counters fell by **43 SELECTs and 43 prepared statements per request**.
+
+The remaining unconditional seeds belong to module files outside the contract’s allowed scope. HARPP decision **#102** requests authorization to update those owners; it remains pending.
+
+### Changes
+
+- `modules/cms-akira/cms-akira-core/helpers.php`
+  - Mutation declarations no longer reconcile during GET/HEAD/OPTIONS.
+  - Read declarations are limited to relevant administration surfaces.
+  - Active policy version lookup is request-local.
+- `modules/cms-akira/cms-akira-shell/helpers.php`
+  - Shell-specific read seeds run only on their relevant routes.
+- `modules/cms-akira/cms-akira-theme/helpers.php`
+  - Mutation seeds are omitted from read requests.
+  - Theme read seeding is limited to Theme Studio/API surfaces.
+
+No cache was introduced and no tenant database was edited.
+
+### Required-test evidence
+
+| Command | Result |
+|---|---|
+| `npx playwright test` | **9 passed, 2 failed, 0 skipped** — exit 1 |
+| `npx playwright test tests/browser/akira-admin-shell.spec.ts` | **0 passed, 2 failed, 0 skipped** — both 30s timeouts |
+| `php modules/cms-akira/cms-akira-shell/tests/admin_page_capability_test.php` | **16 passed, 0 failed, 1 explicit live-tenant skip** — exit 0 |
+| PHP lint, all 3 changed PHP files | **3 passed, 0 failed** |
+| PHPStan, all 3 changed files | **0 errors** — exit 0 |
+| `git diff --check` | Passed |
+
+`playwright.config.js`, the shell spec, `kernel/`, and `tests/` remain unchanged by this work. A pre-existing modification to `tools/ai-authority-preflight.php` was present at dispatch and remains unrelated.
+
+**Stop reason:** `CONTRACT_BLOCKED` — finishing requires scope for the remaining module-owned seeds.
+
+Script done on 2026-09-15 18:25:03+08:00 [COMMAND_EXIT_CODE="0"]
+[dispatch-lane] pi exited 0
+RUN shell-journey-budget finished: completed
+  exit:      0
+  log:       2845 bytes (.ai/runs/shell-journey-budget.log)
+  report:    0 bytes (.ai/runs/shell-journey-budget.report.txt)
+  scope:     OK delta=3

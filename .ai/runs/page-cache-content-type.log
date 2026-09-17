@@ -1,0 +1,252 @@
+Script started on 2026-09-16 07:37:42+08:00 [COMMAND="pi -p -a --thinking medium --model openai-codex/gpt-5.6-sol --name page-cache-content-type @.ai/page-cache-content-type.contract.md $'Implement the attached contract exactly. Read it ALL before editing anything.\nDiagnose the mechanism FIRST and prove which hypothesis is true before changing any code.\nDo not edit the tenant database. Do not weaken or remove an existing assertion.\nRun every Required test and report exact pass/fail/skip counts.'" <not executed on terminal>]
+Implemented the page-cache Content-Type mechanism in:
+
+- `src/helpers/page-cache.php`
+- `src/helpers/module-manager.php`
+- `tests/page_cache_content_type_test.php` — new
+
+### Diagnosis
+
+CLI header probe:
+
+```text
+array (
+)
+```
+
+FPM probe at the equivalent post-handler seam:
+
+```text
+Content-Type: application/xml; charset=utf-8
+
+{"sapi":"fpm-fcgi","headers":["Content-Type: application/xml; charset=utf-8"]}
+```
+
+Thus, handler headers are observable under FPM, while `headers_list()` is empty under CLI. The initial assumption that a CLI-seeded cache entry would immediately be visible to the HTTP process was wrong because the cache directory is owned by `www-data` and the web process also retained APCu entries. The controlled red/green entries were therefore seeded through `pageCacheSet()` in FPM.
+
+### Behavior delivered
+
+- Case-insensitive pure Content-Type resolution with deterministic HTML fallback.
+- Content type persisted as `content_type`.
+- Pure `pageCacheServeHeaders()` controls actual emission.
+- Legacy entries retain `text/html; charset=UTF-8`.
+- Existing four-argument `pageCacheSet()` calls continue working.
+- Untyped recognizable HTML uses the historical fallback.
+- Untyped non-HTML is not cached, preventing accidental HTML labeling.
+
+### Live red/green evidence
+
+Because `HEAD` is intentionally ineligible for this GET-only cache, `-X GET` was added to the required `curl -sSI` shape.
+
+Before implementation, using a controlled XML body with ETag `dd4febe...`:
+
+```text
+$ curl -sSI -X GET -H 'Host: akiracms.test' http://127.0.0.1/posts/page-cache-content-type-red-probe
+HTTP/1.1 200 OK
+ETag: "dd4febe78a36f6233c484c707eb9d1e4"
+X-Page-Cache: hit
+Content-Length: 223
+Content-Type: text/html; charset=UTF-8
+```
+
+After implementation:
+
+```text
+$ curl -sSI -X GET -H 'Host: akiracms.test' http://127.0.0.1/posts/page-cache-content-type-green-probe
+HTTP/1.1 200 OK
+ETag: "dd4febe78a36f6233c484c707eb9d1e4"
+X-Page-Cache: hit
+Content-Length: 223
+Content-Type: application/xml; charset=utf-8
+```
+
+After invalidation and expiry of process-local APCu:
+
+```text
+$ curl -sSI -X GET -H 'Host: akiracms.test' http://127.0.0.1/posts/page-cache-content-type-green-probe
+HTTP/1.1 404 Not Found
+X-Page-Cache: miss
+Content-Type: text/html; charset=UTF-8
+```
+
+Normal cache operation:
+
+```text
+$ curl -sSI -X GET -H 'Host: akiracms.test' http://127.0.0.1/
+HTTP/1.1 200 OK
+X-Page-Cache: hit
+Content-Type: text/html; charset=UTF-8
+
+$ curl -sSI -X GET -H 'Host: akiracms.test' http://127.0.0.1/posts
+HTTP/1.1 200 OK
+X-Page-Cache: hit
+Content-Type: text/html; charset=UTF-8
+```
+
+Temporary slice probe files were removed.
+
+## Required tests
+
+```text
+$ php tests/page_cache_content_type_test.php
+Page cache Content-Type: 11 passed, 0 failed, 0 skipped
+```
+
+```text
+$ php modules/cms-akira/cms-akira-core/tests/post_page_cache_invalidation_test.php
+SKIP: resolved database 'akira' is a provisioned tenant database; refusing to run module tests against live tenant data
+```
+
+This suite ran 0 assertions; one suite-level environment skip occurred and is not counted as a pass.
+
+```text
+$ php modules/cms-akira/cms-akira-shell/tests/sitemap_robots_test.php
+sitemap/robots contract: 39 passed, 0 failed
+```
+
+```text
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+shell contract: 116 passed, 0 failed
+```
+
+```text
+$ php -l src/helpers/page-cache.php
+No syntax errors detected in src/helpers/page-cache.php
+```
+
+```text
+$ php -l src/helpers/module-manager.php
+No syntax errors detected in src/helpers/module-manager.php
+```
+
+Additional test-file lint:
+
+```text
+$ php -l tests/page_cache_content_type_test.php
+No syntax errors detected in tests/page_cache_content_type_test.php
+```
+
+PHPStan:
+
+```text
+$ vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G src/helpers/page-cache.php src/helpers/module-manager.php
+
+ [OK] No errors
+```
+
+## Diff stat
+
+The required full-tree command includes unrelated pre-existing/concurrent work:
+
+```text
+$ git --no-pager diff --stat
+ .ai/ai-autonomy-harness.contract.md                |   5 +
+ .ai/chair-decisions.md                             |  91 ++++++++++++++++
+ .ai/dispatch-lane.sh                               |  23 +++-
+ .../ai-autonomy-escalation.instructions.md         |  31 ++++++
+ modules/cms-akira/cms-akira-builder/helpers.php    |   4 +-
+ modules/cms-akira/cms-akira-core/helpers.php       | 111 +++++++++++++++----
+ modules/cms-akira/cms-akira-media/helpers.php      |  16 ++-
+ modules/cms-akira/cms-akira-navigation/helpers.php |   4 +-
+ modules/cms-akira/cms-akira-search/helpers.php     |  23 ++--
+ modules/cms-akira/cms-akira-seo/helpers.php        |  10 +-
+ modules/cms-akira/cms-akira-shell/handlers.php     |  44 +++++++-
+ modules/cms-akira/cms-akira-shell/helpers.php      |  35 +++---
+ modules/cms-akira/cms-akira-shell/module.json      |   1 +
+ modules/cms-akira/cms-akira-shell/routes.php       |   1 +
+ modules/cms-akira/cms-akira-theme/handlers.php     |  23 ++--
+ modules/cms-akira/cms-akira-theme/helpers.php      |  28 +++--
+ modules/cms-akira/cms-akira-theme/module.json      |   1 -
+ modules/cms-akira/cms-akira-theme/routes.php       |   1 -
+ modules/cms-akira/cms-akira-workflow/helpers.php   |  29 +++--
+ src/helpers/module-manager.php                     |   6 +-
+ src/helpers/page-cache.php                         | 121 ++++++++++++++++++---
+ tests/browser/akira-admin-shell.spec.ts            | 103 +++++++++++++-----
+ tools/ai-authority-preflight.php                   |  24 +++-
+ 23 files changed, 580 insertions(+), 155 deletions(-)
+```
+
+The untracked new test is not included by `git diff --stat`.
+
+## Full status
+
+```text
+$ git status --porcelain
+ M .ai/ai-autonomy-harness.contract.md
+ M .ai/chair-decisions.md
+ M .ai/dispatch-lane.sh
+ M .github/instructions/ai-autonomy-escalation.instructions.md
+ M modules/cms-akira/cms-akira-builder/helpers.php
+ M modules/cms-akira/cms-akira-core/helpers.php
+ M modules/cms-akira/cms-akira-media/helpers.php
+ M modules/cms-akira/cms-akira-navigation/helpers.php
+ M modules/cms-akira/cms-akira-search/helpers.php
+ M modules/cms-akira/cms-akira-seo/helpers.php
+ M modules/cms-akira/cms-akira-shell/handlers.php
+ M modules/cms-akira/cms-akira-shell/helpers.php
+ M modules/cms-akira/cms-akira-shell/module.json
+ M modules/cms-akira/cms-akira-shell/routes.php
+ M modules/cms-akira/cms-akira-theme/handlers.php
+ M modules/cms-akira/cms-akira-theme/helpers.php
+ M modules/cms-akira/cms-akira-theme/module.json
+ M modules/cms-akira/cms-akira-theme/routes.php
+ M modules/cms-akira/cms-akira-workflow/helpers.php
+ M src/helpers/module-manager.php
+ M src/helpers/page-cache.php
+ M tests/browser/akira-admin-shell.spec.ts
+ M tools/ai-authority-preflight.php
+?? .ai/_p13_closure_probe.php
+?? .ai/_p13_phase1_probe.php
+?? .ai/_p13_state_probe.php
+?? .ai/decisions/ledger-commit-unsatisfiable-d1.json
+?? .ai/objective-preservation.contract.md
+?? .ai/page-cache-content-type.contract.md
+?? .ai/plan-review/
+?? .ai/research/
+?? .ai/runs/objective-preservation.json
+?? .ai/runs/objective-preservation.log
+?? .ai/runs/page-cache-content-type.json
+?? .ai/runs/page-cache-content-type.log
+?? .ai/runs/shell-journey-budget-2.json
+?? .ai/runs/shell-journey-budget-2.log
+?? .ai/runs/shell-journey-budget.json
+?? .ai/runs/shell-journey-budget.log
+?? .ai/runs/shell-spec-budget.json
+?? .ai/runs/shell-spec-budget.log
+?? .ai/runs/shell-spec-split-2.json
+?? .ai/runs/shell-spec-split-2.log
+?? .ai/runs/shell-spec-split.json
+?? .ai/runs/shell-spec-split.log
+?? .ai/runs/theme-studio-in-shell.json
+?? .ai/runs/theme-studio-in-shell.log
+?? .ai/runs/theme-studio-policy-seed-sol.json
+?? .ai/runs/theme-studio-policy-seed-sol.log
+?? .ai/runs/theme-studio-policy-seed-sol2.json
+?? .ai/runs/theme-studio-policy-seed-sol2.log
+?? .ai/runs/theme-studio-policy-seed.json
+?? .ai/runs/theme-studio-policy-seed.log
+?? .ai/shell-journey-budget-2.contract.md
+?? .ai/shell-journey-budget.contract.md
+?? .ai/shell-spec-budget-r2.contract.md
+?? .ai/shell-spec-budget.contract.md
+?? .ai/shell-spec-split.contract.md
+?? .ai/standing-authorization-and-decisions.md
+?? .ai/theme-studio-in-shell.contract.md
+?? tests/harness_objective_preservation_test.php
+?? tests/page_cache_content_type_test.php
+```
+
+Only the three listed implementation files were changed by this slice; module/config files and existing tests were not edited.
+
+Script done on 2026-09-16 07:52:13+08:00 [COMMAND_EXIT_CODE="0"]
+[dispatch-lane] pi exited 0
+RUN page-cache-content-type finished: blocked
+  exit:      0
+  log:       9208 bytes (.ai/runs/page-cache-content-type.log)
+  report:    0 bytes (.ai/runs/page-cache-content-type.report.txt)
+  scope:     BLOCKED delta=8
+  OFFENDING .ai/ai-autonomy-harness.contract.md: path '.ai/ai-autonomy-harness.contract.md' is outside the approved scope
+  OFFENDING .ai/runs/objective-preservation.json: path '.ai/runs/objective-preservation.json' is outside the approved scope
+  OFFENDING .ai/runs/objective-preservation.log: path '.ai/runs/objective-preservation.log' is outside the approved scope
+  OFFENDING .github/instructions/ai-autonomy-escalation.instructions.md: path '.github/instructions/ai-autonomy-escalation.instructions.md' matches forbidden entry '.github' by directory prefix
+  OFFENDING tests/harness_objective_preservation_test.php: path 'tests/harness_objective_preservation_test.php' is outside the approved scope

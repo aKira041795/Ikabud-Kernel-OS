@@ -1,6 +1,6 @@
 # Akira CMS — master execution plan
 
-**Owner:** director · **Chair:** this session · **Last updated:** 2026-09-14
+**Owner:** director · **Chair:** this session · **Last updated:** 2026-09-16
 **Contract status:** `APPROVED` — completion authority delegated to the Chair.
 **Loop rule:** each phase is delegated with a written contract, then verified by the chair against
 evidence before the next is dispatched. Nothing is marked complete without a live measurement.
@@ -52,6 +52,12 @@ THEN state != IDLE
 | **P3.1b** | More site settings on the proven pattern | `.ai/p3.1b-more-settings.contract.md` | ✅ **COMPLETE** | 3 settings added, each with a named render-time consumer: `public_post_single` `handlers.php:73-76`, `public_archive_page_size` `:37-41`, `public_archive_sort` `:38-42`. The orphan `maintenance_mode` constant (no consumer, no defaults entry, no validation) was **reverted** — it was the exact defect this slice forbade. `composer test` 154 files: 121 passed / 33 skipped / **0 failed**. Live proof: page size 12→6 story links, 1→2, restored→6. Reject list documented (theme-presentation items, `rss_enabled`/`sitemap_enabled`/`comments_enabled` — no subsystem, `page_cache_ttl` — kernel-owned). |
 | **P6a** | Backup and export console | `.ai/p6a-backup-export-console.contract.md` | ✅ **COMPLETE** | `/cms-akira-shell/backups` **200**; real artifact on disk (3756 B SQL dump, verified independently); export returns 3 real records; `ModuleDataResetService` unreachable; shell 116/0 |
 | **P6b** | Full-suite regression fix | — | ✅ **COMPLETE** | `read_authority_probe_test` red since P5.1 (our 7 new GET declarations vs a stale exact-set expectation); invariant re-verified for all 7, comparison made order-independent → **suite 117/33/0** |
+| **P3.3** | Users / session revocation | `.ai/p3.3-revoke-sessions.contract.md` | ✅ **COMPLETE** | CD-53 (24/0 unit, shell 116/0, policy row at the exact `set_active` tier) + CD-54 (the capability 403'd every operator; found by opening a browser, fixed and verified) |
+| **P6c** | `sitemap.xml` + `robots.txt` | — | ✅ **COMPLETE** | CD-56: 200 + correct `Content-Type`, 15 `<loc>`, 39/0 tests. Two findings recorded, one of them fixed by the next row |
+| **D-shell** | Theme Studio into the shared shell + shell performance | — | ✅ **COMPLETE** | CD-58/59: shell-owned `/cms-akira-theme` (no policy widening needed); **1.572s → 0.390s per GET (−75%)**, 43 SELECTs and 43 prepared statements removed per request |
+| **P0-cache** | A cached response replays its own `Content-Type` | `.ai/page-cache-content-type.contract.md` | ✅ **COMPLETE** | CD-61: `pageCacheResolveContentType()` + pure `pageCacheServeHeaders()`; test **11/0/0**; live red→green probe (same ETag, `text/html` → `application/xml`); legacy entries and untyped non-HTML bodies both fail safe |
+| **Harness** | Objective preservation — meta-work is subordinate to the plan | `.ai/objective-preservation.contract.md` | ✅ **COMPLETE** | CD-60/61: normative section **+31/−0**, Chair remit **+5/−0**, guard test **14/14** including the five absolute prohibitions byte-identical |
+| **Builder spec** | `akira-builder-admin.spec.ts` against the real UI | — | ✅ **COMPLETE** | rewritten 2026-09-14; the browser suite is 17 tests / 7 files and all 17 passed with 0 skipped (CD-59) |
 
 ---
 
@@ -61,12 +67,13 @@ THEN state != IDLE
 
 | # | Obligation | Blocked by |
 |---|---|---|
-| 1 | **P3.3 users / session revocation** | — unblocked; `/cms-akira-shell/users` already returns 200 |
+| ~~1~~ | ~~P3.3 users / session revocation~~ | ✅ **COMPLETE** 2026-09-15 — CD-53 (verified) and CD-54 (the capability it shipped **403'd every operator**; found by opening a browser, fixed, verified) |
 | 2 | **P6 recovery / export, production floor** | — unblocked |
-| 3 | **Rewrite `tests/browser/akira-builder-admin.spec.ts`** | — unblocked; it has never passed |
+| ~~3~~ | ~~Rewrite `tests/browser/akira-builder-admin.spec.ts`~~ | ✅ **COMPLETE** — rewritten 2026-09-14 against the real UI; the journey passed inside the CD-59 full-suite run (**17 tests / 7 files, 17 passed / 0 failed / 0 skipped**) |
 | 4 | P4.2b module install lifecycle | **PARTLY DELIVERED** — install/enable/disable view shipped (P4.2a-r2). Remaining: the install state machine itself is the kernel service's, already exercised by the CLI. No owner decision needed unless packaging/trust is added. |
 | 5 | P4.3 extension trust / capability diff | partially P4.1 |
 | 6 | P4.1 theme package admission | **director**: trust basis (signed / deployment-approved / operator-vetted) |
+| 7 | **Deliver the verified tree** (commit) | **director** — 24 blocking runs; closing them needs a verifier change (HARPP decision 103, PENDING). Per CD-60d this does **not** suspend the plan |
 
 **New obligation, 2026-09-14 — the builder browser spec.** HARPP decision 95 (option A) was approved
 and applied: `cms-akira-builder` now accepts the canonical admin tier in all three of its guards

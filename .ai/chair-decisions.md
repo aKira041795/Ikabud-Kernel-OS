@@ -2863,3 +2863,873 @@ Studio's chrome cannot be unified.
 **I did not force it.** Forcing the row would be exactly the silent widening the ADR exists to prevent.
 
 **Authority:** CD-8. **Owner intervention:** REQUIRED (the caller-widening route).
+
+## CD-59 — I filed the commit-gate question rather than force it, and B is delivered
+
+**The work is done; the ledger will not let me commit it.** Three slices are complete and independently verified —
+Theme Studio moved into the shared shell (which is how CD-58's caller-widening gap was avoided rather than forced:
+the shell owns `/cms-akira-theme`, so no policy widening was needed), a 75% shell performance win (1.572s → 0.390s
+per GET), and the shell-spec partition repair. `npx playwright test` is **17 passed, 0 failed, 0 skipped** at the
+unchanged 30s default, with `playwright.config.js` byte-identical.
+
+`commit-check` reports NOT ELIGIBLE with 24 blocking runs, and **22 of them have no resolution path**:
+
+- **18 `completed` + trust mismatch.** `trustSurfaceMismatch()` compares a run's recorded hash against the *current*
+  digest, so any later trust-surface edit invalidates all history. The remedy exists and has 12 prior entries — but
+  each carries a `director_decision`, and the edit that moved the hash has none. Current digest `c40959a0…`.
+- **2 `blocked`.** Acknowledgeable in principle, but `--director-decision` must resolve to a recorded decision.
+- **4 `abandoned`.** No path at all: acknowledge refuses anything not `blocked`; successor relief is
+  `['failed','silent']` only; `start` refuses a predecessor that is not a finished failure; `decorateRun()` adds
+  only age. These are my own duplicate dispatches that I killed.
+
+The gate is literally `$blocking === [] ? EXIT_OK : EXIT_GATE`. **So committing is impossible without changing
+verifier behaviour**, which CD-21 rule 4 reserves to the owner. Filed as `ledger-commit-unsatisfiable-d1`
+(HARPP 103, PENDING) with three options and a recommendation for the one that makes the gate satisfiable again.
+
+**What I deliberately did not do.** I did not edit `tools/ai-run.php` or the trust-surface path list, did not
+retro-edit any run record (CD-32's rule: a ledger that can be edited to fix an inconvenient state is not a ledger),
+did not move the blocked records out of `.ai/runs/`, and did not commit while ineligible (CD-42 records that as an
+error). Every one of those would have been faster and would have produced a *worse* artefact.
+
+**Two of my own errors recorded here, not buried.** (1) I declared the repair lane dead when it had already
+succeeded — I checked the process table 14 seconds after it finished and read "no process" as "process died"; the
+rule is now in repo memory (read `finished_at` before concluding a lane died). (2) I recommended option A for the
+spec budget when it cost P4 its evidence set, and B — the one that preserved it — was the better call; the director
+chose B.
+
+**Authority:** L4, filed. **Owner intervention:** REQUIRED (option A, B or C).
+
+---
+
+## CD-60 — Objective preservation adopted: meta-work is subordinate to the plan, and the freeze with it
+
+**The director's directive (2026-09-16), and it is a correction of the Chair, not of the directive.** Verbatim:
+*"Meta-work must not displace object-work."* · *"If HARPP can perform the next safe, authorized, reversible action
+toward the contracted outcome, it MUST prefer that action over further governance analysis."* · *"freeze HARPP
+governance development temporarily … No new doctrine, pillar, measurement system, contract refinement, or Workbench
+feature unless an Akira CMS autonomous run demonstrates that its absence actually blocks execution."*
+
+**The diagnosis is accepted without argument, and the evidence is ours.** The director's diagram of the loop —
+authority question → contract interpretation → measurement gap → instrumentation → policy question → director
+decision → amendment → new measurement → next governance issue — is a fair description of CD-46 → CD-59. Three
+verified Akira slices sat uncommitted while a ledger question was adjudicated (CD-59); a caller-widening gap was
+escalated rather than recorded and continued (CD-58); four dispatches died on harness mechanics (CE-08).
+
+**CD-60a — the rule, encoded (dispatched, not described).** `objective-preservation.contract.md` → Sol: a normative
+`## Objective preservation` section in `.github/instructions/ai-autonomy-escalation.instructions.md` (insertion only,
+zero deletions), the compact rule in the Chair remit of `.ai/ai-autonomy-harness.contract.md`, and a root test that
+fails if the rule is later deleted or softened. The normative *policy* is the change; no mechanism, pillar or measurement
+is added.
+
+**It answers the forcing-function test rather than assuming it.** *Did an Akira run actually stop because this was
+missing?* Yes — CD-58 filed an L4 for a route the Chair could have recorded and continued past; CD-59 filed an L4 and
+halted delivery while the work was verified and complete. That is the absence of this rule, measured. So it is the
+smallest thing necessary, not governance for its own sake.
+
+**CD-60b — the freeze, applied.** From this decision: no new doctrine, pillar, measurement, contract refinement or
+Workbench feature is built unless a real run stopped for its absence. Backlogged by this rule, **not built**:
+
+| Backlogged | Why it is not built now |
+|---|---|
+| The lane-prompt change in `.ai/dispatch-lane.sh` | Real, tiny, but a running bash script must not be edited by a live lane (byte-offset reads); deferred to a later slice. |
+| A caller-widening route for capabilities (CD-58 options A/B/C) | No Akira slice has stopped on it since the caller-set was satisfied by the shell-owned route; recorded, not built. |
+| The page-cache `Content-Type` defect (CD-56 F2) | **Product** work, not harness work — so it is *dispatched as object-work*, not backlogged. |
+| Read-debt redefinition, census honesty (CD-56 F1) | Measurement refinement. No run stopped for it. Backlog. |
+| `finish --justification` (D-2) | Already repaired by 954348a; no further work. |
+
+**CD-60c — the next object-work is chosen by the plan, not by the harness.** Obligation #1 (P3.3) is complete and
+already superseded by CD-53/54; the builder spec was rewritten 2026-09-14. The next unfinished item with a named root
+cause and no blocker is **CD-56 Finding 2**, so `page-cache-content-type.contract.md` → Sol runs in parallel with
+CD-60a. Cost-shape routing: both are bounded, independent, disjoint-scope slices; neither touches the trust surface.
+
+**CD-60d — HARPP decision 103 stays filed and does not suspend execution.** The commit gate is genuinely
+unsatisfiable without a verifier change, which is the owner's instrument, so the question stays where it belongs
+(recommendation B unchanged). But `commit-check` is a *delivery* gate, not an execution gate: the rule above forbids
+letting it idle the plan. The verified work remains uncommitted, which is the honest state and is recorded as such.
+Reconsidered and rejected: a second filing on the same question, a retro-edit of any run record, and any edit to
+`tools/ai-run.php` (CD-32: a ledger that can be edited to fix an inconvenient state is not a ledger).
+
+**What I am not doing.** I am not writing a new contract template, a new pillar, a measurement of governance
+overhead, or a Workbench feature to detect recursion. Each of those would repeat the defect this decision names.
+
+**Authority:** CD-8 (decidability is authority) and the director's directive of 2026-09-16.
+**Owner intervention:** not required for CD-60. Still required for CD-59's ledger question (filed as 103).
+
+---
+
+## CD-61 — Both Sol slices delivered; two blocks that are harness accounting, not defects
+
+**Both runs finished `blocked`, exit 0, and both products are real and chair-verified.** Neither block is a product
+finding. One is my error; the other is a property of the frozen apparatus.
+
+**Lane A — `page-cache-content-type`: shipped and verified.** CD-56 Finding 2 is fixed at the root, in the cache:
+
+- `pageCacheResolveContentType()` (`src/helpers/page-cache.php:253`) — pure, case-insensitive, deterministic HTML
+  fallback.
+- `pageCacheServeHeaders(array $entry, bool $notModified = false)` (`:380`) — the **emission decision is now a pure
+  function**, which is the only reason this fix is testable at all: `header()` is inert under CLI.
+- `content_type` persisted on the entry; legacy entries keep today's behaviour; and an **untyped non-HTML body is not
+  cached at all** — the fail-safe the contract asked for rather than a default guess.
+- `tests/page_cache_content_type_test.php` — **11 passed / 0 failed / 0 skipped**, re-run by me, not read from a report.
+
+**The red-first probe is the part that matters, and it was produced live.** The same cached entry answered
+`X-Page-Cache: hit` with `Content-Type: text/html; charset=UTF-8` before the change and
+`application/xml; charset=utf-8` after, same ETag; then invalidated → `X-Page-Cache: miss`; and `/` and `/posts`
+still cache as HTML. The lane also **falsified its own first assumption** — a CLI-seeded entry is invisible to the
+HTTP process (the cache dir is `www-data`-owned and APCu retains entries) — so it seeded through FPM and said so. That
+is the diagnosis the contract asked for, and it is why the probe is evidence rather than a claim.
+
+**Lane B — `objective-preservation`: shipped and verified.** The director's rule is now normative:
+`## Objective preservation — meta-work must not displace object-work` at
+`.github/instructions/ai-autonomy-escalation.instructions.md:140` (**+31 / −0**), the compact rule in the Chair remit
+(`.ai/ai-autonomy-harness.contract.md:574`, **+5 / −0**), and a guard test I re-ran myself: **14/14 passed**, including
+all five absolute-prohibition bullets asserted byte-identical. Insertion-only, exactly as the contract required — the
+value of this slice was that nothing existing moved.
+
+**Block 1 — CE-13, my error: two lanes, one working tree.** I dispatched both Sol lanes in parallel. The scope delta is
+computed per run against the **shared** tree, so lane A's files were charged to lane B: `objective-preservation` was
+blocked with `src/helpers/page-cache.php` *"matches forbidden entry 'src' by directory prefix"* — a file its own
+contract forbade and that it never touched. Two probe files and `module-manager.php` were charged the same way.
+
+> **Rule from here: one working tree, one writer.** Lanes are dispatched **serially**; a parallel dispatch is
+> legitimate only with separate worktrees. This is the same non-isolation the ledger shows, and it cost nothing this
+> time only because both lanes were correct.
+
+**Block 2 — `report=0B` on both runs.** `dispatch-lane.sh` records a report path, but no report file was written; each
+log carries the full account instead. The consequence is visible across the ledger: **`blocked` with the work complete
+and correct**, repeatedly. Not repaired here — it is a property of the frozen apparatus, neither run stopped *only* for
+it, and per CD-60 the smallest necessary thing is what gets built. Recorded.
+
+The D-2 defect (`module.json` blocking unconditionally) did **not** fire on either run: both scopes were
+`module.json`-free. Its repair (954348a) stands unexercised by this turn.
+
+**What I did not do.** No new mechanism, no stop-report extension, no measurement of this block class, and no L4 for
+either block. Both are recorded and the plan continues — the rule in CD-60a applied to itself, on its first use.
+
+**Authority:** CD-60. **Owner intervention:** not required.
+
+---
+
+## CD-62 — HARPP v2 adopted; v1 frozen as the research record
+
+**The director's directive (2026-09-16) is accepted in full.** Thesis: **maximum execution autonomy with minimum
+sufficient governance.** One requirement — *given an objective, HARPP continues until the objective is completed or it
+meets something it genuinely cannot safely or legitimately decide* — and five primitives: objective, boundaries,
+executor, verifier, escalation. No pillars, no phase authority, no census, no measurement framework, no Workbench
+feature, none of it until **a real run stops because its absence blocked execution**.
+
+**I agree with the diagnosis, and the evidence is mine to own.** CD-60 measured it: seven consecutive decisions about
+the harness's own instruments, 23 of 60 decisions and 29 of the last 45 runs harness-shaped, and the plan's own
+obligation list stale enough to hide completed work. Each individual rule was reasonable; the aggregate default
+became *when uncertain, analyse the governance*.
+
+### What I did
+
+- **v1 frozen by declaration** — `.ai/HARPP-V1-FROZEN.md`. Frozen, **not deleted**: no new doctrine, mechanism,
+  measurement or dispatch through its ledger and trust surface; its artifacts stay as evidence; its two instruction
+  files stay in the tree read-only. Unfreezing requires the director.
+- **v2 constitution written** — `tools/harpp2/CONSTITUTION.md`. One requirement, five primitives, seven boundaries,
+  the loop, the blocker method, and the permission clause below. It is short on purpose: length was v1's failure mode.
+- **The first objective written** — `tools/harpp2/objectives/akira-cms.md`. Milestone 1, the plan as the source of
+  remaining work, and **deterministic acceptance gates the verifier runs for itself**. Milestone 2 explicitly out of
+  scope. First action is product work, not harness work.
+- **A minimal v2 dispatcher written** — `tools/harpp2/dispatch.sh`. It carries exactly one v1 discovery, because
+  reality proved it: `setsid` + `script -qec`, since `pi -p` prints nothing until it finishes and an idle-detecting
+  terminal otherwise backgrounds it to death (EBADF). It records to a `.jsonl` journal. No ledger, no trust surface,
+  no commit gate, no preflight.
+- **The driver delegated to Sol** — `.ai/harpp2-driver.brief.md`: the loop, a short hard-coded boundary check, serial
+  dispatch, an evidence-based verifier that re-runs the claim, one plain-Markdown escalation, and a judgement file.
+
+### The permission clause, and the boundary change it implies
+
+> **Ordinary engineering decisions belong to the executor:** class structure, internal APIs, refactoring, tests,
+> **an in-scope additive migration**, choosing between two reversible approaches, retrying a failed implementation,
+> changing its own plan.
+
+This is a real change, not a slogan. v1 classified *any* migration as L4. Under v2 an additive, idempotent, in-scope
+migration is ordinary work; **destroying or irreversibly transforming data remains a boundary**, as do weakening
+security and weakening a check to obtain a pass. That is precisely the trade the director asked for — remove the
+obstruction, keep the safety — and the boundary list is where I intend to be immovable.
+
+### Recorded, because it is the first thing v2 must not repeat
+
+**CE-13.** Two lanes in one working tree caused a correct slice to be blocked by the other lane's files. Hence *one
+working tree, one writer* is written into the constitution, not just into this log.
+
+**Bootstrap exception.** The driver is delegated once through the new v2 dispatcher rather than through v1's ledger —
+so v1 is not used again from this decision onward. After the driver exists, Akira CMS runs under v2.
+
+**Commit state, unchanged and not blocking.** The verified tree still cannot be committed until HARPP decision 103 is
+answered. That is a *delivery* gate and by CD-60d it does not suspend execution.
+
+**What I am not doing:** no v2 roadmap, no v2 meta-plan, no measurement of v2, no migration plan for the v1 corpus, no
+"phase 2 of the refactor". The next thing that happens is the driver, then the first Akira chunk — and the only
+question asked of every stop from here is **why couldn't it continue?**
+
+**Authority:** director directive 2026-09-16 · CD-60. **Owner intervention:** not required.
+
+---
+
+## CD-63 — the HARPP module is in-tree; v2 dispatches its first lane
+
+**Copied as-is, as directed, and verified byte-identical.** `modules/harpp` (97 files, 1.2 MB, v2.5.0) and
+`templates/modules/harpp` (14 templates) from `/var/www/html/applicationostest`, `diff -rq` clean against the source.
+Nothing was adapted, and nothing in the module was edited.
+
+**Why it looked absent, and that was not a hallucination on either side.** `.gitignore:10` carries `modules/*` and
+`.gitignore:13` carries `templates/modules/*`, so an untracked module is invisible to every git-aware surface — the
+explorer, search, and this session's own `ctx_*` tools, which honour `.gitignore`. It is the same reason
+`modules/daily-ledger` had no tracked files. Fixed with `git add -f` (111 paths staged); the ignore rules are
+untouched, so this remains a deliberate per-module decision rather than a `.gitignore` weakening.
+
+**First-pass compatibility, measured:**
+
+| Check | Result |
+|---|---|
+| `php ikabud module:validate harpp` | **all checks passed** — 19 migrations, auth route contract, login context |
+| Dependencies | `kernel.audit.record@1`, `kernel.auth.user@1` — both kernel-owned, both present |
+| Routes | all under `/harpp/*`; **no** claim on the tenant root |
+| Live tenant `akiracms.test` | `/` **200** (unchanged, shell-served); `/harpp/login` **404** — **not activated**, so no live impact |
+| Migrations | `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` on its own `harpp_*` only; no `DROP`, no `TRUNCATE`, no kernel table |
+| Secrets | none committed; the VAPID private key is a placeholder in `README.md` and generated by `bin/harpp-vapid` |
+
+**The bridge is a different matter, and I did not copy it.** `tools/harpp-bridge` exists in both repositories and has
+diverged **in both directions**: 13 files differ and **every one of them is newer in ikabudsix** (`harpp_wake.py`
+238,764 B here against 230,999 B there, 2026-09-14 vs 2026-09-10). Overwriting would revert this repo's
+evidence/negative-control enforcement (`58888a5`, `00480ca`) — the rule that *a verifier must be able to fail before
+its pass counts as evidence*. Nothing to gain, a verified regression to lose, so the copy was not made. **Related and
+worth the director's attention:** the chair's `mcp.json` registers the HARPP MCP server from
+`/var/www/html/applicationostest/tools/harpp-bridge/harpp_mcp.py` — the older copy. That file is the director's and
+is not mine to edit.
+
+**v2 executed its first lane.** `tools/harpp2/dispatch.sh harpp-module-review openai-codex/gpt-5.6-sol medium …` —
+journal entry written, `script -qec pi -p` running, no ledger, no trust surface, no contract taxonomy, no preflight.
+The lane is a **read-only review** of the module against this kernel's current conventions, with one deliverable
+(`.ai/harpp-module-review.report.md`) and a required recommendation: activate as-is, activate after correction, or do
+not activate.
+
+**What I deliberately did not do:** activate the module on a tenant, run any migration, adjust its manifest for the
+suite schema, or "improve" it in any way before the review reports. Copying is reversible; activating is not.
+
+**Authority:** director directive 2026-09-16 · CD-62. **Owner intervention:** not required.
+
+---
+
+## CD-64 — the sync model, corrected: two modes, one tree, one writer
+
+**The director corrected my framing, and the correction is right.** Verbatim: *"HARPP is used when I am away from my
+workstation. But when I'm at my workstation, I don't have to use HARPP, I can use the harness driven workspace."*
+
+So "the workspace harness must be in sync with HARPP" does **not** mean at-desk work routes through HARPP, and it does
+not mean the at-desk harness may depend on the service being reachable. It means three things:
+
+1. **both modes act on the same workspace** (otherwise the away harness edits a different repository than the desk one);
+2. **they are never both writing** to that tree at once;
+3. **handoff is legible** — when the director switches modes, the other mode is either quiescent or refusing.
+
+Point 2 is the hazard, and it was real: the away harness dispatches lanes through HARPP's watch daemon, and the desk
+harness dispatches lanes through `tools/harpp2/dispatch.sh`. Same tree, two writers — the CE-13 defect at a larger
+scale.
+
+**Built, and falsified before it counted.** The one-writer guard in `tools/harpp2/dispatch.sh`:
+
+- a **local lock is authoritative and fails closed** — a second desk lane is refused (exit 3), the refusal is
+  journaled with its reason and holder, and a stale lock from a dead pid is reclaimed;
+- the **away-mode check is advisory by design** — it asks HARPP for a `running` job whose `repo` is this workspace and
+  refuses if one exists, but if the service is unreachable it warns and continues. *At-desk work must not depend on
+  HARPP being up*; that is the director's rule and it is why the remote check cannot fail closed;
+- `HARPP2_FORCE=1` overrides a false positive, deliberately.
+
+Proven, not asserted: `bash -n` clean · a held lock → **`REFUSED … exit=3`** with the journal line written · a stale
+lock → reclaimed · the filter, fed synthetic job JSON, selected exactly `abc123 t1` (running + this workspace) and
+ignored a finished job on this workspace and a running job on another.
+
+**Still the director's, and only matters when away:** the `workspace` config field, the `harpp` symlink on `PATH`, and
+which copy the watch daemon runs. Measured earlier: the away harness drives `applicationostest` and runs the *older*
+bridge — the one that accepts `verify: "true"` (62 of its 100 recorded jobs used a verifier that cannot fail), while
+the ikabudsix copy refuses it by construction (262 tests OK, 34 enforcement markers, 0). At the desk this is
+irrelevant; away it is the gate.
+
+**The module review landed, and I re-derived its two decisive claims rather than trusting them.**
+
+| Claim | My independent result |
+|---|---|
+| All 14 templates parse on the current DiSyL engine | **confirmed** — I ran `php _lint_disyl.php` over all 14: `OK=14 FAIL=0` |
+| The raw reset URL — a bearer token — is written to application logs | **confirmed at `HarppPasswordResetService.php:62`**, and I fixed it |
+
+The fix keeps the operationally useful event and drops the secret; the token was already stored only as a hash, so the
+log line was the sole exposure. `php -l` clean, and `reset_url` no longer appears anywhere in the module.
+
+**One discrepancy, recorded rather than smoothed.** The review reported *"2 passed, 0 failed, 19 skipped"*. Running the
+same files myself gives **2 passed, 22 not-runnable, 0 skipped** — the rest emit the kernel's HTML error page, and
+three of them are not suites at all (`isolated-tenant-guard.php` and `migration-sandbox.php` exit 2 demanding
+`HARPP_ALLOW_MUTATING_TESTS=1` / `HARPP_ALLOW_SCHEMA_TEST=1`, which is those guards correctly refusing to touch a
+non-disposable database; `strict-command-gate.php` needs a command argument). **Neither count is a pass**, and DB,
+handler, queue, risk, artifact and wake behaviour remain unverified in this repository. The difference is harness
+accounting; recording it is cheaper than adjudicating it, and claimable evidence it is not.
+
+**Carried for the director, not acted on:** the review's single biggest risk is the per-tenant **bridge key**, one
+shared machine credential mapped to the first active owner/admin, able to record owner decisions, manipulate runs,
+approve or reject risk-gated work and drive deploy workflows (`modules/harpp/services/HarppBridgeAuthService.php:74-100`
+and `:132-139`; `modules/harpp/routes.php:105-158`). That credential is exactly what **away mode** uses. It is an
+owner-grade production secret, not an ordinary API token.
+
+**Authority:** director directive 2026-09-16 · CD-60/62/63. **Owner intervention:** not required; the sync prompt
+(workspace field, PATH symlink, daemon copy) remains available whenever the director wants away mode aligned.
+
+---
+
+## CD-65 — the real requirement: one executor, two situations, owner never in the loop
+
+**The director's refinement, and it settles the model.** HARPP is *a tool for when he is away* — not an IDE, not a peer
+to VS Code: an AI-driven tool that carries his directives (project creation among them) to completion, **without the
+owner part of the process loop**. HARNESS is *the same function* while he sits at the workstation. The only difference
+is where he is — and **in both modes he is not in the loop.** Present is not consulted.
+
+**His verdict on the current behaviour, verbatim:** *"it stalls, stops on any step that has nothing to do with the
+project completions. creating measurements, checking rules, and etc. … it has become a baggage instead of a tool that
+is useful, intuitive, capable, dependable, accurate, efficient."*
+
+**I am the thing he is describing.** CD-46 → CD-52 are seven consecutive decisions about the harness's own
+instruments; 23 of 60 decisions and 29 of the last 45 dispatched runs were harness-shaped; and this session's own
+first instinct on "HARPP and the harness must be in sync" was to design a coordination model rather than to ask what
+the owner actually needed. The chair is the harness. Recording that here is not self-flagellation; it is the
+provenance of the fix.
+
+**Three changes, made as behaviour rather than prose:**
+
+1. **Constitution — `## Two modes, one executor`.** HARPP (away) and HARNESS (at the desk) as one executor in two
+   situations, with `Owner in the loop? — no / no` stated as a row, not a sentiment. **Exactly three** stop
+   conditions, each named: `authority`, `boundary`, `irreversibility`. *A stop that cannot name one of the three is a
+   defect, not caution* — and so is any step that inspects the process instead of advancing the directive
+   (measurement, rule check, census, taxonomy, governance document). Those are permitted only once the absence of one
+   has already blocked a real run.
+2. **Driver brief — five non-negotiable semantics.** Every stop names a condition or the driver does not stop. **A lane
+   that stops to ask is a `stall`, not a result**: detect it, re-dispatch with the anti-stall clarification (bounded,
+   `--max-stalls` default 2), and **never forward the lane's question to the owner**. No governance artifacts. Progress
+   means an artifact *plus* evidence the driver re-ran itself. Repeated `no-progress` promotes the reasoning level
+   rather than becoming a question.
+3. **Lane prompt — no questions at all.** *"The owner may be present but he is NOT in the process loop, and a question
+   back to him is a defect."* Stop only for the three conditions, and name which.
+
+**Dispatched:** `harpp2-core`, building `tools/harpp2/harpp2.php` — the first lane running under the hardened prompt.
+The one-writer guard proved itself in the same breath: **a second, genuinely attempted dispatch was refused with exit
+3** while the lane ran, which is the first real-world (not synthetic) proof of that rule.
+
+**What "done" now means for this workstream.** Not a document. The driver is accepted only if the anti-stall behaviour
+is **falsified into existence** — feed it a lane that returns a question, and it must record `stall` and re-dispatch
+rather than surface the question. Then the Akira objective runs through it end to end, and every stop is interrogated
+with one question: *could it have continued?* If yes, the obstruction is removed rather than a rule added.
+
+**Authority:** director directive 2026-09-16 · CD-60/62. **Owner intervention:** not required.
+
+---
+
+## CD-66 — the v2 driver exists, and the anti-stall rule is in the code; the benchmark is running
+
+**Built:** `tools/harpp2/harpp2.php` (28 KB) by one Sol lane on the hardened prompt, in 10 minutes, with no questions
+asked. Plus `.ai/harpp2-judgement.md` — the intended improvement mechanism, and the *only* document it created.
+
+**Accepted on evidence I re-derived myself, not on its report:**
+
+| Check | Result |
+|---|---|
+| `php -l tools/harpp2/harpp2.php` | clean |
+| `status --objective=akira-cms.md` | runs: `HARPP v2 / Status: not-started / Chunks: 0 / Why: No blocker recorded.` |
+| Loop, end to end, with a fake dispatcher | **red first** (`[exit 1]` before the artifact existed), then the lane ran, then `[exit 0]`, then **`[harpp2] objective verified`** |
+| Boundary falsification — file outside the objective | **`[harpp2] ESCALATED (boundary): outside objective scope: .harpp2-outside.txt` → exit 4** |
+| Boundary falsification — destructive operation | **`[harpp2] ESCALATED (boundary): data/file destroyed: .harpp2-fixture/victim.txt` → exit 4** |
+| Throwaway artifacts | all removed; only `objectives/akira-cms.md` remains |
+
+**The semantics are in the code, not only in the brief.** `--max-stalls` validated 0–20; stall detection increments
+`stalls`, journals `{"event":"stall","result":"redispatch"}`, and writes to the judgement file: *"no authority, boundary,
+or irreversibility condition applied, so the defective stop was not surfaced and the anti-stall redispatch rule
+continued the objective."* That sentence is the whole reform in one line.
+
+**One limitation, declared by the lane rather than glossed:** the live `dispatch.sh → pi → model` path stayed unproven,
+because the session already held the single-lane lock and launching a nested live executor would have violated the
+serial-writer boundary. That is the correct call — it obeyed the rule instead of demonstrating around it. The live path
+is proven or falsified by the benchmark run below, not by an argument.
+
+**Benchmark launched:** `php tools/harpp2/harpp2.php run --objective=tools/harpp2/objectives/akira-cms.md`
+(pid 3494187, detached). First observation, from its own state journal: it began by running the objective's acceptance
+gates *before* its first chunk — `shell_contract_test.php` **116 passed / 0 failed**, `workbench_governance_census_test.php`
+**PASS** — i.e. it establishes a baseline and then acts, rather than asserting that everything is fine.
+
+**Watch item, recorded before it becomes a complaint:** if the driver re-runs the full gate set on every loop it will be
+slow. If it does, that is the next *"why couldn't it continue?"* — and the answer will be to remove or narrow the
+obstruction, not to add a rule about it.
+
+**Authority:** director directive 2026-09-16 · CD-60/62/65. **Owner intervention:** not required.
+
+---
+
+## CD-67 — the first real run failed for a one-character reason, and the driver was right to escalate
+
+**Run 1 (the benchmark) finished before the director asked, and it escalated.** State: `escalated`,
+condition `irreversibility`, `chunks_attempted: 3`, `verified: 0`, `no_progress: 3`, `approach: 2`. Journal: 19
+commands, 3 dispatches, 3 observations, 3 chunk results, 1 escalation.
+
+**What actually happened, and the driver behaved correctly on garbage input.** All three lanes came back
+`exit_code: 126` with `changed_paths: []`. 126 is *the command was found but could not be executed* — **the lanes never
+started.** The driver classified each as `no-progress`, replanned ("REPLAN: … choose a smaller product change"), then
+changed approach ("DIFFERENT APPROACH: do not repeat the prior action"), and only then stopped, naming a condition and
+writing a usable three-option escalation artifact. Given three empty-handed lanes, that is the right ladder.
+
+**Defect 1 — mine, and it cost all three dispatches.** `tools/harpp2/dispatch.sh` was created without the execute bit
+(`-rw-rw-r--`), and I had only ever invoked it as `bash dispatch.sh`. The driver invokes it by path, so the kernel
+refused it. Reproduced directly: `Permission denied`, `exit=126`. `chmod +x`, verified (`-rwxrwxr-x`). A file *mode*
+stopped the loop — nothing about the design, the objective, or the model.
+
+**Defect 2 — the driver's default lane was wrong for product work.** `HARPP2_MODEL ?: 'groq/llama-3.1-8b-instant'`
+with `low`. Groq is a capped T1 lane (60 rpm / 250K tokens per day — roughly one slice exhausts it) and never a slice
+executor; an 8B model on a 20-file chunk is not "cheapest adequate", it is cheapest followed by rework. Default
+corrected to `deepseek/deepseek-v4-flash` / `low`, matching the project's own model policy.
+
+**Defect 3 — mine, and the gate caught it.** Copying `modules/harpp` turned `composer test` **red**: twenty
+`modules/harpp/tests/*` programs are now discovered by `scripts/run-tests.php`, and they need an activated tenant
+database — they emit the kernel's error page instead of the repository's own convention, `SKIP: <reason>`. **Attribution
+by isolation** (module moved aside, both suspect tests re-run): those twenty are mine; `gui_settings_route_authority_declaration_test.php`
+(1 failure — an exact-set census expectation of 47) and `cms-akira-theme/tests/theme_read_authority_test.php`
+(6 failures — the theme read-authority seed and its census) fail **with the module absent as well**. So the gate was
+already red before this session touched it, and the module copy added twenty more.
+
+**Defect 4 — completion semantics, and this one could have produced a lie.** The driver reads the objective's gates as
+the *definition of done*, so four green commands would have printed "objective verified" — a false claim that Akira CMS
+is complete. The objective now states plainly that the gates mean **the repository is healthy**, not that Milestone 1 is
+finished, and that Milestone 1 is judged against the plan.
+
+**The method, applied literally.** Every one of the four was *"it could have continued; the tooling prevented it"* —
+so each was fixed by removing the obstruction and the **same objective was resumed**, not re-scoped. Run 2 is live
+(pid 3515762) and carried the existing state forward (`chunks_attempted: 3`), which is what resuming means. No new
+rule, no new measurement, no governance artifact, and no question to the owner was created for any of it.
+
+**Authority:** director directive 2026-09-16 · CD-65/66. **Owner intervention:** not required.
+
+---
+
+## CD-68 — "we're failing to notice" is correct, and it was my error again
+
+**The director's observation:** *"there's no more process running, i think, and we're failing to notice that."* The
+literal claim was wrong — the driver (pid 3515762) and lane `akira-cms-4-b16cf5`
+(`deepseek/deepseek-v4-flash`, attempt 4) were both alive — but **the observation is right and it is the more
+important half.**
+
+**My error, third of this class.** I reported *"Run 2 is live"* from a snapshot taken 25 seconds after launch and
+never re-checked it. That is a claim without current evidence, which is the same defect the harness has been punishing
+all session — *the report is a claim, not evidence* — appearing in the Chair's own conduct. The rule I applied to
+lanes applies to me: **state liveness only from a check made now, and say when the check was made.**
+
+**The real gap, fixed with machinery that already existed.** A long run can end — verified or escalated — with nothing
+telling the owner. That is exactly what HARPP's job monitor is for; its own source says so: *"close the 'did the model
+finish?' loop so the owner never has to remind the harness."* So the at-desk run is now **tracked**:
+
+```
+$ harpp job track --pid 3515762 --model deepseek/deepseek-v4-flash \
+    --task "AKIRA objective — harpp2 run 2 (resumed, attempt 4 in flight)" \
+    --conversation 8 --repo /var/www/html/ikabudsix --timeout 7200 \
+    --verify 'grep -q "\"status\": \"verified\"" tools/harpp2/state/akira-cms.json'
+{"job_id": "9b2b69c81386", "status": "tracked", "pid": 3515762, "conversation_id": 8}
+```
+
+The verifier is a real check that can fail — it exits non-zero unless the objective genuinely reached `verified` — not
+a `true`. **Advisory, not a dependency:** if HARPP is unreachable the run proceeds un-notified, which is the correct
+trade per CD-64. Completion now arrives as a message instead of waiting to be discovered.
+
+**What I did not do:** no watchdog daemon, no health endpoint, no polling loop, no new doctrine. The capability was
+already there and the only thing missing was using it. If this proves its worth a second time, folding the `track`
+call into the driver is a six-line change and will be considered then — not now, on one occurrence.
+
+**Authority:** director directive 2026-09-16 · CD-64/67. **Owner intervention:** not required.
+
+---
+
+## CD-69 — course correction: the item is the goal, and the review is written
+
+**The review the director asked for exists:** `.ai/review-harpp-and-harness-2026-09-16.md` — state of HARPP (away) and
+HARNESS (desk), what today produced, why it has not felt like progress, and the decisions taken. Headline: the harness
+works and produced two verified product fixes; it has not felt like progress because **I made four repo-health gates the
+definition of done**, so the loop optimised for green gates instead of the plan.
+
+**Chair error #4 — the expensive one.** I stopped run 2 mid-flight, having seen removed lines in
+`theme_read_authority_test.php` and concluded "weakening a check to obtain a pass". Reading the diff afterwards shows
+the opposite: the lane removed the theme's own `/cms-akira-theme` route **because CD-58/59 moved that page into the
+shared shell**, and rewrote the assertion to require the *shell's* declaration while still forbidding a policy version
+pinned to `1`. The test went **10 passed / 6 failed → 17 passed / 0 failed**. The removal was correct; my stop was
+wrong, and the rule I broke is one I had written down twice the same day: **read the artifact before judging it.** The
+work was kept.
+
+**A correction of my own earlier claim, too.** The "20 failures" I attributed to the module copy were
+**order-dependent**: those tests report `[FAIL]` while `storage/modules.json` survives, and `[SKIP] tenant 1 has no
+resolvable database configuration` once `scripts/run-tests.php` has unlinked it. My attribution was measured in the
+first window. The reproducible verdict is **SKIP**, which proves nothing about that module either way. Current
+`composer test`: **193 files — 140 passed, 53 skipped, 0 failed** — the gate is satisfiable, and the theme item's
+repair also resolved the `gui_settings_route_authority_declaration_test` census failure.
+
+**Decision A — the objective is re-targeted.** One bounded plan item per run; the item's own deterministic check is the
+completion test; the four gates are demoted to **regression guards with a recorded baseline** (shell contract 116/0,
+census PASS, `composer test` 140/53/0, playwright 17 passed). The driver's earlier reading — four gates as the goal —
+produced a loop whose own words were *"isolate and implement another concrete route to an acceptance failure"*, which
+is gate repair, not the plan.
+
+**Decision B — run 3 is live on a real product item.** `.ai/akira-completion-plan.md` §4 **Phase A.1: malformed
+metadata must render nothing** (`EntityViewResolver` and `DefaultEntityRenderer` currently substitute
+`SAFE_FALLBACK_FIELDS`). Acceptance: `tests/entity_view_malformed_metadata_test.php` proving the four cases against
+**both** resolvers; the rule is the spec and the test proves it, never the reverse. Driver pid 3538213, tracked as
+HARPP job `277f9b960213`, so completion arrives as a message.
+
+**An obstruction removed before it bit:** the driver derives writable scope from the objective, and its derivation
+regex does not recognise `kernel/`. Without an explicit `## Scope` heading the first edit to
+`kernel/EntityContext/` would have been refused as a boundary violation — correctly, and pointlessly. Scope is now
+explicit: `kernel/EntityContext`, `tests`.
+
+**Decision C — no further harness decisions today.** The next artifact from this desk is a product chunk with evidence.
+
+**Authority:** director directive 2026-09-16 · CD-65/67/68. **Owner intervention:** not required.
+
+---
+
+## CD-70 — a stop is a finding about the contract, not an end state; and four items are now verified
+
+**The director's challenge, accepted as doctrine.** *"Why must you be affected by a stop? Is the stoppage really
+insurmountable, or does it only expose defects in the contract with which you have been authorized to fix?"* The answer
+is the second. **A stop is legitimate only when proceeding would destroy data, weaken security, or exceed authority.**
+Every other stop is a defect in the objective, the executor choice, or the tooling — and the chair wrote the objective
+and the tooling, so the chair is the one authorised to correct it.
+
+**Corrected in the chain, not in a document.** The first `chain.sh` printed
+`STOPPING: <item> did not verify — the chain does not paper over a stall`, which I had mistaken for discipline. It is
+now: promote the executor (`deepseek-v4-flash/low` → `openai-codex/gpt-5.6-sol/medium`) → **resume the same item** →
+and only then write a hand-off that requires a **category** (objective defect · executor defect · harness defect · real
+boundary) with a proposed correction, stating explicitly that **only a real boundary reaches the director**.
+
+**Four items verified, two of them during the walk with zero director intervention.**
+
+| # | Item | Evidence (chair re-ran, not read from a report) |
+|---|---|---|
+| 1 | Page-cache replays its own `Content-Type` | 11/0/0 + live red→green, same ETag |
+| 2 | Theme read authority reconciled with shell-owned Theme Studio | 17/0 (was 10/6) |
+| 3 | **A.1** malformed metadata renders nothing | `entity_view_malformed_metadata_test` **39/39** |
+| 4 | **A.2a** serialized payloads obey their declared field contract | `entity_view_payload_projection_test` passes |
+
+**The rule is implemented as specified, verified by reading the implementation** — not just by a passing test:
+`EntityViewResolver::resolveDisplayFields()` now `return []` on non-array or non-string membership and **never**
+substitutes the allowlist; `['*']` still uses the allowlist as a floor. A.1's lane also corrected
+`ResolvedEntityContext::fromContract` so malformed fields cannot crash before the rule runs.
+
+**Both pre-existing red gates are resolved, and I read both diffs before accepting them** (per CD-69's discipline):
+the stale census expectation moved 47 → 48 with its invariant (`undeclared 0`, `write_ratio 100`,
+`enforced == total`) intact and the authorised P3.3 route named as the 48th; `read_authority_probe_test` gained the
+`GET /cms-akira-theme => akira.shell.admin_page@1` expectation rather than losing any. Suite now
+**194 files — 141 passed, 53 skipped, 0 failed**.
+
+**Chair faults this session: three, all corrected, none fatal.** (1) Tracking a run as a HARPP job made the away-mode
+guard refuse that run's own lanes — fixed by excluding the dispatch's ancestry and any job naming this harness, verified
+to still refuse a genuine competitor. (2) A killed driver's children kept the `flock` fd, so a relaunch was refused
+with no live process — the orphans were found with `lsof` and killed; the underlying inheritance defect is recorded,
+not repaired. (3) The passivity in this decision's first paragraph.
+
+**Authority:** director directive 2026-09-16. **Owner intervention:** not required.
+
+## CD-71 — the acceptance must contain the evidence that decides
+
+**The director asked "is the game iteration done? i'm not supposed to ask". Asking was right: it was not done, and the
+harness had said `verified`.** This is the same defect class as CD-68 and CD-69 — a machine verdict standing in for a
+requirement — and this time the defect was in the objective I wrote.
+
+**What was measured, after the verdict.** `star-swarm-iteration-2` was marked verified on the strength of its
+acceptance command, which was **one structural test**. Its requirement — the director's words, *"outer space
+environment. dark background, stars, planets nearby. whole feel of a cosmic gun battle"* — lived in prose tiers.
+`grep -c "getImageData|luminance|planet|starfield|twinkle" tests/browser/star-swarm.spec.ts` → **0**; `test-results/`
+held no image. So the deciding evidence for a *design* requirement was never produced, and nothing could notice,
+because the command that decided `verified` did not contain it. **A pass that cannot fail on the requirement is not
+verification.**
+
+**Then I looked at it myself** (`/tmp/star-swarm-now.png`). The swarm was a proper Galaga formation and the ringed
+planet read well — but the play field was **light grey-blue**. Every colour came from theme tokens, the active theme
+is light, so the game had inherited daylight. **Space is not a theme choice**: no theme should be able to make the
+void light. That is a product finding, separate from the evidence defect, and both had to be fixed.
+
+**Correction, structural — the enforcement first.** `star-swarm-iteration-2b` names **three** commands in
+`## Acceptance`, and the driver gates all three:
+
+```
+$ php tests/star_swarm_visual_test.php
+$ npx playwright test tests/browser/star-swarm.spec.ts
+$ php tests/star_swarm_shot_check.php     # PNG exists, >20 KB, newer than the spec, PNG signature
+```
+
+The pixel probes now live **inside the spec**, so they cannot be skipped: object-free space mean luminance `< 35`
+(>), starfield bright-pixel floor, planet cluster radius, ship and enemy clusters, shot pixels above the ship, and the
+spec writes the running-game screenshot it then asserts. **The evidence that decides is now the evidence that gates.**
+
+**Correction, product.** Space became a dedicated dark-by-design token family with **dark fallbacks**, so a theme that
+defines nothing still renders a dark void; the chrome — HUD, buttons, typography — stays themed, which is what
+"themable" was always meant to mean. The structural test still asserts *"draw routines do not introduce literal
+colours outside token fallbacks"*, so themability survived the change rather than being traded away for it.
+
+**Result, re-derived by the chair rather than read from the driver.** `13:08:10 → 13:13:14`, `sol/medium`, attempt 1.
+Gates re-run by hand: structural **16 passed / 0 failed**, browser spec **1 passed** (probes inside), shot-check
+**4/4**, live `http://akiracms.test/star-swarm/` **200**, artifact `test-results/star-swarm.png` 190,692 B. Viewed:
+near-black starfield, a pale blue planet with a yellow ring, four rows of orange insect ships with **one diving
+separately**, a shot in flight, the teal rocket at the bottom.
+
+**The rule, which now belongs in every objective I write:** *if a requirement needs evidence to decide it, that
+evidence is a command in `## Acceptance`.* Prose is not evidence; a tier is not a gate; a verifier that cannot fail on
+the requirement cannot pass on it. This is the third occurrence of one class, so the correction is structural —
+another behaviourally-identical item, gated on the deciding evidence — not another note to myself.
+
+**Authority:** director directive 2026-09-16. **Owner intervention:** not required — the requirement was the
+director's, the enforcement was mine to write, and both were inside the contract.
+
+## CD-72 — completion is a gate's verdict, not a report; and the transport has no message type
+
+**The director's question, in three parts:** *"you did not answer my question. i was not supposed to ask you if it's
+done. right? why did i ask you still? how do you send a message to me that the project has completed e2e?"*
+
+**Yes, he was not supposed to ask — and the reason he asked was structural, not a delivery failure.** Three measured
+causes, none of them "the message got lost":
+
+1. **Nothing in the system could decide project completion.** `grep -rniE "e2e|project\.?complete|release_ready"`
+   over `tools/harpp2/*.{php,sh,md}` → **empty**. The game objective's `## Acceptance` declared **zero commands**.
+   So "the game is done" was not a fact any gate could produce; it was an opinion only the chair held, and an opinion
+   has to be asked for. *(The chair answering a question about its own opinion is not a stop condition — it is the
+   absence of a decision procedure.)*
+2. **The only automatic message was per-ITEM and carried the worker's claim.** At `12:59:44` the chain sent
+   `star-swarm-iteration-2 -> verified`, whose body read `acceptance: php tests/star_swarm_iteration_2_test.php` — a
+   filename **derived from the slug**, which does not exist. Delivered, plausible, and false: the requirement was
+   unmet (light play field, zero pixel probes, no screenshot). **A message that names a test that never ran as the
+   acceptance is worse than silence**, because it manufactures confidence.
+3. **The transport has no message type.** `harpp msg send` accepts only
+   `--body --title --conversation-id --harness-session-id --idempotency-key`. An item notice, a project completion
+   and a blocker are therefore indistinguishable *in kind* in the director's inbox.
+
+**Correction — built, not documented.** `tools/harpp2/projects/<project>.json` declares the project's URL, artifact
+and gates; `tools/harpp2/e2e.sh <project>` runs them. **The exit codes are the verdict.** One message per project
+verdict, titled `E2E PASS: <project> (n/m gates)` or `E2E FAIL: …` — **the title prefix IS the message type**, because
+the transport supplies none (`harpp2:` remains the item prefix). The body lists every gate with its exit code, plus
+URL, artifact, commit and bundle path. The declared artifact must be **newer than the run**, so a verdict cannot
+inherit stale evidence — precisely the hole iteration 2 slipped through. `--idempotency-key` prevents duplicates;
+non-delivery prints `DELIVERY: local-only — director NOT notified` and exits 4; PASS exits 0, FAIL exits 1, so the e2e
+gate can itself be gated.
+
+**Demonstrated, not asserted.** `e2e.sh star-swarm` → **5/5 gates** (live URL · structural 16/0 · browser spec with
+pixel probes · screenshot check · `composer test`) → `E2E PASS: star-swarm (5/5 gates)`, **message 1095**, conversation
+126, receipt key `star-swarm-2ed552d-PASS-20260916T053442Z`; bundle `.ai/e2e/star-swarm-20260916T053442Z.json`. The
+item-level `notify()` was corrected in the same pass to **read the acceptance from the objective** instead of inventing
+it from the slug.
+
+**The rule, and it names the chair as the hazard: a completion claim must be produced by a gate and delivered by that
+gate.** The chair may not be the channel, because at 12:59 the chair *was* the failure — it reported an item as
+verified while the director's requirement stood unmet. Delivery was never the problem; **authority was** — a
+notification signed by the executor is a claim, and only a gate's exit code is a verdict.
+
+**Two surfaces, one message — added the same hour** (director: *"or, a terminal message here, at VSCode"*). When the
+owner is at his workstation the harness must speak where he is already looking; HARPP is for when he is away, which
+is the distinction he drew himself. `tools/harpp2/say.sh` writes every notice to `.ai/inbox.log` — tailed live in a
+VS Code terminal with `tail -F .ai/inbox.log` — **and** to stdout, and it does so **first and unconditionally**,
+before any transport is attempted: the local surface must survive HARPP being unreachable, which is exactly when the
+owner is most likely sitting at the machine. `e2e.sh` says its verdict there; `chain.sh` says each item's status,
+its **real** acceptance read from the objective, and the reason. Measured on the re-run: `E2E PASS: star-swarm
+(5/5 gates)` appeared in the live terminal the moment the gates finished, with artifact, URL, commit and bundle path;
+the FAIL branch was verified to name the failing gate. One message, never one surface only.
+
+**Authority:** director directive 2026-09-16. **Owner intervention:** not required.
+
+## CD-73 — the deliverable must survive a clone; the harness log must not enter it
+
+The two-surface work above exposed a product defect by accident, which is the useful kind of accident.
+
+**Found: the game was only half in git.** `modules/*` and `templates/modules/*` are ignored with explicit
+allowlists, and **Star Swarm was not on them** — so `modules/star-swarm/` (module.json, routes, handlers, helpers, the
+CLI renderer) and `templates/modules/star-swarm/star-swarm.disyl` were **IGNORED**, while `public/star-swarm/*`
+(index.html, star-swarm.js, star-swarm.css) and `tests/star_swarm_*` were **tracked**. A fresh clone would therefore
+have carried the assets and the tests but **no module and no template**, so `/star-swarm` would not exist and the
+browser spec would fail. A deliverable that cannot survive a clone is not delivered — and no test in the suite could
+notice, because tests run against the working tree, where the ignored files are present.
+
+**Fixed by the repo's own precedent, not by a new rule.** `gui-settings` and the `cms-akira-*` modules are bundled
+in-tree and allowlisted; Star Swarm is now allowlisted the same way, with the reason written into `.gitignore`:
+`!modules/star-swarm/`, `!modules/star-swarm/**`, `!templates/modules/star-swarm/`, `!templates/modules/star-swarm/**`.
+Measured after: `git check-ignore` reports all of module.json, routes.php, handlers.php and the template as
+**tracked**, and `git status` shows them as new paths for the next commit.
+
+**And the harness's own log went the other way.** `.ai/inbox.log` (the live terminal inbox from CD-72) and the
+`.ai/e2e/` run bundles are runtime artefacts; both are now ignored, so the message surface cannot leak into the
+repository's history. Verified additive: `git diff --stat .gitignore` = **11 insertions, 0 deletions**. Recorded
+because the first attempt at that edit mistyped an existing line (`review-baseline.md` → `review-bareline.md`) and
+the diff is what caught it — **check the diff, not the intention.**
+
+**Authority:** chair decision under the standing contract — no schema, security, dependency or public-contract
+change; it restores the deliverable and keeps a log out of history. **Owner intervention:** not required.
+
+## CD-74 — a harness outage impersonated a product failure; and the chair stalled for four hours
+
+**The lesson arrived by being expensive.** Iteration 3b was dispatched, reported
+`verified: 0, no_progress: 4, blocked: 2, condition: irreversibility`, escalated after two executors, and then sat
+unwatched for **4h15m** while the director had to ask "what's happening now?". Measured afterwards: the tree passed
+**all four** acceptance gates (concept 23/0, structural 18/0, artifact 4/0, browser spec 8/8 consecutive). The work
+was done. The verification was not trustworthy, and nothing was watching it.
+
+**Cause 1 — the acceptance harness spent a login per invocation.** `globalSetup` logged in on every
+`npx playwright test`, the kernel limiter permits **5 attempts per 300 s**, and the driver re-runs the acceptance for
+every chunk by design. Its own verification tripped the limiter, `waitForURL` timed out inside `auth.setup.ts`, and
+the run was recorded as failing product work. Reproduced directly: a five-run burst failed once **with no probe
+involved**. *Fixed*: `auth.setup.ts` reuses a fresh `storageState` (10-minute window, zero login POSTs) and, if a
+login is refused while a session exists, reuses it and warns instead of failing the suite. Measured: five
+consecutive invocations, zero logins, all passing.
+
+**Cause 2 — the stop condition was mislabelled.** `irreversibility` was asserted for "no verified product
+progress". That is not a boundary: authority, boundary and irreversibility describe **breaches**, while no-progress
+describes a defective objective or a flaky instrument — the chair's own work, which is exactly what it turned out to
+be. *Recorded as doctrine*: a stop names a breach, not a mood.
+
+**Cause 3 — the chair dispatched without a watcher.** The escalation *was* delivered, twice, to the terminal inbox
+(14:15:29, 14:23:49) and to HARPP (message 1100). Nothing woke the chair, so a delivered message became a stall.
+*Fixed*: `tools/harpp2/status.sh` answers running · awaiting-chair · last-verdict · gates in one command, and an
+escalation writes a `NEEDS_CHAIR` marker that status surfaces first. *Rule*: a verdict that reaches nobody costs the
+same as no verdict.
+
+**Where the lessons live (so they are retrievable, not merely remembered).** `docs/testing/harness-lessons.md` —
+seven numbered lessons, each as symptom → root cause → evidence → fix → rule, indexed by symptom so RAG can match the
+failure it is looking at. `.github/instructions/verification-harness.instructions.md` gains a short normative section
+so every future agent inherits the rules automatically. This log carries the provenance. **Learning that survives is
+code and retrieval; prose alone was rediscovered three times in one day.**
+
+**Still open, and named rather than closed:** a residual flake of roughly 1 run in 5 remains with no login involved
+(the newer probes sample live animation). The fix is (a) re-run a failed verification once and classify pass-on-retry
+as `FLAKY`, and (b) make those probes deterministic by driving state directly — never by loosening a threshold. The
+negative control the driver asked for (disable `separateColony()`, prove the overlap probe fails, restore) was
+attempted and killed by Cause 1; it is owed.
+
+**Authority:** chair decision — test-harness and documentation only; no product, schema, auth or dependency change.
+**Owner intervention:** not required.
+
+## CD-75 — iteration 3b closed as verified; the escalation was a harness artefact, and the probe was proven non-vacuous
+
+**Verdict: the work was complete, and the driver's `verified: 0` described the instrument, not the product.** Chair
+verification: concept gate **23/0** (was 12/11), structural **18/0**, browser spec **10/10 consecutive runs**, artifact
+**4/0**, live `200`.
+
+**The residual flake is isolated and repaired, not tolerated.** Captured on the tenth-run loop: `a fired shot creates
+bright pixels above the ship` — `Expected: > 8, Received: 0`, while `state.bullets.length` had already grown. The shot
+crosses the sampled 30×130 window in a couple of hundred milliseconds and a single sample **raced it**. The region and
+the threshold are unchanged; the sample is now **polled** (`expect.poll`, 4 s). A race removed, not a bar lowered —
+an undrawn shot still fails. Before: 1 failure in 5 runs. After: **10/10**.
+
+**The negative control the driver demanded, performed.** `separateColony()`'s relaxation loop was disabled (8 passes →
+0); the spec then failed with `no pair of settled live enemy bodies overlaps across ten samples`,
+`Expected: >= 1.5, Received: -24.589…`. The probe therefore detects the absence of the behaviour it claims to measure.
+Restore was verified byte-identically (`422f8442574c0d7e…`, zero lingering patches). **A probe that has never been
+shown to fail is not evidence** — this one now has been.
+
+**What this episode produced beyond the game.** `docs/testing/harness-lessons.md` (seven lessons, symptom-indexed for
+retrieval), a normative section in `.github/instructions/verification-harness.instructions.md` (so every future agent
+inherits it automatically), `tools/harpp2/status.sh` (one command answers "what is happening now?" and surfaces
+escalations first — its first run named `star-swarm-iteration-3b escalated · awaiting the chair`, which nothing had
+surfaced in 4h15m), a concept gate (`tests/star_swarm_concept_test.php` + `projects/star-swarm-concept.json`) that made
+the requirement list itself machine-readable, and the concept gate is now part of the project E2E manifest.
+
+**Still open, named:** the driver should re-run a failed verification once and classify pass-on-retry as `FLAKY`, so an
+instrument race can never again be recorded as no-product-progress and escalated as a boundary.
+
+**Authority:** chair decision — the item's own scope; verification and harness only. **Owner intervention:** not
+required.
+
+## CD-75 — iteration 3b closed as verified; the escalation was a harness artefact, and the probe was proven non-vacuous
+
+**Verdict: the work was complete, and the driver's `verified: 0` described the instrument, not the product.** Chair
+verification: concept gate **23/0** (was 12/11), structural **18/0**, browser spec **10/10 consecutive runs**, artifact
+**4/0**, live `200`.
+
+**The residual flake is isolated and repaired, not tolerated.** Captured on a ten-run loop: `a fired shot creates
+bright pixels above the ship` — `Expected: > 8, Received: 0`, while `state.bullets.length` had already grown. The shot
+crosses the sampled 30×130 window in a couple of hundred milliseconds and a single sample **raced it**. The region and
+the threshold are unchanged; the sample is now **polled** (`expect.poll`, 4 s, 25/50/100/200 ms). A race removed, not a
+bar lowered — an undrawn shot still fails. Before: 1 failure in 5 runs. After: **10/10**.
+
+**The negative control the driver demanded, performed.** `separateColony()`'s relaxation loop was disabled (8 passes →
+0); the spec then failed with `no pair of settled live enemy bodies overlaps across ten samples`,
+`Expected: >= 1.5, Received: -24.589…`. The probe therefore detects the absence of the behaviour it claims to measure.
+The restore was verified byte-identically (`422f8442574c0d7e…`, zero lingering patches). **A probe that has never been
+shown to fail is not evidence** — this one now has been.
+
+**What this episode produced beyond the game.** `docs/testing/harness-lessons.md` — seven lessons, symptom-indexed for
+retrieval; a normative section in `.github/instructions/verification-harness.instructions.md`, so every future agent
+inherits the rules automatically; `tools/harpp2/status.sh`, one command answering "what is happening now?" — its first
+run named `star-swarm-iteration-3b escalated · awaiting the chair`, which nothing had surfaced in 4h15m; and a concept
+gate (`tests/star_swarm_concept_test.php` + `tools/harpp2/projects/star-swarm-concept.json`) that makes the requirement
+list itself machine-readable, now wired into the project E2E manifest.
+
+**Closed by CD-76** — the driver now re-runs a failed verification once and classifies pass-on-retry as `FLAKY`, and
+the no-progress hand-off no longer claims a boundary it does not have.
+
+**Authority:** chair decision — verification and harness only; no product, schema, auth or dependency change.
+**Owner intervention:** not required.
+
+## CD-76 — the driver can now tell an unstable instrument from a failing product (L4 + L2 closed in code)
+
+**Two design defects, both of which had the same shape: the harness could not express what it actually knew.**
+
+**1. A failed verification was believed once.** The driver ran the acceptance, and a single failure was counted as no
+product progress. Implemented: on failure the acceptance is **re-run once**, and
+`tools/harpp2/verify.php::classifyGateOutcome()` returns `passed` · `flaky` · `failed`. A pass-on-retry journals
+`flaky_verification`, records the reason as *"FLAKY (harness instability, not a product failure)"*, writes a judgement
+line, and continues with the retry's result. **Retrying to hide instability is wrong; retrying to classify it is
+essential.** Unit-tested in place, 3/3 cases (passes · fails-then-passes · fails-twice); `php -l` clean.
+
+**2. `escalate()` refused to let a non-boundary be named.** The guard accepts only authority, boundary or
+irreversibility — so the no-progress trigger **had to claim `irreversibility`** in order to be heard, and the chair was
+shown a boundary that did not exist (*"further blind changes would be high-impact"*). That is the mechanical origin of
+CD-74's cause 2, not a careless label. Implemented: `needsChair()` — a non-boundary hand-off that writes
+`**Boundary:** NONE` in the first line of its file, records `boundary: false` and `condition: no_progress` in state and
+journal, and keeps the status `escalated` so the chain still notifies the owner and writes its own hand-off. The
+no-progress trigger now uses it. **Audited every escalation site:** `authority` (no writable scope, no deterministic
+acceptance), `boundary` (violations, unsafe evidence command) and the lane's validated `stop_condition` remain genuine
+breaches; the only non-breach path is now honestly labelled.
+
+**3. The brief manufactured false breaches.** The lane brief said the stop condition *must* be one of the three — with
+no way to say "nothing stopped me". It now instructs executors to use `null` and explicitly not to name a breach that
+does not exist. (Caught while editing: the first version of that edit dropped *"Never put an owner question in
+question"* — restored, and the diff is what showed it. Verify the artifact, not the intention.)
+
+**Still open, named:** the driver should prefer a *deterministic* acceptance over a retried one — a flake recorded once
+is a signal to fix the instrument, which is exactly how the shot-probe race was found.
+
+**Authority:** chair decision — harness only; no product, schema, auth or dependency change.
+**Owner intervention:** not required.
+
+## CD-77 — the owner authorises the commit despite an unsatisfiable gate; and two defects the commit exposed
+
+**The instruction.** Director, 2026-09-17: *"commit and push and clean the git tree."* That is the answer to the
+filed decision `ledger-commit-unsatisfiable-d1`, which asked whether to authorise a resolution surface or conclude
+without committing.
+
+**The gate's state, recorded rather than hidden.** `php tools/ai-run.php commit-check` reports **NOT ELIGIBLE** with
+blocking runs aged **1d10h–1d16h** (`abandoned` and `blocked`), including four records that no existing route can
+clear. **No baseline was edited and no verifier behaviour was changed.** The owner's instruction is the authority for
+this commit; the gate's condition is stated here and in the commit message, so a reader never has to infer why an
+ineligible tree was committed.
+
+**Defect 1 — the chair edited files during a live run.** While `star-swarm-deterministic-probes` was running, I updated
+`docs/reviews/harness-independent-evaluation-brief.md` and `tools/harpp2/status.sh`. The driver's scope check caught
+exactly that and refused the run: `boundary — outside objective scope: docs/reviews/… ; outside objective scope:
+tools/harpp2/status.sh`. **The guard was right and the chair was the hazard** — this is the rule I had already
+recorded (*never edit a path while a run is live; the change is attributed to that run*) and then broke. The cost was
+one promoted executor and an escalation. Standing correction: run `tools/harpp2/status.sh` **before** touching a file,
+and treat any live run as a lock on the tree.
+
+**Defect 2 (new, lesson L8) — the weakening guard cannot tell deletion from reorganisation.** Attempt 2 escalated with
+`boundary — test assertion removed or weakened: tests/browser/star-swarm.spec.ts` while the file had in fact been
+**strengthened**: assertions 28 → **52**, tests 1 → 2 (the new one asserting the deterministic fixed-step path itself),
+every numeric threshold intact (`< 35` dark space, `> 8` shot pixels, `>= 1.5` overlap, `> 100` ship pixels), all nine
+concept probes present, structural 18 → 21. The guard compares lines, so **moving** an assertion into another test is
+indistinguishable from **removing** it. A guard that blocks the work which strengthens the suite is a harness defect,
+not a finding. Chair verification of the artifact: concept **23/0**, structural **21/0**, spec **2/2**, thresholds
+unchanged — **the executor's work was real and is kept.**
+
+**Still to do, named:** the guard must compare *assertion sets with their thresholds*, not lines — a deletion removes an
+assertion, a reorganisation preserves it under a changed line number.
+
+**Authority:** owner instruction (commit) + chair decision (harness/harness-doc scope). No product, schema, auth,
+dependency or baseline change.
