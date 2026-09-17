@@ -121,3 +121,28 @@ way were harness faults.
   not exist has happened.
 - Never widen an authorization policy, a production guard, or a baseline to make a check
   pass. Report the tension instead.
+
+## The instrument itself — lessons from false *escalations* (2026-09-16)
+
+Everything above was learned from false alarms. These were learned from false **escalations**, which cost
+more: a stall, four discarded chunks, and a verdict that described the wrong kind of failure. Full narrative
+and evidence: **`docs/testing/harness-lessons.md`**.
+
+- **Never log in per invocation.** The acceptance harness is re-run per chunk by design, and the login limiter
+  allows 5 attempts per 300 s. `globalSetup` spending one login on every run tripped it, timed out inside auth
+  setup, and was reported as `1 failed` — a harness outage wearing a product failure's clothes. Reuse a fresh
+  `storageState`; if a login is ever refused while a session exists, reuse it and warn loudly.
+- **Re-run a failed verification once.** Pass-on-retry is `FLAKY`: recorded as harness instability, never as a
+  product failure and never as "no progress". Timing-sensitive probes are the usual cause — make them
+  deterministic by driving state directly, never by loosening a threshold.
+- **A requirement written as prose is not enforced.** If a requirement needs evidence to decide it, that evidence
+  is a command in `## Acceptance`; and the requirement list itself must be machine-readable (see
+  `tools/harpp2/projects/star-swarm-concept.json` gated by `tests/star_swarm_concept_test.php`). Two iterations
+  in one day were reported green while half their brief was unbuilt.
+- **A stop condition names a breach, not a mood.** "No progress after N approaches" is a defective objective or a
+  flaky instrument — a chair correction, never an authority/boundary/irreversibility stop.
+- **A grep is an instrument; verify it.** Do not conclude a capability is missing because your vocabulary for it
+  is absent from the source — read the artifact's own assertions first.
+- **Falsification needs restore discipline.** Back up, patch, test, restore, and verify the restore by hash.
+- **A dispatched run needs a watcher.** `tools/harpp2/status.sh` answers "what is happening now?" in one command;
+  an escalation writes a `NEEDS_CHAIR` marker that status surfaces first.

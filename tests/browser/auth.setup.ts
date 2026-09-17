@@ -19,7 +19,7 @@
 // of history (see live-hosts.spec.ts).
 
 import { chromium } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const TENANT = process.env.TENANT_URL ?? process.env.APP_URL ?? 'http://akiracms.test';
@@ -28,7 +28,32 @@ const TENANT_PASS = process.env.TENANT_PASS ?? '';
 const STORAGE_STATE = process.env.PW_TENANT_STORAGE_STATE
     ?? join(process.cwd(), 'tests', 'browser', '.auth', 'tenant.json');
 
+// Reuse a fresh session instead of spending a login on every invocation.
+//
+// Added 2026-09-16 after a measured false escalation. The driver re-runs the acceptance
+// commands for every chunk, and each `npx playwright test` invocation cost one login. The
+// limiter then refused the later ones, THIS SETUP timed out at waitForURL, and the resulting
+// spec failure was recorded as "no verified product progress" (verified: 0, no_progress: 4)
+// and escalated — while every gate passed when run a few minutes later. A harness outage
+// must never be able to look like a failing product.
+const REUSE_WINDOW_MS = 10 * 60 * 1000;
+
+function freshStateAgeMs(): number | null {
+    if (!existsSync(STORAGE_STATE)) return null;
+    try {
+        return Date.now() - statSync(STORAGE_STATE).mtimeMs;
+    } catch {
+        return null;
+    }
+}
+
 export default async function globalSetup(): Promise<void> {
+    const ageMs = freshStateAgeMs();
+    if (ageMs !== null && ageMs < REUSE_WINDOW_MS) {
+        console.log(`[auth.setup] reusing session (${Math.round(ageMs / 1000)}s old) — no login POST`);
+        return;
+    }
+
     if (TENANT_USER === '' || TENANT_PASS === '') {
         throw new Error(
             'TENANT_USER/TENANT_PASS are not set. playwright.config.js loads them from the '
@@ -50,6 +75,17 @@ export default async function globalSetup(): Promise<void> {
         mkdirSync(dirname(STORAGE_STATE), { recursive: true });
         await context.storageState({ path: STORAGE_STATE });
         console.log(`[auth.setup] tenant session saved -> ${STORAGE_STATE}`);
+    } catch (error) {
+        // The login was refused (most often the 5-per-300s limiter). If a usable session
+        // already exists, reuse it and say so loudly rather than failing the suite.
+        if (freshStateAgeMs() !== null) {
+            console.warn(
+                '[auth.setup] login REFUSED — reusing the existing session state instead of failing the suite. '
+                + 'Reason: ' + (error instanceof Error ? error.message.split('\n')[0] : String(error)),
+            );
+            return;
+        }
+        throw error;
     } finally {
         await browser.close();
     }
