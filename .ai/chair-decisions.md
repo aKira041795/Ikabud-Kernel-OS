@@ -3733,3 +3733,46 @@ assertion, a reorganisation preserves it under a changed line number.
 
 **Authority:** owner instruction (commit) + chair decision (harness/harness-doc scope). No product, schema, auth,
 dependency or baseline change.
+
+## CD-78 — the director's assessment, recorded as doctrine (2026-09-17)
+
+**What the director concluded, in his words.** The restart-without-deleting approach is now **evidenced**, not
+preferred: *"v1 hit an unsatisfiable commit gate and, rather than weakening the verifier, the system recorded the
+blockage; v1 was then frozen while the execution core moved beside it"* — the reason being *"meta-work must not
+displace object-work."* Star Swarm is *"the first result here that starts to answer your original frustration:
+seems like nothing works autonomously."*
+
+**Why the failures changed character.** The five v2 defects are no longer philosophical. They were *discovered by
+running the machine*: a harness outage masqueraded as product failure; the escalation API forced a non-boundary
+problem to pretend to be a boundary; a flaky browser observation was believed after one run; prose requirements let
+incomplete work look complete twice; the owner notice reported acceptance information that did not exist. In the
+director's summary, the question stopped being *"should authority phase X permit interpretation Y?"* and became
+*"the projectile moved through the sample window before we observed it"* — **that is engineering.**
+
+**Directives — these are binding.**
+
+1. **Do not respond to this success by designing HARPP v3.**
+2. Finish the determinism item and run the repeatability test. *(Done: see below.)*
+3. **Then give v2 another real project — return to Akira CMS.** Convert a *small but meaningful* Akira milestone into
+the same requirements-as-data structure that worked for Star Swarm, and instruct HARPP: *"Complete this milestone."*
+**Then stay out.** Explicitly not *"implement item 1."*
+4. The experiment is the transition from `human chooses item → machine completes item` to
+   `human defines outcome → machine exhausts requirements → machine proves outcome → human receives completion`.
+5. **The next claim under test:** *can HARPP autonomously complete a bounded project composed of multiple
+   requirements — including detecting and repairing its own execution and verification failures — without Director
+   intervention?* The brief's original claim was only bounded unattended slice completion; this is the next one, and
+   it is to be *measured*, not debated.
+
+**State at the moment of recording.** The determinism item is **done and chair-verified**: `stability.sh`
+returned **10/10 — STABILITY PASS**, the spec grew to **52 assertions over 2 test files' worth of tests**, concept
+**23/0**, structural **21/0**, every numeric threshold unchanged, and the deterministic fixed-step surface
+(`spawnWave`, `snapshotEnemy`, `step`, `freeze`) is present and asserted by the second test. The driver recorded the
+item `escalated` for a different reason: the assertion guard's **false positive** (L8). That guard is now repaired —
+`tools/harpp2/assertions.php` compares assertion **sets and bounds** instead of lines, self-tested 8/8, and still
+refuses a deleted assertion or a loosened threshold.
+
+**The rule this episode adds to the corpus.** *A check that cannot distinguish weakening from reorganisation is
+itself a defective instrument.* It refused work that took the suite from 28 to 52 assertions — the same class of
+defect as L1–L5, found in the guard that was supposed to be the last line of defence.
+
+**Authority:** director directive 2026-09-17. **Owner intervention:** recorded; no further escalation required.

@@ -112,6 +112,23 @@ through `needsChair()`, which writes `**Boundary:** NONE` in the first line of i
 - **Rule.** *Back up, patch, test, restore, and verify the restore by hash.* A restore mismatch is a stop-the-world
   event, not a footnote.
 
+## L8 — A guard that cannot tell weakening from reorganisation is itself the defect
+
+- **Symptom.** A run that had *strengthened* the test suite was refused with
+  `boundary — test assertion removed or weakened: tests/browser/star-swarm.spec.ts`.
+- **Root cause.** The guard diffed **lines**: any line containing `assert|expect|fail|throw` that vanished from the new
+  text counted as a weakening. Reindenting, reordering, or splitting one test into two therefore looked identical to
+  deleting a check.
+- **Evidence.** The refused file had gone from **28 to 52 assertions** across two tests, with every numeric threshold
+  intact (`< 35` dark space, `> 8` shot pixels, `>= 1.5` overlap, `> 100` ship pixels), all nine concept probes present,
+  and the structural suite up from 18 to 21. Nothing was weakened; the *evidence* said so and the guard could not read it.
+- **Fix.** `tools/harpp2/assertions.php` compares assertion **sets and bounds**, not lines: whitespace normalised,
+  quoted strings masked (so rewording a message is not a removal), a multiset check that every previous assertion
+  still exists, and a bound check that refuses `toBeGreaterThan(8) → toBeGreaterThan(2)` while accepting the reverse.
+  Self-tested 8/8 including the exact false positive above.
+- **Rule.** *A check that cannot distinguish weakening from reorganisation will block exactly the work that makes the
+  suite stronger — and a guard that cries wolf is worse than no guard, because it teaches its reader to override it.*
+
 ---
 
 ## The three questions this file exists to answer

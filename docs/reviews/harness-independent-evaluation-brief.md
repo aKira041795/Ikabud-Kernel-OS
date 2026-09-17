@@ -1210,10 +1210,23 @@ in the editor terminal when the owner is at the workstation, HARPP when away —
 - **The v1 commit gate is still unsatisfiable.** Product work verified on 2026-09-15 remains uncommitted under that
   gate's rules; a decision is filed and **no baseline was edited**. This is unchanged from §3 and is the strongest
   available evidence that the floor holds under pressure.
-- **Determinism is incomplete at the time of writing.** One flake was isolated and repaired (the shot probe, above);
-  the remaining probes still sample live animation once. An item to make them deterministic — with **repeatability as
-  a gate**, `stability.sh` at 10 runs — was **in flight when this revision was written** (`sol/medium`, 08:38:41).
-  Until it lands, "the suite passes" means *it passed when it was run*, which is exactly the claim §4 warns about.
+- **Determinism is now measured, not asserted.** The item landed and was verified **by the chair**, not by the
+executor: `tools/harpp2/stability.sh tests/browser/star-swarm.spec.ts 10` returned **10/10 — STABILITY PASS**, with
+the spec grown to **52 assertions over two tests**, concept **23/0**, structural **21/0**, every numeric threshold
+unchanged, and the deterministic fixed-step surface (`spawnWave`, `snapshotEnemy`, `step`) present *and asserted by the
+second test*. The driver nevertheless recorded the item as `escalated`: the assertion guard was a **false positive**
+(L8) that refused a restructure which *strengthened* the suite. That guard is now repaired —
+`tools/harpp2/assertions.php` compares assertion sets and bounds rather than lines, self-tested 8/8, and still refuses
+a deleted assertion or a loosened threshold. **It is the clearest instance in this document of a correct product
+blocked by a defective instrument.**
+- **The next experiment, named by the director (2026-09-17).** *Not* a HARPP v3. The transition to test is
+`human chooses item → machine completes item` becoming `human defines outcome → machine exhausts requirements →
+machine proves outcome → human receives completion`. The vehicle is a **small but meaningful Akira CMS milestone
+expressed as requirements-as-data**, handed to the chain as *"complete this milestone"* — not as "implement item 1" —
+with the director staying out. The claim under measurement: *can HARPP complete a bounded project of multiple
+requirements, including detecting and repairing its own execution and verification failures, without Director
+intervention?* The original claim of this brief was only bounded unattended slice completion; that remains the
+conservative position until this experiment reports.
 - **Message types are a convention, not a transport fact.** `harpp msg send` has no type field, so the type lives in
   the title prefix (`E2E PASS:` · `E2E FAIL:` · `ITEM …`). A transport-level field remains a suggestion.
 - **The driver's own record for a chair-closed item is left intact.** `star-swarm-iteration-3b` still reads

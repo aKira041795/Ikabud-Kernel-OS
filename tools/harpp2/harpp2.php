@@ -335,9 +335,15 @@ function boundaryViolations(array $changed, array $before, array $after, array $
             }
         }
         if (is_string($old) && is_string($new) && preg_match('/(?:test|spec)/i', $path)) {
-            $removed = array_diff(preg_split('/\R/', $old), preg_split('/\R/', $new));
-            if (preg_grep('/\b(?:assert|expect|fail|throw)\b/i', $removed)) {
-                $violations[] = "test assertion removed or weakened: {$path}";
+            // Assertion-set comparison, not a line diff: reindenting, reordering or splitting a test is not a
+            // weakening, while deleting an assertion or loosening a bound still is (lesson L8).
+            require_once __DIR__ . '/assertions.php';
+            $assertionChange = classifyAssertionChange($old, $new);
+            foreach ($assertionChange['removed'] as $assertion) {
+                $violations[] = "test assertion removed: {$path} — {$assertion}";
+            }
+            foreach ($assertionChange['loosened'] as $bound) {
+                $violations[] = "test assertion weakened (bound loosened): {$path} — {$bound}";
             }
         }
         if (is_string($old) && is_string($new)) {
