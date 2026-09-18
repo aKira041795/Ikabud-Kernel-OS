@@ -130,6 +130,8 @@ test.describe('star swarm', () => {
 
             let pairwiseMinDistance = Number.POSITIVE_INFINITY;
             const centroidSamples: Array<{ x: number; y: number }> = [];
+            const breathScales: number[] = [];
+            const formationSpans: number[] = [];
             for (let sample = 0; sample < 10; sample += 1) {
                 game.test.step(15);
                 state.formation.diveCooldown = 999;
@@ -151,6 +153,11 @@ test.describe('star swarm', () => {
                     x: live.reduce((sum: number, enemy: { x: number; width: number }) => sum + enemy.x + enemy.width / 2, 0) / live.length,
                     y: live.reduce((sum: number, enemy: { y: number; height: number }) => sum + enemy.y + enemy.height / 2, 0) / live.length,
                 });
+                breathScales.push(state.formation.breathScale);
+                formationSpans.push(
+                    Math.max(...live.map((enemy: { x: number; width: number }) => enemy.x + enemy.width))
+                    - Math.min(...live.map((enemy: { x: number }) => enemy.x)),
+                );
             }
 
             const first = centroidSamples[0];
@@ -198,12 +205,34 @@ test.describe('star swarm', () => {
                 star.y = saved.stars[layerIndex][starIndex].y;
             }));
             window.StarSwarm.render();
-            return { pairwiseMinDistance, centroidPath, dispersal, neighbourCount: neighbours.length };
+            return {
+                pairwiseMinDistance,
+                centroidPath,
+                dispersal,
+                neighbourCount: neighbours.length,
+                breathing: {
+                    minScale: Math.min(...breathScales),
+                    maxScale: Math.max(...breathScales),
+                    spanChange: Math.max(...formationSpans) - Math.min(...formationSpans),
+                },
+            };
         });
         expect(swarm.pairwiseMinDistance, 'no pair of settled live enemy bodies overlaps across ten samples')
             .toBeGreaterThanOrEqual(1.5);
         expect(swarm.centroidPath, 'centroid path bends measurably away from its start-to-end chord')
             .toBeGreaterThan(0.5);
+        expect(swarm.breathing, 'formation breathes as the formation expands and contracts under fixed stepping')
+            .toMatchObject({
+                minScale: expect.any(Number),
+                maxScale: expect.any(Number),
+                spanChange: expect.any(Number),
+            });
+        expect(swarm.breathing.minScale, 'breathing contracts settled slots below their neutral scale')
+            .toBeLessThan(0.99);
+        expect(swarm.breathing.maxScale, 'breathing expands settled slots beyond their neutral scale')
+            .toBeGreaterThan(1.01);
+        expect(swarm.breathing.spanChange, 'breathing changes the assembled formation width visibly')
+            .toBeGreaterThan(8);
         expect(swarm.neighbourCount, 'the struck body has enough neighbours to measure colony response')
             .toBeGreaterThanOrEqual(3);
         expect(swarm.dispersal, 'a kill pushes neighbouring bodies radially away from the wound')
@@ -483,6 +512,149 @@ test.describe('star swarm', () => {
 
         const result = await page.evaluate(() => {
             const game = window.StarSwarm;
+            const requiredSurface = ['dualFighter', 'capturedFighter', 'perfectBonus'];
+            const stateSurface = {
+                fields: requiredSurface.filter((field) => Object.prototype.hasOwnProperty.call(game.state, field)),
+                dualFighter: game.state.dualFighter,
+                capturedFighter: game.state.capturedFighter,
+                perfectBonus: game.state.perfectBonus,
+            };
+            const rasterAssets = [
+                ...Array.from(document.querySelectorAll<HTMLImageElement>('#star-swarm img[src]')).map((node) => node.src),
+                ...performance.getEntriesByType('resource').map((entry) => entry.name)
+                    .filter((url) => /\/star-swarm\/.*\.(?:png|jpe?g|gif|webp|bmp)(?:[?#]|$)/i.test(url)),
+            ];
+
+            game.state.shots = [];
+            const shotCounts: number[] = [];
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+                game.state.player.cooldown = 0;
+                game.fireBullet();
+                shotCounts.push(game.state.shots.length);
+            }
+            const shotsShareProjectileState = game.state.shots === game.state.bullets;
+
+            game.test.spawnWave(1);
+            const casteSummary = {
+                names: [...new Set(game.state.enemies.map((enemy: any) => enemy.caste))].sort(),
+                bossCount: game.state.bosses.length,
+                bossesAreLarge: game.state.bosses.every((enemy: any) => enemy.spriteScale > 1),
+            };
+            const killForPoints = (caste: string, diving: boolean, escortCount = 0) => {
+                const enemy = game.state.enemies.find((candidate: any) => candidate.alive && candidate.caste === caste);
+                if (!enemy) throw new Error(`No live ${caste} available for scoring probe`);
+                enemy.diving = diving;
+                enemy.escortCount = escortCount;
+                const before = game.state.score;
+                game.destroyEnemy(enemy);
+                return game.state.score - before;
+            };
+            const arcadePoints = {
+                bee: {
+                    formation: killForPoints('bee', false),
+                    flight: killForPoints('bee', true),
+                },
+                butterfly: {
+                    formation: killForPoints('butterfly', false),
+                    flight: killForPoints('butterfly', true),
+                },
+                boss: {
+                    formation: killForPoints('boss', false),
+                    solo: killForPoints('boss', true),
+                    oneEscort: killForPoints('boss', true, 1),
+                    twoEscorts: killForPoints('boss', true, 2),
+                },
+            };
+
+            game.state.score = 0;
+            game.state.highScore = 0;
+            game.state.lives = 3;
+            game.state.extraShipAt = 20000;
+            game.addScore(19999);
+            const beforeExtraShip = {
+                lives: game.state.lives,
+                next: game.state.extraShipAt,
+            };
+            game.addScore(1);
+            const firstExtraShip = {
+                lives: game.state.lives,
+                next: game.state.extraShipAt,
+            };
+            game.addScore(69999);
+            const beforeRepeat = game.state.lives;
+            game.addScore(1);
+            const repeatedExtraShip = {
+                score: game.state.score,
+                highScore: game.state.highScore,
+                lives: game.state.lives,
+                next: game.state.extraShipAt,
+            };
+
+            const canvas = document.querySelector<HTMLCanvasElement>('#star-swarm-canvas')!;
+            const ctx = canvas.getContext('2d')!;
+            const originalEllipse = ctx.ellipse.bind(ctx);
+            let cockpitCount = 0;
+            (ctx as any).ellipse = (
+                x: number, y: number, radiusX: number, radiusY: number,
+                rotation: number, startAngle: number, endAngle: number, counterclockwise?: boolean,
+            ) => {
+                if (y > canvas.height * 0.75 && radiusX === 5 && radiusY === 7) cockpitCount += 1;
+                originalEllipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
+            };
+            game.state.player.invulnerable = 0;
+            game.state.dualFighter = false;
+            game.render();
+            const singleFighter = { cockpits: cockpitCount, width: game.state.player.width };
+            cockpitCount = 0;
+            game.state.dualFighter = true;
+            game.render();
+            const dualFighter = { cockpits: cockpitCount, width: game.state.player.width };
+            (ctx as any).ellipse = originalEllipse;
+            game.state.dualFighter = false;
+
+            game.test.spawnWave(3);
+            game.state.score = 0;
+            game.state.highScore = 0;
+            game.state.extraShipAt = 20000;
+            const challengingEnemyCount = game.state.enemies.length;
+            game.state.enemies.forEach((_: unknown, index: number) => game.test.kill(index));
+            const challengingScore = {
+                enemies: challengingEnemyCount,
+                destroyed: game.state.challengingDestroyed,
+                score: game.state.score,
+                perfectBonus: game.state.perfectBonus,
+            };
+            game.test.spawnWave(1);
+            const perfectBonusAfterStageChange = game.state.perfectBonus;
+
+            const routeIndexes = ['top', 'left', 'right'].map((route) =>
+                game.state.enemies.findIndex((enemy: any) => enemy.entrySide === route));
+            game.test.step(1);
+            const entryStart = routeIndexes.map((index) => game.test.snapshotEnemy(index));
+            game.test.step(34);
+            const entryMiddle = routeIndexes.map((index) => game.test.snapshotEnemy(index));
+            game.test.step(35);
+            const entryEnd = routeIndexes.map((index) => game.test.snapshotEnemy(index));
+            const distanceFromChord = (start: any, middle: any, end: any) => {
+                if (!start || !middle || !end) return 0;
+                const dx = end.x - start.x;
+                const dy = end.y - start.y;
+                const length = Math.max(1, Math.hypot(dx, dy));
+                return Math.abs(dy * middle.x - dx * middle.y + end.x * start.y - end.y * start.x) / length;
+            };
+            const entryFlight = {
+                routes: routeIndexes.map((index) => game.test.snapshotEnemy(index)?.entrySide ?? null),
+                offscreenOrigins: entryStart.map((enemy: any) => enemy?.entrySide === 'top'
+                    ? enemy.y < 0
+                    : enemy?.entrySide === 'left' ? enemy.x + enemy.width < 0 : enemy?.x > canvas.width),
+                curveOffsets: entryStart.map((enemy, index) =>
+                    distanceFromChord(enemy, entryMiddle[index], entryEnd[index])),
+                spinTravel: entryStart.map((enemy: any, index) =>
+                    Math.abs((entryMiddle[index]?.rotation ?? 0) - (enemy?.rotation ?? 0))),
+            };
+            game.test.step(120);
+            entryFlight.settled = game.state.enemies.every((enemy: any) => !enemy.entering);
+
             const sampleRun = () => {
                 game.test.spawnWave(3);
                 const origin = game.test.snapshotEnemy(0);
@@ -495,13 +667,44 @@ test.describe('star swarm', () => {
             const scoreBefore = game.state.score;
             const killed = game.test.kill(0);
             const victim = game.test.snapshotEnemy(0);
+            const explosionAtImpact = game.state.explosions[0];
+            const debrisAtImpact = explosionAtImpact?.debris.map((particle: any) => ({
+                x: particle.x,
+                y: particle.y,
+            })) ?? [];
+            game.test.step(6);
+            const animatedExplosion = game.state.explosions[0];
+            const destructionAnimation = {
+                enemyRemoved: victim?.alive === false,
+                effectCount: game.state.explosions.length,
+                debrisCount: animatedExplosion?.debris.length ?? 0,
+                age: animatedExplosion?.age ?? 0,
+                debrisMoved: animatedExplosion?.debris.some((particle: any, index: number) =>
+                    particle.x !== debrisAtImpact[index]?.x || particle.y !== debrisAtImpact[index]?.y) ?? false,
+            };
             return {
                 first,
                 second,
                 killed,
                 victimAlive: victim?.alive,
                 scoreDelta: game.state.score - scoreBefore,
+                destructionAnimation,
                 animationFrameHandle: game.lane.frame,
+                shotCounts,
+                shotsShareProjectileState,
+                casteSummary,
+                arcadePoints,
+                beforeExtraShip,
+                firstExtraShip,
+                beforeRepeat,
+                repeatedExtraShip,
+                stateSurface,
+                rasterAssets,
+                singleFighter,
+                dualFighter,
+                challengingScore,
+                perfectBonusAfterStageChange,
+                entryFlight,
             };
         });
 
@@ -518,6 +721,60 @@ test.describe('star swarm', () => {
         expect(result.killed, 'kill accepts an enemy index through the real kill path').toBe(true);
         expect(result.victimAlive, 'kill marks that indexed enemy dead').toBe(false);
         expect(result.scoreDelta, 'kill retains the real score side effect').toBe(100);
+        expect(result.destructionAnimation, 'destruction animation replaces silent removal with moving explosion frames')
+            .toMatchObject({
+                enemyRemoved: true,
+                effectCount: 1,
+                debrisCount: expect.any(Number),
+                debrisMoved: true,
+            });
+        expect(result.destructionAnimation.debrisCount, 'explosion frames contain multiple independently moving fragments')
+            .toBeGreaterThanOrEqual(9);
+        expect(result.destructionAnimation.age, 'fixed clock stepping advances the explosion lifetime')
+            .toBeCloseTo(0.1, 5);
+        expect(result.shotCounts, 'at most two player shots survive repeated fire attempts').toEqual([1, 2, 2, 2]);
+        expect(result.shotsShareProjectileState, 'shots expose the live player projectile state').toBe(true);
+        expect(result.casteSummary.names, 'three enemy castes are distinct: bee butterfly and boss')
+            .toEqual(['bee', 'boss', 'butterfly']);
+        expect(result.casteSummary, 'four Boss Galaga ships are larger than the other procedural castes')
+            .toMatchObject({ bossCount: 4, bossesAreLarge: true });
+        expect(result.arcadePoints.bee, 'bee scores 50 in formation and 80 in flight')
+            .toEqual({ formation: 50, flight: 80 });
+        expect(result.arcadePoints.butterfly, 'butterfly scores 80 in formation and 160 in flight')
+            .toEqual({ formation: 80, flight: 160 });
+        expect(result.arcadePoints.boss, 'boss scores 150 400 800 and 1600 according to diving escorts')
+            .toEqual({ formation: 150, solo: 400, oneEscort: 800, twoEscorts: 1600 });
+        expect(result.beforeExtraShip, 'extra ship at 20000 is not awarded one point early').toEqual({ lives: 3, next: 20000 });
+        expect(result.firstExtraShip, 'reaching 20000 awards exactly one ship and advances the threshold by 70000')
+            .toEqual({ lives: 4, next: 90000 });
+        expect(result.beforeRepeat, 'the recurring extra ship is not awarded one point early').toBe(4);
+        expect(result.repeatedExtraShip, 'the 70000-point recurring threshold awards one ship and retains high score')
+            .toEqual({ score: 90000, highScore: 90000, lives: 5, next: 160000 });
+        expect(result.stateSurface, 'the state surface exposes live capture, dual-fighter, and perfect-bonus state')
+            .toEqual({
+                fields: ['dualFighter', 'capturedFighter', 'perfectBonus'],
+                dualFighter: false,
+                capturedFighter: null,
+                perfectBonus: 0,
+            });
+        expect(result.dualFighter, 'dual fighter is two docked ships with two complete cockpit silhouettes')
+            .toEqual({ cockpits: 2, width: 90 });
+        expect(result.singleFighter, 'the single player fighter remains a distinct one-cockpit silhouette')
+            .toEqual({ cockpits: 1, width: 44 });
+        expect(result.dualFighter.width, 'the docked pair has a larger live collision width than the single fighter')
+            .toBeGreaterThan(result.singleFighter.width);
+        expect(result.rasterAssets, 'no raster assets are requested or mounted as sprite images').toEqual([]);
+        expect(result.challengingScore, 'perfect bonus of 10000 is awarded only after all forty challenging enemies')
+            .toEqual({ enemies: 40, destroyed: 40, score: 14000, perfectBonus: 10000 });
+        expect(result.perfectBonusAfterStageChange, 'perfect bonus state resets when the next stage is spawned').toBe(0);
+        expect(result.entryFlight.routes, 'entry paths sweep in from the top and both sides')
+            .toEqual(['top', 'left', 'right']);
+        expect(result.entryFlight.offscreenOrigins, 'each route starts beyond its named canvas edge').toEqual([true, true, true]);
+        expect(Math.min(...result.entryFlight.curveOffsets), 'top and side entrances bend away from a straight chord')
+            .toBeGreaterThan(12);
+        expect(Math.min(...result.entryFlight.spinTravel), 'every route spins visibly while sweeping toward formation')
+            .toBeGreaterThan(Math.PI);
+        expect(result.entryFlight.settled, 'all staggered entrants settle into the formation under the fixed clock').toBe(true);
         expect(result.animationFrameHandle, 'test mode owns the clock instead of racing requestAnimationFrame').toBe(0);
         expect(pageErrors, 'no unhandled page errors').toEqual([]);
         expect(consoleErrors, 'no console errors').toEqual([]);

@@ -57,6 +57,12 @@
     // --- constants -------------------------------------------------------------
     var PLAYER_SPEED = 420;        // px per second
     var PLAYER_FIRE_COOLDOWN = 0.22;
+    var PLAYER_SHOT_LIMIT = 2;
+    var SINGLE_FIGHTER_WIDTH = 44;
+    var DUAL_FIGHTER_WIDTH = 90;
+    var DUAL_FIGHTER_OFFSET = 46;
+    var FIRST_EXTRA_SHIP_SCORE = 20000;
+    var EXTRA_SHIP_INTERVAL = 70000;
     var BULLET_SPEED = 620;
     var ENEMY_BULLET_SPEED = 260;
     var ENEMY_ROWS = 4;
@@ -65,6 +71,11 @@
     var ENEMY_HEIGHT = 26;
     var ENEMY_GAP_X = 18;
     var ENEMY_GAP_Y = 16;
+    var ENEMY_SCORES = Object.freeze({
+        bee: Object.freeze({ formation: 50, flight: 80 }),
+        butterfly: Object.freeze({ formation: 80, flight: 160 }),
+        boss: Object.freeze({ formation: 150, flight: Object.freeze([400, 800, 1600]) })
+    });
 
     // A mood changes the colony's motion grammar, not merely its speed. Waves
     // enter at successive points in this vocabulary and continue cycling.
@@ -96,17 +107,31 @@
         paused: false,
         gameOver: false,
         score: 0,
+        highScore: 0,
         lives: 3,
+        extraShipAt: FIRST_EXTRA_SHIP_SCORE,
         wave: 1,
+        stage: 1,
+        stageKind: 'standard',
+        challenging: false,
+        challengingDestroyed: 0,
+        perfectBonus: 0,
         mood: 'undulate',
         moodCadence: MOOD_RULES[0].cadence,
         moodElapsed: 0,
-        player: { x: 380, y: 540, width: 44, height: 26, role: 'ally', invulnerable: 0, cooldown: 0, bank: 0 },
+        player: {
+            x: 380, y: 540, width: SINGLE_FIGHTER_WIDTH, height: 26,
+            role: 'ally', invulnerable: 0, cooldown: 0, bank: 0,
+            dualFighter: false, capturedFighter: null
+        },
         bullets: [],
         enemyBullets: [],
         enemies: [],
         nursery: { x: 704, y: 112, radius: 76 },
-        formation: { direction: 1, speed: 40, elapsed: 0, diveCooldown: 2.5, headingX: 0, headingY: 0 },
+        formation: {
+            direction: 1, speed: 40, elapsed: 0, diveCooldown: 2.5,
+            headingX: 0, headingY: 0, breathScale: 1
+        },
         starLayers: [],
         planets: [],
         explosions: [],
@@ -116,9 +141,60 @@
         elapsed: 0
     };
 
+    // Galaga calls the player projectiles "shots". Keep the legacy bullets
+    // name as the writable backing store while exposing the arcade term as a
+    // live view, so both input and deterministic probes observe one array.
+    Object.defineProperties(state, {
+        shots: {
+            enumerable: true,
+            get: function () { return state.bullets; },
+            set: function (value) { state.bullets = value; }
+        },
+        enemyShots: {
+            enumerable: true,
+            get: function () { return state.enemyBullets; },
+            set: function (value) { state.enemyBullets = value; }
+        },
+        bosses: {
+            enumerable: true,
+            get: function () {
+                return state.enemies.filter(function (enemy) { return enemy.caste === 'boss'; });
+            }
+        },
+        dualFighter: {
+            enumerable: true,
+            get: function () { return state.player.dualFighter; },
+            set: function (active) {
+                state.player.dualFighter = Boolean(active);
+                state.player.width = state.player.dualFighter ? DUAL_FIGHTER_WIDTH : SINGLE_FIGHTER_WIDTH;
+                state.player.x = clamp(state.player.x, 0, canvasWidth() - state.player.width);
+            }
+        },
+        capturedFighter: {
+            enumerable: true,
+            get: function () { return state.player.capturedFighter; },
+            set: function (fighter) { state.player.capturedFighter = fighter || null; }
+        }
+    });
+
     // --- helpers ---------------------------------------------------------------
     function clamp(value, low, high) {
         return Math.max(low, Math.min(high, value));
+    }
+
+    function cubicBezier(start, controlA, controlB, end, progress) {
+        var inverse = 1 - progress;
+        return inverse * inverse * inverse * start
+            + 3 * inverse * inverse * progress * controlA
+            + 3 * inverse * progress * progress * controlB
+            + progress * progress * progress * end;
+    }
+
+    function cubicBezierTangent(start, controlA, controlB, end, progress) {
+        var inverse = 1 - progress;
+        return 3 * inverse * inverse * (controlA - start)
+            + 6 * inverse * progress * (controlB - controlA)
+            + 3 * progress * progress * (end - controlB);
     }
 
     // Normal play keeps the browser's random source. The test surface swaps in
@@ -192,30 +268,66 @@
     // bands. Scale changes both the drawn body and its collision footprint.
     function createFormation(wave) {
         var enemies = [];
-        var rows = Math.min(ENEMY_ROWS + Math.floor((wave - 1) / 2), 6);
-        var cols = Math.min(ENEMY_COLS + (wave > 1 ? 1 : 0), 10);
+        // Challenging stages contain the arcade forty; standard stages may
+        // grow as difficulty rises.
+        var rows = state.challenging ? 5 : Math.min(ENEMY_ROWS + Math.floor((wave - 1) / 2), 6);
+        var cols = state.challenging ? 8 : Math.min(ENEMY_COLS + (wave > 1 ? 1 : 0), 10);
         var totalWidth = cols * ENEMY_WIDTH + (cols - 1) * ENEMY_GAP_X;
         var startX = (canvasWidth() - totalWidth) / 2;
         var scales = [0.72, 1, 1.28];
         for (var row = 0; row < rows; row += 1) {
             for (var col = 0; col < cols; col += 1) {
                 var scale = scales[(row + col) % scales.length];
-                // Each row has a caste whose outline communicates its job even
-                // when every caste shares the same threat colour.
+                // Preserve the four swarm roles while adding Galaga's arcade
+                // caste hierarchy. Four bosses occupy the centre of the top
+                // row; butterflies screen them and bees fill the lower ranks.
                 var enemyClass = row === 0 ? 'commander' : (row === 1 ? 'fighter' : (row === 2 ? 'scout' : 'harvester'));
-                var originAngle = (row * cols + col) * 2.39996;
-                var originRadius = 8 + ((row * cols + col) % 3) * 6;
+                var bossStart = Math.floor(cols / 2) - 2;
+                var caste = row === 0 && col >= bossStart && col < bossStart + 4
+                    ? 'boss'
+                    : (row < 2 || (row === 2 && col < 2) ? 'butterfly' : 'bee');
+                var sizeMultiplier = caste === 'boss' ? 1.22 : 1;
+                var enemyIndex = row * cols + col;
+                var originAngle = enemyIndex * 2.39996;
+                var originRadius = 8 + (enemyIndex % 3) * 6;
+                var nurseryX = state.nursery.x + Math.cos(originAngle) * originRadius;
+                var nurseryY = state.nursery.y + Math.sin(originAngle) * originRadius;
+                var slotX = startX + col * (ENEMY_WIDTH + ENEMY_GAP_X);
+                var slotY = 60 + row * (ENEMY_HEIGHT + ENEMY_GAP_Y);
+                var entrySide = ['top', 'left', 'right'][enemyIndex % 3];
+                var entryStartX = entrySide === 'left' ? -70
+                    : (entrySide === 'right' ? canvasWidth() + 70 : 80 + (enemyIndex * 83) % (canvasWidth() - 160));
+                var entryStartY = entrySide === 'top' ? -60 : 35 + (enemyIndex * 47) % 250;
+                var entryControlAX = entrySide === 'top' ? entryStartX + (col % 2 === 0 ? -150 : 150)
+                    : (entrySide === 'left' ? canvasWidth() * 0.3 : canvasWidth() * 0.7);
+                var entryControlAY = entrySide === 'top' ? 95
+                    : entryStartY + (row % 2 === 0 ? 150 : -110);
+                var entryControlBX = slotX + (entrySide === 'left' ? -170 : (entrySide === 'right' ? 170 : (col % 2 === 0 ? 120 : -120)));
+                var entryControlBY = slotY - (entrySide === 'top' ? 90 : 125);
                 enemies.push({
-                    x: state.nursery.x + Math.cos(originAngle) * originRadius,
-                    y: state.nursery.y + Math.sin(originAngle) * originRadius,
-                    originX: state.nursery.x + Math.cos(originAngle) * originRadius,
-                    originY: state.nursery.y + Math.sin(originAngle) * originRadius,
-                    baseX: startX + col * (ENEMY_WIDTH + ENEMY_GAP_X),
-                    baseY: 60 + row * (ENEMY_HEIGHT + ENEMY_GAP_Y),
-                    width: ENEMY_WIDTH * scale,
-                    height: ENEMY_HEIGHT * scale,
+                    // The observable hatch point remains the nursery used by
+                    // the colony contract. On its first update, each actor
+                    // begins the visible Galaga entrance at a canvas edge.
+                    x: nurseryX,
+                    y: nurseryY,
+                    originX: nurseryX,
+                    originY: nurseryY,
+                    entrySide: entrySide,
+                    entryStartX: entryStartX,
+                    entryStartY: entryStartY,
+                    entryControlAX: entryControlAX,
+                    entryControlAY: entryControlAY,
+                    entryControlBX: entryControlBX,
+                    entryControlBY: entryControlBY,
+                    rotation: 0,
+                    baseX: slotX,
+                    baseY: slotY,
+                    width: ENEMY_WIDTH * scale * sizeMultiplier,
+                    height: ENEMY_HEIGHT * scale * sizeMultiplier,
                     scale: scale,
+                    spriteScale: sizeMultiplier,
                     class: enemyClass,
+                    caste: caste,
                     role: 'threat',
                     row: row,
                     col: col,
@@ -240,6 +352,7 @@
         state.formation.direction = 1;
         state.formation.speed = 40 + (wave - 1) * 14;
         state.formation.elapsed = 0;
+        state.formation.breathScale = 1;
         state.formation.headingX = state.formation.speed;
         state.formation.headingY = 0;
         state.formation.diveCooldown = Math.max(1.1, 2.6 - wave * 0.2);
@@ -264,6 +377,13 @@
 
     function startWave(wave) {
         state.wave = wave;
+        state.stage = wave;
+        // Original Galaga's first challenging stage is stage 3, recurring
+        // every fourth stage thereafter (3, 7, 11, ...).
+        state.challenging = wave >= 3 && (wave - 3) % 4 === 0;
+        state.stageKind = state.challenging ? 'challenging' : 'standard';
+        state.challengingDestroyed = 0;
+        state.perfectBonus = 0;
         applyMood((wave - 1) % MOOD_RULES.length);
         state.enemies = createFormation(wave);
         state.enemyBullets = [];
@@ -272,6 +392,11 @@
 
     function addScore(points) {
         state.score += points;
+        state.highScore = Math.max(state.highScore, state.score);
+        while (state.score >= state.extraShipAt) {
+            state.lives += 1;
+            state.extraShipAt += EXTRA_SHIP_INTERVAL;
+        }
         updateHud();
     }
 
@@ -288,6 +413,9 @@
         state.paused = false;
         state.score = 0;
         state.lives = 3;
+        state.extraShipAt = FIRST_EXTRA_SHIP_SCORE;
+        state.dualFighter = false;
+        state.capturedFighter = null;
         state.bullets = [];
         state.enemyBullets = [];
         startWave(1);
@@ -341,18 +469,23 @@
         if (!state.running || state.paused || state.gameOver) {
             return;
         }
-        if (state.player.cooldown > 0) {
+        if (state.player.cooldown > 0 || state.shots.length >= PLAYER_SHOT_LIMIT) {
             return;
         }
         state.player.cooldown = PLAYER_FIRE_COOLDOWN;
-        state.bullets.push({
-            x: state.player.x + state.player.width / 2 - 2,
-            y: state.player.y - 10,
-            width: 4,
-            height: 14,
-            role: 'ally',
-            speed: BULLET_SPEED
-        });
+        var muzzles = state.dualFighter
+            ? [SINGLE_FIGHTER_WIDTH / 2, DUAL_FIGHTER_OFFSET + SINGLE_FIGHTER_WIDTH / 2]
+            : [state.player.width / 2];
+        for (var i = 0; i < muzzles.length && state.shots.length < PLAYER_SHOT_LIMIT; i += 1) {
+            state.bullets.push({
+                x: state.player.x + muzzles[i] - 2,
+                y: state.player.y - 10,
+                width: 4,
+                height: 14,
+                role: 'ally',
+                speed: BULLET_SPEED
+            });
+        }
     }
 
     function setMove(direction, pressed) {
@@ -528,14 +661,34 @@
         }
     }
 
+    function enemyPointValue(enemy) {
+        if (state.challenging) return 100;
+        if (enemy.caste === 'bee') return enemy.diving ? ENEMY_SCORES.bee.flight : ENEMY_SCORES.bee.formation;
+        if (enemy.caste === 'butterfly') return enemy.diving ? ENEMY_SCORES.butterfly.flight : ENEMY_SCORES.butterfly.formation;
+        if (enemy.caste === 'boss') {
+            if (!enemy.diving) return ENEMY_SCORES.boss.formation;
+            var escorts = clamp(Number(enemy.escortCount) || 0, 0, 2);
+            return ENEMY_SCORES.boss.flight[escorts];
+        }
+        return 100;
+    }
+
     function destroyEnemy(enemy) {
         if (!enemy || !enemy.alive) return false;
+        var points = enemyPointValue(enemy);
         enemy.flash = 0.12;
         enemy.alive = false;
         disperseNeighbours(enemy);
         createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.type);
-        state.scorePopups.push({ x: enemy.x + enemy.width / 2, y: enemy.y, text: '+100', role: 'reward', life: 0.8 });
-        addScore(100);
+        state.scorePopups.push({ x: enemy.x + enemy.width / 2, y: enemy.y, text: '+' + points, role: 'reward', life: 0.8 });
+        addScore(points);
+        if (state.challenging) {
+            state.challengingDestroyed += 1;
+            if (state.challengingDestroyed === 40) {
+                state.perfectBonus = 10000;
+                addScore(state.perfectBonus);
+            }
+        }
         return true;
     }
 
@@ -549,6 +702,10 @@
         var mood = currentMoodRule();
         var sway = Math.sin(state.formation.elapsed * mood.swayRate) * mood.swayWidth;
         var breath = Math.sin(state.formation.elapsed * mood.swayRate * 1.7);
+        // Scale each settled slot away from or toward the formation centre.
+        // This makes the assembled grid expand and contract as one body rather
+        // than merely bobbing alternating enemies up and down.
+        state.formation.breathScale = 1 + breath * mood.breathe / 100;
         var drift = state.formation.speed * dt * state.formation.direction;
         // Two incommensurate arcs make the colony centroid wander through the
         // corridor instead of tracing a straight rail. Individual steering is
@@ -560,13 +717,19 @@
         });
         var averageVx = 0;
         var averageVy = 0;
+        var formationCenterX = 0;
+        var formationCenterY = 0;
         for (var f = 0; f < flock.length; f += 1) {
             averageVx += flock[f].swarmVx;
             averageVy += flock[f].swarmVy;
+            formationCenterX += flock[f].baseX + flock[f].width / 2;
+            formationCenterY += flock[f].baseY + flock[f].height / 2;
         }
         if (flock.length > 0) {
             averageVx /= flock.length;
             averageVy /= flock.length;
+            formationCenterX /= flock.length;
+            formationCenterY /= flock.length;
         }
         state.formation.headingX = averageVx;
         state.formation.headingY = averageVy;
@@ -578,11 +741,25 @@
             enemy.flash = Math.max(0, enemy.flash - dt);
             if (enemy.entering) {
                 enemy.entranceTime += dt;
-                var entrance = clamp((enemy.entranceTime - enemy.entranceDelay) / 0.9, 0, 1);
-                var eased = 1 - Math.pow(1 - entrance, 3);
+                var entrance = clamp((enemy.entranceTime - enemy.entranceDelay) / 1.15, 0, 1);
                 var targetX = enemy.baseX + sway;
-                enemy.x = enemy.originX + (targetX - enemy.originX) * eased + Math.sin(entrance * Math.PI) * 54;
-                enemy.y = enemy.originY + (enemy.baseY - enemy.originY) * eased - Math.sin(entrance * Math.PI) * 36;
+                enemy.x = cubicBezier(
+                    enemy.entryStartX, enemy.entryControlAX, enemy.entryControlBX, targetX, entrance
+                );
+                enemy.y = cubicBezier(
+                    enemy.entryStartY, enemy.entryControlAY, enemy.entryControlBY, enemy.baseY, entrance
+                );
+                var tangentX = cubicBezierTangent(
+                    enemy.entryStartX, enemy.entryControlAX, enemy.entryControlBX, targetX, entrance
+                );
+                var tangentY = cubicBezierTangent(
+                    enemy.entryStartY, enemy.entryControlAY, enemy.entryControlBY, enemy.baseY, entrance
+                );
+                // Five complete turns layer the arcade spin over the curve's
+                // travel heading, then stop squarely in the assembled grid.
+                enemy.rotation = entrance < 1
+                    ? Math.atan2(tangentY, tangentX) + entrance * Math.PI * 10
+                    : 0;
                 enemy.entering = entrance < 1;
                 continue;
             }
@@ -599,11 +776,16 @@
                 continue;
             }
             enemy.baseX += drift;
-            // Undulation breathes by row, probing leans toward one flank, and
-            // frenzy ripples alternating bodies: distinct readable behaviours.
+            // Breathing scales the grid around its centre; probing also leans
+            // toward one flank, preserving distinct readable mood behaviours.
             var flank = (enemy.col / Math.max(1, ENEMY_COLS - 1)) * 2 - 1;
-            var targetX = enemy.baseX + sway + colonyDriftX + flank * mood.lean * breath + enemy.dispersalX;
-            var targetY = enemy.baseY + colonyDriftY + breath * mood.breathe * (enemy.col % 2 === 0 ? 1 : -1) + enemy.dispersalY;
+            var breathOffsetX = (enemy.baseX + enemy.width / 2 - formationCenterX)
+                * (state.formation.breathScale - 1);
+            var breathOffsetY = (enemy.baseY + enemy.height / 2 - formationCenterY)
+                * (state.formation.breathScale - 1);
+            var targetX = enemy.baseX + breathOffsetX + sway + colonyDriftX
+                + flank * mood.lean * breath + enemy.dispersalX;
+            var targetY = enemy.baseY + breathOffsetY + colonyDriftY + enemy.dispersalY;
             // Cohesion pulls each body toward its place in the living colony;
             // alignment shares the flock's heading without erasing hit impulses.
             var accelerationX = (targetX - enemy.x) * 13 + (averageVx - enemy.swarmVx) * 0.55;
@@ -673,6 +855,7 @@
     }
 
     function updateEnemyFire(dt) {
+        if (state.challenging) return;
         var living = state.enemies.filter(function (enemy) { return enemy.alive; });
         if (living.length === 0) {
             return;
@@ -864,11 +1047,41 @@
     }
 
     function drawEnemy(ctx, enemy, theme) {
-        var scale = enemy.scale || 1;
+        var scale = (enemy.scale || 1) * (enemy.spriteScale || 1);
         ctx.save();
         ctx.translate(enemy.x, enemy.y);
         ctx.scale(scale, scale);
-        if (enemy.diving) ctx.rotate(Math.sin(enemy.diveTime * 5) * 0.08);
+        if (enemy.entering) ctx.rotate(enemy.rotation || 0);
+        else if (enemy.diving) ctx.rotate(Math.sin(enemy.diveTime * 5) * 0.08);
+
+        if (enemy.caste) {
+            // Galaga silhouettes remain readable without raster art: yellow /
+            // blue bees, red / white butterflies, and a broad two-horned boss.
+            ctx.fillStyle = enemy.flash > 0 ? theme.text
+                : (enemy.caste === 'bee' ? theme.accent : (enemy.caste === 'butterfly' ? theme.tertiary : theme.roles.threat));
+            ctx.beginPath();
+            if (enemy.caste === 'bee') {
+                ctx.moveTo(17, 2); ctx.lineTo(24, 9); ctx.lineTo(32, 8); ctx.lineTo(27, 16);
+                ctx.lineTo(30, 24); ctx.lineTo(20, 21); ctx.lineTo(17, 27); ctx.lineTo(14, 21);
+                ctx.lineTo(4, 24); ctx.lineTo(7, 16); ctx.lineTo(2, 8); ctx.lineTo(10, 9);
+            } else if (enemy.caste === 'butterfly') {
+                ctx.moveTo(17, 3); ctx.lineTo(23, 9); ctx.lineTo(34, 4); ctx.lineTo(30, 16);
+                ctx.lineTo(34, 24); ctx.lineTo(22, 20); ctx.lineTo(17, 27); ctx.lineTo(12, 20);
+                ctx.lineTo(0, 24); ctx.lineTo(4, 16); ctx.lineTo(0, 4); ctx.lineTo(11, 9);
+            } else {
+                ctx.moveTo(3, 0); ctx.lineTo(13, 7); ctx.lineTo(17, 3); ctx.lineTo(21, 7);
+                ctx.lineTo(31, 0); ctx.lineTo(34, 13); ctx.lineTo(27, 25); ctx.lineTo(20, 21);
+                ctx.lineTo(17, 29); ctx.lineTo(14, 21); ctx.lineTo(7, 25); ctx.lineTo(0, 13);
+            }
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = enemy.caste === 'bee' ? theme.primaryDark : theme.text;
+            ctx.fillRect(10, 11, 5, 5); ctx.fillRect(20, 11, 5, 5);
+            ctx.restore();
+            return;
+        }
+
+        // Legacy role silhouettes remain available to the visual contract's
+        // isolated renderer probes; live formations use the Galaga castes.
         ctx.fillStyle = enemy.flash > 0 ? theme.text : theme.roles[enemy.role];
         ctx.beginPath();
         if (enemy.type === 'commander') {
@@ -910,8 +1123,8 @@
         ctx.restore();
     }
 
-    function drawRocket(ctx, player, theme) {
-        var cx = player.x + player.width / 2;
+    function drawFighterHull(ctx, x, player, theme) {
+        var cx = x + SINGLE_FIGHTER_WIDTH / 2;
         ctx.save();
         ctx.translate(cx, player.y + player.height / 2);
         ctx.rotate(player.bank * 0.16);
@@ -920,13 +1133,22 @@
         ctx.fillStyle = theme.accent;
         ctx.beginPath(); ctx.moveTo(cx - 6, player.y + 23); ctx.lineTo(cx, player.y + 23 + flame); ctx.lineTo(cx + 6, player.y + 23); ctx.fill();
         ctx.fillStyle = theme.primaryDark;
-        ctx.beginPath(); ctx.moveTo(player.x + 3, player.y + 26); ctx.lineTo(player.x + 15, player.y + 15); ctx.lineTo(player.x + 16, player.y + 28); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(player.x + 41, player.y + 26); ctx.lineTo(player.x + 29, player.y + 15); ctx.lineTo(player.x + 28, player.y + 28); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x + 3, player.y + 26); ctx.lineTo(x + 15, player.y + 15); ctx.lineTo(x + 16, player.y + 28); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x + 41, player.y + 26); ctx.lineTo(x + 29, player.y + 15); ctx.lineTo(x + 28, player.y + 28); ctx.fill();
         ctx.fillStyle = theme.roles[player.role];
-        ctx.beginPath(); ctx.moveTo(cx, player.y); ctx.quadraticCurveTo(player.x + 34, player.y + 14, cx + 8, player.y + 27); ctx.lineTo(cx - 8, player.y + 27); ctx.quadraticCurveTo(player.x + 10, player.y + 14, cx, player.y); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, player.y); ctx.quadraticCurveTo(x + 34, player.y + 14, cx + 8, player.y + 27); ctx.lineTo(cx - 8, player.y + 27); ctx.quadraticCurveTo(x + 10, player.y + 14, cx, player.y); ctx.fill();
         ctx.fillStyle = theme.text;
         ctx.beginPath(); ctx.ellipse(cx, player.y + 10, 5, 7, 0, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
+    }
+
+    function drawRocket(ctx, player, theme) {
+        drawFighterHull(ctx, player.x, player, theme);
+        if (state.dualFighter) {
+            // The upgrade is a second complete docked fighter, not a stretched
+            // version of the single hull.
+            drawFighterHull(ctx, player.x + DUAL_FIGHTER_OFFSET, player, theme);
+        }
     }
 
     function drawEffects(ctx, theme) {
@@ -1138,6 +1360,12 @@
         constants: {
             PLAYER_SPEED: PLAYER_SPEED,
             PLAYER_FIRE_COOLDOWN: PLAYER_FIRE_COOLDOWN,
+            PLAYER_SHOT_LIMIT: PLAYER_SHOT_LIMIT,
+            SINGLE_FIGHTER_WIDTH: SINGLE_FIGHTER_WIDTH,
+            DUAL_FIGHTER_WIDTH: DUAL_FIGHTER_WIDTH,
+            FIRST_EXTRA_SHIP_SCORE: FIRST_EXTRA_SHIP_SCORE,
+            EXTRA_SHIP_INTERVAL: EXTRA_SHIP_INTERVAL,
+            ENEMY_SCORES: ENEMY_SCORES,
             BULLET_SPEED: BULLET_SPEED,
             ENEMY_BULLET_SPEED: ENEMY_BULLET_SPEED,
             STARFIELD_DEPTHS: STARFIELD_DEPTHS,
@@ -1149,6 +1377,7 @@
         createFormation: createFormation,
         startWave: startWave,
         addScore: addScore,
+        enemyPointValue: enemyPointValue,
         fireBullet: fireBullet,
         destroyEnemy: destroyEnemy,
         startGame: startGame,
