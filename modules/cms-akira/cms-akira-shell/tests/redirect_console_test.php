@@ -189,19 +189,17 @@ try {
     // ── Declaration test: routes, dependencies, sidebar contribution ─────
     $manifest = json_decode((string) file_get_contents(dirname(__DIR__) . '/module.json'), true);
     $routes = require dirname(__DIR__) . '/routes.php';
-    // The GET console follows the established handler-gated undeclared-read
-    // pattern (compositions, health): the handler runs akiraShellAuthorizeAdmin()
-    // before any capability dispatch and the read itself is decided by the
-    // akira.redirect.list@1 policy row. It is deliberately not added to
-    // capabilities.routes, which the frozen read-authority probe pins exactly.
+    // The GET console is dispatch-enforced by the same administrator-governed
+    // capability it calls. The local gate remains defense in depth and still
+    // runs before the capability dispatch.
     $listGateBody = explode('function akiraShellRedirects', $handlersSource, 2)[1] ?? '';
     $listGateBody = explode("akiraShellCall('akira.redirect.list@1'", $listGateBody, 2)[0];
     $check(
         ($routes['GET']['/cms-akira-shell/redirects'] ?? '') === 'cms-akira-shell:akiraShellRedirects'
-        && !array_key_exists('GET /cms-akira-shell/redirects', (array) ($manifest['capabilities']['routes'] ?? []))
+        && ($manifest['capabilities']['routes']['GET /cms-akira-shell/redirects'] ?? '') === 'akira.redirect.list@1'
         && str_contains($listGateBody, 'akiraShellAuthorizeAdmin()')
         && !str_contains($listGateBody, 'akiraShellCall('),
-        'redirects GET console is mounted, handler-gated and intentionally undeclared'
+        'redirects GET console is mounted, dispatch-declared and locally admin-gated'
     );
     $check(
         ($manifest['capabilities']['routes']['POST /cms-akira-shell/redirects'] ?? '') === 'akira.redirect.create@1'

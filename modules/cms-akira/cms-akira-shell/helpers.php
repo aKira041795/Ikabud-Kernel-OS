@@ -57,7 +57,9 @@ function akiraShellSeedAdminPagePolicy(): void
 }
 
 if (!function_exists('cacRequestPath') || cacRequestMayMutate()
-    || cacRequestPath() === '' || cacRequestPath() === '/cms-akira-theme') {
+    || cacRequestPath() === ''
+    || in_array(cacRequestPath(), ['/cms-akira-theme', '/cms-akira-shell/health'], true)
+    || str_starts_with(cacRequestPath(), '/cms-akira-shell/compositions')) {
     akiraShellSeedAdminPagePolicy();
 }
 

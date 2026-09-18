@@ -42,6 +42,7 @@
             "GET /cms-akira-shell/workflow": "akira.workflow.runs@1",
             "GET /cms-akira-shell/search": "akira.search.query@1",
             "GET /cms-akira-shell/backups": "akira.backup.list@1",
+            "GET /cms-akira-shell/redirects": "akira.redirect.list@1",
             "POST /cms-akira-shell/redirects": "akira.redirect.create@1",
             "POST /cms-akira-shell/posts": "akira.post.create@1",
             "POST /cms-akira-shell/posts/{slug}": "akira.post.update@1",
@@ -69,7 +70,10 @@
             "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1",
             "POST /cms-akira-shell/users/{id}/revoke": "akira.user.revoke_sessions@1",
             "GET /cms-akira-shell/settings": "akira.site.settings.get@1",
-            "POST /cms-akira-shell/settings": "akira.site.settings.update@1"
+            "POST /cms-akira-shell/settings": "akira.site.settings.update@1",
+            "GET /cms-akira-shell/compositions": "akira.shell.admin_page@1",
+            "GET /cms-akira-shell/compositions/{key}/edit": "akira.shell.admin_page@1",
+            "GET /cms-akira-shell/health": "akira.shell.admin_page@1"
         },
         "depends": [
             "kernel.provenance.list@1",
@@ -131,6 +135,21 @@
         "exemptions": [
             {
                 "method": "GET",
+                "route": "/",
+                "reason": "Public home page; anonymous readers have no actor role, so declaring this published-only surface would make dispatch fail with unknown_role."
+            },
+            {
+                "method": "GET",
+                "route": "/posts",
+                "reason": "Public posts archive; anonymous readers have no actor role, so declaring this published-only surface would make dispatch fail with unknown_role."
+            },
+            {
+                "method": "GET",
+                "route": "/posts/{slug}",
+                "reason": "Public published-post page; anonymous readers have no actor role, so declaring this published-only surface would make dispatch fail with unknown_role."
+            },
+            {
+                "method": "GET",
                 "route": "/sitemap.xml",
                 "reason": "Public unauthenticated crawler endpoint. Dispatch authority is fail-closed and refuses anonymous callers (empty actor role), so a capability declaration here would 403 every crawler. The handler reads only the published, tenant-scoped post projection through entity.list.post@1."
             },
@@ -138,6 +157,11 @@
                 "method": "GET",
                 "route": "/robots.txt",
                 "reason": "Public unauthenticated crawler endpoint. Dispatch authority is fail-closed and refuses anonymous callers (empty actor role), so a capability declaration here would 403 every crawler. The handler reads no tenant data and names the sitemap for the requesting host."
+            },
+            {
+                "method": "GET",
+                "route": "/cms-akira-shell/forbidden",
+                "reason": "Public denial page; callers sent to this static 403 surface may have no recognized Akira actor role, so declaring it would replace the intended response with dispatch's unknown_role denial."
             }
         ]
     },
