@@ -655,6 +655,249 @@ test.describe('star swarm', () => {
             game.test.step(120);
             entryFlight.settled = game.state.enemies.every((enemy: any) => !enemy.entering);
 
+            const diveAttacks = [1, 2, 3].map((requestedSize) => {
+                game.test.spawnWave(1);
+                game.state.formation.diveCooldown = 999;
+                game.test.step(180);
+                game.state.enemyShots = [];
+                const indexes = game.test.startDive(requestedSize);
+                const start = indexes.map((index: number) => game.test.snapshotEnemy(index));
+                const groupId = start[0]?.diveGroupId;
+                const shotsAtLaunch = game.state.enemyShots
+                    .filter((shot: any) => shot.diveGroupId === groupId).length;
+                game.test.step(12);
+                const middle = indexes.map((index: number) => game.test.snapshotEnemy(index));
+                game.test.step(12);
+                const end = indexes.map((index: number) => game.test.snapshotEnemy(index));
+                const leader = game.state.enemies[indexes[0]];
+                const escortedBossPoints = requestedSize > 1 ? game.enemyPointValue(leader) : null;
+                if (requestedSize > 1) game.destroyEnemy(game.state.enemies[indexes[1]]);
+                const pointsAfterEscortLoss = requestedSize > 1 ? game.enemyPointValue(leader) : null;
+                return {
+                    requestedSize,
+                    groupSize: indexes.length,
+                    recordedSizes: start.map((enemy: any) => enemy?.diveGroupSize),
+                    allDiving: start.every((enemy: any) => enemy?.diving),
+                    shotsAtLaunch,
+                    curveOffsets: start.map((enemy: any, index: number) =>
+                        distanceFromChord(enemy, middle[index], end[index])),
+                    leaderCaste: start[0]?.caste,
+                    escortedBossPoints,
+                    pointsAfterEscortLoss,
+                };
+            });
+
+            game.test.spawnWave(1);
+            const cycleEntry = { stage: game.state.stage, phase: game.state.phase };
+            game.state.formation.diveCooldown = 999;
+            game.test.step(180);
+            const cycleFormation = { stage: game.state.stage, phase: game.state.phase };
+            game.state.player.invulnerable = 999;
+            const firstDive = game.test.startDive(1);
+            const firstDivePhase = game.state.phase;
+            game.state.formation.diveCooldown = 999;
+            game.test.step(300);
+            const returnedToFormation = game.state.phase;
+            const secondDive = game.test.startDive(1);
+            const secondDivePhase = game.state.phase;
+            const repeatedDiveSerial = game.state.formation.diveSerial;
+            game.state.enemies.forEach((enemy: any, index: number) => {
+                if (enemy.alive) game.test.kill(index);
+            });
+            game.test.step(1);
+            const clearPhase = game.state.phase;
+            game.test.step(46);
+            const nextStage = { stage: game.state.stage, phase: game.state.phase };
+            const gameplayCycle = {
+                entry: cycleEntry,
+                formation: cycleFormation,
+                firstDiveSize: firstDive.length,
+                firstDivePhase,
+                returnedToFormation,
+                secondDiveSize: secondDive.length,
+                secondDivePhase,
+                repeatedDiveSerial,
+                clearPhase,
+                nextStage,
+            };
+
+            game.test.spawnWave(1);
+            const earlyDifficulty = { ...game.state.difficulty };
+            game.test.spawnWave(5);
+            const laterDifficulty = { ...game.state.difficulty };
+            const difficultyRamp = { early: earlyDifficulty, later: laterDifficulty };
+
+            const challengingStageSamples = Array.from({ length: 11 }, (_, index) => {
+                const stage = index + 1;
+                game.test.spawnWave(stage);
+                return {
+                    stage,
+                    kind: game.state.stageKind,
+                    enemyCount: game.state.enemies.length,
+                    pattern: game.state.challengingPattern,
+                };
+            });
+            game.test.spawnWave(3);
+            const firstPatternRoutes = game.state.enemies.map((enemy: any) => enemy.entrySide);
+            game.test.spawnWave(3);
+            const repeatedPatternRoutes = game.state.enemies.map((enemy: any) => enemy.entrySide);
+            game.test.spawnWave(7);
+            const secondPatternRoutes = game.state.enemies.map((enemy: any) => enemy.entrySide);
+            game.test.spawnWave(3);
+            game.state.player.invulnerable = 999;
+            game.state.enemyShots = [];
+            game.test.step(600);
+            const challengingStages = {
+                samples: challengingStageSamples,
+                challengeStageNumbers: challengingStageSamples
+                    .filter((sample) => sample.kind === 'challenging')
+                    .map((sample) => sample.stage),
+                challengeEnemyCounts: challengingStageSamples
+                    .filter((sample) => sample.kind === 'challenging')
+                    .map((sample) => sample.enemyCount),
+                challengePatterns: challengingStageSamples
+                    .filter((sample) => sample.kind === 'challenging')
+                    .map((sample) => sample.pattern),
+                firstPatternRoutes,
+                repeatedPatternRoutes,
+                secondPatternRoutes,
+                enemyShots: game.state.enemyShots.length,
+                diveSerial: game.state.formation.diveSerial,
+                divingEnemies: game.state.enemies.filter((enemy: any) => enemy.diving).length,
+            };
+
+            const placeBossForCapture = () => {
+                game.test.spawnWave(1);
+                game.state.capturedFighter = null;
+                game.state.dualFighter = false;
+                game.state.lives = 3;
+                game.state.difficulty.enemyFireRate = 0;
+                game.state.formation.diveCooldown = 999;
+                game.test.step(180);
+                const bossIndex = game.state.enemies.findIndex((enemy: any) => enemy.alive && enemy.caste === 'boss');
+                const boss = game.state.enemies[bossIndex];
+                boss.entering = false;
+                boss.diving = true;
+                boss.diveTime = 0;
+                boss.diveOriginX = game.state.player.x;
+                boss.x = game.state.player.x + game.state.player.width / 2 - boss.width / 2;
+                boss.y = game.state.player.y - 120;
+                boss.vx = 0;
+                boss.vy = 0;
+                boss.diveCurveWidth = 0;
+                game.state.player.invulnerable = 0;
+                return { boss, bossIndex };
+            };
+
+            const rescueSetup = placeBossForCapture();
+            const beamStarted = game.test.startTractorBeam(rescueSetup.bossIndex);
+            game.test.step(1);
+            const afterCapture = {
+                lives: game.state.lives,
+                status: game.state.capturedFighter?.status,
+                captorIndex: game.state.capturedFighter?.captorIndex,
+                bossState: rescueSetup.boss.tractorState,
+                bossDiving: rescueSetup.boss.diving,
+            };
+            game.destroyEnemy(rescueSetup.boss);
+            const afterDivingKill = {
+                status: game.state.capturedFighter?.status,
+                captorIndex: game.state.capturedFighter?.captorIndex,
+                dual: game.state.dualFighter,
+            };
+            game.state.player.invulnerable = 999;
+            game.test.step(120);
+            game.state.shots = [];
+            game.state.player.cooldown = 0;
+            game.fireBullet();
+            const captureRescue = {
+                beamStarted,
+                afterCapture,
+                afterDivingKill,
+                docked: {
+                    capturedFighter: game.state.capturedFighter,
+                    dual: game.state.dualFighter,
+                    width: game.state.player.width,
+                    shotsFromOneTrigger: game.state.shots.length,
+                },
+            };
+
+            const hostileSetup = placeBossForCapture();
+            game.test.startTractorBeam(hostileSetup.bossIndex);
+            game.test.step(1);
+            game.state.player.invulnerable = 999;
+            game.test.step(140);
+            const heldBeforeKill = {
+                bossDiving: hostileSetup.boss.diving,
+                bossState: hostileSetup.boss.tractorState,
+                fighterStatus: game.state.capturedFighter?.status,
+            };
+            game.destroyEnemy(hostileSetup.boss);
+            const hostileStartY = game.state.capturedFighter?.y ?? 0;
+            const hostileOnFormationKill = {
+                status: game.state.capturedFighter?.status,
+                role: game.state.capturedFighter?.role,
+                dual: game.state.dualFighter,
+                captorIndex: game.state.capturedFighter?.captorIndex,
+            };
+            game.test.step(30);
+            const hostileTravel = (game.state.capturedFighter?.y ?? hostileStartY) - hostileStartY;
+            const hostileFighter = game.state.capturedFighter;
+            game.state.player.invulnerable = 0;
+            hostileFighter.x = game.state.player.x;
+            hostileFighter.y = game.state.player.y;
+            hostileFighter.speed = 0;
+            game.test.step(1);
+            const hostileCollision = {
+                lives: game.state.lives,
+                fighterRemoved: game.state.capturedFighter === null,
+                respawned: game.state.player.invulnerable > 1,
+            };
+
+            game.test.spawnWave(1);
+            game.state.capturedFighter = null;
+            game.state.dualFighter = false;
+            game.state.lives = 3;
+            game.state.difficulty.enemyFireRate = 0;
+            game.state.formation.diveCooldown = 999;
+            game.state.player.invulnerable = 0;
+            const shooterIndex = game.state.enemies.findIndex((enemy: any) => enemy.alive);
+            const shotIndex = game.test.fireEnemyShot(shooterIndex);
+            const hostileShot = game.state.enemyShots[shotIndex];
+            hostileShot.x = game.state.player.x + game.state.player.width / 2;
+            hostileShot.y = game.state.player.y;
+            hostileShot.speed = 0;
+            game.test.step(1);
+            const shotCollision = {
+                lives: game.state.lives,
+                shotRemoved: !game.state.enemyShots.includes(hostileShot),
+                invulnerable: game.state.player.invulnerable,
+                respawned: game.state.player.y === canvas.height - 60,
+            };
+
+            game.test.spawnWave(1);
+            game.state.lives = 3;
+            game.state.difficulty.enemyFireRate = 0;
+            game.state.formation.diveCooldown = 999;
+            game.state.player.invulnerable = 0;
+            const collidingEnemy = game.state.enemies.find((enemy: any) => enemy.alive && enemy.caste === 'bee');
+            collidingEnemy.entering = false;
+            collidingEnemy.diving = true;
+            collidingEnemy.diveTime = 0;
+            collidingEnemy.diveOriginX = game.state.player.x;
+            collidingEnemy.x = game.state.player.x;
+            collidingEnemy.y = game.state.player.y;
+            collidingEnemy.vx = 0;
+            collidingEnemy.vy = 0;
+            collidingEnemy.diveCurveWidth = 0;
+            game.test.step(1);
+            const enemyCollision = {
+                lives: game.state.lives,
+                enemyRemoved: !collidingEnemy.alive,
+                invulnerable: game.state.player.invulnerable,
+                respawned: game.state.player.y === canvas.height - 60,
+            };
+
             const sampleRun = () => {
                 game.test.spawnWave(3);
                 const origin = game.test.snapshotEnemy(0);
@@ -705,6 +948,17 @@ test.describe('star swarm', () => {
                 challengingScore,
                 perfectBonusAfterStageChange,
                 entryFlight,
+                diveAttacks,
+                gameplayCycle,
+                difficultyRamp,
+                challengingStages,
+                captureRescue,
+                heldBeforeKill,
+                hostileOnFormationKill,
+                hostileTravel,
+                hostileCollision,
+                shotCollision,
+                enemyCollision,
             };
         });
 
@@ -767,6 +1021,33 @@ test.describe('star swarm', () => {
         expect(result.challengingScore, 'perfect bonus of 10000 is awarded only after all forty challenging enemies')
             .toEqual({ enemies: 40, destroyed: 40, score: 14000, perfectBonus: 10000 });
         expect(result.perfectBonusAfterStageChange, 'perfect bonus state resets when the next stage is spawned').toBe(0);
+        expect(result.challengingStages.challengeStageNumbers,
+            'every fourth stage is a challenging stage, beginning with the original stage three').toEqual([3, 7, 11]);
+        expect(result.challengingStages.challengeEnemyCounts,
+            'each challenging stage launches exactly forty enemies').toEqual([40, 40, 40]);
+        expect(result.challengingStages.challengePatterns,
+            'successive challenging stages select named preset patterns').toEqual([
+            'crossing-wings',
+            'split-spiral',
+            'crossing-wings',
+        ]);
+        expect(result.challengingStages.repeatedPatternRoutes,
+            'a preset challenging-stage pattern replays the same forty entry routes').toEqual(
+            result.challengingStages.firstPatternRoutes,
+        );
+        expect(result.challengingStages.secondPatternRoutes,
+            'the next preset challenging-stage pattern changes the entry choreography').not.toEqual(
+            result.challengingStages.firstPatternRoutes,
+        );
+        expect({
+            shots: result.challengingStages.enemyShots,
+            dives: result.challengingStages.diveSerial,
+            divingEnemies: result.challengingStages.divingEnemies,
+        }, 'challenging-stage enemies fly their preset patterns and do not fire').toEqual({
+            shots: 0,
+            dives: 0,
+            divingEnemies: 0,
+        });
         expect(result.entryFlight.routes, 'entry paths sweep in from the top and both sides')
             .toEqual(['top', 'left', 'right']);
         expect(result.entryFlight.offscreenOrigins, 'each route starts beyond its named canvas edge').toEqual([true, true, true]);
@@ -775,6 +1056,98 @@ test.describe('star swarm', () => {
         expect(Math.min(...result.entryFlight.spinTravel), 'every route spins visibly while sweeping toward formation')
             .toBeGreaterThan(Math.PI);
         expect(result.entryFlight.settled, 'all staggered entrants settle into the formation under the fixed clock').toBe(true);
+        expect(result.diveAttacks.map((attack) => attack.groupSize), 'dives singly in pairs and in threes')
+            .toEqual([1, 2, 3]);
+        expect(result.diveAttacks.every((attack) => attack.allDiving
+            && attack.recordedSizes.every((size: number) => size === attack.groupSize)),
+        'each dive wave records one live group rather than unrelated solo attackers').toBe(true);
+        expect(Math.min(...result.diveAttacks.flatMap((attack) => attack.curveOffsets)),
+            'every member follows a curved dive path under fixed clock stepping').toBeGreaterThan(2);
+        expect(result.diveAttacks.map((attack) => attack.shotsAtLaunch),
+            'each attacker fires as its dive begins').toEqual([1, 2, 3]);
+        expect(result.diveAttacks.slice(1).map((attack) => ({
+            caste: attack.leaderCaste,
+            before: attack.escortedBossPoints,
+            after: attack.pointsAfterEscortLoss,
+        })), 'a diving boss score reacts to how many escorts are still alive').toEqual([
+            { caste: 'boss', before: 800, after: 400 },
+            { caste: 'boss', before: 1600, after: 800 },
+        ]);
+        expect(result.gameplayCycle, 'a stage cycles through entry, formation, repeated dive waves, clear, and the next stage')
+            .toEqual({
+                entry: { stage: 1, phase: 'entry' },
+                formation: { stage: 1, phase: 'formation' },
+                firstDiveSize: 1,
+                firstDivePhase: 'dive',
+                returnedToFormation: 'formation',
+                secondDiveSize: 1,
+                secondDivePhase: 'dive',
+                repeatedDiveSerial: 2,
+                clearPhase: 'stage-clear',
+                nextStage: { stage: 2, phase: 'entry' },
+            });
+        expect({
+            enemyVolleySize: [result.difficultyRamp.early.enemyVolleySize, result.difficultyRamp.later.enemyVolleySize],
+            projectileSpeed: [result.difficultyRamp.early.projectileSpeed, result.difficultyRamp.later.projectileSpeed],
+            diveSpeed: [result.difficultyRamp.early.diveSpeed, result.difficultyRamp.later.diveSpeed],
+            diveCooldownFalls: result.difficultyRamp.later.diveCooldown < result.difficultyRamp.early.diveCooldown,
+        }, 'difficulty ramps with stage through more enemy projectiles and faster dives').toEqual({
+            enemyVolleySize: [1, 2],
+            projectileSpeed: [272, 320],
+            diveSpeed: [168, 240],
+            diveCooldownFalls: true,
+        });
+        expect(result.captureRescue.afterCapture, 'tractor beam captures the fighter and costs one life').toEqual({
+            lives: 2,
+            status: 'captured',
+            captorIndex: expect.any(Number),
+            bossState: 'returning',
+            bossDiving: true,
+        });
+        expect(result.captureRescue.afterDivingKill,
+            'destroying the diving captor frees its fighter onto a real docking path').toEqual({
+            status: 'docking',
+            captorIndex: null,
+            dual: false,
+        });
+        expect(result.captureRescue.docked, 'dual fighter doubles firepower and uses the larger collision hitbox').toEqual({
+            capturedFighter: null,
+            dual: true,
+            width: 90,
+            shotsFromOneTrigger: 2,
+        });
+        expect(result.captureRescue.beamStarted, 'only a live diving Boss Galaga can open the capture beam').toBe(true);
+        expect(result.heldBeforeKill, 'the captor physically returns its captured fighter to formation').toEqual({
+            bossDiving: false,
+            bossState: 'holding',
+            fighterStatus: 'held',
+        });
+        expect(result.hostileOnFormationKill,
+            'captured fighter turns hostile when its captor is destroyed in formation').toEqual({
+            status: 'hostile',
+            role: 'threat',
+            dual: false,
+            captorIndex: null,
+        });
+        expect(result.hostileTravel, 'the hostile captured fighter becomes a moving enemy hazard').toBeGreaterThan(50);
+        expect(result.hostileCollision, 'the hostile captured fighter can collide as an enemy and cost another life').toEqual({
+            lives: 1,
+            fighterRemoved: true,
+            respawned: true,
+        });
+        expect(result.shotCollision, 'collision costs a life when an enemy shot hits and the player respawns').toMatchObject({
+            lives: 2,
+            shotRemoved: true,
+            respawned: true,
+        });
+        expect(result.shotCollision.invulnerable, 'shot-hit respawn receives a finite invulnerability window').toBeGreaterThan(1);
+        expect(result.enemyCollision,
+            'lives decrease on hit when a diving enemy collides and the player respawns').toMatchObject({
+            lives: 2,
+            enemyRemoved: true,
+            respawned: true,
+        });
+        expect(result.enemyCollision.invulnerable, 'enemy-hit respawn receives the same invulnerability window').toBeGreaterThan(1);
         expect(result.animationFrameHandle, 'test mode owns the clock instead of racing requestAnimationFrame').toBe(0);
         expect(pageErrors, 'no unhandled page errors').toEqual([]);
         expect(consoleErrors, 'no console errors').toEqual([]);

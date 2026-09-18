@@ -76,6 +76,16 @@
         butterfly: Object.freeze({ formation: 80, flight: 160 }),
         boss: Object.freeze({ formation: 150, flight: Object.freeze([400, 800, 1600]) })
     });
+    var CHALLENGING_PATTERNS = Object.freeze([
+        Object.freeze({
+            name: 'crossing-wings',
+            routes: Object.freeze(['left', 'right', 'top', 'right', 'left', 'top', 'left', 'right'])
+        }),
+        Object.freeze({
+            name: 'split-spiral',
+            routes: Object.freeze(['top', 'left', 'left', 'top', 'right', 'right', 'top', 'left'])
+        })
+    ]);
 
     // A mood changes the colony's motion grammar, not merely its speed. Waves
     // enter at successive points in this vocabulary and continue cycling.
@@ -113,7 +123,10 @@
         wave: 1,
         stage: 1,
         stageKind: 'standard',
+        phase: 'entry',
+        phaseElapsed: 0,
         challenging: false,
+        challengingPattern: null,
         challengingDestroyed: 0,
         perfectBonus: 0,
         mood: 'undulate',
@@ -130,7 +143,12 @@
         nursery: { x: 704, y: 112, radius: 76 },
         formation: {
             direction: 1, speed: 40, elapsed: 0, diveCooldown: 2.5,
-            headingX: 0, headingY: 0, breathScale: 1
+            headingX: 0, headingY: 0, breathScale: 1,
+            nextDiveSize: 1, diveSerial: 0, enemyShotsFired: 0
+        },
+        difficulty: {
+            diveSpeed: 168, diveCooldown: 2.22, enemyFireRate: 0.4025,
+            enemyVolleySize: 1, projectileSpeed: 272
         },
         starLayers: [],
         planets: [],
@@ -266,8 +284,25 @@
 
     // The colony hatches at the nursery planet, then fans out into three depth
     // bands. Scale changes both the drawn body and its collision footprint.
+    function difficultyForStage(stage) {
+        return {
+            diveSpeed: 150 + stage * 18,
+            diveCooldown: Math.max(0.9, 2.4 - stage * 0.18),
+            enemyFireRate: 0.35 * (1 + stage * 0.15),
+            enemyVolleySize: Math.min(3, 1 + Math.floor((stage - 1) / 3)),
+            projectileSpeed: ENEMY_BULLET_SPEED + stage * 12
+        };
+    }
+
+    function challengingPatternForStage(stage) {
+        if (stage < 3 || (stage - 3) % 4 !== 0) return null;
+        var occurrence = Math.floor((stage - 3) / 4);
+        return CHALLENGING_PATTERNS[occurrence % CHALLENGING_PATTERNS.length];
+    }
+
     function createFormation(wave) {
         var enemies = [];
+        var challengingPattern = challengingPatternForStage(wave);
         // Challenging stages contain the arcade forty; standard stages may
         // grow as difficulty rises.
         var rows = state.challenging ? 5 : Math.min(ENEMY_ROWS + Math.floor((wave - 1) / 2), 6);
@@ -294,7 +329,9 @@
                 var nurseryY = state.nursery.y + Math.sin(originAngle) * originRadius;
                 var slotX = startX + col * (ENEMY_WIDTH + ENEMY_GAP_X);
                 var slotY = 60 + row * (ENEMY_HEIGHT + ENEMY_GAP_Y);
-                var entrySide = ['top', 'left', 'right'][enemyIndex % 3];
+                var entrySide = challengingPattern
+                    ? challengingPattern.routes[enemyIndex % challengingPattern.routes.length]
+                    : ['top', 'left', 'right'][enemyIndex % 3];
                 var entryStartX = entrySide === 'left' ? -70
                     : (entrySide === 'right' ? canvasWidth() + 70 : 80 + (enemyIndex * 83) % (canvasWidth() - 160));
                 var entryStartY = entrySide === 'top' ? -60 : 35 + (enemyIndex * 47) % 250;
@@ -313,6 +350,8 @@
                     originX: nurseryX,
                     originY: nurseryY,
                     entrySide: entrySide,
+                    challengingPattern: challengingPattern ? challengingPattern.name : null,
+                    patternSlot: challengingPattern ? enemyIndex % challengingPattern.routes.length : null,
                     entryStartX: entryStartX,
                     entryStartY: entryStartY,
                     entryControlAX: entryControlAX,
@@ -340,6 +379,19 @@
                     flash: 0,
                     diveTime: 0,
                     diveOriginX: 0,
+                    diveGroupId: null,
+                    diveGroupSize: 0,
+                    diveRank: 0,
+                    diveCurveDirection: 1,
+                    diveCurveWidth: 80,
+                    escortCount: 0,
+                    escortLeaderIndex: null,
+                    tractorState: 'idle',
+                    tractorTime: 0,
+                    tractorEligible: false,
+                    tractorAttempted: false,
+                    hasCapturedFighter: false,
+                    enemyIndex: enemyIndex,
                     vx: 0,
                     vy: 0,
                     swarmVx: 0,
@@ -355,7 +407,10 @@
         state.formation.breathScale = 1;
         state.formation.headingX = state.formation.speed;
         state.formation.headingY = 0;
-        state.formation.diveCooldown = Math.max(1.1, 2.6 - wave * 0.2);
+        state.formation.nextDiveSize = 1;
+        state.formation.diveSerial = 0;
+        state.formation.enemyShotsFired = 0;
+        state.formation.diveCooldown = Math.max(1.1, state.difficulty.diveCooldown + 0.18);
         return enemies;
     }
 
@@ -378,9 +433,14 @@
     function startWave(wave) {
         state.wave = wave;
         state.stage = wave;
+        state.phase = 'entry';
+        state.phaseElapsed = 0;
+        state.difficulty = difficultyForStage(wave);
         // Original Galaga's first challenging stage is stage 3, recurring
         // every fourth stage thereafter (3, 7, 11, ...).
-        state.challenging = wave >= 3 && (wave - 3) % 4 === 0;
+        var challengingPattern = challengingPatternForStage(wave);
+        state.challengingPattern = challengingPattern ? challengingPattern.name : null;
+        state.challenging = challengingPattern !== null;
         state.stageKind = state.challenging ? 'challenging' : 'standard';
         state.challengingDestroyed = 0;
         state.perfectBonus = 0;
@@ -673,9 +733,39 @@
         return 100;
     }
 
+    function releaseCapturedFighter(enemy) {
+        var fighter = state.capturedFighter;
+        if (!fighter || fighter.captorIndex !== enemy.enemyIndex) return;
+        fighter.captorIndex = null;
+        enemy.hasCapturedFighter = false;
+        enemy.tractorState = 'idle';
+        if (enemy.diving) {
+            // A kill during the return flight earns the rescue. The freed ship
+            // has to cross the remaining distance before the wider dual hull
+            // and its second muzzle become active.
+            fighter.status = 'docking';
+            fighter.role = 'ally';
+            fighter.bank = 0;
+        } else {
+            // Once the captor has reached formation the same kill is too late:
+            // the fighter becomes an independently moving collision hazard.
+            fighter.status = 'hostile';
+            fighter.role = 'threat';
+            fighter.hostileTime = 0;
+            fighter.speed = 145 + state.stage * 7;
+        }
+    }
+
     function destroyEnemy(enemy) {
         if (!enemy || !enemy.alive) return false;
         var points = enemyPointValue(enemy);
+        if (enemy.escortLeaderIndex !== null) {
+            var leader = state.enemies[enemy.escortLeaderIndex];
+            if (leader && leader.alive && leader.diving) {
+                leader.escortCount = Math.max(0, leader.escortCount - 1);
+            }
+        }
+        releaseCapturedFighter(enemy);
         enemy.flash = 0.12;
         enemy.alive = false;
         disperseNeighbours(enemy);
@@ -690,6 +780,201 @@
             }
         }
         return true;
+    }
+
+    function tractorBeamBounds(enemy) {
+        var top = enemy.y + enemy.height;
+        var depth = Math.max(40, canvasHeight() - top);
+        return {
+            x: enemy.x + enemy.width / 2 - 72,
+            y: top,
+            width: 144,
+            height: depth
+        };
+    }
+
+    function beginTractorBeam(enemy) {
+        if (!enemy || !enemy.alive || enemy.caste !== 'boss' || !enemy.diving
+            || state.challenging || state.capturedFighter || state.gameOver) return false;
+        enemy.tractorState = 'beam';
+        enemy.tractorTime = 0;
+        enemy.tractorAttempted = true;
+        state.phase = 'tractor-beam';
+        state.phaseElapsed = 0;
+        return true;
+    }
+
+    function capturePlayer(enemy) {
+        if (!enemy || enemy.tractorState !== 'beam' || state.player.invulnerable > 0
+            || state.capturedFighter || state.gameOver) return false;
+        state.capturedFighter = {
+            x: state.player.x,
+            y: state.player.y,
+            width: SINGLE_FIGHTER_WIDTH,
+            height: state.player.height,
+            role: 'ally',
+            bank: 0,
+            status: 'captured',
+            captorIndex: enemy.enemyIndex,
+            hostileTime: 0,
+            speed: 0
+        };
+        state.dualFighter = false;
+        enemy.hasCapturedFighter = true;
+        enemy.tractorState = 'returning';
+        enemy.tractorTime = 0;
+        enemy.vx = 0;
+        enemy.vy = 0;
+        state.phase = 'capture';
+        state.phaseElapsed = 0;
+        loseLife();
+        return true;
+    }
+
+    function updateTractorEnemy(enemy, dt) {
+        if (enemy.tractorState === 'beam') {
+            enemy.tractorTime += dt;
+            var beam = tractorBeamBounds(enemy);
+            if (intersects(beam, state.player)) capturePlayer(enemy);
+            if (enemy.tractorState === 'beam' && enemy.tractorTime >= 1.8) {
+                enemy.tractorState = 'idle';
+                state.phase = 'dive';
+                state.phaseElapsed = 0;
+            }
+            return enemy.tractorState !== 'idle';
+        }
+        if (enemy.tractorState === 'returning') {
+            enemy.tractorTime += dt;
+            enemy.y -= (190 + state.stage * 8) * dt;
+            enemy.x += (enemy.baseX - enemy.x) * Math.min(1, dt * 3.5);
+            if (enemy.y <= enemy.baseY) {
+                enemy.x = enemy.baseX;
+                enemy.y = enemy.baseY;
+                enemy.diving = false;
+                enemy.diveTime = 0;
+                enemy.tractorState = 'holding';
+                if (state.capturedFighter && state.capturedFighter.captorIndex === enemy.enemyIndex) {
+                    state.capturedFighter.status = 'held';
+                }
+                state.phase = 'formation';
+                state.phaseElapsed = 0;
+            }
+            return true;
+        }
+        return enemy.tractorState === 'holding';
+    }
+
+    function updateCapturedFighter(dt) {
+        var fighter = state.capturedFighter;
+        if (!fighter) return;
+        if (fighter.status === 'captured' || fighter.status === 'held') {
+            var captor = state.enemies[fighter.captorIndex];
+            if (captor && captor.alive) {
+                fighter.x = captor.x + captor.width / 2 - fighter.width / 2;
+                fighter.y = captor.y + captor.height + 10;
+            }
+            return;
+        }
+        if (fighter.status === 'docking') {
+            var targetX = state.player.x + state.player.width / 2 - fighter.width / 2;
+            var targetY = state.player.y;
+            var dx = targetX - fighter.x;
+            var dy = targetY - fighter.y;
+            var distance = Math.sqrt(dx * dx + dy * dy);
+            var travel = 360 * dt;
+            if (distance <= travel || distance < 2) {
+                state.dualFighter = true;
+                state.capturedFighter = null;
+                return;
+            }
+            fighter.x += dx / distance * travel;
+            fighter.y += dy / distance * travel;
+            fighter.bank = clamp(dx / 90, -1, 1);
+            return;
+        }
+        if (fighter.status === 'hostile') {
+            fighter.hostileTime += dt;
+            fighter.y += fighter.speed * dt;
+            fighter.x += Math.sin(fighter.hostileTime * 5.2) * 95 * dt;
+            fighter.x = clamp(fighter.x, 0, canvasWidth() - fighter.width);
+            fighter.bank = Math.sin(fighter.hostileTime * 5.2);
+            if (fighter.y > canvasHeight() + fighter.height) fighter.y = -fighter.height;
+        }
+    }
+
+    function fireEnemyShot(shooter, diveGroupId) {
+        state.enemyBullets.push({
+            x: shooter.x + shooter.width / 2 - 2,
+            y: shooter.y + shooter.height,
+            width: 4,
+            height: 12,
+            role: 'hazard',
+            speed: state.difficulty.projectileSpeed,
+            diveGroupId: diveGroupId === undefined ? null : diveGroupId
+        });
+        state.formation.enemyShotsFired += 1;
+    }
+
+    // The scheduler cycles through arcade-readable one, two and three ship
+    // attacks. Grouped attacks choose a live Boss Galaga as leader whenever
+    // possible, so its score reflects escorts that are actually still alive.
+    function launchDiveGroup(requestedSize) {
+        if (state.challenging) return [];
+        var settled = state.enemies.filter(function (enemy) {
+            return enemy.alive && !enemy.diving && !enemy.entering;
+        });
+        if (settled.length === 0) return [];
+
+        var size = clamp(Math.floor(Number(requestedSize) || 1), 1, 3);
+        size = Math.min(size, settled.length);
+        var captureBosses = size === 1 && !state.capturedFighter && !state.dualFighter
+            ? settled.filter(function (enemy) { return enemy.caste === 'boss'; }) : [];
+        var leaders = captureBosses.length > 0 ? captureBosses
+            : (size > 1 ? settled.filter(function (enemy) { return enemy.caste === 'boss'; }) : settled);
+        if (leaders.length === 0) leaders = settled;
+        var leader = leaders[Math.floor(random() * leaders.length)];
+        var companions = settled.filter(function (enemy) { return enemy !== leader; });
+        companions.sort(function (a, b) {
+            var aDistance = Math.hypot(a.x - leader.x, a.y - leader.y);
+            var bDistance = Math.hypot(b.x - leader.x, b.y - leader.y);
+            return aDistance - bDistance;
+        });
+        var group = [leader].concat(companions.slice(0, size - 1));
+        var groupId = state.formation.diveSerial + 1;
+        state.formation.diveSerial = groupId;
+        state.phase = 'dive';
+        state.phaseElapsed = 0;
+        var diveSpeed = state.difficulty.diveSpeed;
+
+        for (var i = 0; i < group.length; i += 1) {
+            var enemy = group[i];
+            enemy.diving = true;
+            enemy.diveTime = 0;
+            enemy.diveOriginX = enemy.x;
+            enemy.diveGroupId = groupId;
+            enemy.diveGroupSize = group.length;
+            enemy.diveRank = i;
+            enemy.diveCurveDirection = (groupId + i) % 2 === 0 ? 1 : -1;
+            enemy.diveCurveWidth = 80 + i * 14;
+            enemy.escortCount = enemy === leader && enemy.caste === 'boss' ? group.length - 1 : 0;
+            enemy.escortLeaderIndex = enemy !== leader && leader.caste === 'boss' ? leader.enemyIndex : null;
+            // The fourth attack in the scheduler's 1/2/3/1 cadence is the
+            // first capture attempt, leaving ordinary solo dives readable.
+            enemy.tractorEligible = enemy === leader && enemy.caste === 'boss' && group.length === 1
+                && groupId % 4 === 0 && !state.capturedFighter && !state.dualFighter;
+            enemy.tractorAttempted = false;
+            enemy.tractorState = 'idle';
+            var rankOffset = (i - (group.length - 1) / 2) * 62;
+            var dx = state.player.x + state.player.width / 2 + rankOffset - (enemy.x + enemy.width / 2);
+            var dy = state.player.y - enemy.y;
+            var length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+            enemy.vx = dx / length * diveSpeed;
+            enemy.vy = Math.abs(dy / length * diveSpeed);
+            // Every attacker fires as it breaks formation. The group id keeps
+            // this causally observable without introducing a separate path.
+            fireEnemyShot(enemy, groupId);
+        }
+        return group;
     }
 
     function updateFormation(dt) {
@@ -764,12 +1049,31 @@
                 continue;
             }
             if (enemy.diving) {
+                if (updateTractorEnemy(enemy, dt)) continue;
                 enemy.diveTime += dt;
                 enemy.y += enemy.vy * dt;
-                enemy.x = enemy.diveOriginX + Math.sin(enemy.diveTime * 3.2) * (80 + enemy.diveTime * 22) + enemy.vx * enemy.diveTime;
+                enemy.x = enemy.diveOriginX + enemy.vx * enemy.diveTime
+                    + Math.sin(enemy.diveTime * 3.2) * enemy.diveCurveWidth * enemy.diveCurveDirection;
+                if (enemy.tractorEligible && !enemy.tractorAttempted
+                    && enemy.y >= Math.max(220, state.player.y - 190)) {
+                    beginTractorBeam(enemy);
+                    continue;
+                }
                 if (enemy.y > canvasHeight() + 40) {
+                    if (enemy.escortLeaderIndex !== null) {
+                        var returningLeader = state.enemies[enemy.escortLeaderIndex];
+                        if (returningLeader && returningLeader.alive && returningLeader.diving) {
+                            returningLeader.escortCount = Math.max(0, returningLeader.escortCount - 1);
+                        }
+                    }
                     enemy.diving = false;
                     enemy.diveTime = 0;
+                    enemy.diveGroupId = null;
+                    enemy.diveGroupSize = 0;
+                    enemy.escortCount = 0;
+                    enemy.escortLeaderIndex = null;
+                    enemy.tractorEligible = false;
+                    enemy.tractorState = 'idle';
                     enemy.x = enemy.baseX + sway;
                     enemy.y = enemy.baseY;
                 }
@@ -834,23 +1138,29 @@
             }
         }
 
-        // Dive: peel one living enemy toward the player.
+        // Dive waves cycle through solo, pair and three-ship attacks. This is
+        // normal gameplay scheduling; deterministic probes only choose when to
+        // invoke the same launcher.
         state.formation.diveCooldown -= dt;
         if (state.formation.diveCooldown <= 0) {
-            var living = state.enemies.filter(function (enemy) { return enemy.alive && !enemy.diving && !enemy.entering; });
-            if (living.length > 0) {
-                var chosen = living[Math.floor(random() * living.length)];
-                chosen.diving = true;
-                chosen.diveTime = 0;
-                chosen.diveOriginX = chosen.x;
-                var dx = (state.player.x + state.player.width / 2) - (chosen.x + chosen.width / 2);
-                var dy = state.player.y - chosen.y;
-                var length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-                var diveSpeed = 150 + state.wave * 18;
-                chosen.vx = (dx / length) * diveSpeed;
-                chosen.vy = Math.abs((dy / length) * diveSpeed);
+            var requestedSize = state.formation.nextDiveSize;
+            var launched = launchDiveGroup(requestedSize);
+            if (launched.length > 0) {
+                state.formation.nextDiveSize = requestedSize === 3 ? 1 : requestedSize + 1;
             }
-            state.formation.diveCooldown = Math.max(0.9, 2.4 - state.wave * 0.18);
+            state.formation.diveCooldown = state.difficulty.diveCooldown;
+        }
+
+        if (state.phase === 'entry' && !state.enemies.some(function (enemy) {
+            return enemy.alive && enemy.entering;
+        })) {
+            state.phase = state.challenging ? 'challenging' : 'formation';
+            state.phaseElapsed = 0;
+        } else if (state.phase === 'dive' && !state.enemies.some(function (enemy) {
+            return enemy.alive && enemy.diving;
+        })) {
+            state.phase = 'formation';
+            state.phaseElapsed = 0;
         }
     }
 
@@ -860,16 +1170,15 @@
         if (living.length === 0) {
             return;
         }
-        if (random() < 0.35 * dt * (1 + state.wave * 0.15)) {
-            var shooter = living[Math.floor(random() * living.length)];
-            state.enemyBullets.push({
-                x: shooter.x + shooter.width / 2 - 2,
-                y: shooter.y + shooter.height,
-                width: 4,
-                height: 12,
-                role: 'hazard',
-                speed: ENEMY_BULLET_SPEED + state.wave * 12
-            });
+        if (random() < state.difficulty.enemyFireRate * dt) {
+            var divers = living.filter(function (enemy) { return enemy.diving; });
+            var shooters = divers.length > 0 ? divers : living;
+            var firstShooter = Math.floor(random() * shooters.length);
+            var volleySize = Math.min(state.difficulty.enemyVolleySize, shooters.length);
+            for (var shotIndex = 0; shotIndex < volleySize; shotIndex += 1) {
+                var shooter = shooters[(firstShooter + shotIndex) % shooters.length];
+                fireEnemyShot(shooter, shooter.diveGroupId);
+            }
         }
     }
 
@@ -884,6 +1193,15 @@
             bullet.y -= bullet.speed * dt;
             if (bullet.y + bullet.height < 0) {
                 state.bullets.splice(i, 1);
+                continue;
+            }
+            if (state.capturedFighter && state.capturedFighter.status === 'hostile'
+                && intersects(bullet, state.capturedFighter)) {
+                var hostile = state.capturedFighter;
+                state.bullets.splice(i, 1);
+                createExplosion(hostile.x + hostile.width / 2, hostile.y + hostile.height / 2, 'fighter');
+                state.capturedFighter = null;
+                addScore(500);
                 continue;
             }
             for (var e = 0; e < state.enemies.length; e += 1) {
@@ -912,8 +1230,15 @@
             }
         }
 
-        // Diving enemies that reach the player also cost a life.
+        // Diving enemies, including a fighter turned hostile by a formation
+        // kill, use the same life-loss and respawn path as projectiles.
         if (state.player.invulnerable <= 0) {
+            if (state.capturedFighter && state.capturedFighter.status === 'hostile'
+                && intersects(state.capturedFighter, state.player)) {
+                state.capturedFighter = null;
+                loseLife();
+                return;
+            }
             for (var d = 0; d < state.enemies.length; d += 1) {
                 var diver = state.enemies[d];
                 if (diver.alive && diver.diving && intersects(diver, state.player)) {
@@ -928,6 +1253,7 @@
 
     function loseLife() {
         state.lives -= 1;
+        state.dualFighter = false;
         updateHud();
         if (state.lives <= 0) {
             gameOver();
@@ -969,8 +1295,15 @@
         if (state.gameOver) {
             return;
         }
-        var remaining = state.enemies.some(function (enemy) { return enemy.alive; });
-        if (!remaining) {
+        var remaining = state.enemies.some(function (enemy) { return enemy.alive; })
+            || Boolean(state.capturedFighter);
+        if (remaining) return;
+        if (state.phase !== 'stage-clear') {
+            state.phase = 'stage-clear';
+            state.phaseElapsed = 0;
+            return;
+        }
+        if (state.phaseElapsed >= 0.75) {
             startWave(state.wave + 1);
         }
     }
@@ -980,9 +1313,11 @@
             return;
         }
         state.elapsed += dt;
+        state.phaseElapsed += dt;
         updateStarfield(dt);
         updatePlayer(dt);
         updateFormation(dt);
+        updateCapturedFighter(dt);
         updateEnemyFire(dt);
         updateBullets(dt);
         updateEffects(dt);
@@ -1151,6 +1486,35 @@
         }
     }
 
+    function drawTractorBeams(ctx, theme) {
+        for (var i = 0; i < state.enemies.length; i += 1) {
+            var enemy = state.enemies[i];
+            if (!enemy.alive || enemy.tractorState !== 'beam') continue;
+            var beam = tractorBeamBounds(enemy);
+            var centre = enemy.x + enemy.width / 2;
+            var glow = ctx.createLinearGradient(0, beam.y, 0, beam.y + beam.height);
+            glow.addColorStop(0, theme.roles.reward);
+            glow.addColorStop(1, theme.space);
+            ctx.save();
+            ctx.globalAlpha = 0.24 + Math.sin(state.elapsed * 22) * 0.06;
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.moveTo(centre - 13, beam.y);
+            ctx.lineTo(beam.x + beam.width, beam.y + beam.height);
+            ctx.lineTo(beam.x, beam.y + beam.height);
+            ctx.lineTo(centre + 13, beam.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    function drawCapturedFighter(ctx, theme) {
+        var fighter = state.capturedFighter;
+        if (!fighter) return;
+        drawFighterHull(ctx, fighter.x, fighter, theme);
+    }
+
     function drawEffects(ctx, theme) {
         for (var i = 0; i < state.explosions.length; i += 1) {
             var explosion = state.explosions[i];
@@ -1179,6 +1543,8 @@
 
         var i;
         for (i = 0; i < state.enemies.length; i += 1) if (state.enemies[i].alive) drawEnemy(ctx, state.enemies[i], theme);
+        drawTractorBeams(ctx, theme);
+        drawCapturedFighter(ctx, theme);
         for (i = 0; i < state.bullets.length; i += 1) drawPlayerShot(ctx, state.bullets[i], theme);
         for (i = 0; i < state.enemyBullets.length; i += 1) {
             var shot = state.enemyBullets[i];
@@ -1319,6 +1685,24 @@
         return Object.assign({}, state.enemies[index]);
     }
 
+    function testStartDive(size) {
+        enterTestMode();
+        return launchDiveGroup(size).map(function (enemy) { return enemy.enemyIndex; });
+    }
+
+    function testStartTractorBeam(index) {
+        enterTestMode();
+        if (!Number.isInteger(index) || index < 0 || index >= state.enemies.length) return false;
+        return beginTractorBeam(state.enemies[index]);
+    }
+
+    function testFireEnemyShot(index) {
+        enterTestMode();
+        if (!Number.isInteger(index) || index < 0 || index >= state.enemies.length) return -1;
+        fireEnemyShot(state.enemies[index], state.enemies[index].diveGroupId);
+        return state.enemyBullets.length - 1;
+    }
+
     function init() {
         lane.root = document.getElementById('star-swarm');
         lane.canvas = document.getElementById(CANVAS_ID);
@@ -1368,6 +1752,8 @@
             ENEMY_SCORES: ENEMY_SCORES,
             BULLET_SPEED: BULLET_SPEED,
             ENEMY_BULLET_SPEED: ENEMY_BULLET_SPEED,
+            STAGE_CLEAR_DURATION: 0.75,
+            CHALLENGING_PATTERNS: CHALLENGING_PATTERNS,
             STARFIELD_DEPTHS: STARFIELD_DEPTHS,
             MOOD_RULES: MOOD_RULES
         },
@@ -1375,10 +1761,14 @@
         createStarfieldLayers: createStarfieldLayers,
         createPlanets: createPlanets,
         createFormation: createFormation,
+        difficultyForStage: difficultyForStage,
         startWave: startWave,
         addScore: addScore,
         enemyPointValue: enemyPointValue,
+        launchDiveGroup: launchDiveGroup,
+        beginTractorBeam: beginTractorBeam,
         fireBullet: fireBullet,
+        fireEnemyShot: fireEnemyShot,
         destroyEnemy: destroyEnemy,
         startGame: startGame,
         restartGame: restartGame,
@@ -1393,7 +1783,10 @@
             step: testStep,
             spawnWave: testSpawnWave,
             kill: testKill,
-            snapshotEnemy: testSnapshotEnemy
+            snapshotEnemy: testSnapshotEnemy,
+            startDive: testStartDive,
+            startTractorBeam: testStartTractorBeam,
+            fireEnemyShot: testFireEnemyShot
         })
     };
 

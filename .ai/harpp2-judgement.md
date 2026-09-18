@@ -85,3 +85,11 @@ The lane could not continue because chunk lacked both a product artifact and rep
 
 The objective could not continue because outside objective scope: .ai/trust-surface-amendments.json; outside objective scope: tools/harpp2/projects/star-swarm-galaga.json; the stopping condition was boundary.
 
+The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
+
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
+
