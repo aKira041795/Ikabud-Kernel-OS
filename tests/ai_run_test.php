@@ -549,6 +549,52 @@ $h->test(
     aiRunDetail($ccAbandonedResult)
 );
 
+// ── CD-84 option A: an abandoned run takes the same director-attributed route as a blocked one ──
+// The control set for the repair: the route ACCEPTS an abandoned run and the gate then reports
+// ELIGIBLE, and it still REFUSES an unresolvable decision reference, a second acknowledgement, and a
+// live run. Assertion 25 above is the other half — without an acknowledgement, abandoning still blocks.
+$chairDecisions = (string) @file_get_contents(dirname(__DIR__) . '/.ai/chair-decisions.md');
+preg_match_all('/^##\s+(CD-\d+)\b/m', $chairDecisions, $cdHeadings);
+$cdRef = count($cdHeadings[1]) > 0 ? (string) end($cdHeadings[1]) : 'CD-84';
+
+$ccAck = $fixture . '/cc-ack';
+mkdir($ccAck, 0777, true);
+$ccAckDead = aiRunDeadPid();
+aiRunLedger($tool, array_merge($freshRun('cc-ack-dead', $ccAck), ["--pid={$ccAckDead}"]));
+
+$ccAckNoDecision = aiRunLedger($tool, ['commit-check', "--runs-dir={$ccAck}", '--acknowledge-block=cc-ack-dead', '--reason=process died with no final state', '--director-decision=CD-does-not-exist-9999']);
+$h->test(
+    '25d. acknowledge: an unresolvable director decision is refused',
+    $ccAckNoDecision['code'] === 3 && str_contains($ccAckNoDecision['output'], 'REFUSED'),
+    aiRunDetail($ccAckNoDecision)
+);
+
+$ccAckLiveAttempt = aiRunLedger($tool, ['commit-check', "--runs-dir={$ccRunning}", '--acknowledge-block=cc-live', '--reason=still writing', "--director-decision={$cdRef}"]);
+$h->test(
+    '25e. acknowledge: a live run cannot be acknowledged as a historical block',
+    $ccAckLiveAttempt['code'] === 3 && str_contains($ccAckLiveAttempt['output'], 'still running'),
+    aiRunDetail($ccAckLiveAttempt)
+);
+
+$ccAckAccepted = aiRunLedger($tool, ['commit-check', "--runs-dir={$ccAck}", '--acknowledge-block=cc-ack-dead', '--reason=process died with no final state', "--director-decision={$cdRef}"]);
+$h->test(
+    '25f. acknowledge: an abandoned run is acknowledged, observed honestly, and the gate then reports ELIGIBLE',
+    $ccAckDead > 0
+        && $ccAckAccepted['code'] === 0
+        && str_contains($ccAckAccepted['output'], 'ACKNOWLEDGED BLOCK cc-ack-dead')
+        && str_contains($ccAckAccepted['output'], 'status=abandoned')
+        && str_contains($ccAckAccepted['output'], 'scope_conformance.ok=null')
+        && str_contains($ccAckAccepted['output'], 'ELIGIBLE'),
+    aiRunDetail($ccAckAccepted)
+);
+
+$ccAckTwice = aiRunLedger($tool, ['commit-check', "--runs-dir={$ccAck}", '--acknowledge-block=cc-ack-dead', '--reason=again', "--director-decision={$cdRef}"]);
+$h->test(
+    '25g. acknowledge: a second acknowledgement of the same run is refused (once-only)',
+    $ccAckTwice['code'] === 3 && str_contains($ccAckTwice['output'], 'already acknowledged once'),
+    aiRunDetail($ccAckTwice)
+);
+
 $ccBroken = $fixture . '/cc-broken';
 mkdir($ccBroken, 0777, true);
 file_put_contents($ccBroken . '/broken.json', '{not valid json');

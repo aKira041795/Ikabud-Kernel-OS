@@ -228,7 +228,17 @@ function trustSurfaceMismatch(array $record): ?array
     return array_values(array_unique($changed));
 }
 
-/** A director route may authorise one visible old-hash -> recorded-new-hash transition. */
+/**
+ * A director route may authorise one visible old-hash -> recorded-new-hash transition.
+ *
+ * CD-85 (2026-09-18): the director adopted a standing rule — a transition whose underlying change the
+ * director has ALREADY authorised may be recorded here without a second ask, naming that decision in
+ * `director_decision`. The rule exists because the verifier is itself part of the trust surface: every
+ * authorised repair to `tools/ai-run.php` invalidates every earlier `completed` run, so the gate ratchets
+ * redder with each improvement (measured 2026-09-18: repairing the abandoned-run route moved the blockers
+ * 18 -> 21). Re-requesting authority for a repair already approved is bookkeeping, not a decision.
+ * A transition with NO prior authorisation still requires the director.
+ */
 function authorisedTrustSurfaceTransition(string $from, string $to): bool
 {
     $document = json_decode((string) @file_get_contents(dirname(__DIR__) . '/.ai/trust-surface-amendments.json'), true);
@@ -296,13 +306,17 @@ Usage:
   php tools/ai-run.php commit-check [--runs-dir=DIR] [--json]
                               [--acknowledge-block=RUN --reason=TEXT --director-decision=REF]
                               Decide commit eligibility from the ledger, not from how the tree looks.
-                              The acknowledgement route records one director-attributed blocked run
-                              once in a separate append-only artefact. It never mutates the run.
+                              The acknowledgement route records one director-attributed terminal
+                              run — a scope-conformance `blocked` run, or an `abandoned` run whose
+                              process died with no final state (CD-84) — once, in a separate
+                              append-only artefact. It never mutates the run, refuses a live run,
+                              and refuses a second acknowledgement of the same run.
                               Exits 0 only when every recorded run is `completed` (or there are no
-                              runs); exits 3 and names each run that is running, silent, failed or
-                              abandoned. Cheap and read-only: it performs only the reconciliation
-                              `status` already performs. The failure it prevents is silent — a tree
-                              looks coherent while a run is still writing to it.
+                              runs, or a terminal run is acknowledged); exits 3 and names each run
+                              that is running, silent, failed or abandoned. Cheap and read-only: it
+                              performs only the reconciliation `status` already performs. The
+                              failure it prevents is silent — a tree looks coherent while a run is
+                              still writing to it.
 
   php tools/ai-run.php verify --run=ID [--claim=CLAIM_ID] [--runs-dir=DIR] [--json]
                               [--timeout=SECONDS]
@@ -1990,8 +2004,16 @@ function acknowledgeBlock(array $options): int
         fwrite(STDOUT, "REFUSED: run {$id} is still running; a live run cannot be acknowledged as a historical block\n");
         return EXIT_GATE;
     }
-    if (($run['status'] ?? null) !== 'blocked' || ($run['scope_conformance']['ok'] ?? null) !== false) {
-        fwrite(STDOUT, "REFUSED: run {$id} is not a finished scope-conformance block\n");
+    // Two terminal states can never resolve themselves and would otherwise block commits for ever
+    // (CD-84, option A): a scope-conformance block, and an `abandoned` record — a run whose process
+    // died without a final state, which nothing can ever turn into `completed`. Both take the same
+    // route: one director-attributed, once-only, immutable acknowledgement. Nothing else qualifies:
+    // `running` is refused above, and silent/failed carry their own successor rule.
+    $observedStatus = (string) ($run['status'] ?? '');
+    $scopeBlock = $observedStatus === 'blocked' && ($run['scope_conformance']['ok'] ?? null) === false;
+    $abandoned = $observedStatus === 'abandoned';
+    if (!$scopeBlock && !$abandoned) {
+        fwrite(STDOUT, "REFUSED: run {$id} is neither a finished scope-conformance block nor an abandoned run\n");
         return EXIT_GATE;
     }
     $document = loadBlockAcknowledgements($runsDir);
@@ -2008,8 +2030,10 @@ function acknowledgeBlock(array $options): int
         'block_reason' => $reason,
         'director_decision' => $decision,
         'acknowledged_at' => date(DATE_ATOM),
-        'run_status_observed' => 'blocked',
-        'scope_conformance_ok_observed' => false,
+        'run_status_observed' => $observedStatus,
+        // An abandoned run never reached a scope check, so the honest observation is null — not a
+        // fabricated `false`, which would claim a conformance failure nobody measured.
+        'scope_conformance_ok_observed' => $scopeBlock ? false : null,
         'run_record_sha256' => $before,
     ];
     $document['acknowledgements'][] = $ack;
@@ -2020,7 +2044,7 @@ function acknowledgeBlock(array $options): int
     }
     fwrite(STDOUT, "ACKNOWLEDGED BLOCK {$id}\n");
     fwrite(STDOUT, "  reason:   {$reason}\n  decision: {$decision}\n  recorded: {$ack['acknowledged_at']}\n");
-    fwrite(STDOUT, "  immutable: status=blocked scope_conformance.ok=false sha256={$after}\n");
+    fwrite(STDOUT, "  immutable: status={$observedStatus} scope_conformance.ok=" . ($scopeBlock ? 'false' : 'null') . " sha256={$after}\n");
     return EXIT_OK;
 }
 
@@ -2058,7 +2082,7 @@ function commandCommitCheck(array $options, bool $json): int
         $total++;
         $decorated = decorateRun($run, $now);
         $status = (string) ($decorated['status'] ?? 'unknown');
-        if ($status === 'blocked' && isset($acknowledgedIds[(string) ($decorated['id'] ?? '')])) {
+        if (in_array($status, ['blocked', 'abandoned'], true) && isset($acknowledgedIds[(string) ($decorated['id'] ?? '')])) {
             continue;
         }
         if (in_array($status, ['failed', 'silent'], true) && isset($successors[(string) ($decorated['id'] ?? '')])) {

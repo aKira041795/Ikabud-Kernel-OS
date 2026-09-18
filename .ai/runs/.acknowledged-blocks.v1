@@ -180,6 +180,78 @@
             "run_status_observed": "blocked",
             "scope_conformance_ok_observed": false,
             "run_record_sha256": "640e4802664c57c44e8c34c6ea95058333320242b0d145ac9059bf58c770302c"
+        },
+        {
+            "run_id": "theme-studio-policy-seed",
+            "block_reason": "process pid 3089212 died with no final state 2d23h ago; the ledger reconciled it to abandoned and it produced no evidence — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:46+00:00",
+            "run_status_observed": "abandoned",
+            "scope_conformance_ok_observed": null,
+            "run_record_sha256": "c2af549dda7c9365565430ff5708dc9bbd3c368a17e6ce5df66799c7e8c7df0c"
+        },
+        {
+            "run_id": "theme-studio-policy-seed-sol",
+            "block_reason": "process pid 3092295 died with no final state 2d22h ago; the ledger reconciled it to abandoned and it produced no evidence — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:46+00:00",
+            "run_status_observed": "abandoned",
+            "scope_conformance_ok_observed": null,
+            "run_record_sha256": "d4a7c74277aadb4b99bf7809e42a8d37d3c20b42095ebbd82142c99c9bfb7f15"
+        },
+        {
+            "run_id": "theme-studio-policy-seed-sol2",
+            "block_reason": "process pid 3096516 died with no final state 2d22h ago; the ledger reconciled it to abandoned and it produced no evidence — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:46+00:00",
+            "run_status_observed": "abandoned",
+            "scope_conformance_ok_observed": null,
+            "run_record_sha256": "9391c62a896520ac7a30f50af9ec91fc49bed1310289b248ab9476083ad643fd"
+        },
+        {
+            "run_id": "theme-studio-in-shell",
+            "block_reason": "2d21h-old scope-conformance block from a superseded attempt; the work it blocked was re-attempted and committed — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:47+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "638e061a17842a079f6152b7ec1452654635998b83f015727cd23091c9f3d20f"
+        },
+        {
+            "run_id": "shell-spec-budget",
+            "block_reason": "process pid 3259327 died with no final state 2d17h ago; the ledger reconciled it to abandoned and it produced no evidence — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:47+00:00",
+            "run_status_observed": "abandoned",
+            "scope_conformance_ok_observed": null,
+            "run_record_sha256": "fd1583faa7877f68cc231bb44c87cb42d49d727b0e2d74e59b07419110a8387a"
+        },
+        {
+            "run_id": "shell-spec-split-2",
+            "block_reason": "2d16h-old scope-conformance block from a superseded attempt; the work it blocked was re-attempted and committed — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:48+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "7049226e03287708b54dd5d434ee614b43e68da5c0672a18dd31b5a26320d664"
+        },
+        {
+            "run_id": "page-cache-content-type",
+            "block_reason": "2d7h-old scope-conformance block from a superseded attempt; the work it blocked was re-attempted and committed — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:49+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "a0afb8c01bc10f85cbfec89eb366eef4c83b63acfb1f1dbe8c959a7b94045c18"
+        },
+        {
+            "run_id": "objective-preservation",
+            "block_reason": "2d7h-old scope-conformance block from a superseded attempt; the work it blocked was re-attempted and committed — CD-84 option A",
+            "director_decision": "CD-84",
+            "acknowledged_at": "2026-09-18T07:12:49+00:00",
+            "run_status_observed": "blocked",
+            "scope_conformance_ok_observed": false,
+            "run_record_sha256": "ed8a8182c17c92fd385a9f42d763b5aca29a52c06f37e27bb0083c6fcb9cc740"
         }
     ]
 }
