@@ -32,15 +32,16 @@ notify() {
     local slug; slug="$(slug_of "$objective")"
     local state="$DIR/state/${slug}.json"
     local reason; reason="$(python3 -c "import json;print(json.load(open('$state')).get('reason') or '')" 2>/dev/null || true)"
+    local next_step="chain continues"
+    [ "$status" = "verified" ] || next_step="executor promoted, then hand-off if it fails again"
+    # The caller passes a slug; the acceptance lives in the objective FILE. Resolve the file FIRST: grepping the
+    # unresolved name as if it were a path reported "(none declared in the objective)" for objectives that declare
+    # four gates — a notification that lies.
+    local objective_file="$objective"
+    [ -f "$objective_file" ] || objective_file="$DIR/objectives/${objective}.md"
     # The acceptance is what the driver actually gated — read it from the objective, never derive it from the slug.
     local acceptance; acceptance="$(grep -E '^\$ ' "$objective_file" 2>/dev/null | sed 's/^\$ //' | paste -sd'|' - | sed 's/|/ | /g')"
     [ -n "$acceptance" ] || acceptance="(none declared in the objective)"
-    local next_step="chain continues"
-    [ "$status" = "verified" ] || next_step="executor promoted, then hand-off if it fails again"
-    # The caller passes a slug; the acceptance lives in the objective FILE. Grepping the slug as if it were a path
-    # reported "(none declared in the objective)" for objectives that declare four gates — a notification that lies.
-    local objective_file="$objective"
-    [ -f "$objective_file" ] || objective_file="$DIR/objectives/${objective}.md"
     # Terminal FIRST, and unconditionally: the owner is at his workstation, and this is the surface
     # that still works when HARPP is unreachable. HARPP below covers him being away.
     say "ITEM ${status}: ${slug}" "acceptance: ${acceptance}" "reason: ${reason:-none}" "next: ${next_step}"

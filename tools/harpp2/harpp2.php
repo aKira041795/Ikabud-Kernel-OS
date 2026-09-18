@@ -320,8 +320,13 @@ function boundaryViolations(array $changed, array $before, array $after, array $
         }
         $old = $before[$path]['content'] ?? '';
         $new = $after[$path]['content'] ?? '';
-        if (is_string($new) && preg_match('/\b(?:DROP\s+(?:TABLE|DATABASE)|TRUNCATE\s+TABLE|ALTER\s+TABLE\b[^;]*\bDROP\b)/i', $new)) {
-            $violations[] = "destructive operation introduced in {$path}";
+        // Delta-aware (lesson L8, repaired 2026-09-18): a destructive statement the file ALREADY had is not
+        // "introduced" by a run that merely touched the file. Only an added statement counts; a destructive
+        // operation the executor reports is still a violation further down.
+        require_once __DIR__ . '/destructive-introduction.php';
+        $destructive = destructiveIntroduction($path, is_string($old) ? $old : null, is_string($new) ? $new : null);
+        if ($destructive !== null) {
+            $violations[] = $destructive;
         }
         if (in_array(basename($path), ['composer.json', 'package.json'], true) && is_string($old) && is_string($new)) {
             $oldManifest = json_decode($old, true);
