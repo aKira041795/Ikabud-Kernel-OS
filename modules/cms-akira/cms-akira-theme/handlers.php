@@ -199,6 +199,7 @@ function catThemeAdminPageContent(): array
     $valuesResult = cat_cap_akira_theme_customizer_values_1([]);
     $schema = is_array($schemaResult['data'] ?? null) ? $schemaResult['data'] : [];
     $savedValues = is_array($valuesResult['values'] ?? null) ? $valuesResult['values'] : [];
+    $previewTokens = [];
     $studio = '';
     foreach (($schema['sections'] ?? []) as $sectionId => $section) {
         if (!is_array($section)) {
@@ -211,6 +212,9 @@ function catThemeAdminPageContent(): array
             }
             $value = $savedValues[$sectionId][$fieldId] ?? ($control['default'] ?? '');
             $type = (string)($control['type'] ?? 'text');
+            if ($type === 'color' && is_string($value) && preg_match('/^#[0-9a-fA-F]{6}$/', $value) === 1) {
+                $previewTokens['--' . str_replace('_', '-', (string)$fieldId)] = strtolower($value);
+            }
             $name = 'values[' . catThemeEscape($sectionId) . '][' . catThemeEscape($fieldId) . ']';
             $inputClass = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-akira-500 focus:ring-akira-500';
             $field = '';
@@ -236,12 +240,31 @@ function catThemeAdminPageContent(): array
                         }
                     }
                 }
-                $field = '<input class="' . $inputClass . '" type="' . catThemeEscape($inputType) . '" name="' . $name . '" value="' . catThemeEscape($value) . '"' . $numericAttributes . '>';
+                $input = '<input class="' . $inputClass . '" type="' . catThemeEscape($inputType) . '" name="' . $name . '" value="' . catThemeEscape($value) . '"' . $numericAttributes;
+                if ($inputType === 'color') {
+                    $field = '<span style="display:grid;grid-template-columns:minmax(8rem,1fr) 6rem;gap:.75rem;align-items:center">'
+                        . $input . ' data-theme-color-input style="appearance:none;-webkit-appearance:none;height:2.75rem;padding:.25rem;background-color:' . catThemeEscape($value) . ';cursor:pointer">'
+                        . '<output data-theme-color-value style="font-family:ui-monospace,monospace;font-weight:700;text-transform:uppercase">' . catThemeEscape($value) . '</output></span>';
+                } else {
+                    $field = $input . '>';
+                }
             }
             $fields .= '<label class="block"><span class="mb-1 block text-sm font-semibold text-slate-700">' . catThemeEscape($control['label'] ?? $fieldId) . '</span>' . $field . '</label>';
         }
         $studio .= '<fieldset class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><legend class="px-2 text-lg font-bold text-slate-900">' . catThemeEscape($section['label'] ?? $sectionId) . '</legend><div class="grid gap-4">' . $fields . '</div></fieldset>';
     }
+    $previewStyle = '';
+    foreach ($previewTokens as $token => $value) {
+        $previewStyle .= $token . ':' . $value . ';';
+    }
+    $preview = '<section data-theme-preview aria-label="Theme preview" style="' . catThemeEscape($previewStyle)
+        . 'min-height:320px;padding:32px;border-radius:18px;background:var(--color-background,#f8fafc);color:var(--color-text,#0f172a);border:1px solid var(--color-border,#cbd5e1)">'
+        . '<div style="max-width:720px;margin:0 auto">'
+        . '<p style="margin:0 0 10px;color:var(--color-primary,#0f766e);font-weight:700;letter-spacing:.08em;text-transform:uppercase">Live theme preview</p>'
+        . '<h3 style="margin:0 0 14px;font-size:32px;line-height:1.15;color:var(--color-heading,var(--color-text,#0f172a))">See your site before you save</h3>'
+        . '<p style="margin:0 0 24px;font-size:17px;line-height:1.65;color:var(--color-muted,#475569)">Colours from the active theme are applied to this representative page area.</p>'
+        . '<a href="#theme-customizer-controls" style="display:inline-block;border-radius:10px;padding:11px 18px;background:var(--color-primary,#0f766e);color:var(--color-on-primary,#fff);font-weight:700;text-decoration:none">Explore the theme</a>'
+        . '</div></section>';
     $notice = (string)($_GET['saved'] ?? '') === '1'
         ? '<div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 font-semibold text-emerald-700">Theme customization saved. Public cache invalidated.</div>' : '';
     $rollback = $previous !== null && $previous !== $active
@@ -253,11 +276,15 @@ function catThemeAdminPageContent(): array
         : '';
     $body = '<section class="mb-8 rounded-2xl bg-slate-950 p-6 text-white"><p>Active theme</p><code class="text-violet-300">' . catThemeEscape($active) . '</code></section>'
         . $notice . '<section data-theme-studio><h2 class="mb-2 text-2xl font-bold">Theme Studio</h2><p class="mb-5 text-slate-500">Customize the active theme through its kernel-owned declarative schema.</p>'
-        . '<form method="post" action="/cms-akira-theme/customize" class="grid gap-5">' . catThemeCsrfField()
+        . $preview
+        . '<form id="theme-customizer-controls" method="post" action="/cms-akira-theme/customize" class="mt-6 grid gap-5">' . catThemeCsrfField()
         . '<input type="hidden" name="theme_slug" value="' . catThemeEscape($active) . '"><input type="hidden" name="idempotency_key" value="customize-' . bin2hex(random_bytes(12)) . '">'
-        . $studio . '<button class="rounded-xl bg-akira-600 px-5 py-3 font-bold text-white hover:bg-akira-700" type="submit">Save customization</button></form></section>'
+        . $studio . '<div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center"><button class="rounded-xl bg-akira-600 px-5 py-3 font-bold text-white hover:bg-akira-700" type="submit">Save customization</button>'
+        . '<button class="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold text-slate-700 hover:bg-slate-50" type="button" data-theme-discard>Discard changes</button>'
+        . '<span data-theme-edit-status aria-live="polite" style="font-weight:600;color:#475569"></span></div></form></section>'
         . '<section class="mt-10"><h2 class="text-xl font-bold">Installed themes</h2><ul class="mt-3 space-y-2">' . $items . '</ul>' . $rollback . '</section>'
-        . '<p class="mt-6"><a href="/api/v1/cms-akira-theme/themes">Themes JSON</a> · <a href="/api/v1/cms-akira-theme/resolve">Resolve JSON</a></p>';
+        . '<p class="mt-6"><a href="/api/v1/cms-akira-theme/themes">Themes JSON</a> · <a href="/api/v1/cms-akira-theme/resolve">Resolve JSON</a></p>'
+        . '<script defer src="/assets/js/akira-theme-studio.js"></script>';
     return ['title' => 'CMS Akira Theme Studio', 'body' => $body];
 }
 

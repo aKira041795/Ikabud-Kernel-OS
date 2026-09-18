@@ -175,6 +175,9 @@ test.describe('Akira theme editor milestone', () => {
 
         await page.goto(EDITOR);
         await page.waitForTimeout(800);
+        // The milestone runner invokes each requirement separately and Playwright clears its output directory
+        // before each invocation. Capture the final clean state too so the required visual artifact survives R6.
+        await page.screenshot({ path: 'test-results/akira-theme-editor.png', fullPage: true });
         expect(problems, 'no console errors or failed requests on load').toEqual([]);
     });
 });

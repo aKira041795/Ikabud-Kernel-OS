@@ -3776,3 +3776,250 @@ itself a defective instrument.* It refused work that took the suite from 28 to 5
 defect as L1–L5, found in the guard that was supposed to be the last line of defence.
 
 **Authority:** director directive 2026-09-17. **Owner intervention:** recorded; no further escalation required.
+
+---
+
+## CD-79 — DeepSeek Harness retained as an experimental second executor backend (2026-09-18)
+
+**Issue.** The director asked what "DeepSeek Harness" is and whether it is useful now that HARPP and this
+harness exist. The internet sense of the term is a real product — `@deepseek-ai/dsh`, the official DeepSeek AI
+agent harness (MIT, developer preview, "everything is a plugin" on the Cordis kernel) — and it occupies exactly
+the layer `pi` occupies here. The question the spike had to answer was narrow: *can it sit behind the dispatch
+interface this harness already owns, with `harpp2` keeping acceptance authority?*
+
+**Options.**
+
+- **A — Adopt `dsh` as the executor runtime.** Blast radius: the whole execution path, a 522-package Node
+  install, a `-rc.2` pin whose README promises breaking changes. Not justified by one probe; and it is an L4
+  (new runtime dependency) taken on preview churn.
+- **B — Retain it as an additive experimental second backend; keep `pi` as the default and `harpp2` as the
+  authority.** Bounded, reversible, retires the question with evidence, changes no authority.
+- **C — Reject it.** Cheap, but discards a working plumbing result and the knowledge that the two runtimes
+  share the `@earendil-works/pi-ai` model-adapter lineage.
+- **D — Adopt its governance ideas.** Not available: `dsh` supplies a runtime, not an authority system (no
+  director channel, no L0–L4, no objective/acceptance gate). Nothing to port.
+
+**Chosen: B.** Contract `.ai/dsh-executor-spike.contract.md`, dispatched to `openai-codex/gpt-5.6-sol`
+(thinking `medium`) — the director's named fallback, since `openai-codex/gpt-5.6-astra` does not exist for this
+account (`Codex error: The 'gpt-5.6-astra' model is not supported when using Codex with a ChatGPT account.`).
+Chair-verified: equivalence gate PASS on two independent inputs (the worker's `CONSTITUTION.md` probe and the
+Chair's own `verify.php` probe, 7 s, correct hash, journal `"runtime":"dsh"`, lock released), all four authority
+files untouched, no credential in any log.
+
+**Why B and not A.** The probe proves *plumbing equivalence on a trivial task*, not reasoning, reliability,
+security or cost parity. Adopting on that evidence would be the "verdict by assertion" failure this corpus
+records (L1–L8). The pin, the install size and the Node ≥22.19 floor are the standing costs of keeping the
+candidate, and they are paid only while the spike directory exists.
+
+**Recorded failure worth keeping.** Under the machine's default Node (`v22.11.0`) the stock `dsh` launcher exits
+**0 with no output at all** — a silent success wearing a pass's clothes. The backend now refuses to run below
+Node 22.19 rather than trusting an exit code; that is the same lesson as L8 applied to a runtime.
+
+**Next bounded action (not taken here).** Run one *real* `harpp2` objective end-to-end through
+`dispatch-dsh.sh` and let `harpp2` gate it, so the comparison is an acceptance verdict rather than a checksum.
+That needs its own contract and an authorised objective; it is not part of this slice.
+
+**Authority:** director directive 2026-09-18 — *"create the contract, assign to Sol or Astra. verify and then
+test"*. **Owner intervention:** none required beyond that directive; no L4 remains open.
+
+---
+
+## CD-80 — the dsh parity experiment returned an inconclusive verdict, and the fork it exposes (2026-09-18)
+
+**Issue.** CD-79's next action was to carry a *real* `harpp2` objective to a verdict with `dsh` as the executor.
+The parity contract fixed `star-swarm-deterministic-probes` as the target. The run executed, the adapter worked,
+the instrument passed — and **no executor lane was ever dispatched**, because the target was already green: the
+driver ran its five acceptance gates during *initial acceptance*, recorded `objective_verified`, and never
+needed a lane (`dispatch_events=0`).
+
+**Two claims retired, measured (both were mine, and both were wrong):**
+
+- *"`stability.sh … 10` cannot run here — 10 browser runs against a 5-per-300 s login limiter."* Measured
+  10/10, re-derived from the raw per-run logs (`/tmp/harpp2-stability/run-{1..10}.log`, 13:35–13:37 today, zero
+  `failed` lines). The suspected structural blocker was a false alarm. **Verify the instrument before believing
+  the finding** — the rule held against my own prediction.
+- *"The `-rc.2` pin and its Node floor make `dsh` impractical."* It ran a confined `workspace-write` brief to
+  completion in 6 s, and the 1500 s default fits inside harpp2's 1800 s lane budget.
+
+**An unplanned positive.** `star-swarm-deterministic-probes` moves `escalated → verified`: yesterday's escalation
+was the assertion guard's false positive (L8), and CD-78's repair cleared it. A backlog item was never broken —
+it was mis-instrumented.
+
+**What the lane did right.** Offered the temptation to make the experiment succeed, it refused: forcing a lane
+"would require manufacturing a failure, weakening a gate, substituting the fixed target, or editing the protected
+driver." Refusing to manufacture evidence is the behaviour the corpus exists to produce.
+
+**The fork (this is the L4).** The only genuinely red real objective remaining is Akira **D.1** — red because
+`tests/shell_read_declarations_test.php` does not exist. But D.1 declares routes against capabilities and writes
+exemptions: a **capability contract change** (L4) on the authority surface that the parity contract deliberately
+excluded, and its gate would be **authored by the executor** — the semantic-verification gap that
+`harpp2` bounds paths against but cannot close.
+
+**Options.**
+
+- **A — Run D.1 on `dsh`, with chair verification beyond the self-authored test.** Evidence available
+  independently: `php ikabud workbench:governance --all --json` is produced by the kernel, not the executor;
+  the change is uncommitted and therefore fully reversible; and the chair reads every declaration and exemption.
+  Hard gates: no exemption without a checkable reason, no route left undeclared that is not genuinely public,
+  and any weakening is a revert, not a debate. *Cost: one bounded lane. Blast radius: `cms-akira-shell`
+  declarations, reversible. Answers CD-79 properly.*
+- **B — Keep the authority surface on the proven lane and accept the experiment as closed.** The adapter and the
+  `HARPP2_DISPATCH` seam are proven; parity-on-real-work is deferred until a *naturally* red sandboxed objective
+  appears. Cheapest, and honest, but leaves CD-79's question open.
+- **C — Authorise a protected-driver feature that forces one executor lane before initial acceptance.** Touches
+  `harpp2.php`, changes the driver's semantics for every future run, to answer a question about one runtime.
+  Poor value; not recommended.
+- **D — Do not use `dsh` for product work at all** — keep it as a probe/dev runtime only, and let `pi` keep the
+  implementation lane. Safe; retires a candidate on evidence that is thin rather than on evidence that is bad.
+
+**Recommendation: A**, with the chair's own census check as the acceptance evidence rather than the executor's
+test. Rationale: D.1 is the director's stated next direction (CD-78 — *return to Akira CMS*), its failure mode is
+revertible, and the kernel census gives a genuinely independent instrument. **Second choice: B**, if the director
+prefers to spend the next Akira slice on the proven lane.
+
+**Not decided here.** Choosing between A and B changes what the previous contract approved (a protected surface)
+and requires an L4 capability-contract decision, so it is filed to the director rather than taken.
+
+**Authority:** owner directive 2026-09-18 *(do CD-79)*. **Owner intervention:** required — the fork above.
+
+---
+
+## CD-81 — the escalations I filed were the defect (director correction, 2026-09-18)
+
+**Directive, verbatim.** *"If HARPP + HARNESS + DSH can decide, why the need for my approval? autonomous vibe
+coding is the goal."*
+
+**Ruling.** Lane, runtime and target-surface selection are **Chair authority**. The correct test before stopping is
+not *"is this consequential?"* but *"does satisfying the objective require changing what the owner approved?"*
+Only the latter escalates. An enumerable choice is a choice the Chair makes.
+
+**What CD-80 got wrong.** I filed "run D.1 on dsh, or keep it on the proven lane?" as an L4. It is not one:
+
+- The **approved contract already authorises D.1** — it comes from `.ai/akira-completion-plan.md` Phase D, and
+  CD-78 names returning to Akira as the next experiment. Completing it changes nothing the owner approved.
+- **Lane assignment is explicitly not L4** in the policy (*"Choosing what to work on next, ordering,
+  decomposition, or agent/model assignment"*).
+- The tension was real but it was **CONTRACT-TENSION, not CONTRACT-BREACH**: the plan stopped working, the
+  objective stayed achievable, so the Chair replans and continues. I escalated a rethink.
+
+Consequently: I escalated a *risk* rather than a *permission*, and the cost landed on the one resource the policy
+says to protect — the director's attention. The anti-pattern has a name here: *"I would be authoring it, not
+repairing it"* in another costume.
+
+**Absolute prohibitions are not approvals.** They are enforced by **not doing the thing**, never by asking. If a
+path would weaken authorisation, the answer is not "may I?" — it is "choose a path that does not".
+
+**Applied, without further approval:**
+
+1. **D.1 runs now on the proven lane** (`HARPP2_MODEL=openai-codex/gpt-5.6-sol`, `HARPP2_THINKING=high`) — chosen
+   for authority-surface risk, which is a lane decision, not a request for permission.
+2. **HARPP decision 107 cancelled** as superseded — the director's queue stays readable rather than carrying a
+   question the Chair was always able to answer.
+3. **dsh still gets its real-work verdict**, on a target where being wrong is cheap: a **chair-authored red gate**
+   over the verified `chain.sh:33` notification defect (real, evidenced in `.ai/inbox.log`, harness-local, zero
+   authority semantics). The chair writes the failing assertion; the runtime must make it pass under harpp2's delta
+   and gate. That removes the self-authored-acceptance objection to the dsh experiment without spending the
+   authority surface on it.
+
+**Standing correction for the corpus.** Default to deciding. Escalate on contract-breach only, and prefer a
+`stop_reason` over a question when in doubt. When the Chair can state the options, the Chair has the authority.
+
+**Authority:** owner directive 2026-09-18. **Owner intervention:** provided — and it was for the escalation itself,
+not for the work.
+
+---
+
+## CD-82 — Akira D.1 verified; the boundary guard repaired (L8, third instance) (2026-09-18)
+
+**Outcome.** `item-d1-read-declarations` is **`verified`**: `[harpp2] objective verified`, reason *"all objective
+acceptance gates passed"*, full suite **147 passed / 53 skipped / 0 failed**. `read_undeclared: 8 → 0`,
+`read_dispatch_enforced: 16 → 21`, `read_exempt: 0 → 6`, `write_ratio: 100` preserved.
+
+**The run before it stopped on a defective instrument, not on the work.** Lane 1 (Sol/high) finished exit 0 with
+the objective's work in place; the driver then escalated *"destructive operation introduced in
+`modules/cms-akira/cms-akira-shell/tests/redirect_console_test.php`"*. Measured:
+
+```
+HEAD:          257:                $db->exec('DROP TABLE IF EXISTS cms_akira_redirects');
+working copy:  255:                $db->exec('DROP TABLE IF EXISTS cms_akira_redirects');
+diff <(git show HEAD:$F | grep 'DROP TABLE') <(grep 'DROP TABLE' $F)  → no difference (only shifted)
+```
+
+The check ran `preg_match('/DROP\s+(?:TABLE|DATABASE)/', $new)` over the **whole new file**, so any file a lane
+merely *touched* was accused of introducing a statement it already had — while its siblings were already
+delta-aware (`array_diff_key` for dependencies, `array_diff` for removed security lines, the L8-repaired
+`classifyAssertionChange` for tests). **This is the third instance of one class: a check that cannot tell
+pre-existing from introduced.**
+
+**Repair, and why it is repair rather than authorship.** The policy states: *"Correcting an assertion that is
+provably impossible against the shipped artifact is repair, not authorship"*, provided the check still asserts
+the same user-observable outcome. Here the assertion was not merely impossible — it was **false about the
+artifact**: nothing was introduced. The repaired check asserts exactly the same outcome (*an introduced
+destructive statement blocks the run*) and is proven **non-vacuous**: the self-test includes a control showing
+the pre-repair regex *would* have fired on that same data.
+
+- `tools/harpp2/destructive-introduction.php` — the check, delta-aware, executable in isolation.
+- `tools/harpp2/boundaries_self_test.php` — **9/9**, both controls: a touched file survives; an ADDED
+  `DROP TABLE` / `TRUNCATE TABLE` / `ALTER … DROP COLUMN` / new file is still refused. The
+  executor-reported-operations path is untouched, so genuinely destructive work is still blocked.
+- `harpp2.php` — 4-line call, no logic left behind.
+
+My first self-test run **failed** and the fault was my fixture (I re-indented the line), not the repair — caught
+only because I checked the real bytes before touching the logic. *Verify the fixture before believing your own
+control.*
+
+**Chair review of the authority change (the part `harpp2` cannot do).** All six exemptions are genuinely public
+surfaces — `/`, `/posts`, `/posts/{slug}`, `/sitemap.xml`, `/robots.txt`, and the 403 denial page itself — each
+with a checkable sentence, the CD-56 Finding 1 pattern. **Nothing moved from enforced to exempt.** The edited
+guard was **tightened**: four routes moved from `$excludedReads` into asserted `$expectedReads`, and the console
+test now asserts `dispatch-declared` **and** the surviving local admin gate — a stronger claim than the
+"intentionally undeclared" it replaced.
+
+**Provenance, stated honestly.** The work was produced by a lane the driver had refused, for a reason that was
+not true. Re-running with the repaired instrument verified the artifact against the objective's own gates. The
+refusal is recorded rather than deleted: the escalation
+`tools/harpp2/escalations/item-d1-read-declarations-20260918-055741.md` stays.
+
+**Authority:** CD-81 (director: decide, don't ask). **Owner intervention:** none.
+
+**Next bounded action.** The dsh parity verdict still needs a *real* work item: chair writes the failing gate
+over the verified `chain.sh:33` notification defect (real, evidenced in `.ai/inbox.log`, harness-local, zero
+authority semantics), then `dsh` must make it green. Run under `HARPP2_DISPATCH=tools/harpp2/dispatch-dsh.sh`.
+
+---
+
+## CD-83 — `dsh` carried a real work item to a `harpp2` verdict (CD-79 answered) (2026-09-18)
+
+**Outcome.** A **`dsh` lane** took a real, chair-gated work item from red to `verified` under `harpp2`'s
+authority. CD-79's open question — *can the candidate runtime carry real work, not a checksum?* — is answered.**Evidence.**
+
+- Driver dispatched to the candidate: `dispatch-dsh.sh 'harness-notify-acceptance-1-e3a62a' …`.
+- Journal: `{"runtime":"dsh","mode":"harpp2","permission_mode":"workspace-write","timeout_seconds":1500}`, **14:05:59 → 14:06:29, exit 0, 30 seconds**.
+- Verdict: `[harpp2] objective verified` — *"all objective acceptance gates passed"*.
+- The fix it produced is a **pure reorder** (`chain.sh`, 6 insertions / 5 deletions): resolve
+  `objective_file` before reading the acceptance from it, fallback preserved, comment corrected. Nothing
+  restructured, no output format changed beyond the acceptance value becoming true.
+- The gate was **not touched** by the lane (its mtime, 14:05:33, predates the 14:05:59 lane), so the pass is
+  not self-authored.
+- Re-derived by the chair against **real** objectives, not the fixture: `item-d1-read-declarations` now reports
+  its five gates, and `star-swarm-deterministic-probes` its six — where every prior notification said
+  *"(none declared in the objective)"*.
+
+**The experimental design that worked, and should be reused.** *The chair authors the failing gate; the
+candidate is wired in through `HARPP2_DISPATCH`; `harpp2` keeps the verdict.* That removes the
+self-authored-acceptance objection, costs the authority surface nothing, and makes any runtime comparable on
+identical terms. The earlier attempt failed for the opposite reason: a fixed target that was already green
+proved only that a lane need not run.
+
+**What this does and does not prove.** It proves the runtime can be *driven*, confined to a declared
+`workspace-write` scope, and made to satisfy a gate it did not write — on a small harness item (a 6-line bash
+reorder). It does **not** prove reasoning, reliability or cost parity on large product work, and it measures the
+*runtime* rather than the model: `dsh` ran its own configured DeepSeek Flash, not a lane this harness chose.
+Adoption remains an option, not a conclusion (CD-79's choice B stands, now with positive evidence).
+
+**Product value, separately.** The fix is a real defect repair: owner notifications now state what was gated.
+The surface the director trusts when the harness is away no longer lies.
+
+**Authority:** CD-81 / CD-82. **Owner intervention:** none. **Note:** the objective is
+`tools/harpp2/objectives/harness-notify-acceptance.md`, the chair-authored gate is
+`tools/harpp2/notify_acceptance_test.sh` (red-first, proven failing before the fix).
