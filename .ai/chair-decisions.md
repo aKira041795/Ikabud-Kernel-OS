@@ -4154,3 +4154,39 @@ not touch any run record: the ledger stays immutable and the refusals stay on th
 `83/83`, so the gate went green by its own rules and not by weakening them.
 
 **Authority:** owner directive 2026-09-18 (*proceed* → option 2). **Owner intervention:** none outstanding.
+
+---
+
+## CD-86 — acceptance that cannot be satisfied incrementally makes real progress unverifiable (2026-09-18)
+
+**What happened.** The Star Swarm/Galaga rebuild was dispatched as one objective whose acceptance is a single
+42-check gate. It escalated after three chunks with `no_progress: 3` and this finding: *"three approaches
+produced no product progress — a finding about the objective or the instrument, not a boundary"*.
+
+**The finding was right and the defect was mine.** The chunks did real work — 201 lines of product change and
+the gate moved **12 → 27** — but a gate that cannot turn green until the *last* requirement is met can never
+report progress, so the driver's heuristic read three honest chunks as three failures. **An acceptance that
+cannot be satisfied incrementally makes real progress unverifiable.** This is the same family as L8: the
+instrument, not the work, produced the verdict. The driver classified it correctly (chair correction, not a
+boundary), which is the repaired behaviour from CD-78 doing its job.
+
+**Repair (option 1 of the escalation — correct the instrument, resume the item).**
+
+- `tools/harpp2/gates/star_swarm_galaga_gate.php` gains `--phase=1|2|3`: phase 1 the state surface plus the
+  `components` group, phase 2 `animation` + `points`, phase 3 `gameplay`. No flag still means the complete
+  rebuild, unchanged.
+- The assertion rule is now mode-dependent: the **floor** (60) belongs to the finished game, the **baseline**
+  (52, what the spec already had) is the non-shrink rule applied to a phase. Recorded in the contract as
+  `browser_spec_assertion_baseline`.
+- Measured after the split: phase 1 **24 pass / 5 fail**, phase 2 **12 / 5**, phase 3 **8 / 5**, complete gate
+  **28 / 15** — each phase is now satisfiable by a chunk, which is what makes progress reportable.
+- Three objectives (`star-swarm-galaga-p1|p2|p3.md`) run as one chain: `HARPP2_LADDER=openai-codex/gpt-5.6-sol:high`,
+  because the chain's own note records the director's guidance that sol does the game's visual pass better and
+  cheap-first would spend an attempt learning nothing.
+
+**Doctrine this adds.** *A milestone's acceptance must be satisfiable one slice at a time, or the harness cannot
+see progress and will escalate honest work.* When a `no_progress` finding arrives, the first question is not
+"is the lane lazy" but "can any gate turn green on its own".
+
+**Authority:** CD-81 (decide, correct, continue) and the escalation's own recommendation. **Owner
+intervention:** none — this was a chair correction by construction.

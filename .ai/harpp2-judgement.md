@@ -69,3 +69,19 @@ The objective could not continue because destructive operation introduced in mod
 
 The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
 
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The objective could not continue because three approaches produced no product progress — a finding about the objective or the instrument, not a boundary; this is a no_progress finding, NOT an authority, boundary or irreversibility stop — it is a chair correction.
+
+The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
+
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The lane could not continue because chunk lacked both a product artifact and reproducible passing evidence; no authority, boundary, or irreversibility condition applied, so the bounded no-progress rule changed the next approach instead of stopping.
+
+The objective could not continue because outside objective scope: .ai/trust-surface-amendments.json; outside objective scope: tools/harpp2/projects/star-swarm-galaga.json; the stopping condition was boundary.
+
