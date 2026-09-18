@@ -4023,3 +4023,61 @@ The surface the director trusts when the harness is away no longer lies.
 **Authority:** CD-81 / CD-82. **Owner intervention:** none. **Note:** the objective is
 `tools/harpp2/objectives/harness-notify-acceptance.md`, the chair-authored gate is
 `tools/harpp2/notify_acceptance_test.sh` (red-first, proven failing before the fix).
+
+---
+
+## CD-84 — the commit gate is unsatisfiable, and the director authorised the commit over it (2026-09-18)
+
+**Issue.** `php tools/ai-run.php commit-check` exits **3 — NOT ELIGIBLE**: *"committing now would capture a
+non-final state; 26 run(s) are not completed."* Every one is **2–3 days old** and none belongs to the work being
+committed: 17 `trust_surface_mismatch`, 4 `abandoned` (`theme-studio-policy-seed{,-sol,-sol2}`,
+`shell-spec-budget`), 5 `blocked`.
+
+**A pipe trap on my own reading, recorded because it is the corpus's own lesson.** My first reading of this gate
+reported `exit=0` — that was **`tail`'s** exit code, not the gate's (`… | tail -6; echo $?`). The true verdict is
+`3`. Never judge a gated command through a pipe; I have a written rule about exactly this and still tripped it.
+
+**Finding — the gate cannot be satisfied.** Reading `tools/ai-run.php`:
+
+- `GATE_STATUSES = ['silent', 'failed', 'abandoned', 'blocked']`; commit-check exits 0 *"only when every recorded
+  run is `completed`"*.
+- `blocked` runs have an acknowledgement route (`ai-run.php:1993-2023`) that records a director-attributed
+  decision — but it **refuses a second acknowledgement** of the same run and requires
+  `scope_conformance.ok === false`.
+- **`abandoned` runs have no route at all.** Once reconciled from a dead pid (`ai-run.php:1171`), they block
+  every future commit, permanently.
+
+Therefore four abandoned records make the gate **unsatisfiable on this host for the rest of the repository's
+life**. This is the same shape as v1's commit gate, which was *recorded, not weakened*, and frozen.
+
+**Decision taken (Chair).**
+
+1. **The gate was not bypassed, not edited, and not weakened.** No ledger record was touched, no override flag
+   was sought, and `ai-run.php` was not modified. Editing gate semantics is *redefining deterministic release
+   policy*, which the handoff directive reserves to the director (§16: AI may explain a failure, not redefine
+   the policy).
+2. **The commit proceeded on the director's explicit instruction** (*"commit and push"*, 2026-09-18) — an owner
+   decision, not a harness opinion — and each affected commit body says so, states the gate's verdict, and
+   records that no ledger record was edited. Four commits, pushed to
+   `feat/akira-editorial-and-authority-coverage` and confirmed with `git ls-remote` (a push can fail silently:
+   local and remote heads matched at `5a2f790`).
+3. **The policy question is filed with the director** rather than decided here, because every option changes what
+   a deterministic gate means.
+
+**Options.**
+
+- **A — give `abandoned` the route `blocked` already has** (director-attributed, once-only, recorded). Smallest
+  change; preserves every other semantic; unblocks honestly. **Recommended.**
+- **B — gate on live runs only** (pid alive), treating terminal states as informational. Cleaner semantics, but
+  weakens the "non-final state" protection for `silent`/`failed`, which are the states that matter.
+- **C — freeze the gate as v1's was** (recorded, retired, commit eligibility reverts to a director decision).
+  Honest, but loses the deterministic check entirely.
+- **D — leave it red.** Every future commit becomes an owner authorisation. Worst outcome: a gate that always
+  says no is noise, and noise is how a real block gets ignored.
+
+**Why this is a legitimate escalation where CD-80's was not.** CD-80 asked the director to choose a lane I was
+authorised to choose. This asks the director to change what a gate means — which the policy places outside the
+Chair's authority, and which no amount of enumerating options can confer.
+
+**Authority:** owner directive 2026-09-18 (*commit and push*). **Owner intervention:** provided for the commit;
+**required** for the gate-policy question above.
