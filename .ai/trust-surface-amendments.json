@@ -397,6 +397,38 @@
                 "e0261d18f0f475cdcd1a075d334d48ab7ead39ed8efc5f9ef5ea092180c90cd2"
             ],
             "trust_surface_files_changed_by_route": false
+        },
+        {
+            "id": "TSA-0013",
+            "reason": "Three authorised repairs to tools/ai-run.php moved the verifier: CD-78's assertion-guard repair (a check that could not tell weakening from reorganisation), CD-82's boundary-guard repair (a check that could not tell pre-existing from introduced), and CD-84 option A (an abandoned run takes the same director-attributed acknowledgement route a blocked run has). Measured 2026-09-18 before this entry: commit-check refused 21 completed runs across these six digests, purely because the verifier they ran under was itself repaired, while the repairs were made under those decisions and the work they gated is committed. This entry admits evidence gathered under those six earlier verifiers as non-blocking; it changes nothing about what any future run records and it touches no run record. Recorded under the standing rule of CD-85: a transition whose underlying change the director has already authorised needs no second ask, and a transition with no prior authorisation still does.",
+            "director_decision": "CD-84",
+            "acting_context": {
+                "provider": null,
+                "model": null,
+                "session_id": null,
+                "user": "kajagogoo",
+                "working_directory": "/var/www/html/ikabudsix"
+            },
+            "recorded_at": "2026-09-18T07:15:46+00:00",
+            "trust_surface_hash": "4891b20cc422668d04fd9823421b5ab29205af316c453f6a0c5aa557f2e2f515",
+            "trust_surface_files": {
+                "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+                "tools/ai-autonomy.php": "0cd46680641222b1c5518bfe5481ebd353358024337e1584d4e92591c860ab39",
+                "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+                "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+                "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+                "tools/ai-run.php": "070e76a8e307339f282452563b8f547ff218f14e9211109e59b525af7045832a",
+                "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+            },
+            "supersedes_hashes": [
+                "37a61d480e99e52e97410fa2a5105c89d872f46675a004945740ba3aa2193c4a",
+                "6ec30b419a6c7914ec6be6b4dd585d3851ec44a76a6537ef1293aa3ee5d7fdec",
+                "86119019db360232eb0afc71fe9c778ae19494f394c83f7dc6c7cc400c0a10af",
+                "a14c6c209accf674bf3e6dd9eca2c2f4332282026acb5b44e4de444b0132ad75",
+                "b6283e553824bbd32eba2c89c652e4bcdba46d7664e01e5547929a736a97bdf3",
+                "c40959a0888c73e91df5cc2a410192cbd5db37b9f725b5284ec94bc53099e9f4"
+            ],
+            "trust_surface_files_changed_by_route": false
         }
     ]
 }

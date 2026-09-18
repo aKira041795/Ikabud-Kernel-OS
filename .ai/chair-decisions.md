@@ -4081,3 +4081,76 @@ Chair's authority, and which no amount of enumerating options can confer.
 
 **Authority:** owner directive 2026-09-18 (*commit and push*). **Owner intervention:** provided for the commit;
 **required** for the gate-policy question above.
+
+### CD-84 → DECIDED: director approved option A, 2026-09-18
+
+The director answered *"okay, approved"* to option A. Recorded through the decision lifecycle: HARPP decision
+**108** `DECIDED → ACKNOWLEDGED → APPLIED → CLOSED`.
+
+**Applied.** `abandoned` runs now take the same acknowledgement route `blocked` runs already had —
+director-attributed, once-only, immutable. Three files moved:
+
+- `tools/ai-run.php`: the route accepts a second terminal state (`abandoned` never reached a scope check, so it
+  records `scope_conformance_ok_observed: null` rather than fabricating a `false`); the gate skips an
+  acknowledged `abandoned` run; `running` is still refused, and the usage text says what the route now does.
+- `tests/ai_run_test.php`: the control set is inline with the existing ledger suite.
+- **83/83 passed**, including 25d (an unresolvable decision reference is refused), 25e (a live run is refused),
+  25f (an acknowledged abandoned run is honestly observed and the gate then reports ELIGIBLE), 25g (a second
+  acknowledgement is refused), and the pre-existing 25 (**without** an acknowledgement, abandoning still blocks).
+
+A repaired guard that no longer bites is a broken guard, so the refusal paths are asserted, not assumed.
+
+**Correction to the counts I first reported.** From `commit-check --json` the 26 blockers are **18
+trust-surface mismatches, 4 abandoned, 4 blocked** — not 17/4/5, which I read off the human-readable list by
+eye. Option A therefore clears **8** of 26, leaving 18.
+
+**The remaining 18 are a different director act and are not bundled into this approval.** They are `completed`
+runs whose recorded verifier digest no longer matches, and their only route is
+`.ai/trust-surface-amendments.json` — the document that exists precisely so a director can authorise an
+old-hash → new-hash transition. That is a statement about *evidence admissibility under the verifier*, not about
+a route; the code even says so (*"a director route may authorise one visible old-hash -> recorded-new-hash
+transition"*). It is filed separately rather than inferred from "approved".
+
+**Authority:** owner directive 2026-09-18 (*okay, approved* → option A). **Owner intervention:** required for the
+18 trust-surface records.
+
+---
+
+## CD-85 — the trust-surface ratchet, and the standing rule that retires it (2026-09-18)
+
+**Directive.** The director answered *"proceed"* to the two options offered against CD-84, adopting **option 2**:
+record the amendment **and** adopt a standing rule so the ask never recurs.
+
+**The measurement that justifies the rule.** `tools/ai-run.php` is itself one of the trust-surface files, so
+**repairing the verifier invalidates evidence gathered under it**. Repairing the abandoned-run route (CD-84
+option A) moved the blockers **18 → 21**: three runs that had been `completed` and matching became mismatches
+purely because the check they ran under was mended. Every future harness repair does the same. A gate that turns
+redder the more the harness improves, and whose only route is a director approval for a change the director has
+already approved, is the unsatisfiable-gate defect a third time — and the cost lands on the director's attention.
+
+**The rule (adopted).** *A trust-surface transition whose underlying change the director has already authorised
+may be recorded as an amendment without a second ask, naming that decision in `director_decision`. A transition
+with no prior authorisation still requires the director.* It is recorded in the code where it is enforced
+(`tools/ai-run.php`, above `authorisedTrustSurfaceTransition()`), not only in prose.
+
+**Applied as TSA-0013** in `.ai/trust-surface-amendments.json` — the thirteenth such entry, following the
+established schema (CD-48 and CD-51 are the precedents):
+
+- `trust_surface_hash`: the current digest after every code change in this slice,
+  `4891b20cc422668d04fd9823421b5ab29205af316c453f6a0c5aa557f2e2f515`, with the per-file digests of all seven
+  surface files recorded.
+- `supersedes_hashes`: the **six** prior digests that the 21 refused runs recorded.
+- `director_decision`: **CD-84**, whose option A is one of the three repairs admitted; the reason also names
+  **CD-78** (the assertion-guard repair) and **CD-82** (the boundary-guard repair), because those are the
+  transitions actually being admitted.
+- `trust_surface_files_changed_by_route`: `false` — this amendment changes no surface file.
+
+**What is honestly being asserted, and what is not.** The entry *does* admit evidence gathered under those six
+earlier verifiers as non-blocking; that is precisely what an amendment means and it is stated in the `reason`
+rather than hidden behind the word "no widening". It changes nothing about what future runs record, and it does
+not touch any run record: the ledger stays immutable and the refusals stay on the record.
+
+**Verified after the amendment:** `commit-check` exits **0 — ELIGIBLE**, and the ledger suite still passes
+`83/83`, so the gate went green by its own rules and not by weakening them.
+
+**Authority:** owner directive 2026-09-18 (*proceed* → option 2). **Owner intervention:** none outstanding.
