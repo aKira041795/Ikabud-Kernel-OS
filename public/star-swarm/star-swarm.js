@@ -46,6 +46,7 @@
             ring: cssVar(root, '--ss-ring', '#f2c879'),
             roles: Object.freeze({
                 threat: cssVar(root, '--ss-role-threat', '#f78c6b'),
+                magnet: cssVar(root, '--ss-role-magnet', '#39ff5a'),
                 ally: cssVar(root, '--ss-role-ally', '#4cc9f0'),
                 reward: cssVar(root, '--ss-role-reward', '#ffd166'),
                 hazard: cssVar(root, '--ss-role-hazard', '#ef476f')
@@ -55,6 +56,8 @@
     }
 
     // --- constants -------------------------------------------------------------
+    var DEFAULT_CANVAS_WIDTH = 1280;
+    var DEFAULT_CANVAS_HEIGHT = 720;
     var PLAYER_SPEED = 420;        // px per second
     var PLAYER_FIRE_COOLDOWN = 0.22;
     var PLAYER_SHOT_LIMIT = 2;
@@ -63,6 +66,109 @@
     var DUAL_FIGHTER_OFFSET = 46;
     var FIRST_EXTRA_SHIP_SCORE = 20000;
     var EXTRA_SHIP_INTERVAL = 70000;
+    var OPENING_TITLE_DURATION = 2.25;
+    var OPENING_BYLINE_DURATION = 1.75;
+
+    // The award message uses the same hard-edged matrix idiom as the ships.
+    // Keeping these glyphs in code avoids a system-font or DOM-overlay escape
+    // hatch and makes every announcement pixel deterministic.
+    var EXTRA_SHIP_GLYPHS = Object.freeze({
+        E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
+        X: ['#...#', '#...#', '.#.#.', '..#..', '.#.#.', '#...#', '#...#'],
+        T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
+        R: ['####.', '#...#', '#...#', '####.', '#.#..', '#..#.', '#...#'],
+        A: ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+        S: ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
+        H: ['#...#', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+        I: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '#####'],
+        P: ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....']
+    });
+
+    // The opening is canvas-authored from the same rectangular cells as the
+    // ships. Lowercase b/y are deliberate: the director's byline is "by IKON",
+    // not an all-caps substitute supplied by a font or DOM heading.
+    var OPENING_GLYPHS = Object.freeze({
+        A: EXTRA_SHIP_GLYPHS.A,
+        B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
+        I: EXTRA_SHIP_GLYPHS.I,
+        K: ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'],
+        M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
+        N: ['#...#', '##..#', '##..#', '#.#.#', '#..##', '#..##', '#...#'],
+        O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+        R: EXTRA_SHIP_GLYPHS.R,
+        S: EXTRA_SHIP_GLYPHS.S,
+        T: EXTRA_SHIP_GLYPHS.T,
+        W: ['#...#', '#...#', '#...#', '#.#.#', '#.#.#', '##.##', '#...#'],
+        b: ['#....', '#....', '####.', '#...#', '#...#', '#...#', '####.'],
+        y: ['#...#', '#...#', '#...#', '.####', '....#', '...#.', '.##..']
+    });
+
+    // Each ship is authored as a source-visible pixel matrix. Rendering scales
+    // these cells as rectangles, preserving the hard stepped silhouettes while
+    // keeping the sprites theme-coloured and resolution independent.
+    var SPRITES = Object.freeze({
+        bee: Object.freeze([
+            '.......###.......',
+            '......#####......',
+            '...##.#####.##...',
+            '..#############..',
+            '.###.#######.###.',
+            '##..#########..##',
+            '....#########....',
+            '.....#######.....',
+            '....###.#.###....',
+            '...###.....###...',
+            '...##.......##...',
+            '..##.........##..',
+            '..#...........#..'
+        ]),
+        butterfly: Object.freeze([
+            '#...............#',
+            '###....###....###',
+            '####..#####..####',
+            '.###############.',
+            '..#############..',
+            '....#########....',
+            '..#####...#####..',
+            '.####.......####.',
+            '###...........###',
+            '##.....###.....##',
+            '.......###.......',
+            '......##.##......',
+            '.....##...##.....'
+        ]),
+        boss: Object.freeze([
+            '#...##.....##...#',
+            '##..###...###..##',
+            '###.#########.###',
+            '#################',
+            '####.#######.####',
+            '.###############.',
+            '..#############..',
+            '...###########...',
+            '...###.###.###...',
+            '..###..###..###..',
+            '.###...###...###.',
+            '##.....###.....##',
+            '#......###......#'
+        ]),
+        fighter: Object.freeze([
+            '..........##..........',
+            '.........####.........',
+            '.........####.........',
+            '........######........',
+            '.......########.......',
+            '..##..##########..##..',
+            '.####################.',
+            '######################',
+            '######..######..######',
+            '####....######....####',
+            '.##.....######.....##.',
+            '........##..##........',
+            '.......##....##.......'
+        ])
+    });
+
     var BULLET_SPEED = 620;
     var ENEMY_BULLET_SPEED = 260;
     var ENEMY_ROWS = 4;
@@ -129,18 +235,25 @@
         challengingPattern: null,
         challengingDestroyed: 0,
         perfectBonus: 0,
+        announcement: null,
+        opening: {
+            stage: 'title',
+            title: 'Star Swarm',
+            byline: 'by IKON',
+            elapsed: 0
+        },
         mood: 'undulate',
         moodCadence: MOOD_RULES[0].cadence,
         moodElapsed: 0,
         player: {
-            x: 380, y: 540, width: SINGLE_FIGHTER_WIDTH, height: 26,
+            x: 618, y: 660, width: SINGLE_FIGHTER_WIDTH, height: 26,
             role: 'ally', invulnerable: 0, cooldown: 0, bank: 0,
             dualFighter: false, capturedFighter: null
         },
         bullets: [],
         enemyBullets: [],
         enemies: [],
-        nursery: { x: 704, y: 112, radius: 76 },
+        nursery: { x: 1120, y: 112, radius: 76 },
         formation: {
             direction: 1, speed: 40, elapsed: 0, diveCooldown: 2.5,
             headingX: 0, headingY: 0, breathScale: 1,
@@ -235,11 +348,21 @@
     }
 
     function canvasWidth() {
-        return lane.canvas ? lane.canvas.width : 800;
+        return lane.canvas ? lane.canvas.width : DEFAULT_CANVAS_WIDTH;
     }
 
     function canvasHeight() {
-        return lane.canvas ? lane.canvas.height : 600;
+        return lane.canvas ? lane.canvas.height : DEFAULT_CANVAS_HEIGHT;
+    }
+
+    function layoutWideField() {
+        // Gameplay landmarks are placed from the backing store, not inherited
+        // from the former 800x600 field. Sprites keep their native pixel size;
+        // only their lanes and anchors use the additional widescreen space.
+        state.nursery.x = Math.round(canvasWidth() * 0.875);
+        state.nursery.y = Math.round(canvasHeight() * 0.155);
+        state.player.x = canvasWidth() / 2 - state.player.width / 2;
+        state.player.y = canvasHeight() - 60;
     }
 
     // --- setup -----------------------------------------------------------------
@@ -264,8 +387,8 @@
             // field remains organic, while these make its depth readable from
             // the first frame instead of occasionally leaving a dark void.
             if (depth.name === 'near') {
-                stars.push({ x: 48, y: 362, phase: 0, twinkle: 1.7 });
-                stars.push({ x: 132, y: 438, phase: 2.1, twinkle: 2.3 });
+                stars.push({ x: 48, y: 362, phase: 0, twinkle: 1.7, guide: true });
+                stars.push({ x: 132, y: 438, phase: 2.1, twinkle: 2.3, guide: true });
             }
             return {
                 name: depth.name,
@@ -307,8 +430,15 @@
         // grow as difficulty rises.
         var rows = state.challenging ? 5 : Math.min(ENEMY_ROWS + Math.floor((wave - 1) / 2), 6);
         var cols = state.challenging ? 8 : Math.min(ENEMY_COLS + (wave > 1 ? 1 : 0), 10);
-        var totalWidth = cols * ENEMY_WIDTH + (cols - 1) * ENEMY_GAP_X;
+        // Give the formation a true widescreen lane while preserving native
+        // sprite proportions. This is layout, not a horizontal canvas stretch.
+        var targetWidth = Math.min(canvasWidth() * 0.54, 720);
+        var horizontalGap = cols > 1
+            ? Math.max(ENEMY_GAP_X, (targetWidth - cols * ENEMY_WIDTH) / (cols - 1))
+            : 0;
+        var totalWidth = cols * ENEMY_WIDTH + (cols - 1) * horizontalGap;
         var startX = (canvasWidth() - totalWidth) / 2;
+        var startY = Math.round(canvasHeight() * 0.1);
         var scales = [0.72, 1, 1.28];
         for (var row = 0; row < rows; row += 1) {
             for (var col = 0; col < cols; col += 1) {
@@ -327,8 +457,8 @@
                 var originRadius = 8 + (enemyIndex % 3) * 6;
                 var nurseryX = state.nursery.x + Math.cos(originAngle) * originRadius;
                 var nurseryY = state.nursery.y + Math.sin(originAngle) * originRadius;
-                var slotX = startX + col * (ENEMY_WIDTH + ENEMY_GAP_X);
-                var slotY = 60 + row * (ENEMY_HEIGHT + ENEMY_GAP_Y);
+                var slotX = startX + col * (ENEMY_WIDTH + horizontalGap);
+                var slotY = startY + row * (ENEMY_HEIGHT + ENEMY_GAP_Y);
                 var entrySide = challengingPattern
                     ? challengingPattern.routes[enemyIndex % challengingPattern.routes.length]
                     : ['top', 'left', 'right'][enemyIndex % 3];
@@ -453,9 +583,14 @@
     function addScore(points) {
         state.score += points;
         state.highScore = Math.max(state.highScore, state.score);
+        var awarded = 0;
         while (state.score >= state.extraShipAt) {
             state.lives += 1;
             state.extraShipAt += EXTRA_SHIP_INTERVAL;
+            awarded += 1;
+        }
+        if (awarded > 0) {
+            state.announcement = { kind: 'extra-ship', life: 2.6 };
         }
         updateHud();
     }
@@ -471,9 +606,12 @@
     function restartGame() {
         state.gameOver = false;
         state.paused = false;
+        state.opening.stage = 'done';
+        state.opening.elapsed = 0;
         state.score = 0;
         state.lives = 3;
         state.extraShipAt = FIRST_EXTRA_SHIP_SCORE;
+        state.announcement = null;
         state.dualFighter = false;
         state.capturedFighter = null;
         state.bullets = [];
@@ -845,7 +983,11 @@
         }
         if (enemy.tractorState === 'returning') {
             enemy.tractorTime += dt;
-            enemy.y -= (190 + state.stage * 8) * dt;
+            // Scale the haul to the wide field so a capture still completes in
+            // the same readable beat instead of lingering because the player
+            // starts lower on a 720px canvas.
+            var returnSpeed = Math.max(190 + state.stage * 8, canvasHeight() * 0.3);
+            enemy.y -= returnSpeed * dt;
             enemy.x += (enemy.baseX - enemy.x) * Math.min(1, dt * 3.5);
             if (enemy.y <= enemy.baseY) {
                 enemy.x = enemy.baseX;
@@ -1275,6 +1417,10 @@
 
     function updateEffects(dt) {
         var i;
+        if (state.announcement) {
+            state.announcement.life -= dt;
+            if (state.announcement.life <= 0) state.announcement = null;
+        }
         for (i = state.explosions.length - 1; i >= 0; i -= 1) {
             var explosion = state.explosions[i];
             explosion.age += dt;
@@ -1308,8 +1454,25 @@
         }
     }
 
+    function updateOpening(dt) {
+        if (state.running || state.gameOver || state.opening.stage === 'done') return;
+        state.opening.elapsed += dt;
+        if (state.opening.stage === 'title' && state.opening.elapsed >= OPENING_TITLE_DURATION) {
+            state.opening.stage = 'byline';
+            state.opening.elapsed -= OPENING_TITLE_DURATION;
+        }
+        if (state.opening.stage === 'byline' && state.opening.elapsed >= OPENING_BYLINE_DURATION) {
+            state.opening.stage = 'done';
+            state.opening.elapsed = 0;
+        }
+    }
+
     function update(dt) {
-        if (!state.running || state.paused || state.gameOver) {
+        if (!state.running) {
+            updateOpening(dt);
+            return;
+        }
+        if (state.paused || state.gameOver) {
             return;
         }
         state.elapsed += dt;
@@ -1326,57 +1489,70 @@
 
     // --- render ----------------------------------------------------------------
     function drawCosmicTheatre(ctx, theme) {
-        var backdrop = ctx.createLinearGradient(0, 0, 0, canvasHeight());
-        backdrop.addColorStop(0, theme.space);
-        backdrop.addColorStop(0.55, theme.spaceDeep);
-        backdrop.addColorStop(1, theme.space);
-        ctx.fillStyle = backdrop;
+        // Arcade space is an empty near-black field. Avoid translucent washes:
+        // they turn most of the backing store into mid-tones and soften every
+        // silhouette placed over it.
+        ctx.fillStyle = theme.space;
         ctx.fillRect(0, 0, canvasWidth(), canvasHeight());
-
-        var dust = ctx.createRadialGradient(180, 290, 10, 180, 290, 260);
-        dust.addColorStop(0, theme.nebula);
-        dust.addColorStop(1, theme.space);
-        ctx.save();
-        ctx.globalAlpha = 0.16;
-        ctx.fillStyle = dust;
-        ctx.fillRect(0, 0, 480, 570);
-        ctx.restore();
 
         for (var l = 0; l < state.starLayers.length; l += 1) {
             var layer = state.starLayers[l];
             for (var i = 0; i < layer.stars.length; i += 1) {
                 var star = layer.stars[i];
-                var twinkle = 0.55 + Math.sin(state.elapsed * star.twinkle + star.phase) * 0.35;
-                ctx.globalAlpha = layer.alpha * twinkle;
+                // Twinkle by switching whole pixel-block sizes rather than by
+                // alpha blending an anti-aliased disc into the background.
+                var pulse = star.guide
+                    ? Math.floor(state.elapsed + 0.0001) % 2
+                    : (Math.sin(state.elapsed * star.twinkle + star.phase) > 0.2 ? 1 : 0);
+                var size = Math.max(1, Math.round(layer.size) + pulse);
                 ctx.fillStyle = layer.index === 2 ? theme.starBright : theme.starDim;
-                ctx.beginPath();
-                ctx.arc(star.x, star.y, layer.size, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillRect(Math.round(star.x), Math.round(star.y), size, size);
             }
         }
-        ctx.globalAlpha = 1;
 
+        // Keep the established nursery landmark as a stepped, high-contrast
+        // disk. Its small footprint leaves the field overwhelmingly black,
+        // while four-pixel scan rows prevent a smooth anti-aliased edge.
         for (var p = 0; p < state.planets.length; p += 1) {
             var planet = state.planets[p];
-            var sphere = ctx.createRadialGradient(planet.x - planet.radius * 0.4, planet.y - planet.radius * 0.35, 4, planet.x, planet.y, planet.radius);
-            sphere.addColorStop(0, theme.planetLit);
-            sphere.addColorStop(0.46, theme.planet);
-            sphere.addColorStop(1, theme.space);
+            var sphere = ctx.createRadialGradient(
+                planet.x - planet.radius * 0.4,
+                planet.y - planet.radius * 0.35,
+                4,
+                planet.x,
+                planet.y,
+                planet.radius
+            );
+            sphere.addColorStop(0, theme.starBright);
+            sphere.addColorStop(1, theme.planetLit);
             ctx.fillStyle = sphere;
-            ctx.beginPath();
-            ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
-            ctx.fill();
-            if (planet.ring) {
-                ctx.save();
-                ctx.translate(planet.x, planet.y);
-                ctx.rotate(-0.22);
-                ctx.strokeStyle = theme.ring;
-                ctx.globalAlpha = 0.42;
-                ctx.lineWidth = 6;
-                ctx.beginPath();
-                ctx.ellipse(0, 0, planet.radius * 1.5, planet.radius * 0.32, 0, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.restore();
+            var block = 4;
+            for (var offsetY = -planet.radius; offsetY < planet.radius; offsetY += block) {
+                var halfWidth = Math.floor(Math.sqrt(
+                    Math.max(0, planet.radius * planet.radius - offsetY * offsetY)
+                ) / block) * block;
+                ctx.fillRect(
+                    Math.round(planet.x - halfWidth),
+                    Math.round(planet.y + offsetY),
+                    halfWidth * 2,
+                    block
+                );
+            }
+        }
+    }
+
+    function drawPixelSprite(ctx, matrix, x, y, width, height) {
+        var cellWidth = width / matrix[0].length;
+        var cellHeight = height / matrix.length;
+        for (var row = 0; row < matrix.length; row += 1) {
+            for (var column = 0; column < matrix[row].length; column += 1) {
+                if (matrix[row].charAt(column) !== '#') continue;
+                ctx.fillRect(
+                    x + column * cellWidth,
+                    y + row * cellHeight,
+                    cellWidth,
+                    cellHeight
+                );
             }
         }
     }
@@ -1390,27 +1566,11 @@
         else if (enemy.diving) ctx.rotate(Math.sin(enemy.diveTime * 5) * 0.08);
 
         if (enemy.caste) {
-            // Galaga silhouettes remain readable without raster art: yellow /
-            // blue bees, red / white butterflies, and a broad two-horned boss.
+            // The three arcade castes are distinct source-visible matrices;
+            // colour supports their hierarchy but no longer defines the shape.
             ctx.fillStyle = enemy.flash > 0 ? theme.text
-                : (enemy.caste === 'bee' ? theme.accent : (enemy.caste === 'butterfly' ? theme.tertiary : theme.roles.threat));
-            ctx.beginPath();
-            if (enemy.caste === 'bee') {
-                ctx.moveTo(17, 2); ctx.lineTo(24, 9); ctx.lineTo(32, 8); ctx.lineTo(27, 16);
-                ctx.lineTo(30, 24); ctx.lineTo(20, 21); ctx.lineTo(17, 27); ctx.lineTo(14, 21);
-                ctx.lineTo(4, 24); ctx.lineTo(7, 16); ctx.lineTo(2, 8); ctx.lineTo(10, 9);
-            } else if (enemy.caste === 'butterfly') {
-                ctx.moveTo(17, 3); ctx.lineTo(23, 9); ctx.lineTo(34, 4); ctx.lineTo(30, 16);
-                ctx.lineTo(34, 24); ctx.lineTo(22, 20); ctx.lineTo(17, 27); ctx.lineTo(12, 20);
-                ctx.lineTo(0, 24); ctx.lineTo(4, 16); ctx.lineTo(0, 4); ctx.lineTo(11, 9);
-            } else {
-                ctx.moveTo(3, 0); ctx.lineTo(13, 7); ctx.lineTo(17, 3); ctx.lineTo(21, 7);
-                ctx.lineTo(31, 0); ctx.lineTo(34, 13); ctx.lineTo(27, 25); ctx.lineTo(20, 21);
-                ctx.lineTo(17, 29); ctx.lineTo(14, 21); ctx.lineTo(7, 25); ctx.lineTo(0, 13);
-            }
-            ctx.closePath(); ctx.fill();
-            ctx.fillStyle = enemy.caste === 'bee' ? theme.primaryDark : theme.text;
-            ctx.fillRect(10, 11, 5, 5); ctx.fillRect(20, 11, 5, 5);
+                : (enemy.caste === 'bee' ? theme.accent : (enemy.caste === 'butterfly' ? theme.tertiary : theme.roles.magnet));
+            drawPixelSprite(ctx, SPRITES[enemy.caste], 0, 0, ENEMY_WIDTH, ENEMY_HEIGHT);
             ctx.restore();
             return;
         }
@@ -1464,14 +1624,13 @@
         ctx.translate(cx, player.y + player.height / 2);
         ctx.rotate(player.bank * 0.16);
         ctx.translate(-cx, -(player.y + player.height / 2));
-        var flame = 9 + Math.sin(state.elapsed * 37) * 4;
+        var flame = Math.round((9 + Math.sin(state.elapsed * 37) * 4) / 2) * 2;
         ctx.fillStyle = theme.accent;
-        ctx.beginPath(); ctx.moveTo(cx - 6, player.y + 23); ctx.lineTo(cx, player.y + 23 + flame); ctx.lineTo(cx + 6, player.y + 23); ctx.fill();
-        ctx.fillStyle = theme.primaryDark;
-        ctx.beginPath(); ctx.moveTo(x + 3, player.y + 26); ctx.lineTo(x + 15, player.y + 15); ctx.lineTo(x + 16, player.y + 28); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(x + 41, player.y + 26); ctx.lineTo(x + 29, player.y + 15); ctx.lineTo(x + 28, player.y + 28); ctx.fill();
+        ctx.fillRect(cx - 2, player.y + 24, 4, flame);
         ctx.fillStyle = theme.roles[player.role];
-        ctx.beginPath(); ctx.moveTo(cx, player.y); ctx.quadraticCurveTo(x + 34, player.y + 14, cx + 8, player.y + 27); ctx.lineTo(cx - 8, player.y + 27); ctx.quadraticCurveTo(x + 10, player.y + 14, cx, player.y); ctx.fill();
+        drawPixelSprite(ctx, SPRITES.fighter, x, player.y, SINGLE_FIGHTER_WIDTH, player.height);
+        // Keep the cockpit independently countable for the dual-fighter
+        // gameplay probe while the hull itself comes entirely from the matrix.
         ctx.fillStyle = theme.text;
         ctx.beginPath(); ctx.ellipse(cx, player.y + 10, 5, 7, 0, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
@@ -1492,19 +1651,28 @@
             if (!enemy.alive || enemy.tractorState !== 'beam') continue;
             var beam = tractorBeamBounds(enemy);
             var centre = enemy.x + enemy.width / 2;
-            var glow = ctx.createLinearGradient(0, beam.y, 0, beam.y + beam.height);
-            glow.addColorStop(0, theme.roles.reward);
-            glow.addColorStop(1, theme.space);
+            var topHalfWidth = 13;
+            var bottom = beam.y + beam.height;
             ctx.save();
-            ctx.globalAlpha = 0.24 + Math.sin(state.elapsed * 22) * 0.06;
-            ctx.fillStyle = glow;
             ctx.beginPath();
-            ctx.moveTo(centre - 13, beam.y);
-            ctx.lineTo(beam.x + beam.width, beam.y + beam.height);
-            ctx.lineTo(beam.x, beam.y + beam.height);
-            ctx.lineTo(centre + 13, beam.y);
+            ctx.moveTo(centre - topHalfWidth, beam.y);
+            ctx.lineTo(beam.x, bottom);
+            ctx.lineTo(beam.x + beam.width, bottom);
+            ctx.lineTo(centre + topHalfWidth, beam.y);
             ctx.closePath();
+
+            // The capture warning is an opaque cyan cone. Clip the moving
+            // scan bars to the taper so their stepped descent reads as part of
+            // the beam rather than as a screen-wide overlay.
+            ctx.fillStyle = theme.roles.ally;
             ctx.fill();
+            ctx.clip();
+            var scanGap = 16;
+            var scanOffset = Math.floor(state.elapsed * 48) % scanGap;
+            ctx.fillStyle = theme.starBright;
+            for (var scanY = beam.y + scanOffset; scanY < bottom; scanY += scanGap) {
+                ctx.fillRect(beam.x, Math.round(scanY), beam.width, 3);
+            }
             ctx.restore();
         }
     }
@@ -1518,12 +1686,29 @@
     function drawEffects(ctx, theme) {
         for (var i = 0; i < state.explosions.length; i += 1) {
             var explosion = state.explosions[i];
-            var alpha = 1 - explosion.age / explosion.life;
-            ctx.globalAlpha = alpha;
-            ctx.strokeStyle = theme.accent; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.arc(explosion.x, explosion.y, 6 + explosion.age * 38, 0, Math.PI * 2); ctx.stroke();
-            ctx.fillStyle = theme.tertiary;
-            for (var d = 0; d < explosion.debris.length; d += 1) ctx.fillRect(explosion.debris[d].x, explosion.debris[d].y, explosion.debris[d].size, explosion.debris[d].size);
+            var centreX = Math.round(explosion.x);
+            var centreY = Math.round(explosion.y);
+            var reach = 8 + Math.floor(explosion.age * 30 / 4) * 4;
+
+            // Galaga bursts are opaque pixel clusters, not translucent rings.
+            // Keep an eight-pixel solid core while square arms step outwards as
+            // the animation advances; integer coordinates preserve hard edges.
+            ctx.fillStyle = theme.starBright;
+            ctx.fillRect(centreX - 4, centreY - 4, 8, 8);
+            ctx.fillStyle = theme.accent;
+            ctx.fillRect(centreX - reach, centreY - 2, reach * 2, 4);
+            ctx.fillRect(centreX - 2, centreY - reach, 4, reach * 2);
+            ctx.fillRect(centreX - reach + 3, centreY - reach + 3, 4, 4);
+            ctx.fillRect(centreX + reach - 7, centreY - reach + 3, 4, 4);
+            ctx.fillRect(centreX - reach + 3, centreY + reach - 7, 4, 4);
+            ctx.fillRect(centreX + reach - 7, centreY + reach - 7, 4, 4);
+
+            ctx.fillStyle = theme.roles.reward;
+            for (var d = 0; d < explosion.debris.length; d += 1) {
+                var debris = explosion.debris[d];
+                var debrisSize = Math.max(2, Math.round(debris.size));
+                ctx.fillRect(Math.round(debris.x), Math.round(debris.y), debrisSize, debrisSize);
+            }
         }
         ctx.font = 'bold 14px ' + theme.fontUi; ctx.textAlign = 'center';
         for (var p = 0; p < state.scorePopups.length; p += 1) {
@@ -1534,12 +1719,121 @@
         ctx.globalAlpha = 1;
     }
 
+    function drawPixelText(ctx, text, scale, centreX, top, colour) {
+        var glyphAdvance = scale * 6;
+        var spaceAdvance = scale * 3;
+        var width = 0;
+        var index;
+        for (index = 0; index < text.length; index += 1) {
+            width += text.charAt(index) === ' ' ? spaceAdvance : glyphAdvance;
+        }
+        width -= scale;
+        var cursorX = Math.round(centreX - width / 2);
+        var startY = Math.round(top);
+        ctx.fillStyle = colour;
+        for (index = 0; index < text.length; index += 1) {
+            var character = text.charAt(index);
+            if (character === ' ') {
+                cursorX += spaceAdvance;
+                continue;
+            }
+            var glyph = OPENING_GLYPHS[character] || OPENING_GLYPHS[character.toUpperCase()];
+            if (!glyph) {
+                cursorX += glyphAdvance;
+                continue;
+            }
+            for (var row = 0; row < glyph.length; row += 1) {
+                for (var column = 0; column < glyph[row].length; column += 1) {
+                    if (glyph[row].charAt(column) === '#') {
+                        ctx.fillRect(cursorX + column * scale, startY + row * scale, scale, scale);
+                    }
+                }
+            }
+            cursorX += glyphAdvance;
+        }
+    }
+
+    function drawOpening(ctx, theme) {
+        var stage = state.opening.stage;
+        if (stage !== 'title' && stage !== 'byline') return false;
+        var centreY = canvasHeight() * 0.49;
+        if (stage === 'title') {
+            var titleScale = Math.max(8, Math.floor(canvasWidth() / 105));
+            drawPixelText(
+                ctx,
+                state.opening.title,
+                titleScale,
+                canvasWidth() / 2,
+                centreY - titleScale * 3.5,
+                theme.starBright
+            );
+        } else {
+            var bylineScale = Math.max(4, Math.floor(canvasWidth() / 240));
+            drawPixelText(
+                ctx,
+                state.opening.byline,
+                bylineScale,
+                canvasWidth() / 2,
+                centreY - bylineScale * 3.5,
+                theme.roles.reward
+            );
+        }
+        return true;
+    }
+
+    function drawExtraShipAnnouncement(ctx, theme) {
+        if (!state.announcement || state.announcement.kind !== 'extra-ship') return;
+        var text = 'EXTRA SHIP';
+        var scale = Math.max(4, Math.floor(canvasWidth() / 210));
+        var spaceWidth = scale * 4;
+        var glyphAdvance = scale * 6;
+        var totalWidth = 0;
+        for (var index = 0; index < text.length; index += 1) {
+            totalWidth += text.charAt(index) === ' ' ? spaceWidth : glyphAdvance;
+        }
+        totalWidth -= scale;
+        var startX = Math.round((canvasWidth() - totalWidth) / 2);
+        var startY = Math.round(canvasHeight() / 2 - scale * 3.5);
+        var cursorX = startX;
+
+        ctx.fillStyle = theme.roles.reward;
+        for (var character = 0; character < text.length; character += 1) {
+            var letter = text.charAt(character);
+            if (letter === ' ') {
+                cursorX += spaceWidth;
+                continue;
+            }
+            var glyph = EXTRA_SHIP_GLYPHS[letter];
+            for (var row = 0; row < glyph.length; row += 1) {
+                for (var column = 0; column < glyph[row].length; column += 1) {
+                    if (glyph[row].charAt(column) === '#') {
+                        ctx.fillRect(cursorX + column * scale, startY + row * scale, scale, scale);
+                    }
+                }
+            }
+            cursorX += glyphAdvance;
+        }
+
+        // Bright stepped rails frame the message without introducing a new
+        // colour or a soft effect, and keep the award readable over the swarm.
+        ctx.fillStyle = theme.starBright;
+        ctx.fillRect(startX, startY - scale * 2, totalWidth, scale);
+        ctx.fillRect(startX, startY + scale * 8, totalWidth, scale);
+    }
+
     function render() {
         var ctx = lane.ctx;
         var theme = lane.theme;
         if (!ctx) return;
         ctx.clearRect(0, 0, canvasWidth(), canvasHeight());
         drawCosmicTheatre(ctx, theme);
+
+        var openingVisible = !state.running && drawOpening(ctx, theme);
+        if (lane.overlay) {
+            if (openingVisible) lane.overlay.setAttribute('data-opening', 'true');
+            else lane.overlay.removeAttribute('data-opening');
+        }
+        if (openingVisible) return;
 
         var i;
         for (i = 0; i < state.enemies.length; i += 1) if (state.enemies[i].alive) drawEnemy(ctx, state.enemies[i], theme);
@@ -1552,6 +1846,7 @@
             ctx.moveTo(shot.x + 2, shot.y); ctx.lineTo(shot.x + 6, shot.y + 6); ctx.lineTo(shot.x + 2, shot.y + 12); ctx.lineTo(shot.x - 2, shot.y + 6); ctx.closePath(); ctx.fill();
         }
         drawEffects(ctx, theme);
+        drawExtraShipAnnouncement(ctx, theme);
         if (state.running && (state.player.invulnerable <= 0 || Math.floor(state.elapsed * 10) % 2 === 0)) drawRocket(ctx, state.player, theme);
     }
 
@@ -1667,6 +1962,7 @@
         state.enemyBullets = [];
         state.explosions = [];
         state.scorePopups = [];
+        state.announcement = null;
         state.starLayers = createStarfieldLayers();
         startWave(index);
         render();
@@ -1719,9 +2015,9 @@
         lane.waveEl = lane.root.querySelector('[data-star-swarm="wave"]');
         lane.livesEl = lane.root.querySelector('[data-star-swarm="lives"]');
 
+        layoutWideField();
         state.starLayers = createStarfieldLayers();
         state.planets = createPlanets();
-        state.player.x = canvasWidth() / 2 - state.player.width / 2;
         startWave(1);
         updateHud();
         showOverlay('Star Swarm', 'Arrows or A/D to move \u00b7 Space or Up to fire \u00b7 P to pause', 'Start');
@@ -1741,6 +2037,7 @@
     window.StarSwarm = {
         state: state,
         lane: lane,
+        sprites: SPRITES,
         constants: {
             PLAYER_SPEED: PLAYER_SPEED,
             PLAYER_FIRE_COOLDOWN: PLAYER_FIRE_COOLDOWN,

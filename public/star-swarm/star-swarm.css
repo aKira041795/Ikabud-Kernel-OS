@@ -16,7 +16,7 @@
 }
 
 .star-swarm {
-  width: min(100%, 860px);
+  width: min(100%, 1280px);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -64,7 +64,7 @@
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   touch-action: none;
   outline: none;
 }
@@ -89,6 +89,18 @@
 
 .star-swarm__overlay[hidden] {
   display: none;
+}
+
+/* During the canvas-authored opening, keep only the start control over the
+ * field. The logo and byline remain visible pixel art rather than DOM type. */
+.star-swarm__overlay[data-opening="true"] {
+  justify-content: flex-end;
+  background: transparent;
+}
+
+.star-swarm__overlay[data-opening="true"] .star-swarm__title,
+.star-swarm__overlay[data-opening="true"] .star-swarm__hint {
+  visibility: hidden;
 }
 
 .star-swarm__title {

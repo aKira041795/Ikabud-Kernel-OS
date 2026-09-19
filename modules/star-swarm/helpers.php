@@ -42,6 +42,7 @@ function starSwarmTokenDefaults(): array
         '--ss-planet-lit' => ['fallback' => '#c9e7f2', 'purpose' => 'planet lit limb'],
         '--ss-ring' => ['fallback' => '#f2c879', 'purpose' => 'planet ring'],
         '--ss-role-threat' => ['fallback' => '#f78c6b', 'purpose' => 'hostile colony bodies'],
+        '--ss-role-magnet' => ['fallback' => '#39ff5a', 'purpose' => 'Boss Galaga magnet ship'],
         '--ss-role-ally' => ['fallback' => '#4cc9f0', 'purpose' => 'player and friendly fire'],
         '--ss-role-reward' => ['fallback' => '#ffd166', 'purpose' => 'score and reward feedback'],
         '--ss-role-hazard' => ['fallback' => '#ef476f', 'purpose' => 'enemy projectiles and hazards'],

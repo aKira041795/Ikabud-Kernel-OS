@@ -25,7 +25,7 @@
     </header>
 
     <div class="star-swarm__stage">
-      <canvas id="star-swarm-canvas" class="star-swarm__canvas" width="800" height="600" tabindex="0" aria-label="Star Swarm play field"></canvas>
+      <canvas id="star-swarm-canvas" class="star-swarm__canvas" width="1280" height="720" tabindex="0" aria-label="Star Swarm play field"></canvas>
 
       <div id="star-swarm-overlay" class="star-swarm__overlay" data-star-swarm="overlay">
         <h1 class="star-swarm__title" data-star-swarm="overlay-title">Star Swarm</h1>

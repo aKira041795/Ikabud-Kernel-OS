@@ -296,6 +296,7 @@ test.describe('star swarm', () => {
             const roles = window.StarSwarm.readTheme(root).roles;
             const tokenByRole = {
                 threat: '--ss-role-threat',
+                magnet: '--ss-role-magnet',
                 ally: '--ss-role-ally',
                 reward: '--ss-role-reward',
                 hazard: '--ss-role-hazard',
@@ -307,7 +308,7 @@ test.describe('star swarm', () => {
             };
         });
         expect(roleCoverage.keys, 'all semantic roles have named theme-token resolutions')
-            .toEqual(['ally', 'hazard', 'reward', 'threat']);
+            .toEqual(['ally', 'hazard', 'magnet', 'reward', 'threat']);
         expect(roleCoverage.matchesThemeTokens, 'role colours resolve through CSS theme tokens').toBe(true);
 
         // Pixel evidence: probe the live backing canvas, not CSS or game state.
@@ -337,14 +338,18 @@ test.describe('star swarm', () => {
         expect(starfield.after.bright, 'star bright-pixel count changes as layers drift and twinkle')
             .not.toBe(starfield.first.bright);
 
-        // Flood-fill bright pixels around the ringed planet. A real shaded body
-        // produces one contiguous cluster far larger than isolated stars.
+        // Flood-fill bright pixels around the nursery planet. Follow its live
+        // widescreen anchor so this still measures the planet rather than the
+        // empty location it occupied on the former 800px field.
         const planetCluster = await page.evaluate(() => {
             window.StarSwarm.test.step(1);
             const canvas = document.querySelector<HTMLCanvasElement>('#star-swarm-canvas')!;
             const width = 200;
             const height = 210;
-            const data = canvas.getContext('2d')!.getImageData(590, 5, width, height).data;
+            const nursery = window.StarSwarm.state.nursery;
+            const sampleX = Math.max(0, Math.min(canvas.width - width, Math.round(nursery.x - width / 2)));
+            const sampleY = Math.max(0, Math.min(canvas.height - height, Math.round(nursery.y - height / 2)));
+            const data = canvas.getContext('2d')!.getImageData(sampleX, sampleY, width, height).data;
             const solid = new Uint8Array(width * height);
             for (let p = 0; p < solid.length; p += 1) {
                 const i = p * 4;
