@@ -101,6 +101,44 @@ foreach (array_keys($consumed) as $token) {
 $check($missing === [], 'the rendered page injects every JS token: ' . implode(', ', $missing));
 $check(!preg_match('/#[0-9a-f]{3,8}|rgba?\(/i', preg_replace("/cssVar\\([^\n]+/", '', $js) ?? ''), 'draw routines do not introduce literal colours outside token fallbacks');
 
+// ── The static entry's asset versions must track the live files ──────────────────────────────────────
+// MEASURED 2026-09-19. `public/star-swarm/index.html` is the only working entry for /star-swarm/ (the
+// kernel route answers 403), and it freezes its asset versions in the markup. Nothing regenerates it, so
+// when the stylesheet changed the page still served ?v=1789789870 while the file's mtime was 1789817777.
+// A browser that already held that URL kept rendering the OLD stylesheet, so the black score row was
+// committed, verified, pushed -- and the director still saw a white bar. Every probe passed, because a
+// fresh browser fetches the current bytes under a stale query string. That is the whole failure: the
+// check was cold-cache and the user was warm-cache.
+//
+// So the version is now asserted against the file it names. A frozen version fails here instead of
+// surviving in someone's browser.
+$assetVersionIsCurrent = static function (string $htmlPath, string $assetPath, string $assetName): ?string {
+    $html = @file_get_contents($htmlPath);
+    if ($html === false) {
+        return "cannot read {$htmlPath}";
+    }
+    if (preg_match('/' . preg_quote($assetName, '/') . '\?v=(\d+)/', $html, $match) !== 1) {
+        return "{$htmlPath} does not version {$assetName}";
+    }
+    $actual = (int) $match[1];
+    $expected = @filemtime($assetPath);
+    if ($expected === false) {
+        return "cannot stat {$assetPath}";
+    }
+    return $actual === $expected
+        ? null
+        : "{$htmlPath} serves {$assetName}?v={$actual} but the file's mtime is {$expected} — "
+            . 'a warm browser keeps the stale asset and the fix looks like it never landed';
+};
+
+echo "\n=== asset versioning ===\n";
+$root = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__);
+$entry = $root . '/public/star-swarm/index.html';
+foreach (['star-swarm.css', 'star-swarm.js'] as $assetName) {
+    $problem = $assetVersionIsCurrent($entry, $root . '/public/star-swarm/' . $assetName, $assetName);
+    $check($problem === null, $problem ?? "{$assetName} is versioned from the live file mtime");
+}
+
 echo "\n=== summary ===\n";
 echo "  {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);
