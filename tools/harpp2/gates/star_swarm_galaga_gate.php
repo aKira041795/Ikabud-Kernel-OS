@@ -47,6 +47,7 @@ $contractPath = $root . '/tools/harpp2/projects/star-swarm-galaga.json';
  *   6 — `opening`     (Star Swarm, then by IKON, before play)
  *   7 — `palette` + `serving` (the caste colours on pixels; assets that cannot go stale)
  *   8 — `responsiveness` (the fighter, the shots, the fire rate -- measured against the field)
+ *   9 — `audio`        (start, fire, hit by size, the beam, game over -- asserted on the audio graph)
  *
  * WHERE A PROBE MUST LIVE — the anti-faking rule.
  * Phases 1-3 read STATE, and the state spec is in the rebuild lane's scope. Phases 4-6 read PIXELS, and
@@ -66,6 +67,7 @@ $phaseMap = [
     6 => ['opening'],
     7 => ['palette', 'serving'],
     8 => ['responsiveness'],
+    9 => ['audio'],
 ];
 $phase = 0;
 foreach (array_slice($argv, 1) as $argument) {
@@ -73,18 +75,19 @@ foreach (array_slice($argv, 1) as $argument) {
         $phase = (int) $m[1];
     }
     if (str_starts_with($argument, '--help')) {
-        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1|2|3|4|5|6|7|8]\n";
+        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1|2|3|4|5|6|7|8|9]\n";
         exit(0);
     }
 }
 if ($phase !== 0 && !isset($phaseMap[$phase])) {
-    fwrite(STDERR, "unknown --phase={$phase}; expected 1, 2, 3, 4, 5, 6, 7 or 8\n");
+    fwrite(STDERR, "unknown --phase={$phase}; expected 1, 2, 3, 4, 5, 6, 7, 8 or 9\n");
     exit(2);
 }
 $activeGroups = $phase === 0 ? null : $phaseMap[$phase];
 
 $specPath = $root . '/tests/browser/star-swarm.spec.ts';
 $pixelSpecPath = $root . '/tests/browser/star-swarm-pixels.spec.ts';
+$audioSpecPath = $root . '/tests/browser/star-swarm-audio.spec.ts';
 $jsPath = $root . '/public/star-swarm/star-swarm.js';
 
 
@@ -121,7 +124,19 @@ $stripComments = static function (string $source): string {
 };
 $spec = $stripComments(is_file($specPath) ? (string) file_get_contents($specPath) : '');
 $pixelSpec = $stripComments(is_file($pixelSpecPath) ? (string) file_get_contents($pixelSpecPath) : '');
+$audioSpec = $stripComments(is_file($audioSpecPath) ? (string) file_get_contents($audioSpecPath) : '');
 $js = is_file($jsPath) ? (string) file_get_contents($jsPath) : '';
+
+// Every chair-owned instrument, so a group can be routed to the spec that actually owns it. Keyed by
+// REPOSITORY-RELATIVE path, because that is how spec_by_group names them: keying this map by absolute path
+// made every chair-owned probe resolve to an empty source and fail at once (measured 2026-09-19), which
+// reads as 6 product failures rather than one routing bug. The routing check below now names it.
+$specContents = [
+    'tests/browser/star-swarm.spec.ts' => $spec,
+    'tests/browser/star-swarm-pixels.spec.ts' => $pixelSpec,
+    'tests/browser/star-swarm-audio.spec.ts' => $audioSpec,
+];
+$specByGroup = array_map('strval', (array) ($contract['spec_probes']['spec_by_group'] ?? []));
 
 echo "=== prerequisites ===\n";
 if ($phase !== 0) {
@@ -129,10 +144,20 @@ if ($phase !== 0) {
 }
 $check($spec !== '', 'the browser spec is present');
 $check($pixelSpec !== '', 'the chair-owned pixel spec is present');
+$check($audioSpec !== '', 'the chair-owned audio spec is present');
 $check($js !== '', 'the game source is present');
 // If this empties, the anti-faking rule is gone and every visual requirement would be checked against the
 // spec the lane owns. Fail loudly rather than search the wrong file.
 $check($chairOwnedGroups !== [], 'the contract declares which groups are chair-owned: ' . implode(', ', $chairOwnedGroups));
+// A group that routes nowhere fails every one of its probes for a reason that looks like the product's
+// fault. Name the routing instead.
+foreach ($chairOwnedGroups as $chairGroup) {
+    $target = (string) ($specByGroup[$chairGroup] ?? '');
+    $check(
+        $target !== '' && isset($specContents[$target]),
+        "the contract routes the chair-owned group '{$chairGroup}' to a spec the gate loads: " . ($target !== '' ? $target : '(unrouted)')
+    );
+}
 
 // ── every requirement has a probe asserted inside an expect(...) ───────────────────────────────
 $allRequirements = is_array($contract['requirements'] ?? null) ? $contract['requirements'] : [];
@@ -147,19 +172,24 @@ foreach ($requirements as $requirement) {
     $group = (string) ($requirement['group'] ?? '?');
     $probe = (string) ($requirement['probe'] ?? '');
     $aliases = array_values(array_filter(array_map('trim', explode('|', $probe)), static fn(string $a): bool => $a !== ''));
-    // Chair-owned groups are satisfied only by an assertion in the chair-owned pixel spec.
-    $owner = in_array($group, $chairOwnedGroups, true) ? 'pixels' : 'state';
-    $source = $owner === 'pixels' ? $pixelSpec : $spec;
+    // A chair-owned group is satisfied only by an assertion in the spec that OWNS that group, resolved
+    // through spec_by_group. An unknown group resolves to an empty source and therefore fails loudly rather
+    // than silently reading a spec that does not own it.
+    $owner = in_array($group, $chairOwnedGroups, true) ? 'chair' : 'state';
+    $ownerSpec = $owner === 'chair'
+        ? (string) ($specByGroup[$group] ?? 'tests/browser/star-swarm-pixels.spec.ts')
+        : 'tests/browser/star-swarm.spec.ts';
+    $source = $specContents[$ownerSpec] ?? '';
     $asserted = false;
     foreach ($aliases as $alias) {
         // The probe must appear inside a real assertion, not merely somewhere in the file: the assertion
         // itself is what a red game would fail.
-        if (preg_match('/expect\s*\([^;]*' . preg_quote($alias, '/') . '/s', $source) === 1) {
+        if ($source !== '' && preg_match('/expect\s*\([^;]*' . preg_quote($alias, '/') . '/s', $source) === 1) {
             $asserted = true;
             break;
         }
     }
-    $check($asserted, "{$id} ({$group}, {$owner}) probe is asserted in the spec: " . ($aliases[0] ?? '(no probe declared)'));
+    $check($asserted, "{$id} ({$group}, {$owner}: " . basename($ownerSpec) . ') probe is asserted: ' . ($aliases[0] ?? '(no probe declared)'));
 }
 
 // ── the game exposes every observability field ──────────────────────────────────────────────────────
@@ -198,6 +228,7 @@ $check($manifestClean, 'no dependency manifest references star-swarm');
 
 $check(!preg_match('/waitForTimeout\s*\(/', $spec), 'the state spec contains no waitForTimeout');
 $check(!preg_match('/waitForTimeout\s*\(/', $pixelSpec), 'the pixel spec contains no waitForTimeout');
+$check(!preg_match('/waitForTimeout\s*\(/', $audioSpec), 'the audio spec contains no waitForTimeout');
 
 // In a phase the rule is the non-shrink baseline; the floor belongs to the finished rebuild.
 $floor = $phase === 0
@@ -211,6 +242,10 @@ $check($assertions >= $floor, "the spec asserts at least {$floor} times (found {
 $pixelFloor = (int) ($contract['invariants']['pixel_spec_assertion_floor'] ?? 0);
 $pixelAssertions = preg_match_all('/\bexpect\s*\(/', $pixelSpec);
 $check($pixelAssertions >= $pixelFloor, "the chair-owned pixel spec asserts at least {$pixelFloor} times (found {$pixelAssertions})");
+
+$audioFloor = (int) ($contract['invariants']['audio_spec_assertion_floor'] ?? 0);
+$audioAssertions = preg_match_all('/\bexpect\s*\(/', $audioSpec);
+$check($audioAssertions >= $audioFloor, "the chair-owned audio spec asserts at least {$audioFloor} times (found {$audioAssertions})");
 
 printf("\n=== summary ===\n  %d passed, %d failed\n", $pass, $fail);
 exit($fail === 0 ? 0 : 1);

@@ -286,19 +286,71 @@
             "statement": "The first shot is fired on the frame after the keypress: input is not dependent on key repeat, and no key-up is needed between shots.",
             "probe": "the first shot is fired on the frame after the keypress",
             "why": "A guard, not a repair: latency measured one frame, so this passes today. It stays asserted so an input refactor cannot quietly introduce a key-repeat or key-up dependency."
+        },
+        {
+            "id": "A1",
+            "group": "audio",
+            "statement": "Audio is created from the player's gesture and reports a running context with a real sample rate; when Web Audio is unavailable the game reports it, plays on silently, raises no error, and issues no cue.",
+            "probe": "the audio context is running once the player has started|the game reports audio as unavailable",
+            "why": "Browsers refuse audio before a user gesture, so the Start press is the only correct moment to create the context. The unavailable branch is asserted because 'costs the player sound' must never mean 'costs the player the game'."
+        },
+        {
+            "id": "A2",
+            "group": "audio",
+            "statement": "Starting play sounds a start cue, distinct from the other cues.",
+            "probe": "the start cue is issued when play begins",
+            "why": "Director request 2026-09-19: sound effects for 'start'."
+        },
+        {
+            "id": "A3",
+            "group": "audio",
+            "statement": "Firing sounds a fire cue on the same frame the shot appears, once per shot.",
+            "probe": "the cue for firing is the fire cue",
+            "why": "Director request 2026-09-19: sound effects for 'firing'. Same frame, because a cue that trails the shot is felt as lag however good it sounds."
+        },
+        {
+            "id": "A4",
+            "group": "audio",
+            "statement": "Destroying an enemy sounds a hit cue that carries the destroyed enemy's own size, and the cue changes with that size: a bigger enemy sounds lower (and longer) than a smaller one.",
+            "probe": "the bigger enemy sounds lower|the hit cue records the size it was sounded for",
+            "why": "Director request 2026-09-19: 'blasting of enemy, according to size'. Asserted as an ORDER by size rather than as two magic numbers, and the size is recorded so the cue cannot be a constant that happens to differ."
+        },
+        {
+            "id": "A5",
+            "group": "audio",
+            "statement": "The tractor beam sounds for as long as the beam is open and stops when it closes: an ongoing tone, not a single blip when it opens.",
+            "probe": "the beam tone keeps sounding while the beam is open|the beam tone stops when the beam closes",
+            "why": "Director request 2026-09-19: sound for the 'tractor beam'. The beam is a sustained threat for up to 1.8 s, and one blip would leave the player unwarned for the rest of the dive."
+        },
+        {
+            "id": "A6",
+            "group": "audio",
+            "statement": "Losing the last life sounds its own game over cue, distinct from a routine hit.",
+            "probe": "the end of the game sounds its own cue",
+            "why": "Director request 2026-09-19: sound for 'game over'. It must be distinguishable from the hit cue that caused it, or the ending is not announced."
         }
     ],
     "spec_probes": {
         "_why": "Each requirement's probe (or one alias separated by |) must appear inside an expect(...) statement. WHICH spec counts is the anti-faking rule: the behaviour groups (components, animation, points, gameplay) are asserted in tests/browser/star-swarm.spec.ts, and the CHAIR-OWNED groups (fidelity, legibility, opening) are asserted ONLY in tests/browser/star-swarm-pixels.spec.ts, which the rebuild lane must not edit. A lane that can satisfy a requirement by weakening the instrument has proved nothing. Existence is checked mechanically by tests/star_swarm_galaga_gate_test.php; the chair reviews strictness.",
         "rule": "existence of the probe name or alias inside expect(...) in the spec that owns the group",
         "chair_owned_spec": "tests/browser/star-swarm-pixels.spec.ts",
+        "spec_by_group": {
+            "fidelity": "tests/browser/star-swarm-pixels.spec.ts",
+            "legibility": "tests/browser/star-swarm-pixels.spec.ts",
+            "opening": "tests/browser/star-swarm-pixels.spec.ts",
+            "palette": "tests/browser/star-swarm-pixels.spec.ts",
+            "serving": "tests/browser/star-swarm-pixels.spec.ts",
+            "responsiveness": "tests/browser/star-swarm-pixels.spec.ts",
+            "audio": "tests/browser/star-swarm-audio.spec.ts"
+        },
         "chair_owned_groups": [
             "fidelity",
             "legibility",
             "opening",
             "palette",
             "serving",
-            "responsiveness"
+            "responsiveness",
+            "audio"
         ]
     },
     "invariants": {
@@ -312,6 +364,7 @@
         "browser_spec_assertion_baseline": 52,
         "pixel_truth_spec": "tests/browser/star-swarm-pixels.spec.ts",
         "pixel_spec_assertion_floor": 28,
+        "audio_spec_assertion_floor": 20,
         "_why": "No raster assets and no new dependency keep the module diffable. A timing sleep is a race by construction (lesson L4) and is forbidden. The assertion FLOOR (60) is the completed state spec; the BASELINE (52) is what the 52-assertion spec already had, and it is the non-shrink rule applied to a phase. Measured 2026-09-18: a single all-or-nothing gate cannot turn green until the last requirement, so the driver's progress heuristic counted three real chunks (201 lines of product change, gate 12 -> 27) as no progress and escalated. Phases exist so acceptance is satisfiable incrementally; see --phase in tools/harpp2/gates/star_swarm_galaga_gate.php. ADDED 2026-09-19: this contract was satisfied in full while the components did not look like Galaga, because every probe read STATE and none read PIXELS. The state spec says so in its own header. pixel_truth_spec is the answer: rendered-canvas assertions, chair-owned, whose probes the lane cannot edit, and whose floor stops the instrument being shrunk after the fact."
     }
 }

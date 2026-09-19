@@ -30,6 +30,9 @@ $sources = [
     'tools/harpp2/projects/star-swarm-galaga.json' => $root . '/tools/harpp2/projects/star-swarm-galaga.json',
     'tests/browser/star-swarm.spec.ts' => $root . '/tests/browser/star-swarm.spec.ts',
     'tests/browser/star-swarm-pixels.spec.ts' => $root . '/tests/browser/star-swarm-pixels.spec.ts',
+    // Every chair-owned instrument must be in the sandbox, or the baseline control fails for the harness's
+    // own reason instead of on the gate (which is what happened when star-swarm.js was missing).
+    'tests/browser/star-swarm-audio.spec.ts' => $root . '/tests/browser/star-swarm-audio.spec.ts',
     // The gate refuses to run without the game source, so the sandbox must carry it too. Omitting it made
     // the baseline control fail on the sandbox rather than on the gate (measured 2026-09-19): a control
     // that fails for the harness's own reason is worse than no control.
