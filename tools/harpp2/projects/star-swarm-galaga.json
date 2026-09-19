@@ -160,11 +160,87 @@
             "statement": "Colliding with an enemy or an enemy shot costs a life; the player respawns with the remaining lives shown in state.",
             "probe": "collision costs a life|lives decrease on hit",
             "why": "The failure condition must be real for the score to mean anything."
+        },
+        {
+            "id": "V1",
+            "group": "fidelity",
+            "statement": "Ships are pixel art, not vector outlines: the game defines bee, butterfly, boss and fighter sprites as in-code pixel matrices (rows of . and #, equal length, at least 8x8), and draws them from that data. No raster assets, so the sprites stay diffable.",
+            "probe": "the game exposes sprite pixel matrices|sprite pixel matrices are exposed",
+            "why": "The director's finding: gameplay improved while the components looked nothing like Galaga. Vector polygons and anti-aliased curves are the difference the eye names first, and no assertion over state can see it."
+        },
+        {
+            "id": "V2",
+            "group": "fidelity",
+            "statement": "The Boss Galaga is the GREEN magnet ship of the original. Its dominant rendered ink is green-dominant, measured from the sprite's own pixels rather than by name or by a state flag.",
+            "probe": "the boss renders green",
+            "why": "The boss was orange (--ss-role-threat #f78c6b) while every gate passed, and the boss being green is how the player knows which ship is the magnet ship. Raw colour counts in a formation box are not sufficient: measured 2026-09-19, a box drawn before the colony settled contained bees and reported green for an orange boss. Dominant ink is the fix."
+        },
+        {
+            "id": "V3",
+            "group": "fidelity",
+            "statement": "The play field reads as black space with sparse stars drawn as pixel blocks: at least 90% of the field is near-black once sprites are cleared, and the stars leave no wide band of half-tones.",
+            "probe": "the field is black space|stars are pixel blocks",
+            "why": "Measured 47% black before the rebuild: a gradient nebula, dust wash and rings replaced the original's empty black, and anti-aliased discs replaced its pixel stars."
+        },
+        {
+            "id": "V4",
+            "group": "fidelity",
+            "statement": "Explosions are hard-edged pixel starbursts with a solid bright core and no soft glow, not anti-aliased stroked rings.",
+            "probe": "the burst has a solid core|the explosion is a pixel starburst",
+            "why": "A stroked ring is hollow in the middle, which is exactly how the two are told apart. The first version of this probe passed against the very stroked ring it exists to catch."
+        },
+        {
+            "id": "V5",
+            "group": "fidelity",
+            "statement": "The tractor beam is the original's cyan cone: painted cyan, tapering, with horizontal scan lines running down it, and animated rather than static.",
+            "probe": "the cone is painted cyan|the tractor beam is a cyan cone",
+            "why": "The beam is the magnet ship's signature and the only warning before a capture. The probe stops above the fighter on purpose: the player ship is cyan by role, so a box reaching the bottom would pass on the player's own paint."
+        },
+        {
+            "id": "L1",
+            "group": "legibility",
+            "statement": "A captured fighter is visibly held by the ship that took it: it is drawn, not merely recorded in state, and it belongs to the capturing ship.",
+            "probe": "the captured fighter is drawn under the magnet ship",
+            "why": "The capture must be legible as a loss in progress, because shooting the captor is the gamble the original is built around."
+        },
+        {
+            "id": "L2",
+            "group": "legibility",
+            "statement": "An awarded extra ship at 20,000 and every 70,000 thereafter is ANNOUNCED on screen in the central band of the play field, and the lives count rises by one. Granting it silently is not acceptable.",
+            "probe": "extra ship is announced on screen",
+            "why": "The director's finding, measured: state.lives rose by one while the rendered band gained exactly zero pixels (before 12, after 12). The mechanic existed and the player could not tell."
+        },
+        {
+            "id": "L3",
+            "group": "legibility",
+            "statement": "The play field is 16:9 and at least 1280 backing pixels wide, with the formation, player and HUD laid out for the wide field.",
+            "probe": "the play field is 16:9",
+            "why": "Director decision 2026-09-19: widescreen. The arcade original is portrait (224x288 on a rotated monitor), so this is a deliberate modern reinterpretation, recorded as a deviation rather than presented as fidelity."
+        },
+        {
+            "id": "O1",
+            "group": "opening",
+            "statement": "An opening sequence plays BEFORE play begins, on the title screen: it starts on the title stage, advances to a byline stage, and is driven by game time through the update path, exposed as state.opening.stage and readable as state.opening.title and state.opening.byline.",
+            "probe": "the game exposes its opening sequence as state|the opening starts on the title",
+            "why": "Director request 2026-09-19. Driven by the game clock, not by a wall-clock sleep, so the probe can hold it on a named stage and a red gate stays honest."
+        },
+        {
+            "id": "O2",
+            "group": "opening",
+            "statement": "The opening shows 'Star Swarm' as a large pixel-block logo, then 'by IKON' as a smaller pixel-block byline. Both stages carry visible ink in the central band of the field, and the title lockup is markedly the larger mark.",
+            "probe": "the title is drawn as logo ink|then the byline is drawn",
+            "why": "The order is the requirement: the game's name first, the studio second, both actually rendered rather than present in string state only."
         }
     ],
     "spec_probes": {
-        "_why": "Each requirement's probe (or one alias separated by |) must appear inside an expect(...) statement in tests/browser/star-swarm.spec.ts. Existence is checked mechanically by tests/star_swarm_galaga_gate_test.php; the chair reviews strictness.",
-        "rule": "existence of the probe name or alias inside expect(...) in the browser spec"
+        "_why": "Each requirement's probe (or one alias separated by |) must appear inside an expect(...) statement. WHICH spec counts is the anti-faking rule: the behaviour groups (components, animation, points, gameplay) are asserted in tests/browser/star-swarm.spec.ts, and the CHAIR-OWNED groups (fidelity, legibility, opening) are asserted ONLY in tests/browser/star-swarm-pixels.spec.ts, which the rebuild lane must not edit. A lane that can satisfy a requirement by weakening the instrument has proved nothing. Existence is checked mechanically by tests/star_swarm_galaga_gate_test.php; the chair reviews strictness.",
+        "rule": "existence of the probe name or alias inside expect(...) in the spec that owns the group",
+        "chair_owned_spec": "tests/browser/star-swarm-pixels.spec.ts",
+        "chair_owned_groups": [
+            "fidelity",
+            "legibility",
+            "opening"
+        ]
     },
     "invariants": {
         "raster_assets": 0,
@@ -175,6 +251,8 @@
         "no_wait_for_timeout": true,
         "browser_spec_assertion_floor": 60,
         "browser_spec_assertion_baseline": 52,
-        "_why": "No sprites and no new dependency keep the module diffable. A timing sleep is a race by construction (lesson L4) and is forbidden. The assertion FLOOR (60) is the completed rebuild; the BASELINE (52) is what the 52-assertion spec already had, and it is the non-shrink rule applied to a phase. Measured 2026-09-18: a single all-or-nothing gate cannot turn green until the last requirement, so the driver's progress heuristic counted three real chunks (201 lines of product change, gate 12 -> 27) as no progress and escalated. Phases exist so acceptance is satisfiable incrementally; see --phase in tools/harpp2/gates/star_swarm_galaga_gate.php."
+        "pixel_truth_spec": "tests/browser/star-swarm-pixels.spec.ts",
+        "pixel_spec_assertion_floor": 28,
+        "_why": "No raster assets and no new dependency keep the module diffable. A timing sleep is a race by construction (lesson L4) and is forbidden. The assertion FLOOR (60) is the completed state spec; the BASELINE (52) is what the 52-assertion spec already had, and it is the non-shrink rule applied to a phase. Measured 2026-09-18: a single all-or-nothing gate cannot turn green until the last requirement, so the driver's progress heuristic counted three real chunks (201 lines of product change, gate 12 -> 27) as no progress and escalated. Phases exist so acceptance is satisfiable incrementally; see --phase in tools/harpp2/gates/star_swarm_galaga_gate.php. ADDED 2026-09-19: this contract was satisfied in full while the components did not look like Galaga, because every probe read STATE and none read PIXELS. The state spec says so in its own header. pixel_truth_spec is the answer: rendered-canvas assertions, chair-owned, whose probes the lane cannot edit, and whose floor stops the instrument being shrunk after the fact."
     }
 }

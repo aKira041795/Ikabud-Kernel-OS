@@ -42,28 +42,47 @@ $contractPath = $root . '/tools/harpp2/projects/star-swarm-galaga.json';
  *   1 — the state surface (all observability fields) + the `components` requirements
  *   2 — `animation` + `points`
  *   3 — `gameplay`
+ *   4 — `fidelity`    (the pixels: sprites, the green boss, black space, bursts, the cone)
+ *   5 — `legibility`  (the capture, the announced extra ship, the 16:9 field)
+ *   6 — `opening`     (Star Swarm, then by IKON, before play)
+ *
+ * WHERE A PROBE MUST LIVE — the anti-faking rule.
+ * Phases 1-3 read STATE, and the state spec is in the rebuild lane's scope. Phases 4-6 read PIXELS, and
+ * their probes count ONLY in the chair-owned spec the lane must not edit. Measured 2026-09-19: this gate
+ * went fully green while the components did not look like Galaga at all — the boss was orange, the space
+ * was a nebula, the extra ship was granted in silence — because every probe read state and none read the
+ * rendered canvas. A lane that can satisfy a requirement by editing the instrument has proved nothing.
  *
  * Invariants are always checked. No flag means the complete rebuild, exactly as before.
  */
-$phaseMap = [1 => ['components'], 2 => ['animation', 'points'], 3 => ['gameplay']];
+$phaseMap = [
+    1 => ['components'],
+    2 => ['animation', 'points'],
+    3 => ['gameplay'],
+    4 => ['fidelity'],
+    5 => ['legibility'],
+    6 => ['opening'],
+];
 $phase = 0;
 foreach (array_slice($argv, 1) as $argument) {
     if (preg_match('/^--phase=([0-9]+)$/', $argument, $m) === 1) {
         $phase = (int) $m[1];
     }
     if (str_starts_with($argument, '--help')) {
-        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1|2|3]\n";
+        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1|2|3|4|5|6]\n";
         exit(0);
     }
 }
 if ($phase !== 0 && !isset($phaseMap[$phase])) {
-    fwrite(STDERR, "unknown --phase={$phase}; expected 1, 2 or 3\n");
+    fwrite(STDERR, "unknown --phase={$phase}; expected 1, 2, 3, 4, 5 or 6\n");
     exit(2);
 }
 $activeGroups = $phase === 0 ? null : $phaseMap[$phase];
 
 $specPath = $root . '/tests/browser/star-swarm.spec.ts';
+$pixelSpecPath = $root . '/tests/browser/star-swarm-pixels.spec.ts';
 $jsPath = $root . '/public/star-swarm/star-swarm.js';
+
 
 $pass = 0;
 $fail = 0;
@@ -82,7 +101,22 @@ if (!is_array($contract)) {
     exit(1);
 }
 
-$spec = is_file($specPath) ? (string) file_get_contents($specPath) : '';
+// Groups whose probes must be asserted in the chair-owned pixel spec. The lane implements the product
+// and must not touch this instrument: that separation is what makes the visual requirements meaningful.
+// Read AFTER the contract loads: reading it earlier made it an empty array, which silently sent every
+// chair-owned requirement to the lane-owned spec instead of failing. Caught by
+// tests/star_swarm_galaga_gate_test.php on 2026-09-19, which is the only reason it was not shipped.
+$chairOwnedGroups = array_values(array_filter((array) ($contract['spec_probes']['chair_owned_groups'] ?? []), 'is_string'));
+
+// A probe must be satisfied by an ASSERTION, not by prose. Full-line comments are stripped before
+// matching, because "// expect(the boss renders green)" in a lane-owned file would otherwise satisfy a
+// chair-owned requirement. Measured 2026-09-19: the same weakness makes the assertion floors countable
+// upward with comments, so stripping applies to both specs and to the floors.
+$stripComments = static function (string $source): string {
+    return (string) preg_replace('#^[ \t]*//.*$#m', '', $source);
+};
+$spec = $stripComments(is_file($specPath) ? (string) file_get_contents($specPath) : '');
+$pixelSpec = $stripComments(is_file($pixelSpecPath) ? (string) file_get_contents($pixelSpecPath) : '');
 $js = is_file($jsPath) ? (string) file_get_contents($jsPath) : '';
 
 echo "=== prerequisites ===\n";
@@ -90,7 +124,11 @@ if ($phase !== 0) {
     echo "  phase {$phase}: groups " . implode(', ', $activeGroups) . "\n";
 }
 $check($spec !== '', 'the browser spec is present');
+$check($pixelSpec !== '', 'the chair-owned pixel spec is present');
 $check($js !== '', 'the game source is present');
+// If this empties, the anti-faking rule is gone and every visual requirement would be checked against the
+// spec the lane owns. Fail loudly rather than search the wrong file.
+$check($chairOwnedGroups !== [], 'the contract declares which groups are chair-owned: ' . implode(', ', $chairOwnedGroups));
 
 // ── every requirement has a probe asserted inside an expect(...) ───────────────────────────────
 $allRequirements = is_array($contract['requirements'] ?? null) ? $contract['requirements'] : [];
@@ -105,16 +143,19 @@ foreach ($requirements as $requirement) {
     $group = (string) ($requirement['group'] ?? '?');
     $probe = (string) ($requirement['probe'] ?? '');
     $aliases = array_values(array_filter(array_map('trim', explode('|', $probe)), static fn(string $a): bool => $a !== ''));
+    // Chair-owned groups are satisfied only by an assertion in the chair-owned pixel spec.
+    $owner = in_array($group, $chairOwnedGroups, true) ? 'pixels' : 'state';
+    $source = $owner === 'pixels' ? $pixelSpec : $spec;
     $asserted = false;
     foreach ($aliases as $alias) {
         // The probe must appear inside a real assertion, not merely somewhere in the file: the assertion
         // itself is what a red game would fail.
-        if (preg_match('/expect\s*\([^;]*' . preg_quote($alias, '/') . '/s', $spec) === 1) {
+        if (preg_match('/expect\s*\([^;]*' . preg_quote($alias, '/') . '/s', $source) === 1) {
             $asserted = true;
             break;
         }
     }
-    $check($asserted, "{$id} ({$group}) probe is asserted in the spec: " . ($aliases[0] ?? '(no probe declared)'));
+    $check($asserted, "{$id} ({$group}, {$owner}) probe is asserted in the spec: " . ($aliases[0] ?? '(no probe declared)'));
 }
 
 // ── the game exposes every observability field ──────────────────────────────────────────────────────
@@ -151,7 +192,8 @@ foreach ($contract['invariants']['dependency_manifests_unchanged'] ?? [] as $man
 }
 $check($manifestClean, 'no dependency manifest references star-swarm');
 
-$check(!preg_match('/waitForTimeout\s*\(/', $spec), 'the spec contains no waitForTimeout');
+$check(!preg_match('/waitForTimeout\s*\(/', $spec), 'the state spec contains no waitForTimeout');
+$check(!preg_match('/waitForTimeout\s*\(/', $pixelSpec), 'the pixel spec contains no waitForTimeout');
 
 // In a phase the rule is the non-shrink baseline; the floor belongs to the finished rebuild.
 $floor = $phase === 0
@@ -159,6 +201,12 @@ $floor = $phase === 0
     : (int) ($contract['invariants']['browser_spec_assertion_baseline'] ?? 0);
 $assertions = preg_match_all('/\bexpect\s*\(/', $spec);
 $check($assertions >= $floor, "the spec asserts at least {$floor} times (found {$assertions})");
+
+// The pixel instrument must not be shrunk after the fact: a floor of its own, so a lane cannot
+// satisfy a visual requirement by deleting the assertion that caught it.
+$pixelFloor = (int) ($contract['invariants']['pixel_spec_assertion_floor'] ?? 0);
+$pixelAssertions = preg_match_all('/\bexpect\s*\(/', $pixelSpec);
+$check($pixelAssertions >= $pixelFloor, "the chair-owned pixel spec asserts at least {$pixelFloor} times (found {$pixelAssertions})");
 
 printf("\n=== summary ===\n  %d passed, %d failed\n", $pass, $fail);
 exit($fail === 0 ? 0 : 1);

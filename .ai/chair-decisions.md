@@ -4190,3 +4190,61 @@ see progress and will escalate honest work.* When a `no_progress` finding arrive
 
 **Authority:** CD-81 (decide, correct, continue) and the escalation's own recommendation. **Owner
 intervention:** none — this was a chair correction by construction.
+
+---
+
+## CD-88 — The gates read state; the director read the screen
+
+**Date:** 2026-09-19  **Authority:** director review (*"components are off… lacks the magnet ship, extra life
+after points earned"*)  **Owner intervention:** not required.
+
+**What was believed.** Phases 1–3 were verified: `--phase=1|2|3` green, 147/53/0 suite, a real browser journey.
+The rebuild was reported finished.
+
+**What was true.** The game did not look like Galaga, and two named features were invisible. Measured:
+
+| Fact | Value |
+|---|---|
+| Boss Galaga colour (it is the magnet ship) | **orange** `#f78c6b`; the theme has no green at all |
+| Field near-black with sprites cleared | **0.473** — a gradient nebula, dust wash and shaded planet |
+| Explosion | an anti-aliased **stroked ring**, hollow centre |
+| Tractor beam | warm translucent triangle at alpha 0.24: no cyan, no scan lines |
+| Extra ship at 20,000 | lives +1, rendered centre band **12 → 12 bright pixels** — silent |
+| Ships | vector outlines (`moveTo`/`lineTo`/`quadraticCurveTo`), no sprite data anywhere |
+
+**Root cause of the false green, in the spec's own words.** `tests/browser/star-swarm.spec.ts` opens with *"It
+reads state, never pixels."* Every requirement, every probe and every gate was an assertion over **state
+fields**. Not one could distinguish a game that looks right from one that looks nothing like the original. The
+missing features were not missing: the tractor-beam → capture → dual-fighter loop is reachable in real play
+(every 4th attack, solo boss dive, triggered at `max(220, player.y - 190)`), and the extra ship *was* granted.
+Both were **illegible**, and no state assertion can see illegibility.
+
+**Decision.** Add a chair-owned **pixel-truth** instrument — `tests/browser/star-swarm-pixels.spec.ts` — whose
+probes render a deterministic frame and read the canvas backing store in the same synchronous `evaluate`, so
+`requestAnimationFrame` cannot interleave. Ten probes across three phases: `fidelity` (V1–V5), `legibility`
+(L1–L3), `opening` (O1–O2).
+
+**The rule that makes it bite.** The gate accepts a probe **only from the spec that owns the group**: behaviour
+groups from the lane-owned state spec, visual groups **only** from the chair-owned pixel spec the lane must not
+edit. A lane cannot satisfy a visual requirement by editing the instrument.
+
+**Two defects the non-vacuity guard caught, both mine, both invisible without it.** The contract claimed
+`tests/star_swarm_galaga_gate_test.php` existed ("fails when one is missing"); it did not, so the phase 1–3 gate
+had **no test proving it could fail**. Writing it exposed: (1) `$chairOwnedGroups` was read *before* `$contract`
+was loaded, silently resolving to `[]` and sending every chair-owned requirement to the lane-owned spec —
+disabling the anti-faking rule while looking green; (2) the sandbox omitted `star-swarm.js`, so the baseline
+control failed for the harness's own reason. The guard now runs in a sandbox and 9/9 passes.
+
+**Also recorded.** (a) Four assertions in `tests/star_swarm_visual_test.php` pinned the *rejected look*
+(gradient nebula, ringed planet, glow shots, curved hull). They are **retired with a pointer** to their pixel
+successor, not replaced by new red ones — a red assertion there would fail `composer test` for every unrelated
+objective during the rebuild. (b) **16:9 is a recorded deviation**, not fidelity: the arcade original is
+portrait (224×288, rotated monitor). (c) The nursery planet stays, because phase-1's verified depth behaviour
+asserts waves hatch inside it.
+
+**Doctrine this adds.** *A requirement that can only be seen is not verified by a probe that can only read
+state.* When a director reports a visual or legibility defect after a green gate, the gate is the finding: find
+what it read, and add the instrument that reads the thing that was wrong.
+
+**Authority:** CD-81 (decide, correct, continue). **Owner intervention:** none.
+
