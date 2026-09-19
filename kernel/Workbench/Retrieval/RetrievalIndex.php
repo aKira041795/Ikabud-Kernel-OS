@@ -25,6 +25,10 @@ namespace Ikabud\Kernel\Workbench\Retrieval;
  *                root is injected, so the harness, a CLI and a test all drive the same object.
  *   EXPLAINED    Every hit carries the terms that matched it and the score they produced. A retrieval
  *                result a reader cannot interrogate is a result nobody will trust.
+ *   RETIRED      A path can be material from a harness this repository no longer runs. It stays INDEXED
+ *                -- the director's instruction was to keep it, because there is still something to learn
+ *                from it -- but it is not handed to a lane as context unless a caller asks for it.
+ *                Currency cannot do this job: see isRetired() for the measurement of why not.
  *
  * WHY FILES AND NOT A TABLE
  * Every Workbench subsystem already persists under storage/private (comprehension, issues, metrics,
@@ -73,6 +77,15 @@ final class RetrievalIndex
 
     /** Extensions worth indexing. A retrieval index that eats binaries is a retrieval index that lies. */
     private const INDEXABLE = ['php', 'js', 'ts', 'tsx', 'jsx', 'css', 'disyl', 'json', 'md', 'sql', 'sh', 'html'];
+
+    /**
+     * Paths whose material is RETIRED -- the harness this repository no longer runs.
+     *
+     * PREFIXES, not paths: what was retired is the harness's whole directory, and listing 242 files
+     * would be a snapshot that the next file added to it silently escapes. The rule is stated once, here,
+     * so a reader can argue with it -- see isRetired() for why it is declared rather than derived.
+     */
+    private const RETIRED_PREFIXES = ['tools/harpp2/'];
 
     private const VERSION = 1;
 
@@ -151,6 +164,47 @@ final class RetrievalIndex
     public function repositoryRoot(): string
     {
         return $this->repositoryRoot;
+    }
+
+    /**
+     * Is this path material from a retired harness -- readable for its lessons, but not current instruction?
+     *
+     * WHY THIS EXISTS, MEASURED 2026-09-19. A brief built from this index for the Star Swarm work came
+     * back with `tools/harpp2/projects/star-swarm-galaga.json` TIED FOR FIRST with the live game code and
+     * `tools/harpp2/objectives/star-swarm-galaga-p12.md` third: 110 of 1228 indexed documents were the
+     * harness that had been retired the same day, and a lane briefed from them would have implemented
+     * last week's harness. The staleness gate could not see it and never will: `isCurrent()` compares mtime
+     * and hash, and a retired file never changes, so it is PERMANENTLY current. That gate measures
+     * CHANGED; this one measures STILL TRUE, and no amount of re-indexing turns one into the other.
+     *
+     * DECLARED, ONCE, HERE. The alternative that was reached for first is a `str_contains($path, 'harpp2')`
+     * at each call site. That reads as a coincidence rather than a policy, cannot be argued with by a
+     * reader, and answers TRUE for a path that merely has the word in its name -- `tools/harpp2.md`, or a
+     * file that documents the harness. A prefix list says what is meant: the retired harness's own material.
+     *
+     * NOT READ FROM tools/RETIRED.md, deliberately, though that file is the record of WHY. It is prose
+     * with a "superseded by" table, and it names `tools/ai-autonomy.php`, `tools/ai-run.php` and
+     * `tools/ai-project.php`, which this repository's own instructions still document as current drivers.
+     * A predicate parsed from a narrative would retire live tools on the day someone edited a sentence, and
+     * the index would then be wrong in a way no reader could see. Retirement is a policy, so it lives in
+     * code where it can be reviewed and changed on purpose; RETIRED.md stays its explanation.
+     *
+     * Evaluated at QUERY time, not stored at index time, and that is the point. A `retired: true` flag in
+     * index.json is another attribute that never changes -- the exact failure this method exists to repair.
+     * Change the policy and every stored flag would contradict it while still looking authoritative. The
+     * documents stay indexed because they must stay countable and reachable; they are only kept out of a
+     * brief unless a caller asks for them.
+     */
+    public static function isRetired(string $path): bool
+    {
+        $normalised = ltrim(str_replace('\\', '/', $path), '/');
+        foreach (self::RETIRED_PREFIXES as $prefix) {
+            if (str_starts_with($normalised, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ── Indexing ────────────────────────────────────────────────────────────────────────────────
@@ -304,13 +358,21 @@ final class RetrievalIndex
      *      score order: a lane handed eight near-copies of one directory has been given one answer.
      *      The rule can only reshuffle what the scores already ranked, never invent a hit.
      *
-     * A query term that appears nowhere does not silently vanish: it is reported in `missing`, so a
-     * caller can tell "nothing matched" from "the index is empty".
+     * A query term that appears nowhere -- including only in retired material, which is not searchable by
+     * default -- does not silently vanish: it is reported in `missing`, so a caller can tell "nothing
+     * matched" from "the index is empty".
      *
-     * @param list<string> $scope optional path prefixes the result must fall under
-     * @return array{query:string, terms:list<string>, hits:list<Hit>, indexed:int, missing:list<string>, confidence:string}
+     * RETIRED MATERIAL IS NOT IN THE CANDIDATE SET unless `$includeRetired` is set. The ranking rule
+     * orders the documents a lane should read, and material from a harness that was retired is not one of
+     * them -- see isRetired() for the measurement. Filtering BEFORE df/idf also keeps rarity honest: three
+     * copies of a retired objective must not make a live term look common.
+     *
+     * @param list<string> $scope          optional path prefixes the result must fall under
+     * @param bool         $includeRetired return retired material too. Default FALSE: the index keeps it
+     *                                     for deliberate reference, it does not brief lanes with it
+     * @return array{query:string, terms:list<string>, hits:list<Hit>, indexed:int, retired:int, missing:list<string>, confidence:string}
      */
-    public function search(string $query, int $limit = self::DEFAULT_LIMIT, array $scope = []): array
+    public function search(string $query, int $limit = self::DEFAULT_LIMIT, array $scope = [], bool $includeRetired = false): array
     {
         $state = $this->load();
         $documents = $state['documents'];
@@ -323,9 +385,26 @@ final class RetrievalIndex
         $terms = array_map('strval', array_keys($this->terms($query, '')));
         $indexed = count($documents);
 
+        // Retired material is HELD BACK, not deleted: it stays indexed, stays countable in stats(), and
+        // stays retrievable when a caller asks for it. See isRetired() for the measurement that made this
+        // necessary, and for why the rule is evaluated here rather than stored per document in index.json.
+        $candidates = [];
+        $retired = 0;
+        foreach ($documents as $path => $entry) {
+            if (self::isRetired($path)) {
+                $retired++;
+                if (!$includeRetired) {
+                    continue;
+                }
+            }
+            $candidates[$path] = $entry;
+        }
+        $searchable = count($candidates);
+
         // Document frequency, for the query's terms only: one pass over the term maps, no extra reads.
+        // Over the CANDIDATES, so a retired document cannot make a live term look common.
         $df = array_fill_keys($terms, 0);
-        foreach ($documents as $entry) {
+        foreach ($candidates as $entry) {
             foreach ($terms as $term) {
                 if (isset($entry['terms'][$term])) {
                     $df[$term]++;
@@ -336,7 +415,7 @@ final class RetrievalIndex
         $now = time();
         $hits = [];
         $missing = $terms;
-        foreach ($documents as $path => $entry) {
+        foreach ($candidates as $path => $entry) {
             if ($scope !== [] && !$this->underScope($path, $scope)) {
                 continue;
             }
@@ -350,7 +429,7 @@ final class RetrievalIndex
                 }
                 $matched[] = $term;
                 $score += (($inPath ? self::PATH_TERM_BONUS : 0) + min(self::BODY_TERM_CAP, $inBody))
-                    * self::idf($indexed, $df[$term]);
+                    * self::idf($searchable, $df[$term]);
                 $missing = array_values(array_diff($missing, [$term]));
             }
             if ($score > 0) {
@@ -376,12 +455,17 @@ final class RetrievalIndex
         $best = (int) ($sliced[0]['score'] ?? 0);
 
         // The decision point for a hybrid retriever. LOW is the only honest signal that local lexical
-        // search has failed this question -- either nothing is indexed, the query has no searchable
-        // words, nothing matched at all, or most of the query's words are absent from the repository.
-        // A caller may then reach for an online or embedding-backed retriever; it should not do so when
-        // this says `good`, because code is identifier-shaped and exact names beat semantic proximity.
+        // search has failed this question -- either nothing searchable is indexed, the query has no
+        // searchable words, nothing matched at all, or most of the query's words are absent from the
+        // repository. A caller may then reach for an online or embedding-backed retriever; it should not do
+        // so when this says `good`, because code is identifier-shaped and exact names beat semantic
+        // proximity.
+        //
+        // The test is over the SEARCHABLE count, not the document count: an index whose only remaining
+        // documents are retired material is empty of anything a lane may be briefed with, and calling that
+        // `low` would invite a hybrid retriever to answer a question this index simply does not hold.
         $confidence = 'good';
-        if ($indexed === 0) {
+        if ($searchable === 0) {
             $confidence = 'empty';
         } elseif ($terms === [] || $hits === [] || count($missing) > count($terms) / 2 || $best < 4) {
             $confidence = 'low';
@@ -392,6 +476,7 @@ final class RetrievalIndex
             'terms' => $terms,
             'hits' => $sliced,
             'indexed' => $indexed,
+            'retired' => $retired,
             'missing' => array_values($missing),
             'confidence' => $confidence,
         ];
@@ -506,17 +591,25 @@ final class RetrievalIndex
      * hundred times, the feedback is a rut and this shows it; if it is empty, the loop is not wired to
      * anything and no amount of indexing will make retrieval learn.
      *
-     * @return array{documents:int, lines:int, bytes:int, updated_at:?string, stale:int, stale_paths:list<string>, used:int, used_paths:list<array{path:string, uses:int, boost:int, last_used_at:?string}>, root:string}
+     * `retired` is here so an exclusion is visible rather than silent: a caller that cannot see how many
+     * documents are being held back cannot tell a thin corpus from a filtered one. The documents are still
+     * indexed and still counted in `documents` -- they are simply not briefed unless asked for.
+     *
+     * @return array{documents:int, lines:int, bytes:int, updated_at:?string, stale:int, stale_paths:list<string>, retired:int, used:int, used_paths:list<array{path:string, uses:int, boost:int, last_used_at:?string}>, root:string}
      */
     public function stats(): array
     {
         $state = $this->load();
         $lines = 0;
         $used = 0;
+        $retired = 0;
         $now = time();
         $usedPaths = [];
         foreach ($state['documents'] as $path => $entry) {
             $lines += (int) $entry['lines'];
+            if (self::isRetired($path)) {
+                $retired++;
+            }
             $uses = (int) ($entry['uses'] ?? 0);
             $used += $uses;
             if ($uses === 0) {
@@ -545,6 +638,7 @@ final class RetrievalIndex
             'updated_at' => $state['updated_at'] ?? null,
             'stale' => count($stale),
             'stale_paths' => $stale,
+            'retired' => $retired,
             'used' => $used,
             'used_paths' => array_slice($usedPaths, 0, 10),
             'root' => $this->root,

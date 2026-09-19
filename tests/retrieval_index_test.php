@@ -82,6 +82,28 @@ $check(
     $scope['output']
 );
 
+echo "\n=== retired material: the harness this repository no longer runs is not current instruction ===\n";
+// The measurement this guards (2026-09-19): the query below returned
+// `tools/harpp2/projects/star-swarm-galaga.json` TIED FOR FIRST with the live game code, because the
+// staleness gate compares mtime and hash and a retired file never changes -- so it is permanently
+// "current". A lane briefed from it would implement a harness that was retired the same day. This runs
+// the acceptance command itself, against THIS repository, because a sandbox cannot see what a lane is
+// actually handed.
+$retired = $run('php kernel/Workbench/Retrieval/run.php search "star swarm carrier drop pickup weapon stage" --limit=8');
+$check(
+    'a real query does not brief a lane from the retired harness',
+    !str_contains($retired['output'], 'tools/harpp2/'),
+    $retired['output']
+);
+// And the other direction, so the material stays readable: the exclusion is a gate on what a brief
+// contains, not a deletion of what is on disk.
+$retiredAsked = $run('php kernel/Workbench/Retrieval/run.php search "star swarm carrier drop pickup weapon stage" --limit=8 --include-retired');
+$check(
+    'and --include-retired still reaches it, so the material is kept rather than lost',
+    str_contains($retiredAsked['output'], 'tools/harpp2/'),
+    $retiredAsked['output']
+);
+
 echo "\n=== recall: retrieval is measured against a known answer, not against a file count ===\n";
 // `search` returning *a* document is not evidence that it returned the RIGHT one, and until this
 // existed nothing measured the difference. The cases and the ranks they must appear within are in

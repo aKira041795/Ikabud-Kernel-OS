@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  * usage:
  *   php kernel/Workbench/Retrieval/run.php index [path...] [--force] [--stale] [--root=<dir>]
- *   php kernel/Workbench/Retrieval/run.php search "<query>" [--limit=8] [--scope=path]
+ *   php kernel/Workbench/Retrieval/run.php search "<query>" [--limit=8] [--scope=path] [--include-retired]
  *   php kernel/Workbench/Retrieval/run.php recall [--control]   is the RIGHT file retrieved?
  *   php kernel/Workbench/Retrieval/run.php use <path...>      report the files a task actually used
  *   php kernel/Workbench/Retrieval/run.php stats
@@ -62,14 +62,17 @@ function retrievalSelfTest(): int
 {
     $pass = 0;
     $fail = 0;
-    $check = static function (string $label, bool $ok) use (&$pass, &$fail): void {
+    $check = static function (string $label, bool $ok, string $detail = '') use (&$pass, &$fail): void {
         if ($ok) {
             $pass++;
             fwrite(STDOUT, "  [PASS] {$label}\n");
             return;
         }
         $fail++;
-        fwrite(STDOUT, "  [FAIL] {$label}\n");
+        // The detail is what makes a failure actionable -- the paths retrieved instead of the expected
+        // one, for instance. It is printed only on failure so the PASS output stays scannable, and it
+        // defaults to empty so the two-argument calls remain valid.
+        fwrite(STDOUT, "  [FAIL] {$label}" . ($detail === '' ? '' : "\n         {$detail}") . "\n");
     };
 
     $sandbox = sys_get_temp_dir() . '/retrieval-selftest-' . bin2hex(random_bytes(4));
@@ -279,6 +282,76 @@ function retrievalSelfTest(): int
     $check('and its key is repository-relative, not the absolute path with its slash dropped', $storedKeys === ['crowd/sheet3.php']);
     $check('and stats reports no staleness under that root', $unaligned->stats()['stale_paths'] === [] && $unaligned->stats()['stale'] === 0);
 
+    // ── retired material: a file that never changes is never "changed", so currency cannot catch it ──
+    // The gate above compares mtime and hash and is correct about what it measures. A retired file is
+    // PERMANENTLY current by that measure, so the exclusion has to be a fact about the path, not about
+    // its freshness. Both directions are asserted here: what must not be briefed, and what must still be.
+    fwrite(STDOUT, "\nretired material — the exclusion currency cannot express, in both directions:\n");
+    $retiredSandbox = sys_get_temp_dir() . '/retrieval-retired-' . bin2hex(random_bytes(4));
+    mkdir($retiredSandbox . '/tools/harpp2/objectives', 0775, true);
+    mkdir($retiredSandbox . '/public/star-swarm', 0775, true);
+    // Identical text on purpose: only the PATH can decide which of the two is briefed, so a check that
+    // passed because the words were absent would be caught rather than trusted.
+    $swarmProse = "the carrier drop reaches stage 2 and the weapon drops a pickup\n";
+    file_put_contents($retiredSandbox . '/tools/harpp2/objectives/galaga-p12.md', $swarmProse);
+    file_put_contents($retiredSandbox . '/public/star-swarm/star-swarm.js', $swarmProse);
+    $retiredIndex = new RetrievalIndex($retiredSandbox . '/.index', $retiredSandbox);
+    $retiredIndex->index([$retiredSandbox . '/tools', $retiredSandbox . '/public']);
+
+    $briefed = $retiredIndex->search('carrier drop pickup weapon stage', 8);
+    $briefedPaths = array_column($briefed['hits'], 'path');
+    $check(
+        'a retired document does NOT come back for a query that previously returned it',
+        !in_array('tools/harpp2/objectives/galaga-p12.md', $briefedPaths, true),
+        implode(', ', $briefedPaths)
+    );
+    $check(
+        'and a LIVE document matching that same query STILL comes back (the exclusion is not a blunt instrument)',
+        in_array('public/star-swarm/star-swarm.js', $briefedPaths, true),
+        implode(', ', $briefedPaths)
+    );
+    $check(
+        'the retired document is still INDEXED and only kept out of the brief',
+        $retiredIndex->stats()['documents'] === 2 && $retiredIndex->stats()['retired'] === 1
+    );
+    $check(
+        'stats reports the retired count, so the exclusion is visible rather than silent',
+        $retiredIndex->stats()['retired'] === 1
+    );
+    $check(
+        'and a search says how many documents it held back',
+        $briefed['retired'] === 1
+    );
+    $asked = $retiredIndex->search('carrier drop pickup weapon stage', 8, [], true);
+    $check(
+        'with the explicit opt-in the retired document CAN still be retrieved, so the material is not lost',
+        in_array('tools/harpp2/objectives/galaga-p12.md', array_column($asked['hits'], 'path'), true)
+    );
+    $check(
+        'the retired rule is declared once and answers both ways',
+        RetrievalIndex::isRetired('tools/harpp2/objectives/galaga-p12.md')
+            && !RetrievalIndex::isRetired('tools/chair.php')
+            // A substring rule would retire these two, and neither is the retired harness's material.
+            && !RetrievalIndex::isRetired('tools/harpp2.md')
+            && !RetrievalIndex::isRetired('docs/reviews/harpp2-postmortem.md')
+    );
+
+    // The director's instruction was to RETIRE the harness, not delete it. The cheapest way to make the
+    // check above pass is to delete tools/harpp2/ -- which would destroy the thing that was asked to be
+    // kept, and no unit check on a temp tree can see that happen. So the assertion reads the repository.
+    $retiredKept = glob(dirname(__DIR__, 3) . '/tools/harpp2/*') ?: [];
+    $check(
+        'the retired harness is KEPT on disk, because deleting it hides the material rather than retiring it',
+        $retiredKept !== [] && is_file(dirname(__DIR__, 3) . '/tools/RETIRED.md')
+    );
+
+    foreach (['/tools/harpp2/objectives/galaga-p12.md', '/public/star-swarm/star-swarm.js', '/.index/index.json', '/.index/index.lock'] as $file) {
+        @unlink($retiredSandbox . $file);
+    }
+    foreach (['/tools/harpp2/objectives', '/tools/harpp2', '/tools', '/public/star-swarm', '/public', '/.index', ''] as $dir) {
+        @rmdir($retiredSandbox . $dir);
+    }
+
     foreach (['crowd/sheet1.php', 'crowd/sheet3.php', 'crowd/sheet4.php', 'crowd/sheet5.php', 'rare/unique.php', 'elsewhere/other.php', 'halves/half.php', 'wholes/whole.php', '.index/index.json', '.index/index.lock', '.index-norm/index.json', '.index-norm/index.lock'] as $file) {
         @unlink($corpus . '/' . $file);
     }
@@ -466,10 +539,30 @@ switch ($command) {
             exit(2);
         }
         $scope = isset($cli['options']['scope']) ? explode(',', $cli['options']['scope']) : [];
-        $result = $index->search($query, (int) ($cli['options']['limit'] ?? RetrievalIndex::DEFAULT_LIMIT), $scope);
+        // Retired material is held back unless asked for, and the flag is explicit rather than implicit
+        // because the chair sometimes needs to read the old harness deliberately -- and because an
+        // exclusion a caller cannot see is one they cannot correct. See RetrievalIndex::isRetired().
+        $includeRetired = in_array('include-retired', $cli['flags'], true);
+        $result = $index->search($query, (int) ($cli['options']['limit'] ?? RetrievalIndex::DEFAULT_LIMIT), $scope, $includeRetired);
         printf("%d hit(s) from %d indexed   confidence: %s\n", count($result['hits']), $result['indexed'], $result['confidence']);
         foreach ($result['hits'] as $hit) {
-            printf("  %4d  %-60s (%d lines)  [%s]%s\n", $hit['score'], $hit['path'], $hit['lines'], implode(' ', $hit['matched']), $hit['uses'] > 0 ? "  used {$hit['uses']}x" : '');
+            printf(
+                "  %4d  %-60s (%d lines)  [%s]%s%s\n",
+                $hit['score'],
+                $hit['path'],
+                $hit['lines'],
+                implode(' ', $hit['matched']),
+                $hit['uses'] > 0 ? "  used {$hit['uses']}x" : '',
+                RetrievalIndex::isRetired($hit['path']) ? '  RETIRED' : ''
+            );
+        }
+        if ($result['retired'] > 0) {
+            printf(
+                "  retired: %d of the %d indexed document(s) are material from the retired harness, %s\n",
+                $result['retired'],
+                $result['indexed'],
+                $includeRetired ? 'included because --include-retired was given' : 'held back from this result (--include-retired searches them)'
+            );
         }
         if ($result['missing'] !== []) {
             printf("  not indexed anywhere: %s\n", implode(' ', $result['missing']));
@@ -493,15 +586,25 @@ switch ($command) {
     case 'stats':
         $stats = $index->stats();
         printf(
-            "documents %d, lines %d, index %d bytes, updated %s, stale %d, used %d\nroot: %s\n",
+            "documents %d, lines %d, index %d bytes, updated %s, stale %d, retired %d, used %d\nroot: %s\n",
             $stats['documents'],
             $stats['lines'],
             $stats['bytes'],
             $stats['updated_at'] ?? 'never',
             $stats['stale'],
+            $stats['retired'],
             $stats['used'],
             $stats['root']
         );
+        // The retired documents are still indexed, so the count has to be visible here: otherwise a
+        // caller comparing `documents` against a search result cannot tell a thinner corpus from a
+        // filtered one, and the exclusion becomes silent -- which is the failure mode this replaced.
+        if ($stats['retired'] > 0) {
+            printf(
+                "  retired: %d indexed document(s) are material from the harness retired on 2026-09-19; excluded from search unless --include-retired\n",
+                $stats['retired']
+            );
+        }
         // A count is not actionable; these are. `index --stale` re-indexes exactly this list.
         foreach (array_slice($stats['stale_paths'], 0, 10) as $path) {
             printf("  stale: %s\n", $path);
