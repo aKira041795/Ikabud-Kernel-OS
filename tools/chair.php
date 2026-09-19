@@ -1324,7 +1324,59 @@ function commandPlan(array $options): int
         say('  note: ' . count($probes) . ' command-shaped lines found in Required tests; the first is the probe.');
     }
 
+    // The question the chair forgot to ask, asked by the tool instead.
+    try {
+        $coverage = acceptanceCoverage(taskContract($repo, $repo->getTask($taskId)));
+        record('ACCEPTANCE', [
+            'measured' => (string) count($coverage['measured']),
+            'unprobed' => (string) count($coverage['unprobed']),
+        ]);
+        foreach ($coverage['unprobed'] as $criterion) {
+            say('  unprobed: ' . $criterion);
+        }
+    } catch (Throwable $error) {
+        // Reporting must never be the reason a plan fails. Say so rather than dying.
+        say('  acceptance coverage: unavailable (' . $error->getMessage() . ')');
+    }
+
     return 0;
+}
+
+/**
+ * Which acceptance criteria say how they are checked.
+ *
+ * The most expensive lesson of 2026-09-19, and it happened twice. A contract required weapons to
+ * persist and the HUD to name the held weapon. Both were written as prose, no probe measured either,
+ * and so the lane -- correctly -- satisfied the thing that decided the task and left the rest. The run
+ * reported PASS while two acceptance criteria were unmet. Nothing was wrong with the lane.
+ *
+ * This deliberately does NOT block. A guard that refuses on a heuristic would cry wolf, and a guard
+ * that cries wolf is worse than none. It reports, on every plan, the criteria that do not name the
+ * thing that measures them -- which is the question the chair should have asked before spending a lane.
+ *
+ * @param array<string,mixed> $contract
+ * @return array{measured:list<string>, unprobed:list<string>}
+ */
+function acceptanceCoverage(array $contract): array
+{
+    $measured = [];
+    $unprobed = [];
+
+    foreach (preg_split('/\R/', sectionText($contract['acceptance'] ?? '')) ?: [] as $line) {
+        $criterion = trim($line, " \t-*\u{2022}");
+        if ($criterion === '') {
+            continue;
+        }
+        // Measured means the criterion NAMES its instrument: a probe tag, or a runnable command.
+        if (preg_match('/@p\d+/', $criterion) === 1
+            || preg_match('/`(?:npx|php|composer|vendor\/bin)\b[^`]*`/', $criterion) === 1) {
+            $measured[] = $criterion;
+            continue;
+        }
+        $unprobed[] = $criterion;
+    }
+
+    return ['measured' => $measured, 'unprobed' => $unprobed];
 }
 
 /** Print the lane registry: what kind of work goes where, and the reason it goes there. */
@@ -2204,6 +2256,34 @@ function selfTest(): int
         $rejected = true;
     }
     $check('a five-field option is rejected rather than silently accepted', $rejected);
+
+    // Acceptance coverage. Both directions, because a coverage report that flags everything is as
+    // useless as one that flags nothing -- it would be ignored, and it exists to be acted on.
+    say('acceptance coverage:');
+    $covered = acceptanceCoverage([
+        'acceptance' => "A drop reaches the player's row (probe @p15).\n"
+            . "The suite passes: `npx playwright test tests/browser/x.spec.ts`\n"
+            . 'The HUD names the weapon currently held.',
+    ]);
+    $check('a criterion naming a probe tag counts as measured', in_array(
+        "A drop reaches the player's row (probe @p15).",
+        $covered['measured'],
+        true
+    ));
+    $check('a criterion naming a runnable command counts as measured', in_array(
+        'The suite passes: `npx playwright test tests/browser/x.spec.ts`',
+        $covered['measured'],
+        true
+    ));
+    // The one that matters: the prose criterion is exactly what went unenforced on 2026-09-19.
+    $check('a criterion that names no instrument is reported as unprobed', in_array(
+        'The HUD names the weapon currently held.',
+        $covered['unprobed'],
+        true
+    ));
+    $check('the two counts partition the criteria', count($covered['measured']) === 2 && count($covered['unprobed']) === 1);
+    $empty = acceptanceCoverage(['acceptance' => '']);
+    $check('an empty acceptance section reports nothing rather than inventing a criterion', $empty['measured'] === [] && $empty['unprobed'] === []);
 
     // The lock and the ledger, which are what make "never commit during a live run" askable.
     say('the lock and the ledger:');
