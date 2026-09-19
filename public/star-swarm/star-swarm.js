@@ -280,6 +280,14 @@
     var PICKUP_LIFETIME = 7;
     var PICKUP_FALL_SPEED = 80;
     var WEAPON_KINDS = Object.freeze(['lance', 'rapid', 'spread', 'twin', 'pierce', 'nova']);
+    var WEAPON_NAMES = Object.freeze({
+        lance: 'PLASMA LANCE',
+        rapid: 'RAPID FIRE',
+        spread: 'SPREAD SHOT',
+        twin: 'TWIN SHOT',
+        pierce: 'PIERCE',
+        nova: 'NOVA'
+    });
     var STAGE_WEAPONS = Object.freeze([
         'lance', 'rapid', null, 'spread', 'twin', 'pierce', null, 'nova'
     ]);
@@ -2511,6 +2519,28 @@
         }
     }
 
+    function heldWeaponKind() {
+        // Weapons accumulate in stage order, so the latest weapon in that progression is the one in
+        // hand. Before the first specialist pickup, the ship carries its starting plasma lance.
+        var progression = ['nova', 'pierce', 'twin', 'spread', 'rapid'];
+        for (var i = 0; i < progression.length; i += 1) {
+            if (state.weapon[progression[i]] > 0) return progression[i];
+        }
+        return 'lance';
+    }
+
+    function drawWeaponStatus(ctx, theme) {
+        var scale = Math.max(3, Math.floor(canvasWidth() / 420));
+        drawPixelText(
+            ctx,
+            'WEAPON  ' + WEAPON_NAMES[heldWeaponKind()],
+            scale,
+            canvasWidth() * 0.84,
+            Math.max(10, canvasHeight() * 0.035),
+            theme.starBright
+        );
+    }
+
     function drawBonusStatus(ctx, theme) {
         if (!state.challenging) return;
         if (state.bonus.active) {
@@ -2685,6 +2715,9 @@
             if (openingVisible) lane.overlay.setAttribute('data-opening', 'true');
             else lane.overlay.removeAttribute('data-opening');
         }
+        // The weapon is gameplay state, not scenery: keep its name in the HUD on every frame,
+        // including the opening page, so the player can always identify what is in hand.
+        drawWeaponStatus(ctx, theme);
         if (openingVisible) return;
 
         var i;
