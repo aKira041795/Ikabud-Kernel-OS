@@ -46,6 +46,7 @@
             ring: cssVar(root, '--ss-ring', '#f2c879'),
             roles: Object.freeze({
                 threat: cssVar(root, '--ss-role-threat', '#f78c6b'),
+                butterfly: cssVar(root, '--ss-role-butterfly', '#ff6464'),
                 magnet: cssVar(root, '--ss-role-magnet', '#39ff5a'),
                 ally: cssVar(root, '--ss-role-ally', '#4cc9f0'),
                 reward: cssVar(root, '--ss-role-reward', '#ffd166'),
@@ -58,7 +59,10 @@
     // --- constants -------------------------------------------------------------
     var DEFAULT_CANVAS_WIDTH = 1280;
     var DEFAULT_CANVAS_HEIGHT = 720;
-    var PLAYER_SPEED = 420;        // px per second
+    // Travel targets are field-relative so resizing the playfield cannot dilute
+    // movement or firing responsiveness again.
+    var PLAYER_FIELD_CROSSING_SECONDS = 1.9;
+    var BULLET_FIELD_CROSSING_SECONDS = 0.75;
     var PLAYER_FIRE_COOLDOWN = 0.22;
     var PLAYER_SHOT_LIMIT = 2;
     var SINGLE_FIGHTER_WIDTH = 44;
@@ -169,7 +173,6 @@
         ])
     });
 
-    var BULLET_SPEED = 620;
     var ENEMY_BULLET_SPEED = 260;
     var ENEMY_ROWS = 4;
     var ENEMY_COLS = 8;
@@ -353,6 +356,14 @@
 
     function canvasHeight() {
         return lane.canvas ? lane.canvas.height : DEFAULT_CANVAS_HEIGHT;
+    }
+
+    function playerSpeed() {
+        return canvasWidth() / PLAYER_FIELD_CROSSING_SECONDS;
+    }
+
+    function bulletSpeed() {
+        return canvasHeight() / BULLET_FIELD_CROSSING_SECONDS;
     }
 
     function layoutWideField() {
@@ -681,7 +692,7 @@
                 width: 4,
                 height: 14,
                 role: 'ally',
-                speed: BULLET_SPEED
+                speed: bulletSpeed()
             });
         }
     }
@@ -767,11 +778,11 @@
         var player = state.player;
         var bankTarget = 0;
         if (state.keys.left) {
-            player.x -= PLAYER_SPEED * dt;
+            player.x -= playerSpeed() * dt;
             bankTarget = -1;
         }
         if (state.keys.right) {
-            player.x += PLAYER_SPEED * dt;
+            player.x += playerSpeed() * dt;
             bankTarget = 1;
         }
         player.bank += (bankTarget - player.bank) * Math.min(1, dt * 10);
@@ -1569,7 +1580,7 @@
             // The three arcade castes are distinct source-visible matrices;
             // colour supports their hierarchy but no longer defines the shape.
             ctx.fillStyle = enemy.flash > 0 ? theme.text
-                : (enemy.caste === 'bee' ? theme.accent : (enemy.caste === 'butterfly' ? theme.tertiary : theme.roles.magnet));
+                : (enemy.caste === 'bee' ? theme.accent : (enemy.caste === 'butterfly' ? theme.roles.butterfly : theme.roles.magnet));
             drawPixelSprite(ctx, SPRITES[enemy.caste], 0, 0, ENEMY_WIDTH, ENEMY_HEIGHT);
             ctx.restore();
             return;
@@ -2039,7 +2050,7 @@
         lane: lane,
         sprites: SPRITES,
         constants: {
-            PLAYER_SPEED: PLAYER_SPEED,
+            PLAYER_SPEED: playerSpeed(),
             PLAYER_FIRE_COOLDOWN: PLAYER_FIRE_COOLDOWN,
             PLAYER_SHOT_LIMIT: PLAYER_SHOT_LIMIT,
             SINGLE_FIGHTER_WIDTH: SINGLE_FIGHTER_WIDTH,
@@ -2047,7 +2058,7 @@
             FIRST_EXTRA_SHIP_SCORE: FIRST_EXTRA_SHIP_SCORE,
             EXTRA_SHIP_INTERVAL: EXTRA_SHIP_INTERVAL,
             ENEMY_SCORES: ENEMY_SCORES,
-            BULLET_SPEED: BULLET_SPEED,
+            BULLET_SPEED: bulletSpeed(),
             ENEMY_BULLET_SPEED: ENEMY_BULLET_SPEED,
             STAGE_CLEAR_DURATION: 0.75,
             CHALLENGING_PATTERNS: CHALLENGING_PATTERNS,

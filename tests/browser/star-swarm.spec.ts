@@ -308,7 +308,7 @@ test.describe('star swarm', () => {
             };
         });
         expect(roleCoverage.keys, 'all semantic roles have named theme-token resolutions')
-            .toEqual(['ally', 'hazard', 'magnet', 'reward', 'threat']);
+            .toEqual(['ally', 'butterfly', 'hazard', 'magnet', 'reward', 'threat']);
         expect(roleCoverage.matchesThemeTokens, 'role colours resolve through CSS theme tokens').toBe(true);
 
         // Pixel evidence: probe the live backing canvas, not CSS or game state.

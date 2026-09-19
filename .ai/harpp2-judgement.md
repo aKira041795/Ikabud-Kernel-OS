@@ -113,3 +113,11 @@ The lane did not continue further because its product artifact and evidence comp
 
 The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
 
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
+
+The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
+
