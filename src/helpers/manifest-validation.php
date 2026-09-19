@@ -565,7 +565,7 @@ function validateModuleSuiteFleetV1(array $manifests): array
     return $diagnostics;
 }
 
-/** @return array<string,string> */
+/** @return array<string,mixed> */
 function validateModuleManifestFileV1(string $path, array $context = []): array
 {
     if (!is_file($path)) {

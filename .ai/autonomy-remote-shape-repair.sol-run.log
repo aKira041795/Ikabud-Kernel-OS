@@ -1,0 +1,72 @@
+## Status: COMPLETE
+
+### Fixed sites
+
+- `tools/ai-autonomy.php:166` — `remoteRows()`
+  - Before: unwrapped only one level, so `{"data":{"decisions":[…]}}` became a map and returned zero rows.
+  - After: unwraps `data`, then `decisions`; also supports bare lists, single rows, flat `decisions`, and legacy `items`. Rows require `decision_key` or an integer `id`.
+  - The pre-repair zero-row behavior was derived by reading the old function; it was not separately executed.
+
+- `tools/ai-autonomy.php:402` — submit ID extraction
+  - Before: only root `id`, root `decision_id`, or `decision.id`.
+  - After: checks `data.id` first, then defensively `data.decision_id`, root `id`, root `decision_id`, and `decision.id`.
+
+- `tools/ai-autonomy.php:478,511,514` — lifecycle reads
+  - Before: read `state`.
+  - After: reads `lifecycle_state`, with `state` only as fallback, for both resume matching and status merging.
+
+### HARPP source confirmation
+
+Confirmed:
+
+- `harpp_client.py` returns the raw API response.
+- HARPP’s watch loop unwraps `data.decisions`.
+- Decision rows use `lifecycle_state`.
+- The current server implementation actually proves submit IDs at `data.decision_id`, not `data.id`.
+
+Therefore, `data.id` could **not** be proven from the repository; it remains the contract-directed primary test shape. The parser tolerates the repository-proven `data.decision_id` as well.
+
+### Four regression cases
+
+All use the corrected nested envelope:
+
+1. Submit `data.id`:
+   - Exit `0`
+   - Output: `DELIVERY: harpp`
+   - Stored: `"harpp_decision_id":"77"`
+
+2. Nested DECIDED resume:
+   - Exit `0`
+   - Output: `CHOSEN: a — Keep local`
+   - Calls: `decision list` → `decision ack 77` → `decision apply 77`
+
+3. NOTIFIED refusal:
+   - Exit `2`
+   - Output: `ERROR: no DECIDED HARPP decision matches decision_key 'remote-decision'`
+   - Calls: only `decision list`; no resolution, acknowledgement, or apply.
+
+4. Nested remote status:
+   - Exit `0`
+   - Output includes `"harpp_state":"DECIDED"`.
+
+### Verification
+
+- `php tests/ai_autonomy_test.php`
+  - Exit `0`
+  - **27 passed / 0 failed / 0 skipped**
+- `php -l tools/ai-autonomy.php`
+  - Exit `0`
+  - `No syntax errors detected`
+- PHPStan required command
+  - Exit `0`
+  - `[OK] No errors`
+- `php tools/ai-autonomy.php plan --contract=.ai/ai-autonomy-harness.contract.md`
+  - Exit `0`
+- `git diff --check`
+  - Exit `0`
+
+No existing assertion was removed, relaxed, or skipped. No simulator was created.
+
+### BLOCKED
+
+None.

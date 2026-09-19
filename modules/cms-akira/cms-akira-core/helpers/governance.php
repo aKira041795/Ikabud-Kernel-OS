@@ -163,7 +163,21 @@ function cac_cap_akira_policy_set_roles_1(mixed $payload): array
 /** @return array<string,mixed> */
 function cac_cap_akira_user_list_1(mixed $payload): array
 {
-    return ['ok' => true, 'rows' => kernelUsersList(cacPostTenantId())];
+    $tenantId = cacPostTenantId();
+    $rows = kernelUsersList($tenantId);
+    foreach ($rows as &$row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $id = (int)($row['id'] ?? 0);
+        // token_version is the session generation. Surface it so an operator can
+        // observe a revocation instead of asserting it. kernelUserForGovernanceUpdate
+        // is the existing kernel-escalated reader for the kernel-owned users table.
+        $governance = $id > 0 ? kernelUserForGovernanceUpdate($tenantId, $id) : null;
+        $row['token_version'] = is_array($governance) ? (int)($governance['token_version'] ?? 0) : 0;
+    }
+    unset($row);
+    return ['ok' => true, 'rows' => $rows];
 }
 
 /** @return array<string,mixed> */
@@ -191,7 +205,7 @@ function cacUserMutate(string $operation, mixed $payload): array
             if ($userId === $actor['id'] && in_array((string)$old['role'], CAC_AKIRA_ADMIN_ROLES, true) && !in_array($role, CAC_AKIRA_ADMIN_ROLES, true)) {
                 throw new CacGovernanceException('You cannot demote yourself.');
             }
-        } else {
+        } elseif ($operation === 'set_active') {
             $active = filter_var($payload['is_active'] ?? null, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
             if ($active === null) {
                 throw new CacGovernanceException('is_active must be boolean.');
@@ -199,6 +213,16 @@ function cacUserMutate(string $operation, mixed $payload): array
             $active = $active ? 1 : 0;
             if ($userId === $actor['id'] && $active === 0) {
                 throw new CacGovernanceException('You cannot deactivate yourself.');
+            }
+        } else {
+            // revoke_sessions: sign the target out everywhere while leaving their
+            // access intact. Self-revocation is refused deliberately, not by
+            // oversight: the success banner would render on a page the actor can
+            // no longer load, and if the target were the last administrator it
+            // would take the tenant's admin surface down. "Sign me out everywhere"
+            // is a different feature on the account surface, not this incident lever.
+            if ($userId === $actor['id']) {
+                throw new CacGovernanceException('You cannot revoke your own sessions.');
             }
         }
         $removesPrivileged = in_array((string)$old['role'], ['administrator', 'superadmin'], true) && (int)$old['is_active'] === 1
@@ -211,7 +235,13 @@ function cacUserMutate(string $operation, mixed $payload): array
         }
         if ($operation === 'update_role') {
             kernelUserSetRole($tenantId, $userId, $role);
+        } elseif ($operation === 'set_active') {
+            kernelUserSetActive($tenantId, $userId, $active === 1);
         } else {
+            // revoke_sessions: only token_version moves. kernelUserSetActive is the
+            // existing kernel-escalated helper that bumps it; it is passed the
+            // stored activation value, so is_active is rewritten byte-identically
+            // and role is never touched at all.
             kernelUserSetActive($tenantId, $userId, $active === 1);
         }
         return ['entity_type' => 'user', 'entity_id' => (string)$userId, 'old_data' => $old,
@@ -228,4 +258,9 @@ function cac_cap_akira_user_update_role_1(mixed $payload): array
 function cac_cap_akira_user_set_active_1(mixed $payload): array
 {
     return cacUserMutate('set_active', $payload);
+}
+/** @return array<string,mixed> */
+function cac_cap_akira_user_revoke_sessions_1(mixed $payload): array
+{
+    return cacUserMutate('revoke_sessions', $payload);
 }

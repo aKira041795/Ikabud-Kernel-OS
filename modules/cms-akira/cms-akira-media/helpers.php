@@ -79,6 +79,10 @@ function camMediaMutationPolicyRows(int $policyVersion = 1): array
 /** Resolve the active declaration version so newly enabled media routes are not inert. */
 function camMediaActivePolicyVersion(): int
 {
+    if (function_exists('cacActivePolicyVersion')) {
+        return cacActivePolicyVersion();
+    }
+
     $resolver = \Ikabud\Kernel\Capabilities\AuthorityScopeResolver::forApplication();
     $scope = $resolver->resolve(\Ikabud\Kernel\Capabilities\AuthorityScopeResolver::WEB, [
         'actor' => app()->user(),
@@ -104,7 +108,9 @@ function camSeedMediaMutationPolicies(): void
     );
 }
 
-camSeedMediaMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    camSeedMediaMutationPolicies();
+}
 
 /**
  * Seed contributor-facing media reads into the active policy version. The permissions
@@ -144,7 +150,13 @@ function camSeedMediaReadPolicies(): void
     );
 }
 
-camSeedMediaReadPolicies();
+$camReadPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate() || $camReadPath === ''
+    || $camReadPath === '/cms-akira-shell/media'
+    || $camReadPath === '/cms-akira-shell/posts/new'
+    || (str_starts_with($camReadPath, '/cms-akira-shell/posts/') && str_ends_with($camReadPath, '/edit'))) {
+    camSeedMediaReadPolicies();
+}
 
 function camCtx(): \Ikabud\Kernel\Contracts\ModuleContext
 {

@@ -1,0 +1,28 @@
+$ php tests/gui_settings_route_authority_declaration_test.php
+PASS: both required POST declarations map directly to gui_settings.apply@1 (removing either key fails this assertion)
+PASS: the GET page route is not declared
+PASS: the unique gui_settings.apply@1 seed row pins allowed_roles to exactly admin
+PASS: caller_module is the explicit kernel,gui-settings convention and names the gui-settings route dispatcher
+PASS: the policy row builder is passed to the registry seeder and invoked at file scope
+PASS: census subprocess exits 0 and emits parseable JSON
+PASS: census: gui-settings summary reports undeclared 0 and write_ratio 100
+PASS: census: akira rollup reports undeclared 0, write_ratio 100 and dispatch_enforced == total == 47
+mode: pure-source-inspection+subprocess-census
+census_exit: 0
+census_stderr: 
+census_gui_settings: {"module":"gui-settings","dispatch_enforced":2,"bus_reachable":0,"exempt":0,"undeclared":0,"total":2,"ratio":100,"bus_ratio":0,"write_dispatch_enforced":2,"write_total":2,"write_ratio":100,"read_dispatch_enforced":0,"read_exempt":0,"read_undeclared":1,"read_total":1,"read_ratio":0}
+census_akira: {"module":"Akira (cms-akira-* + gui-settings)","dispatch_enforced":47,"bus_reachable":45,"exempt":0,"undeclared":0,"total":47,"read_dispatch_enforced":16,"read_exempt":0,"read_undeclared":41,"read_total":57,"ratio":100,"bus_ratio":95.7,"write_ratio":100,"read_ratio":28.1}
+manifest_write_routes: {"POST /api/v1/admin/gui-settings":"gui_settings.apply@1","POST /api/v1/admin/gui-settings/reset":"gui_settings.apply@1"}
+get_route_declared: no
+policy_allowed_roles: admin
+policy_caller_module: kernel,gui-settings
+policy_seed_wired: yes
+live_policy_row: not_asserted_purely; tenant_54_verification: Chair_evidence_only
+existing_test_or_gate_weakened: no
+passed: 8
+failed: 0
+skipped: 0
+exit code: 0
+
+$ php -l tests/gui_settings_route_authority_declaration_test.php
+No syntax errors detected in tests/gui_settings_route_authority_declaration_test.php

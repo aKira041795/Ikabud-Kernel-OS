@@ -1,0 +1,67 @@
+Done. Here is the record.
+
+## Decision (CD-8, IN-CONTRACT)
+
+The contract requires `start` to record a `pid` but does not say whose. I decided: **the recorded pid is the run's lifetime marker — by default the parent of the `start` invocation (the dispatcher shell that will observe the exit code), with `--pid=N` for a dispatcher that knows the run's own pid.** `status` never reads a log; it reads that pid. `getmypid()` of `start` would be dead immediately (the exact false signal in reverse), so the parent is the honest default; explicit `--pid` stays available because the dispatcher is the only party that truly knows. All paths used were in `allowed_scope`; no scope addition was needed.
+
+## Deliverables
+
+| File | Status |
+|---|---|
+| `tools/ai-run.php` | new — ledger (`start`/`finish`/`status`) + `claims`, zero deps, no bootstrap/DB/network/HARPP |
+| `tests/ai_run_test.php` | new — 19 pure MODE_PURE assertions |
+| `.ai/ai-autonomy-harness.contract.md` | runbook: dispatch protocol + "never infer run state" |
+| `.github/copilot-instructions.md` | harness-section pointer |
+| `.github/instructions/ai-autonomy-escalation.instructions.md` | prohibited-behaviour line |
+| `.ai/runs/` | created (empty; runtime state only) |
+
+## The instrument, demonstrated (real output, real exit codes)
+
+**Classification matrix** (temp ledger, real tool invocations; `finish` exited `0` each time):
+```
+demo-failed      failed     exit=1   log=0B report=0B
+demo-silent      silent     exit=0   log=0B (/tmp/ledger-demo/zero.log)
+   NOTE: exit 0 with no report/log content — a silent success...
+demo-completed   completed  exit=0   log=0B report=7592B (.ai/ai-autonomy-mechanise-doctrine.flash-run.log)
+```
+
+**`abandoned` reconciliation** (recorded `running` before, dead pid, `status` persisted `abandoned`):
+```
+recorded status before status: running
+  demo-abandoned   abandoned  exit=-  age=0s  pid=2109729 ...
+GATE: BLOCKED — demo-failed, demo-silent, demo-abandoned      >> status --gate exit=3
+recorded status after reconciliation: abandoned
+```
+Live pid stays `running`; `--gate` exits `3` while silent/failed/abandoned exist, `0` when every run is clean (`GATE: OK`). `status --json --gate` also exits `3`. Default `.ai/runs` is empty → `status --json` exit `0`, `--gate` exit `0`.
+
+**`claims` on the real 7,592-byte report** — every claim `unverified`, and the tool states re-derivation is a later slice:
+```
+CLAIMS — demo-completed [UNVERIFIED]
+  claims are extracted, not verified; re-derivation is a later slice
+  [unverified] passed_fraction  46/46   ...flash-run.log:53  46/46 passed
+  [unverified] exit_code        0       ...:50  **1. Full suite (exit 0):**
+  ... 17 claims total ...
+```
+
+## Falsification (acceptance 3)
+
+I patched `classifyRun` to exit-code-only, ran the suite, and restored the original (md5 verified byte-identical `a3bd7796…`):
+```
+❌ 6.  exit 0 with a 0-byte log classifies silent
+❌ 8.  scope-path-semantics (exit 0, 0-byte log) -> silent
+❌ 10. classification is content-sensitive, not exit-code-only (same exit 0, two outcomes)
+RESULTS  16/19 passed    FALSIFIED SUITE EXIT=1
+RESTORE VERIFIED: byte-identical
+```
+
+## Required tests / gates
+
+- `php tests/ai_run_test.php` → **19/19, exit 0**
+- `php tests/ai_autonomy_test.php` → **46/46, exit 0** (unchanged)
+- `php -l tools/ai-run.php tests/ai_run_test.php` → clean
+- `vendor/bin/phpstan analyse -c phpstan.neon tools/ai-run.php tests/ai_run_test.php` → **exit 0, no errors**
+- No `scripts/run-tests.php`, no `composer test`, no bootstrap/DB/network/HARPP. Nothing staged, committed or pushed.
+
+## Honest note (do not over-claim)
+
+The ledger **records** claims; it does not verify them, and I present `claims` output only as extraction. Also: the contract's "verified fact" that `.ai/scope-path-semantics.flash-run.log` is 0 bytes no longer holds in the live tree — at demo time it was **12,709 bytes**, and `builder-spec-truth.flash-run.log` had grown from 0 to **11,768 bytes** (a concurrent dispatcher is populating those files while this slice runs). I therefore demonstrated the silent case with a reproduced 0-byte fixture (as the test requires), and used the real, stable 7,592-byte `mechanise-doctrine` report for the completed case and for `claims`. The churn is itself the phenomenon this ledger addresses.

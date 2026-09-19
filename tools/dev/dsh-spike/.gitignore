@@ -1,0 +1,9 @@
+# Runtime state of the pinned `dsh` executor — never tracked.
+#
+# `home/` is the isolated DSH_HOME: 307 MB of node_modules plus session logs, caches and
+# an anonymous user id. The credential is passed as an environment variable only and is
+# never written here (checked 2026-09-18), but none of this is repository content.
+#
+# A fresh clone therefore has no runtime, and `tools/harpp2/dispatch-dsh.sh` fails closed
+# with exit 4 ("pinned dsh runtime is not installed") rather than silently degrading.
+home/

@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Offline simulator for the HARPP CLI subset used by tools/ai-autonomy.php."""
+
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+DEFAULT_STORE = ".ai/harpp-sim/store.json"
+
+
+def fail(message):
+    print(f"harpp-sim: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def store_path():
+    return Path(os.environ.get("HARPP_SIM_STORE", DEFAULT_STORE))
+
+
+def empty_store():
+    return {"next_id": 1, "decisions": [], "messages": [], "events": []}
+
+
+def load_store(path):
+    if not path.exists():
+        return empty_store()
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read store {path}: {exc}")
+    if not isinstance(value, dict):
+        fail(f"store {path} is malformed")
+    for key, default in empty_store().items():
+        value.setdefault(key, default)
+    return value
+
+
+def save_store(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".store-", suffix=".json", dir=str(path.parent))
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def parse_options(tokens, value_names, flag_names=()):
+    values = {}
+    flags = set()
+    positionals = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if not token.startswith("--"):
+            positionals.append(token)
+            index += 1
+            continue
+        name_value = token[2:].split("=", 1)
+        name = name_value[0]
+        if name in flag_names and len(name_value) == 1:
+            flags.add(name)
+            index += 1
+            continue
+        if name not in value_names:
+            fail(f"unsupported option --{name}")
+        if len(name_value) == 2:
+            value = name_value[1]
+        else:
+            index += 1
+            if index >= len(tokens) or tokens[index].startswith("--"):
+                fail(f"option --{name} requires a value")
+            value = tokens[index]
+        values[name] = value
+        index += 1
+    return values, flags, positionals
+
+
+def suppressed():
+    return os.environ.get("HARPP_NOTIFY") == "0"
+
+
+def emit(value):
+    print(json.dumps(value, separators=(",", ":"), sort_keys=True))
+
+
+def find_decision(store, raw_id):
+    try:
+        decision_id = int(raw_id)
+    except ValueError:
+        fail(f"decision id must be an integer: {raw_id}")
+    for row in store["decisions"]:
+        if row.get("id") == decision_id:
+            return row
+    fail(f"decision {decision_id} does not exist")
+
+
+def decision_submit(tokens):
+    names = {"title", "body", "context", "requested", "priority", "source", "workbench-state", "decision-key"}
+    options, _, positionals = parse_options(tokens, names)
+    if positionals:
+        fail("decision submit takes no positional arguments")
+    if suppressed():
+        emit({"ok": True, "suppressed": True})
+        return
+    path = store_path()
+    store = load_store(path)
+    decision_id = int(store["next_id"])
+    store["next_id"] = decision_id + 1
+    row = {
+        "id": decision_id,
+        "decision_key": options.get("decision-key"),
+        "title": options.get("title", ""),
+        "body": options.get("body", ""),
+        "context": options.get("context", ""),
+        "requested_decision": options.get("requested", ""),
+        "priority": options.get("priority", "normal"),
+        "source": options.get("source", "harness"),
+        "workbench_state": options.get("workbench-state", "ARCHITECTURE_DECISION_REQUIRED"),
+        "decision": None,
+        "rationale": None,
+        "lifecycle_state": "NOTIFIED",
+    }
+    store["decisions"].append(row)
+    store["events"].append({"kind": "decision", "id": decision_id, "transition": "NOTIFIED"})
+    save_store(path, store)
+    data = {"id": decision_id}
+    if options.get("decision-key") is not None:
+        data["decision_key"] = options["decision-key"]
+    emit({"ok": True, "data": data})
+
+
+def decision_list(tokens):
+    options, _, positionals = parse_options(tokens, {"state"}, {"remote"})
+    if positionals:
+        fail("decision list takes no positional arguments")
+    rows = load_store(store_path())["decisions"]
+    wanted = options.get("state")
+    if wanted is not None:
+        rows = [row for row in rows if row.get("lifecycle_state") == wanted.upper()]
+    fields = ("id", "decision_key", "title", "decision", "rationale", "lifecycle_state")
+    decisions = [{key: row.get(key) for key in fields} for row in rows]
+    emit({"ok": True, "data": {"decisions": decisions}})
+
+
+def transition(tokens, action, expected, target):
+    options, _, positionals = parse_options(tokens, {"rationale"})
+    if len(positionals) != 1:
+        fail(f"decision {action} requires one decision id")
+    path = store_path()
+    store = load_store(path)
+    row = find_decision(store, positionals[0])
+    current = row.get("lifecycle_state")
+    if current != expected:
+        fail(f"illegal transition {action}: decision {row['id']} is {current}, expected {expected}")
+    row["lifecycle_state"] = target
+    store["events"].append({"kind": "decision", "id": row["id"], "transition": target, "rationale": options.get("rationale")})
+    save_store(path, store)
+    emit({"ok": True})
+
+
+def message_send(tokens):
+    names = {"body", "title", "idempotency-key", "conversation-id"}
+    options, _, positionals = parse_options(tokens, names)
+    if positionals:
+        fail("msg send takes no positional arguments")
+    key = options.get("idempotency-key")
+    if not key:
+        fail("msg send requires --idempotency-key")
+    if suppressed():
+        emit({"ok": True, "suppressed": True})
+        return
+    path = store_path()
+    store = load_store(path)
+    if any(row.get("idempotency_key") == key for row in store["messages"]):
+        fail(f"duplicate idempotency key: {key}")
+    store["messages"].append({
+        "id": len(store["messages"]) + 1,
+        "body": options.get("body", ""),
+        "title": options.get("title"),
+        "conversation_id": options.get("conversation-id"),
+        "idempotency_key": key,
+    })
+    store["events"].append({"kind": "message", "idempotency_key": key, "transition": "SENT"})
+    save_store(path, store)
+    emit({"ok": True})
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) < 2:
+        fail("expected 'decision <submit|list|ack|apply>' or 'msg send'")
+    group, command, rest = args[0], args[1], args[2:]
+    if (group, command) == ("decision", "submit"):
+        decision_submit(rest)
+    elif (group, command) == ("decision", "list"):
+        decision_list(rest)
+    elif (group, command) == ("decision", "ack"):
+        transition(rest, "ack", "DECIDED", "ACKNOWLEDGED")
+    elif (group, command) == ("decision", "apply"):
+        transition(rest, "apply", "ACKNOWLEDGED", "APPLIED")
+    elif (group, command) == ("msg", "send"):
+        message_send(rest)
+    else:
+        fail(f"unsupported command: {group} {command}")
+
+
+if __name__ == "__main__":
+    main()

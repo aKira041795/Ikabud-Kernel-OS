@@ -1066,6 +1066,14 @@ function moduleTenantSettingsModeEnabled(): bool
             return false;
         }
 
+        // A CLI module-loading scope is explicit and is valid only while the
+        // TenantResolver carries the same tenant. This does not alter ordinary
+        // host-based HTTP resolution.
+        $scopedTenantId = $GLOBALS['_kernel_cli_module_tenant_id'] ?? null;
+        if (PHP_SAPI === 'cli' && is_int($scopedTenantId) && $scopedTenantId > 0) {
+            return (int) app()->tenant()->current() === $scopedTenantId;
+        }
+
         // In CLI, only enable tenant-scoped settings if a host is explicitly set.
         if (PHP_SAPI === 'cli' && empty($_SERVER['HTTP_HOST'])) {
             return false;
@@ -1304,6 +1312,11 @@ function preloadAllTenantModuleSettings(): void
 function invalidateTenantModuleSettingsCache(): void
 {
     kernel_request_context_delete('_tenant_module_settings_cache');
+    // Invalidate the per-process activation-state memo used by capability
+    // dispatch (see moduleActivationState()). Activation toggles inside one
+    // process (tests, install) must be observed immediately.
+    $GLOBALS['_kernel_module_activation_generation'] =
+        (int) ($GLOBALS['_kernel_module_activation_generation'] ?? 0) + 1;
 }
 
 /**
@@ -1756,14 +1769,57 @@ function moduleIsCurrentTenantEntrySurface(string $moduleId): bool
 }
 
 /**
+ * Run module discovery/loading in an explicitly established CLI tenant scope.
+ * The caller must establish TenantResolver first (normally via
+ * AuthorityScopeResolver::withScope); mismatch is an error, never a fallback.
+ */
+function withCliTenantModuleScope(int $tenantId, callable $work): mixed
+{
+    if (PHP_SAPI !== 'cli' || $tenantId <= 0) {
+        throw new InvalidArgumentException('CLI tenant module scope requires a positive tenant id.');
+    }
+    $currentTenantId = (int) app()->tenant()->current();
+    if ($currentTenantId !== $tenantId) {
+        throw new RuntimeException('CLI tenant module scope does not match the established tenant context.');
+    }
+
+    $hadPrevious = array_key_exists('_kernel_cli_module_tenant_id', $GLOBALS);
+    $previous = $GLOBALS['_kernel_cli_module_tenant_id'] ?? null;
+    $GLOBALS['_kernel_cli_module_tenant_id'] = $tenantId;
+
+    // discoverModules() caches manifests after applying enabled state. Clear it
+    // after the tenant context is established, and again on exit, so ambient or
+    // other-tenant state can never be reused by this scoped load.
+    unset($GLOBALS['_kernel_discovered_modules']);
+    invalidateTenantModuleSettingsCache();
+    try {
+        return $work();
+    } finally {
+        unset($GLOBALS['_kernel_discovered_modules']);
+        invalidateTenantModuleSettingsCache();
+        if ($hadPrevious) {
+            $GLOBALS['_kernel_cli_module_tenant_id'] = $previous;
+        } else {
+            unset($GLOBALS['_kernel_cli_module_tenant_id']);
+        }
+    }
+}
+
+/**
  * Get only enabled modules.
  * @return array<string, array<string, mixed>>
  */
 function getEnabledModules(): array
 {
-    static $cached = null;
-    if (is_array($cached)) {
-        return $cached;
+    // Keep explicit CLI tenant results isolated from the ambient request cache.
+    // This also makes an ambient-first call safe: tenant scope has a distinct key.
+    static $cachedByScope = [];
+    $scopedTenantId = $GLOBALS['_kernel_cli_module_tenant_id'] ?? null;
+    $cacheKey = is_int($scopedTenantId) && $scopedTenantId > 0
+        ? 'cli-tenant:' . $scopedTenantId
+        : 'ambient';
+    if (isset($cachedByScope[$cacheKey]) && is_array($cachedByScope[$cacheKey])) {
+        return $cachedByScope[$cacheKey];
     }
 
     resetSkippedModules();
@@ -1889,8 +1945,8 @@ function getEnabledModules(): array
     // Register read contracts and deprecated reads for enabled modules
     kernelRegisterModuleReadContracts($safe);
 
-    $cached = $safe;
-    return $cached;
+    $cachedByScope[$cacheKey] = $safe;
+    return $cachedByScope[$cacheKey];
 }
 
 /**
@@ -3399,7 +3455,11 @@ function executeModuleHandler(
         if ($pageCacheActive && function_exists('pageCacheSet')) {
             $html = ob_get_clean();
             $responseCode = http_response_code();
-            pageCacheSet($requestUri, $html, $moduleId, (int)$responseCode);
+            // FPM exposes handler-set headers here; CLI headers_list() is empty.
+            // Null therefore means "not observed" and lets pageCacheSet() apply
+            // its deterministic HTML-only fallback without mislabelling non-HTML.
+            $contentType = pageCacheResolveContentType(headers_list(), null);
+            pageCacheSet($requestUri, $html, $moduleId, (int)$responseCode, $contentType);
             if ($pageCacheLock) {
                 pageCacheLockRelease($pageCacheLock);
                 $pageCacheLock = null;

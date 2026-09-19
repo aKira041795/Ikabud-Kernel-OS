@@ -1,0 +1,62 @@
+{
+    "schema": "ark.workbench-development-decision-request.v1",
+    "schema_version": "1.0",
+    "decision_id": "akira-theme-p0-d1",
+    "task_id": "akira-theme-p0",
+    "contract_revision": "a6f5dffdd3261a73",
+    "raised_at": "2026-09-13T03:58:20+00:00",
+    "raised_by": {
+        "role": "implement",
+        "model": null,
+        "harness": "pi"
+    },
+    "authority_level": "L4",
+    "question": "PHPStan remains failing after the second bounded repair attempt; should this slice resume for one additional in-scope annotation/test-analysis repair?",
+    "why_now": "The first run exposed resolver and test discovery typing issues; the repair removed one narrowing issue and added the return shape, but the second run now reports error-return shape mismatches, test null-coalescing, and pre-existing TestHarness iterable annotations. The standing contract mandates an L4 stop after the second failed repair attempt on the same gate.",
+    "options": [
+        {
+            "id": "resume",
+            "label": "Allow one additional bounded repair",
+            "effect": "Adjust resolver result shape annotation and analyze the test with an appropriate PHPStan discovery mechanism",
+            "cost": "One repair cycle",
+            "blast_radius": "Four changed files and PHPStan invocation only",
+            "reversibility": "reversible"
+        },
+        {
+            "id": "stop",
+            "label": "Keep the mandatory stop",
+            "effect": "Leave the current implementation and report blocked pending a later run",
+            "cost": "No further code cost",
+            "blast_radius": "P0 slice remains incomplete",
+            "reversibility": "reversible"
+        }
+    ],
+    "recommendation": {
+        "option_id": "resume",
+        "rationale": "Option 'resume' best preserves the approved task boundary."
+    },
+    "default_if_no_response": "stop",
+    "impact_of_no_decision": "The bounded run remains stopped until the director answers.",
+    "already_done": [],
+    "checkpoint": {
+        "state": "pre-change",
+        "git_head": null,
+        "resume_command": "php tools/ai-autonomy.php resume akira-theme-p0-d1 --choose=<OPTION> --decisions-dir=.ai/decisions"
+    },
+    "evidence_refs": [],
+    "transport": {
+        "channel": "harpp-cli",
+        "attempted": true,
+        "delivered": true,
+        "suppressed": false,
+        "harpp_decision_id": "1",
+        "error": null
+    },
+    "resolution": {
+        "chosen_option_id": "resume",
+        "decided_by": "director",
+        "decided_at": "2026-09-13T04:27:30+00:00",
+        "note": "Authorise one bounded repair; fix the declared return shape, do not touch the baseline.",
+        "source": "harpp"
+    }
+}

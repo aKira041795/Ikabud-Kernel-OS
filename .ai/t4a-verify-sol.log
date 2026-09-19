@@ -1,0 +1,49 @@
+status: BLOCKED
+
+changed:
+- `modules/cms-akira/cms-akira-builder/handlers.php`
+  - Added minimal active-theme public-layout wrapping for composition pages.
+  - Not fully verified due lifecycle blocker.
+
+gaps_found_and_fixed:
+- Found `/p/{key}` returned the composition `<article>` as a bare fragment.
+- Implemented wrapping through the theme’s declared public shell with title, header region, page region, and footer region.
+- End-to-end verification remains pending.
+
+verification:
+```yaml
+post_lifecycle: "PARTIAL — post t4a-page created and published; /posts/t4a-page returns HTTP 200"
+composition_publish: "BLOCKED — composition created as draft; publish cannot resolve akira.post.get@1 under CLI"
+public_render: "BLOCKED — no published composition available"
+unpublished_404: "GET /p/definitely-not-published => 404"
+idempotency_audit: "NOT RUN"
+cache_invalidation: "NOT RUN"
+tests: "Existing builder test: 10 passed, 1 failed due pre-existing synthetic-tenant capability policy issue"
+php_lint: "PASS — handlers.php"
+cs_fixer: "NOT RUN due required stop/escalation"
+phpstan: "NOT RUN due required stop/escalation"
+tenant_health: "PASS — GET / => 200, data-akira-theme=\"akira-ark\""
+```
+
+Evidence:
+- CLI authority before workaround: `false`
+- Post publish:
+  `{"ok":true,"operation":"publish","post":{"id":178,"slug":"t4a-page","status":"published"}}`
+- Composition create:
+  `status=draft`, `current_revision_id=3`, `published_revision_id=null`
+- Publish failure:
+  `CabBuilderException: A published-capable Akira Post reference is required.`
+- Direct CLI `akira.post.get@1` result:
+  `{"ok":false,"error":"Post storage unavailable"}`
+- Builder circuit breakers after reset: `[]`
+
+left_on_tenant54:
+- Published post `t4a-page`
+- Draft composition `t4a-page`
+- Draft composition `t4a-demo` from the supplied/reference probe
+- Left intact because governed cleanup/resumption requires resolution of the same context problem.
+
+unresolved:
+- Real HTTP works for the published post, but authenticated HTTP credentials/session were unavailable.
+- The requested HARPP escalation was attempted but failed because `tools/harpp-bridge/harpp` is absent.
+- Per instruction, stopped rather than modifying core/kernel or bypassing the governed binding.

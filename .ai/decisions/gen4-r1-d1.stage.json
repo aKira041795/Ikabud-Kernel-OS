@@ -1,0 +1,21 @@
+{
+    "schema": "ark.workbench-development-stage-result.v1",
+    "schema_version": "1.0",
+    "stage": "architect",
+    "task_id": "gen4-r1",
+    "actor": {
+        "role": "implement",
+        "model": null,
+        "harness": "pi",
+        "context_governor": null
+    },
+    "result": "architecture_decision_required",
+    "recorded_at": "2026-09-14T16:43:27+00:00",
+    "summary": "GEN4-R1 S2's acceptance criteria cannot be met without changing the trust surface you froze. Lift the freeze to widen the admissible evidence surface, or conclude the measurement here?",
+    "unresolved_findings": [
+        {
+            "severity": "P1",
+            "summary": "GEN4-R1 S2's acceptance criteria cannot be met without changing the trust surface you froze. Lift the freeze to widen the admissible evidence surface, or conclude the measurement here?"
+        }
+    ]
+}

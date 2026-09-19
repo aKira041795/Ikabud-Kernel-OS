@@ -36,7 +36,7 @@ function cabBuilderApiGuard(): ?array
         cabBuilderApiRespond(401, ['ok' => false, 'error' => 'Authentication required.']);
         return null;
     }
-    if (($user['role'] ?? '') !== 'admin') {
+    if (!cabBuilderIsAdminActor($user)) {
         cabBuilderApiRespond(403, ['ok' => false, 'error' => 'Administrator role required.']);
         return null;
     }

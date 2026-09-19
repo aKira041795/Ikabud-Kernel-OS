@@ -1,0 +1,233 @@
+## Result
+
+**Status:** PARTIAL / BLOCKED BY CONTRACT STOP CONDITIONS
+
+Declared **20 of 25** routes. Five routes were deliberately left undeclared because declaring them would violate fail-closed safety requirements.
+
+### Changed
+
+- `modules/cms-akira/cms-akira-shell/module.json` — 11 declarations
+- `modules/cms-akira/cms-akira-builder/module.json` — 6 declarations
+- `modules/cms-akira/cms-akira-theme/module.json` — 2 declarations
+- `modules/cms-akira/cms-akira-workflow/module.json` — 1 declaration
+
+No handler, helper, policy, migration, schema, exemption, `daily-ledger`, `cms-akira-core`, or baseline changes.
+
+## A1 — Handler mapping
+
+### `cms-akira-shell`
+
+| Route | Handler evidence | Existing capability |
+|---|---|---|
+| `POST /cms-akira-shell/posts` | `akiraShellPostCreate` @ `handlers.php:262`; selection/call @ `helpers.php:520-523` | `akira.post.create@1` |
+| `POST /cms-akira-shell/posts/{slug}` | `akiraShellPostUpdate` @ `handlers.php:267`; selection/call @ `helpers.php:520-523` | `akira.post.update@1` |
+| `POST /cms-akira-shell/posts/{slug}/taxonomies` | `akiraShellPostSetTaxonomies` @ `handlers.php:304`; call @ `handlers.php:318` | `akira.post.set_taxonomies@1` |
+| `POST /cms-akira-shell/posts/{slug}/revisions/{revision_no}/revert` | `akiraShellPostRevisionRevert` @ `handlers.php:337`; call @ `handlers.php:366` | `akira.post.revision.revert@1` |
+| `POST /cms-akira-shell/posts/{slug}/workflow` | `akiraShellPostWorkflowTransition` @ `handlers.php:272`; call @ `helpers.php:558` | `akira.workflow.transition@1` |
+| `POST /cms-akira-shell/posts/{slug}/delete` | `akiraShellPostDelete` @ `handlers.php:277`; capability argument @ `handlers.php:279` | `akira.post.delete@1` |
+| `POST /cms-akira-shell/categories` | `akiraShellCategoryCreate` @ `handlers.php:398`; call @ `handlers.php:407` | `akira.taxonomy.create@1` |
+| `POST /cms-akira-shell/categories/{id}` | `akiraShellCategoryUpdate` @ `handlers.php:416`; call @ `handlers.php:431` | `akira.taxonomy.update@1` |
+| `POST /cms-akira-shell/categories/{id}/delete` | `akiraShellCategoryDelete` @ `handlers.php:440`; call @ `handlers.php:455` | `akira.taxonomy.delete@1` |
+| `POST /cms-akira-shell/content-types` | `akiraShellContentTypeCreate` @ `handlers.php:700`; call @ `handlers.php:709` | `akira.content_type.create@1` |
+| `POST /cms-akira-shell/content-types/{id}` | `akiraShellContentTypeUpdate` @ `handlers.php:722`; call @ `handlers.php:737` | `akira.content_type.update@1` |
+| `POST /cms-akira-shell/content-types/{id}/delete` | `akiraShellContentTypeDelete` @ `handlers.php:750`; call @ `handlers.php:765` | `akira.content_type.delete@1` |
+
+### `cms-akira-builder`
+
+All use `cabBuilderApiInvoke()` → `app()->cap()->call()` at `handlers.php:108-114`.
+
+| Route | Handler evidence | Existing capability |
+|---|---|---|
+| `POST /api/v1/cms-akira/builder/validate` | `akiraBuilderApiValidate` @ `handlers.php:322`; call @ `:329` | `akira.builder.validate@1` |
+| `POST /api/v1/cms-akira/builder/compositions` | `akiraBuilderApiCreate` @ `handlers.php:294`; call @ `:301` | `akira.builder.create@1` |
+| `POST /api/v1/cms-akira/builder/compositions/{key}` | `akiraBuilderApiUpdate` @ `handlers.php:308`; call @ `:315` | `akira.builder.update@1` |
+| `POST /api/v1/cms-akira/builder/compositions/{key}/publish` | `akiraBuilderApiPublish` @ `handlers.php:336`; call @ `:343` | `akira.builder.publish@1` |
+| `POST /api/v1/cms-akira/builder/compositions/{key}/unpublish` | `akiraBuilderApiUnpublish` @ `handlers.php:350`; call @ `:357` | `akira.builder.unpublish@1` |
+| `POST /api/v1/cms-akira/builder/compositions/{key}/delete` | `akiraBuilderApiDelete` @ `handlers.php:364`; call @ `:371` | `akira.builder.delete@1` |
+
+### `cms-akira-theme`
+
+| Route | Handler evidence | Existing capability |
+|---|---|---|
+| `POST /api/v1/cms-akira-theme/themes/{slug}/activate` | `catThemeActivateJson` @ `handlers.php:103`; call @ `:118` | `akira.theme.activate@1` |
+| `POST /api/v1/cms-akira-theme/customize` | `catThemeCustomizeJson` @ `handlers.php:232`; call @ `:246` | `akira.theme.customize@1` |
+| `POST /cms-akira-theme/activate` | `catThemeActivateForm` @ `handlers.php:256`; call @ `:271` | `akira.theme.activate@1` |
+| `POST /cms-akira-theme/customize` | `catThemeCustomizeForm` @ `handlers.php:202`; call @ `:216` | `akira.theme.customize@1` |
+
+### `cms-akira-workflow`
+
+| Route | Handler evidence | Existing capability |
+|---|---|---|
+| `POST /api/v1/cms-akira-workflow/{entity_type}/{entity_key}/transition` | `cawWorkflowTransitionJson` @ `handlers.php:92`; call @ `:100` | `akira.workflow.transition@1` |
+
+### `gui-settings` — STOP CONDITION 1
+
+| Route | Handler evidence | Finding |
+|---|---|---|
+| `POST /api/v1/admin/gui-settings` | `apiSaveGuiSettings` @ `handlers.php:76`; direct write through `saveGuiSettings()` @ `:153` | **No capability call** |
+| `POST /api/v1/admin/gui-settings/reset` | `apiResetGuiSettings` @ `handlers.php:174`; direct write through `saveGuiSettings()` @ `:185` | **No capability call** |
+
+Although `gui_settings.apply@1` is exposed, neither route calls it. Both remain undeclared as required.
+
+## A2 — Tenant 54 pre-flight
+
+Used tenant-owned DB `akira` through `app()->dbForTenant(54)`.
+
+Exact query shape:
+
+```sql
+SELECT capability_id, capability_version, provider, caller_module,
+       allowed_roles, is_active, grant_state, policy_version
+FROM capability_authorization_policies
+WHERE capability_id IN (?, ?, ...)
+ORDER BY capability_id, policy_version
+```
+
+All successful rows were active policy version 2 with `is_active=1` and `grant_state='granted'`.
+
+### Passed
+
+- Shell post create/update: caller `cms-akira-core,cms-akira-shell`; roles cover `contributor,author,editor,admin,administrator,superadmin`.
+- Shell taxonomy assignment/revision/category/content-type routes: caller includes `cms-akira-shell`; roles cover `admin,editor,administrator,superadmin`.
+- Shell workflow: caller `cms-akira-workflow,cms-akira-shell`; roles cover all six participant roles.
+- All six builder routes: `caller_module=NULL` (any caller); role `admin`, matching the local gate.
+- Both theme customize routes: caller `cms-akira-theme,cms-akira-shell`; roles `admin,editor,administrator,superadmin`, matching `catThemeAdmin()`.
+- Workflow transition: caller includes `cms-akira-workflow`; roles are all six workflow participants; the handler has no narrower local role gate.
+
+### Failed and not declared
+
+1. `POST /cms-akira-shell/posts/{slug}/delete`
+   - Policy exists and permits `cms-akira-shell`.
+   - Policy roles: `admin`.
+   - Local gate: all six workflow participants through `akiraShellAuthorize()` (`helpers.php:137-144`).
+   - **STOP CONDITION 3:** declaration would deny contributor, author, editor, administrator, and superadmin users currently admitted by the handler.
+
+2. Both theme activate routes
+   - Policy exists and permits `cms-akira-theme`.
+   - Policy roles: `admin`.
+   - Local gate accepts `admin,editor,administrator,superadmin` at `helpers.php:1166-1175`.
+   - **STOP CONDITION 3:** declaration would narrow working access for three roles.
+
+3. Both GUI settings routes
+   - No handler capability call.
+   - No tenant policy row for `gui_settings.apply@1` was returned.
+   - **STOP CONDITIONS 1 and 2.**
+
+No policy was widened.
+
+## Governance census
+
+Before:
+
+```text
+cms-akira-builder    0 enforced / 6 undeclared / 6 total
+cms-akira-shell      3 enforced / 12 undeclared / 15 total
+cms-akira-theme      0 enforced / 4 undeclared / 4 total
+cms-akira-workflow   0 enforced / 1 undeclared / 1 total
+gui-settings         0 enforced / 2 undeclared / 2 total
+Akira                8 enforced / 25 undeclared / 33 total
+```
+
+After:
+
+```text
+cms-akira-builder    6 enforced / 0 undeclared / 6 total
+cms-akira-shell     14 enforced / 1 undeclared / 15 total
+cms-akira-theme      2 enforced / 2 undeclared / 4 total
+cms-akira-workflow   1 enforced / 0 undeclared / 1 total
+gui-settings         0 enforced / 2 undeclared / 2 total
+Akira               28 enforced / 5 undeclared / 33 total
+```
+
+The requested 33/33 result was not manufactured because five declarations would be unsafe or false.
+
+## Live verification
+
+Using `curl --resolve akiracms.test:80:127.0.0.1`:
+
+- Builder create: 200
+- Builder publish: 200
+- Builder unpublish: 200
+- Builder delete: 200
+- Theme activate as admin: 200
+- Disposable post/composition cleaned up; post was soft-deleted through its normal capability path.
+
+Denied request used only `PHPSESSID` plus valid CSRF token:
+
+```text
+403 {"ok":false,"error":"Forbidden","reason":"unknown_role",
+"capability":"akira.builder.publish@1","state":"route_authority_denied"}
+```
+
+The composition remained:
+
+```json
+{"status":"draft","published_revision_id":null}
+```
+
+Runtime log proof was quoted before tests cleared the log:
+
+```text
+route.authority.denied ... route="/api/v1/cms-akira/builder/compositions/{key}/publish"
+state="declared" capability_id="akira.builder.publish@1" actor_role=""
+
+route.authority.allowed ... route="/api/v1/cms-akira/builder/compositions/{key}/publish"
+state="declared" capability_id="akira.builder.publish@1" actor_role="admin"
+```
+
+Tenant health after tests:
+
+```text
+/      200
+/posts 200
+/login 200
+storage/logs/error.log: 0 bytes
+```
+
+## Verification
+
+- `composer test`: **108 files — 99 passed, 9 skipped, 0 failed**
+- Skipped locally:
+  - `capability_effect_invalidation_test.php`
+  - `durable_idempotency_test.php`
+  - `entity_fallback_test.php`
+  - `entity_view_render_cache_test.php`
+  - `error_page_contract_test.php`
+  - `eventbus_durable_outbox_test.php`
+  - `kernel_idempotency_capability_test.php`
+  - `runner_timeout_test.php`
+  - `tenant_entry_auth_shell_standard_test.php`
+- `php ikabud architecture:check`: **All architecture checks passed (6 checks)**
+- `git diff --check`: clean
+- PHPStan not run: no PHP files changed.
+- `composer lint`: only the six ignored/untracked `modules/daily-ledger` PHP files failed formatting; they were not modified.
+- No commit, push, or branch operation performed.
+
+## Baseline
+
+`.governance-baseline.json` was intentionally **not updated**. Its Akira counts remain:
+
+```json
+"cms-akira-builder": 6,
+"cms-akira-shell": 12,
+"cms-akira-theme": 4,
+"cms-akira-workflow": 1,
+"gui-settings": 2
+```
+
+Updating it to the partial result was prohibited because Akira undeclared counts did not reach zero.
+
+## Acceptance steps not performed
+
+1. Akira 33/33 and zero undeclared: impossible under the three mandatory stop conditions.
+2. Baseline update/diff: intentionally not performed because five routes remain undeclared.
+3. PHPStan `[OK]` output: not applicable because only JSON manifests changed.
+4. Clean global `composer lint`: blocked solely by six ignored/untracked `daily-ledger` files outside scope.
+
+## Risks / unresolved
+
+- Shell post deletion has a policy/local-gate role mismatch.
+- Theme activation has a policy/local-gate role mismatch.
+- GUI settings write handlers bypass their exposed capability and have no tenant policy row.
+
+**Recommended next state:** architecture/product decision required for those five routes. Do not declare them until their existing handler path and policy/local-gate semantics are reconciled explicitly.

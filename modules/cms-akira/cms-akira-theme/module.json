@@ -18,6 +18,14 @@
     "capabilities": {
         "exposes": [
             {
+                "id": "akira.theme.read@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Role-governed read of the active theme's resolution, registry, block catalogue, and validation report"
+            },
+            {
                 "id": "akira.theme.resolve@1",
                 "priority": 50,
                 "modes": [
@@ -95,15 +103,31 @@
             }
         ],
         "routes": {
+            "GET /api/v1/cms-akira-theme/resolve": "akira.theme.read@1",
+            "GET /api/v1/cms-akira-theme/themes": "akira.theme.read@1",
+            "GET /api/v1/cms-akira-theme/blocks": "akira.theme.read@1",
+            "GET /api/v1/cms-akira-theme/themes/{slug}/validate": "akira.theme.read@1",
             "POST /api/v1/cms-akira-theme/customize": "akira.theme.customize@1",
-            "POST /cms-akira-theme/customize": "akira.theme.customize@1"
+            "POST /api/v1/cms-akira-theme/themes/{slug}/activate": "akira.theme.activate@1",
+            "POST /cms-akira-theme/customize": "akira.theme.customize@1",
+            "POST /cms-akira-theme/activate": "akira.theme.activate@1"
         },
         "depends": [
             "kernel.idempotency.hash@1",
             "kernel.idempotency.claim@1",
             "kernel.idempotency.commit@1",
             "kernel.idempotency.release@1",
-            "kernel.audit.record@1"
+            "kernel.audit.record@1",
+            "akira.shell.admin_page@1"
+        ]
+    },
+    "governance": {
+        "exemptions": [
+            {
+                "method": "GET",
+                "route": "/api/v1/cms-akira-theme/health",
+                "reason": "Public liveness probe: returns only static module identity and version, reads no tenant data, and performs no role check, so declaring it against the role-governed read capability would 403 the unauthenticated health monitoring that works today."
+            }
         ]
     },
     "routes": true,
@@ -116,8 +140,11 @@
             "location": "sidebar",
             "label": "Theme Studio",
             "route": "/cms-akira-theme",
+            "active_key": "theme",
             "roles": [
-                "admin"
+                "admin",
+                "administrator",
+                "superadmin"
             ],
             "order": 5
         }

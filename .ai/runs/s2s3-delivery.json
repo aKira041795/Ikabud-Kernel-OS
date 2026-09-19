@@ -1,0 +1,152 @@
+{
+    "id": "s2s3-delivery",
+    "contract": ".ai/projects/harpp-gen4/slices/s2-s3-project-and-loop.md",
+    "contract_revision": "0beed61116e5d72e",
+    "allowed_count": 6,
+    "forbidden_count": 15,
+    "lane": "deterministic-release-evidence",
+    "started_at": "2026-09-14T04:25:24+00:00",
+    "pid": 2141900,
+    "log": null,
+    "report": ".ai/runs/s2s3-delivery.report.txt",
+    "status": "completed",
+    "finished_at": "2026-09-14T04:25:24+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 190,
+    "claim_verification": {
+        "verified_at": "2026-09-14T04:28:05+00:00",
+        "rev": "b0e57e2aaeade1052c782920817001a64c2bcc47",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-s2s3-delivery-1",
+                "run": "s2s3-delivery",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_test.php",
+                    "source": ".ai/runs/s2s3-delivery.report.txt",
+                    "line": 1,
+                    "text": "php tests/ai_project_test.php"
+                },
+                "executor_claim": {
+                    "passed": 6,
+                    "total": 6,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 6,
+                        "total": 6
+                    },
+                    "binding": {
+                        "rev": "b0e57e2aaeade1052c782920817001a64c2bcc47",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-s2s3-delivery-2",
+                "run": "s2s3-delivery",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_loop_test.php",
+                    "source": ".ai/runs/s2s3-delivery.report.txt",
+                    "line": 4,
+                    "text": "php tests/ai_loop_test.php"
+                },
+                "executor_claim": {
+                    "passed": 8,
+                    "total": 8,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 8,
+                        "total": 8
+                    },
+                    "binding": {
+                        "rev": "b0e57e2aaeade1052c782920817001a64c2bcc47",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-s2s3-delivery-3",
+                "run": "s2s3-delivery",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_run_test.php",
+                    "source": ".ai/runs/s2s3-delivery.report.txt",
+                    "line": 7,
+                    "text": "php tests/ai_run_test.php"
+                },
+                "executor_claim": {
+                    "passed": 31,
+                    "total": 31,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 31,
+                        "total": 31
+                    },
+                    "binding": {
+                        "rev": "b0e57e2aaeade1052c782920817001a64c2bcc47",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-s2s3-delivery-4",
+                "run": "s2s3-delivery",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_test.php",
+                    "source": ".ai/runs/s2s3-delivery.report.txt",
+                    "line": 10,
+                    "text": "php tests/ai_autonomy_test.php"
+                },
+                "executor_claim": {
+                    "passed": 46,
+                    "total": 46,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 46,
+                        "total": 46
+                    },
+                    "binding": {
+                        "rev": "b0e57e2aaeade1052c782920817001a64c2bcc47",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            }
+        ]
+    }
+}

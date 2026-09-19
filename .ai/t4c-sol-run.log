@@ -1,0 +1,79 @@
+## Implementation result
+
+**status:** IMPLEMENTED — changes left uncommitted for chair review.
+
+**changed:**
+- Added `admin-ui/src/Canvas.tsx`
+  - Ordered block cards with catalogue labels/categories.
+  - Unknown-block diagnosis and fallback IDs.
+  - Selection, move up/down, duplicate, and delete controls.
+  - Selected-card ARIA state and props summaries.
+- Updated `admin-ui/src/app.tsx`
+  - Canvas remains a projection of canonical JSON.
+  - Selected-block schema editing writes immediately to JSON.
+  - Retyping resets props to catalogue defaults.
+  - Adding appends and selects the new block.
+  - Malformed JSON preserves the last valid canvas.
+  - Successful draft saves automatically request server preview.
+  - Preview explicitly identifies the last saved draft.
+- Updated `admin-ui/src/styles.css` with responsive `ab-` canvas styling.
+- Updated builder README with canonical-tree and server-rendering rules.
+- Regenerated production assets.
+
+**verification:**
+
+```text
+> cms-akira-builder-admin-ui@1.0.0 type-check
+> tsc --noEmit
+
+> cms-akira-builder-admin-ui@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 33 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../public/admin/assets/cms-akira-builder/index.html                           0.65 kB │ gzip:  0.35 kB
+../../../../public/admin/assets/cms-akira-builder/assets/index.css                     2.56 kB │ gzip:  0.95 kB
+../../../../public/admin/assets/cms-akira-builder/assets/cms-akira-builder-admin.js  158.55 kB │ gzip: 50.53 kB
+✓ built in 2.07s
+```
+
+```text
+shell contract: 100 passed, 0 failed
+```
+
+```text
+✓ All architecture checks passed (6 checks)
+```
+
+```text
+CMS Akira Builder profile-visual install path: 13 passed, 0 failed
+```
+
+```text
+CMS Akira Builder: 10 passed, 1 failed
+Phase 10A builder scenario completes —
+CapabilityNotFoundException: No permitted capability providers for:
+akira.builder.validate@1
+```
+
+The expected synthetic-tenant activation failure remains unchanged.
+
+Additional environment-dependent results:
+
+```text
+CMS Akira Builder HTTP bridge: 4 passed, 16 failed
+CMS Akira Builder dedicated: BLOCKED — two configured dedicated tenant databases are required
+```
+
+`git diff --check` completed without errors.
+
+**scope:** Only permitted builder source/docs and regenerated public assets were changed. `.ai/**`, tenant theme storage, kernel, policies, capabilities, and dependencies were untouched.
+
+**risks:** Browser/API verification against tenant 54 was not performed; no tenant data was mutated.
+
+**unresolved:** Existing activation-dependent builder/HTTP tests and dedicated-database test environment remain unresolved.
+
+**recommended_next_state:** READY_FOR_CHAIR_REVIEW_AND_TENANT_54_BROWSER_ACCEPTANCE.

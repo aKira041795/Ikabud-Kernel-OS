@@ -1,0 +1,45 @@
+Done. The file is written and verified against the real parser.
+
+## Report
+
+**File path:** `.ai/akira-theme-scope.contract.md`
+**Line count:** 160
+
+**Exactly seven `## ` headings present (grep `^## `), all non-empty:**
+```
+17:## Objective
+63:## Architectural constraints
+97:## Files likely affected
+104:## Acceptance criteria
+114:## Required tests
+139:## Risks
+149:## Forbidden changes
+```
+
+**Harness parse validation (real tool, exit 0):**
+```
+php tools/ai-autonomy.php plan --contract=.ai/akira-theme-scope.contract.md   → EXIT=0
+allowed scope (4): EntityViewResolver.php, DefaultEntityRenderer.php, ComponentRenderer.php, tests/akira_theme_safe_fallback_test.php
+forbidden scope (10): migrations/, phpstan-baseline.neon, composer.json, tools/ai-autonomy.php, tests/ai_autonomy_test.php,
+  .github/instructions/ai-autonomy-escalation.instructions.md, kernel/Workbench/Schemas/development-decision-request.v1.schema.json,
+  kernel/Workbench/Development/, .ai/harpp-sim/, modules/
+```
+The `yaml harness:` block references `.ai/ai-autonomy-harness.contract.md`, autonomy L0–L3 unattended / L4 defers, `.ai/decisions`, `harpp`, and the evidence rule. P1/P2 are named as out of scope; prose prohibitions (P1/P2, schema/DDL, auth/authz, tests, git) live in "Architectural constraints", and every bullet in Files likely affected / Forbidden changes starts with a backticked path (no phantom paths — the plan output confirms clean path extraction).
+
+**file:line facts the scope is grounded in (all read directly):**
+- `kernel/EntityContext/EntityViewResolver.php:142` — `registerView()`; `$defaults` (`:146-169`) and merge loops (`:193`, `:200`) never carry `visible_fields`, so a producer-supplied value is dropped before storage.
+- `kernel/EntityContext/EntityViewResolver.php:306` — `resolve()` list data path.
+- `kernel/EntityContext/EntityViewResolver.php:429` — `display_fields` derived from `array_keys($rows[0])` ∩ `SAFE_FALLBACK_FIELDS` (row-derived discovery).
+- `kernel/EntityContext/EntityViewResolver.php:149`, `:795` — default and generic-fallback contracts use `fields => '*'`.
+- `kernel/EntityContext/EntityViewResolver.php:459`, `:562` — alternate `resolveAsResult()` / `resolveDetail()` paths also read `$contract['fields']`.
+- `kernel/EntityContext/DefaultEntityRenderer.php:42-45` — `SAFE_FALLBACK_FIELDS` governed allowlist.
+- `kernel/EntityContext/DefaultEntityRenderer.php:96` — `doRenderList()`.
+- `kernel/EntityContext/DefaultEntityRenderer.php:136` — `$visibleFields = $view['visible_fields'] ?? []`.
+- `kernel/EntityContext/DefaultEntityRenderer.php:143-149` — wildcard expansion uses `array_keys($rows[0])` (`:144`); presence tested with `array_key_exists('visible_fields', $view)` (`:145`); intersect at `:146`/`:148`.
+- `kernel/EntityContext/DefaultEntityRenderer.php:153-169` — validation uses `$firstRowKeys = array_keys($rows[0])` (`:153`); fields absent from row 0 are dropped.
+- `kernel/EntityContext/DefaultEntityRenderer.php:327-334` — `renderDetail()` expands via `$view['visible_fields'] ?? SAFE_FALLBACK_FIELDS` and `array_keys($entity)`; malformed non-array can `TypeError`.
+- `kernel/DiSyL/Component/ComponentRenderer.php:1488,1508,1607-1608` — producer attaches visible set only when `!empty`, losing absent-vs-explicit-empty.
+- Escaping/typing paths: `DefaultEntityRenderer.php:350-351`, `:373-378`, `:483`, `:507`, `:519`, `:526`, `:554`, `:561`, `:565`, `:656`.
+- Existing tests named to stay green: `entity_fallback_test.php`, `default_entity_renderer_post_row_action_test.php`, `entity_view_resolver_version_fallback_test.php`, `entity_list_result_sort_validation_test.php`, `entity_cell_renderer_registry_test.php`, `entity_view_render_cache_test.php`, `architecture_component_integration_test.php`, `disyl_v11_verify_test.php`, `ai_autonomy_test.php`; new proof file: `tests/akira_theme_safe_fallback_test.php`.
+
+Not BLOCKED — both `EntityViewResolver` and `DefaultEntityRenderer` were located and read. No other file was written or edited (the pre-existing `M .ai/ai-autonomy-harness.contract.md` in the tree is the ingest baseline, untouched by this task).

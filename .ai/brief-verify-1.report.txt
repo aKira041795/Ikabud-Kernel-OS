@@ -1,0 +1,152 @@
+BRIEF VERIFICATION REPORT — brief-verify-1
+Generated: 2026-09-14 (L2 re-lane, independent confirmation)
+Repo: /var/www/html/ikabudsix
+Branch: feat/akira-editorial-and-authority-coverage
+Scope: read-only verification. No tracked file was modified, staged, committed or pushed.
+         The only file written is this report itself.
+
+====================================================================
+CLAIM UNDER TEST
+====================================================================
+docs/reviews/harness-independent-evaluation-brief.md states the decision-record
+range it claims for .ai/chair-decisions.md.
+
+Verbatim claim, brief line 59 (§1.2 Components table):
+  | **Decision record** | `.ai/chair-decisions.md` | Forty recorded Chair decisions (CD-1…CD-40; eleven when this brief was first written) |
+
+Verbatim claim, brief line 991:
+  .ai/chair-decisions.md                                       CD-1 … CD-40
+
+The claim is therefore TWO-PART:
+  (a) the count is "Forty" (40) recorded Chair decisions;
+  (b) the range is CD-1…CD-40.
+
+====================================================================
+COMMAND
+====================================================================
+$ cd /var/www/html/ikabudsix
+$ grep -c '^## CD-' .ai/chair-decisions.md; echo "grep exit=$?"
+
+====================================================================
+OBSERVED (verbatim output)
+====================================================================
+42
+grep exit=0
+
+Number of `## CD-` headings in the CURRENT WORKING-TREE .ai/chair-decisions.md = 42.
+The range is therefore CD-1…CD-42, NOT CD-1…CD-40.
+
+====================================================================
+COMMAND (full heading list)
+====================================================================
+$ grep -n '^## CD-' .ai/chair-decisions.md
+
+====================================================================
+OBSERVED (verbatim output)
+====================================================================
+9:## CD-1 — Lane assignment by cost shape, not headline price
+28:## CD-2 — Retrofit contracts just-in-time, not in bulk
+48:## CD-3 — One writer per file, so the driver is owned by one lane
+59:## CD-4 — Two envelope defects: authoring-side workaround now, parser fix deferred
+85:## CD-5 — Executor exhaustion is reallocation, not a stop
+107:## CD-6 — A retrofit may not manufacture readiness (withdrawing a self-defeating proof requirement)
+141:## CD-7 — The conformance lint's phantom rule produces only false positives (fold into the parser slice)
+172:## CD-8 — Decidability is authority: a diagnosed blocker must be answered, not escalated
+219:## CD-9 — A slice finished unreported: verify the residue, finish the gap, produce the control
+281:## CD-10 — The spec rewrite: accepted, with the widening justified by the change that caused it
+319:## CD-11 — Run ledger verified; and a process defect of my own: I committed during a live run
+358:## CD-12 — A claim I published was false: there were no "silent successes"
+400:## CD-13 — Independent review returned PASS_WITH_CHANGES; priorities reordered, one new weakness accepted
+437:## CD-14 — HARPP 5 landed: claims are objects, and a class of them is re-derived by execution
+468:## CD-15 — Adopted positioning and measurement programme; and the rule that the harness must not grade itself
+515:## CD-16 — Owner decision: the HARPP bridge is developed in-tree (superseding a normative rule)
+554:## CD-17 — The harness is a tool, and live decisions are the point (owner correction)
+590:## CD-18 — The loop's first real dispatch: it stopped, correctly, and the gap is an interface
+631:## CD-19 — Project handover is now the unit of work; non-disruption is endorsed as a feature
+665:## CD-20 — When the loop fails, the Chair decides (owner expectation; the ladder is not yet built)
+704:## CD-21 — The inviolable guardrail: the Chair may change work, never the verifier
+752:## CD-22 — Exceptions live in the method and the envelope, never in the verifier
+833:## CD-23 — The review was verified, not relayed; and the bootstrap recursion in building the guardrail
+892:## CD-24 — The Chair is inside *and* outside the box; authority is a function of phase, not of person
+956:## CD-25 — Authority is an intersection; completion is a claim; and the class must be inferred, not declared
+1098:## CD-26 — The guardrail is real; its rule 3 is not; and my own run breached scope
+1177:## CD-27 — The quarantined change is a verified repair; the guardrail's real blast radius is 8; and "unreachable" must not become "unfixable"
+1260:## CD-28 — Director authorisation for the second bootstrap, and my sequencing error owned
+1304:## CD-29 — A slice that introduces a gate cannot be judged by that gate
+1374:## CD-30 — Sol's usage limit: Slice B reallocated to flash, not stopped
+1411:## CD-31 — Slice B verified; the safety floor is right and its detection is coarse
+1481:## CD-32 — The commit is held by a failure that carries no information about the work
+1519:## CD-33 — The HARPP test is blocked by the verifier's blindness, and CD-22 already named the fix
+1567:## CD-34 — The slice-id trap, second occurrence: a *comment* can declare a slice
+1591:## CD-35 — A verification run's scope should be its footprint, and narrowing it makes the gate stricter
+1627:## CD-36 — A block with a reason is a Chair decision point; the disposition depends on the block's CLASS
+1668:## CD-37 — A-F2 cannot survive a real loop run: the harness does not declare its own writes
+1724:## CD-38 — The HARPP test: a real project completes through all four rules, unattended
+1773:## CD-39 — A recoverable tool-call error killed a run outright, and that is a harness-class defect
+1812:## CD-40 — `gpt-oss-120b` did not complete the task, in two different ways
+1874:## CD-41 — Adopting the repeatability programme, and freezing the apparatus BEFORE measuring it
+1939:## CD-42 — I committed while `commit-check` said NOT ELIGIBLE, and re-dispatched without a predecessor. Again.
+
+grep exit=0
+Headings observed: CD-1 through CD-42 inclusive, contiguous, 42 distinct markers.
+
+====================================================================
+CONTEXT — WHY THE CLAIM AND THE TREE DIVERGE
+====================================================================
+The claim was TRUE when the brief was committed, and is FALSE against the
+current .ai/chair-decisions.md. The file moved on after the brief's commit.
+
+Command:
+$ for rev in 9a2464927e86f422913809cb0856cbbaa3e46bc7 00480ca; do printf '%s ' "$rev"; \
+    git show "$rev:.ai/chair-decisions.md" | grep -c '^## CD-'; done
+
+Observed (verbatim):
+9a2464927e86f422913809cb0856cbbaa3e46bc7 40
+00480ca 41
+
+Where:
+  - 9a24649 = the commit that last touched the brief
+    ("docs(review): refresh the independent evaluation brief; and a three-lane capability test",
+     committed 2026-09-14 23:11:50 +0800)
+  - 00480ca = current HEAD
+
+Command:
+$ git show HEAD:.ai/chair-decisions.md | grep '^## CD-' | tail -1
+Observed:
+## CD-41 — Adopting the repeatability programme, and freezing the apparatus BEFORE measuring it
+
+Command:
+$ git status --short -- .ai/chair-decisions.md
+$ git diff --stat -- .ai/chair-decisions.md
+Observed (verbatim):
+ M .ai/chair-decisions.md
+ .ai/chair-decisions.md | 39 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+The 39 uncommitted added lines are the CD-42 entry, which raises the
+working-tree count from 41 to 42.
+
+====================================================================
+VERDICT
+====================================================================
+CLAIM: The brief states "Forty recorded Chair decisions (CD-1…CD-40)".
+RESULT: DOES NOT HOLD against the current working-tree .ai/chair-decisions.md.
+
+  - Counted `## CD-` headings in .ai/chair-decisions.md = 42 (grep -c, exit 0).
+  - Range present = CD-1 … CD-42, not CD-1 … CD-40.
+  - The brief understates the count by 2 and truncates the range by 2 entries
+    (CD-41, CD-42).
+
+NOT a fabricated pass and NOT a fabricated failure. The precise reading:
+
+  - At the brief's own commit (9a24649) the file contained exactly 40 headings,
+    CD-1…CD-40, so the brief's stated range was accurate when written.
+  - It has been overtaken: current HEAD (00480ca) has 41; the working tree has 42.
+  - Therefore, as of this verification, the claim "CD-1…CD-40 / Forty" is stale
+    and does not describe the file it names in §1.2 and the §7.5 tree listing.
+
+This is an accurate-when-written, stale-at-verification claim, not a false
+statement at authorship time. Reported plainly because a failed confirmation
+is the valid result.
+
+END OF REPORT

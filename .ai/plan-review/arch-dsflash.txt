@@ -1,0 +1,99 @@
+# Peer Architecture Review — `.ai/akira-completion-plan.md`
+
+**Reviewer posture:** read-only, 8-call budget. Files actually inspected: the plan; `.ai/ark-direction.md`; `.ai/ai-autonomy-harness.contract.md` (Chair findings F1/F2/F5); `.ai/decisions/akira-theme-p0-d1.{md,json}`; `.ai/decisions/phpstan-2x-upgrade-d1.json`; `kernel/EntityContext/EntityViewResolver.php` + `DefaultEntityRenderer.php` (targeted); `.ai/current-task.md` (head + git state); `storage/cms-themes/{akira-ark,akira-editorial}/slots.json`. Repo HEAD at review: `d29c4c0495f9ee95b9fd15e6afc62b5c9cfebb6f`.
+
+---
+
+## 1. VERDICT — **NEEDS_WORK**
+
+The architecture is largely sound and the ten debate objections are dispositions I can verify as reasonable, but the document is **not implementation-ready**:
+
+- It self-declares `status: DRAFT FOR REVIEW — not approved, not started`, and **C2 correctly admits it is a plan, not a contract** (no seven parser-required headings, no `harness:` block). By its own rule it cannot be executed.
+- It contains at least one **hard factual error** and one **internal contradiction** (below) that would misdirect a phase.
+- The evidence base fails the plan's own objection-10 requirement (no commit pin).
+
+Verdict would be READY only after: the decision-reference error is fixed, Milestone-1 membership of Phase I is resolved by the owner, the evidence table is commit-pinned, and the plan is converted to a bounded contract.
+
+---
+
+## 2. ARCHITECTURE
+
+**Sound:**
+- **Kernel/module boundaries (T1):** refusing a mega-theme, keeping ARK and `akira-editorial` separate, and deferring registry ownership to the Phase B consumer audit is consistent with `.ai/ark-direction.md` ("authority hierarchy is an audit outcome, not predeclared"). Good.
+- **Tenant DB separation (Phase I):** the explicit sequence (`kernel prereq → tenant context → explicit tenant DB → expand schema → verify/backfill → register capabilities → narrowing-only policy seed → provision profile state → activation → entry/status → routes routable`, routes last) is the correct failure-ordering. Per-module migration ledger in the tenant DB is right.
+- **MySQL 5.7 DDL non-transactionality** is correctly identified and compensation is required for four failure windows. This is a real constraint and the plan treats it honestly.
+- **Gating model (objection 8):** "build parallel, activate gated on B seam tests" is the right call, and it resolves the CSRF A→B cycle.
+
+**Concerns:**
+1. **Cross-phase contradiction — Alpine/inline handlers.** Phase B removes the unconditional Alpine CDN and `archive.disyl` inline `onchange`, and asserts production has "no inline handlers". But the kernel renderer currently emits Alpine directives and inline JS: `renderEntitySearchBar()` uses `x-model="q"` / `@input=...`, `renderRowClickAttrs()` emits `onclick="window.location.href=..."`, and `renderEntityBulkBar()` builds an inline `onsubmit`. Removing the runtime without replacing these renderer primitives will regress Workbench/admin search, bulk actions and row-click. The plan needs an explicit renderer-side migration item with acceptance.
+2. **Alpine is a kernel dependency, not theme HTML.** `ark-direction.md` says themes must not do role checks, but `DefaultEntityRenderer::renderRowActions()` currently performs `userRole`/`actionRoles` visibility gating. That is presentation-only and acceptable only if dispatch/bus authorization truly exists; the plan marks that seam `unknown` yet still gates D–I shipping on it. The dependency is acknowledged but the fallback is undefined.
+3. **"Dedicated module-install lifecycle"** is asserted as the Phase I mechanism but is not shown to exist. Either name the primitive/file or mark the prerequisite `unknown`. **UNVERIFIED.**
+4. **A0 is load-bearing but not a phase.** Objection 5 introduces CSRF seam discovery "in an explicit A0 prerequisite", but §4 enumerates only phases A–I; A0 has no scope, dependency, or acceptance. It must become a first-class, bounded task because A depends on it.
+5. **Activation gating is asserted, not mechanised.** "No D surface may activate while a seam remains `unknown`" never says *how* (capability flag, test assertion, manifest gate). This is the kind of rule that silently rots.
+
+---
+
+## 3. GAPS
+
+1. **Phase I is simultaneously in and out of Milestone 1.** §2 lists Milestone 1 as including "profiles and production floor (I)". §3 says "**I moves to Milestone 2** (it was in Milestone 1…)" and defers to an owner decision. §2's Milestone 2 description never mentions I at all. Three statements, no single answer. This is the exact ambiguity C4 says must be owner-owned — but the plan still contradicts itself rather than leaving one open slot.
+2. **Wrong prior decision referenced.** §4 says Phase A must "record and follow `akira-theme-p0-d1` (RESOLVED, `split`)". Verified: `akira-theme-p0-d1.json` `resolution.chosen_option_id` is **`resume`** (question = one more bounded PHPStan repair; director-decided via harpp). The `split` resolution belongs to **`phpstan-2x-upgrade-d1`**. The plan conflated two L4 artifacts. Following the wrong resolution is a governance defect.
+3. **Evidence base violates objection 10.** §9 says every baseline must be recorded "by commit and measurement date, never timeless", but the table has only dates, no commit column. HEAD `d29c4c0…` is not referenced anywhere. The stated rule is not satisfied by the document that states it.
+4. **Read-authority target is non-numeric.** §2 gives a concrete write target (35 declared + 2 exempt) but only says reads close "over the frozen inventory plus newly added routes". "Closure" is undefined; without a denominator/target the read criterion is not falsifiable.
+5. **Bulk-action POST is a missing emission channel.** The four named contracts cover row-action POST, inline edit, custom slot, and URL/row-click. `renderEntityBulkBar()` is a fifth POST channel that submits `ids` and a bulk action, and it uses only `csrf_token()` (not `entity_csrf_token()`) and renders its form **even when no CSRF token can be acquired**. It needs its own named contract and the same fail-closed rule.
+6. **CSRF fail-open is real, not hypothetical.** Verified in `renderRowActions()`: the form is emitted regardless; `_token` is only added if `csrf_token()`/`entity_csrf_token()` exist. The plan's "POST omitted when a trusted token cannot be acquired" is the correct fix but is not reflected as an explicit per-channel test.
+7. **URL validation under-specified.** `renderRowClickAttrs()` only `urlencode()`s row values and `htmlspecialchars()`s the result — no scheme/host allowlist. The contract says "validated, not merely HTML-escaped" but never names the allowlist (http/https only? relative only? `target` allowlist?). Without that, the acceptance test cannot be written.
+8. **Allowlist member review procedure unstated.** "Review `id`, `status`, `price` member-by-member" has no method, owner, or artifact. `SAFE_FALLBACK_FIELDS` is the current effective allowlist and the plan never says where the reviewed replacement lives.
+9. **Acceptance not testable as written** for: "WCAG AA" (no tool/checklist), "responsive at 360/768/1120" (no harness), "render probes produce non-empty HTML" (too weak — non-empty is not "correct").
+10. **UNVERIFIED within budget:** `theme:validate` + `catThemeValidate()` claim (Phase C "shipped fact"); test-suite counts (140/108/0/32); authority percentages (32/37, 9/47, 1/95); "tenant 54 active"; `slots.json` README parity and the 16-vs-17 slot count. Note: both shipped `slots.json` files contain only **3 identical slots** (`header.main`, `content`, `footer.main`) — the plan's slot-drift narrative and the audit's 16/17 count are not visible in these files, so the parity claim needs an explicit artifact reference.
+
+---
+
+## 4. RISKS
+
+| Risk | Severity | Evidence / note |
+|---|---|---|
+| Wrong L4 artifact followed (`resume` vs `split`) | High | Verified in the two decision JSONs; Phase A instruction is factually wrong |
+| Milestone-1 scope contradiction on Phase I | High | §2 vs §3; owner decision required but plan not neutral |
+| CSRF fail-open POST forms in kernel renderer | High | Verified in `renderRowActions()` / `renderEntityBulkBar()` |
+| Removing Alpine/CDN without renderer-side replacement | High | `renderEntitySearchBar()` uses `x-model`; row-click/bulk use inline JS |
+| Seam resolution has no fallback | High | JWT/role/CSRF/tenant/registry all `unknown` in `ark-direction.md`; D–I shipping is fully gated on resolving them, with no contingency |
+| Migration ordering / MySQL 5.7 partial DDL | Medium (mitigated) | Sequence + compensation are good; fault-injection method not specified |
+| Seed failure / seed widening | Medium | "Narrowing-only policy seed" has no test that a seed cannot widen a grant |
+| Cache/registry tenant leakage | Medium | Stateful criteria require proof keys include tenant scope — good, but no named key-derivation point |
+| Regression from malformed→nothing rule | Medium | Verified: `EntityViewResolver.php:767-775` and `DefaultEntityRenderer.php:1401-1402` currently substitute `SAFE_FALLBACK_FIELDS`; changing to render-nothing can blank production views. Needs a flag/rollout note |
+| Idempotency claims | Low–Medium | Objection 10 correctly narrows to *semantic* output; but CSRF tokens are per-render, which can break naive whole-HTML determinism assertions |
+| Evidence rot | Medium | No commit pin; all values dated 2026-09-13 only |
+
+---
+
+## 5. ACCEPTANCE
+
+**Concrete and testable (good):** whole-HTML absence assertions across named channels; drift test failing on README/`slots.json` mismatch; portable-core zero-hard-deps test; `archive.disyl` no-JS test; `theme:validate ark` zero anti-patterns; census can't be concealed by denominator (revert-must-fail guard); tenant A/B fixtures; idempotency replay; CSRF bypass; authorization-before-handler; cache/registry tenant-scope proof; "no implementation relies on a seam marked `unknown`".
+
+**Corrections/additions required:**
+1. **Write authority:** state it as "current 32/37 → target 35 declared + 2 exempt", and add a test asserting the 2 exemptions are *recorded*, not enforced.
+2. **Read authority:** replace "closure" with a number and a denominator file (frozen inventory hash + new-route delta), with `declared/enforced/exempt/undeclared` counted separately.
+3. **CSRF:** add explicit test — when token acquisition fails, the form is **not emitted** (both row-action and bulk-action paths).
+4. **URL:** add a scheme/target allowlist test with `javascript:`, `data:`, protocol-relative `//evil` and off-allowlist `target` cases.
+5. **Malformed metadata:** add a test proving **zero** fields render — not `SAFE_FALLBACK_FIELDS` — for both resolver and renderer, and a regression test proving explicit `[]` renders nothing in both.
+6. **Phase I:** add cross-tenant negative tests (write attempt under wrong tenant DB must fail), migration fault-injection at each of the four windows, and a seed non-widening invariant test.
+7. **Baseline:** acceptance must require the evidence table to name a commit hash (this document currently fails its own rule).
+8. **Theme:** replace "WCAG AA / responsive" with a named tool (axe or Pa11y) + the three named viewport widths, or an explicit manual checklist with screenshots.
+9. **Alpine removal:** add acceptance that Workbench search/bulk/row-click still work with Alpine and inline handlers absent.
+
+---
+
+## 6. RECOMMENDATIONS (harden before implementation)
+
+1. **Fix the decision reference now:** change Phase A to record/follow `akira-theme-p0-d1` = `resume` (director, harpp), and cite `phpstan-2x-upgrade-d1` = `split` (chair, local, F1 violation) as the governance example it already is. Do not let A proceed on the wrong resolution.
+2. **Resolve the Phase I / Milestone 1 contradiction in one place only**, and mark it `OWNER_DECISION_REQUIRED` (per C4). Do not include I in Milestone 1 prose while §3 moves it to Milestone 2.
+3. **Promote A0 to a numbered phase** with its own scope/dependency/acceptance (enumerate the request seam, classify each `tested|unknown`, no implementation may consume an `unknown` seam).
+4. **Name the module-install lifecycle primitive** or classify it `unknown`; add the per-module migration ledger schema and the rollback/compensation contract.
+5. **Add the bulk-action POST channel** to the named contracts and apply the CSRF fail-closed rule to it; audit `renderRowActions()`/`renderEntityBulkBar()` for the same.
+6. **Pin the evidence baseline to a commit** and add the commit column the plan already demands; re-measure after each phase.
+7. **Define URL/target allowlists** and the reviewed-allowlist artifact/owner for `SAFE_FALLBACK_FIELDS` before changing malformed behaviour.
+8. **Add a renderer-side Phase B migration item** for Alpine/inline-handler removal (search, bulk, row-click), or Phase B will ship a broken console.
+9. **Convert to a bounded task contract** (C2) with the seven parser-required headings and the `harness:` reference block before authorising any phase; this document is a plan.
+10. **Settle the L4 behaviour (F1 / open decision #2) before any unattended run** — verified: `phpstan-2x-upgrade-d1` was self-resolved with `source: local` and `transport.delivered: false`, against `default_if_no_response: "stop"`, exactly as F1 states. This is the safety rail the plan relies on for nine phases.
+
+**Bottom line:** the *direction* is architecturally sound (kernel/module separation, fail-closed doctrine, explicit provisioning order, honest coverage accounting). The *document* is not yet safe to execute: one wrong decision reference, one unresolved milestone contradiction, an unpinned baseline, and a renderer/CSP cross-phase conflict. Fix those, convert to a contract, then proceed.

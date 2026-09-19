@@ -1,0 +1,161 @@
+{
+    "id": "exceptions-route",
+    "contract": ".ai/exceptions-route.contract.md",
+    "contract_revision": "fda29489426192c7",
+    "allowed_count": 5,
+    "forbidden_count": 8,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T15:45:57+00:00",
+    "pid": 2599007,
+    "log": null,
+    "report": ".ai/exceptions-route.report.txt",
+    "status": "blocked",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/chair-decisions.md",
+        ".ai/exceptions-route.contract.md",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/gen4-r1/project.md",
+        ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md",
+        ".ai/projects/gen4-r1/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/gen4-r1-s1-20260914153917-4ff23f.json",
+        ".ai/runs/gen4-r1-s1-20260914153917-4ff23f.report.txt",
+        ".ai/standing-authorization-and-decisions.md"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/chair-decisions.md": "file:08d4e53e22120b2fa9fe911c485c23afc299b0dac19b4da360766a533bd30a13",
+        ".ai/exceptions-route.contract.md": "file:ac8e263333e50cd802b72dd1adc271d7e06404e2066ed8cac738472163651399",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/projects/gen4-r1/project.md": "file:cb457b08d7067a0f36ac05de868c4d0398ee0ec0251eae2c0364ee06f300a505",
+        ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md": "file:0880a1369bed3c6c842e333d41d45bfa8d487bd82b6ef1eb246a61a1ca96b3c8",
+        ".ai/projects/gen4-r1/state.json": "file:1cb06ee2d0024615cd34b4ac2ffcddc3b1f3fdc831c5e73b7a37c0ebd8f5465b",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/runs/gen4-r1-s1-20260914153917-4ff23f.json": "file:cd74ae9001c493176dcd71a18adb8773880e0a610b6f77194bd6325a134e9c30",
+        ".ai/runs/gen4-r1-s1-20260914153917-4ff23f.report.txt": "file:f498b46c70d6167dee99c7ff3d5c2282a1620d8d2f19702040e2973021f9449f",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/exceptions-route.json",
+        ".ai/exceptions-route.report.txt"
+    ],
+    "harness_artifacts": [],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": {
+        "decision_ref": "CD-44",
+        "recorded_at": "2026-09-14T15:45:57+00:00",
+        "required_for_trust_surface": true
+    },
+    "trust_surface_hash": "b6283e553824bbd32eba2c89c652e4bcdba46d7664e01e5547929a736a97bdf3",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "e50844e241dd5146a79dc013f431d788c02906d0091ebb7f971df1814d398213",
+        "tools/ai-autonomy.php": "01d3af2084328d84c63e03d3df0a7b0870a86ab961de666cdfee52bc087671f2",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "207dc1a2727284d16cf84fe9a5c7168fe3e7f4d261a5f07ed9a038c9d087935c",
+        "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+    },
+    "finished_at": "2026-09-14T15:58:00+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 16723,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/chair-decisions.md",
+        ".ai/exceptions-route.contract.md",
+        ".ai/exceptions-route.report.txt",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/gen4-r1/project.md",
+        ".ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md",
+        ".ai/projects/gen4-r1/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/exceptions-route.json",
+        ".ai/runs/gen4-r1-s1-20260914153917-4ff23f.json",
+        ".ai/runs/gen4-r1-s1-20260914153917-4ff23f.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        "kernel/Workbench/Development/DevelopmentTaskContract.php",
+        "tests/ai_autonomy_test.php",
+        "tests/ai_run_test.php",
+        "tools/ai-autonomy.php",
+        "tools/ai-run.php"
+    ],
+    "scope_delta_paths": [
+        "kernel/Workbench/Development/DevelopmentTaskContract.php",
+        "tests/ai_autonomy_test.php",
+        "tests/ai_run_test.php",
+        "tools/ai-autonomy.php",
+        "tools/ai-run.php"
+    ],
+    "scope_conformance": {
+        "ok": false,
+        "checked": [
+            "kernel/Workbench/Development/DevelopmentTaskContract.php",
+            "tests/ai_autonomy_test.php",
+            "tests/ai_run_test.php",
+            "tools/ai-autonomy.php",
+            "tools/ai-run.php"
+        ],
+        "offending": [
+            {
+                "path": "kernel/Workbench/Development/DevelopmentTaskContract.php",
+                "reasons": [
+                    "path 'kernel/Workbench/Development/DevelopmentTaskContract.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tests/ai_autonomy_test.php",
+                "reasons": [
+                    "path 'tests/ai_autonomy_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tests/ai_run_test.php",
+                "reasons": [
+                    "path 'tests/ai_run_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tools/ai-autonomy.php",
+                "reasons": [
+                    "path 'tools/ai-autonomy.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"
+                ]
+            },
+            {
+                "path": "tools/ai-run.php",
+                "reasons": [
+                    "path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)"
+                ]
+            }
+        ],
+        "declared_harness_artifacts": []
+    },
+    "evidence_fingerprint": "f64362a8d1f70e82f178304446f29442f9f41d1ddc60c8baef68e5627a706123",
+    "evidence_unavailable_reason": null
+}

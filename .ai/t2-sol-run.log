@@ -1,0 +1,38 @@
+status: PARTIAL
+
+changed:
+  - modules/cms-akira/cms-akira-theme/helpers.php
+  - modules/cms-akira/cms-akira-theme/handlers.php
+  - modules/cms-akira/cms-akira-theme/module.json
+  - modules/cms-akira/cms-akira-theme/routes.php
+  - modules/cms-akira/cms-akira-theme/tests/theme_blocks_test.php
+  - storage/cms-themes/akira-ark/block-definitions.json
+  - storage/cms-themes/akira-ark/blocks/*.disyl
+  - storage/cms-themes/akira-ark/layouts/public.disyl
+
+implementation_summary:
+  block_contract: Canonical versioned validator implemented as `catThemeBlockErrors()`, with typed props, semantic versions, duplicate IDs, defaults, slots, safe context, HTML prohibition, and renderer path validation.
+  theme_blocks: Added hero, richtext, card-grid, quote, and CTA definitions and escaped DiSyL templates using Akira Ark styling.
+  validation: `catThemeValidate()` now includes the `blocks` check. Legacy themes without catalogues remain compatible.
+  read_surface: Added `akira.theme.blocks@1` and authenticated `GET /api/v1/cms-akira-theme/blocks`.
+
+verification:
+  php_lint: PASS
+  block_validate: "akira-ark valid:true with blocks:true; hostile duplicate ID, invalid prop type, and escaping/missing renderer rejected."
+  blocks_api: Capability and authenticated route implemented; HTTP session not exercised.
+  render_proof: Not implemented; renderer templates passed recursive DiSyL validation.
+  tests:
+    - theme_blocks_test.php: 3 passed, 0 failed
+    - shell_contract_test.php: 97 passed, 0 failed
+    - theme_contract_test.php: 8 passed, 1 pre-existing capability-provider failure
+  logs: No new errors observed during validation runs.
+
+scope:
+  unexpected_files: Pre-existing untracked `.ai/**` files and `storage/cms-themes/akira-ark-demo/` were untouched. No kernel changes.
+
+risks:
+  - Optional server-side block render endpoint was not added.
+  - Blocks API was verified structurally, not through an authenticated HTTP request.
+
+unresolved:
+  - Existing `theme_contract_test.php` terminal failure: no permitted provider for `akira.theme.resolve@1`.

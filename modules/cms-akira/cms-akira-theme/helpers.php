@@ -13,6 +13,7 @@ const CAT_THEME_INVALIDATION = 'theme.active';
 function cms_akira_theme_capability_handlers(): array
 {
     return [
+        'akira.theme.read@1' => 'cat_cap_akira_theme_read_1',
         'akira.theme.resolve@1' => 'cat_cap_akira_theme_resolve_1',
         'akira.theme.registry@1' => 'cat_cap_akira_theme_registry_1',
         'akira.theme.validate@1' => 'cat_cap_akira_theme_validate_1',
@@ -50,7 +51,62 @@ function catSeedThemeMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-catSeedThemeMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    catSeedThemeMutationPolicies();
+}
+
+/**
+ * Activation-time, idempotent seed for the theme read policy.
+ *
+ * The five GET routes that serve the JSON read surface and the Theme Studio
+ * admin page declare `akira.theme.read@1` as their required authority. Dispatch
+ * authority is fail-closed, so the policy row must exist BEFORE the declaration
+ * is relied on or every operator is refused with a 403.
+ *
+ * The role set is exactly what catThemeAdmin() already admits:
+ * admin, editor, administrator, superadmin. Any wider set would grant access
+ * nobody has today; any narrower set would 403 an operator who works today. The
+ * change is *when* the decision is made, not *who* gets in.
+ *
+ * `caller_module` is the explicit `cms-akira-theme` provider: it is both the
+ * route dispatcher and the caller in each handler's bus call. An empty value
+ * would invert the meaning and permit ANY caller, not none.
+ *
+ * The permissions UI clones the active policy set into a new version, so a seed
+ * pinned to version 1 lands inactive once the active version advances. Join the
+ * currently active version, matching cacSeedShellReadPolicies() in
+ * cms-akira-core and guiSettingsSeedApplyPolicy() in gui-settings rather than
+ * the older version-1 template.
+ */
+function catSeedThemeReadPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $policyVersion = function_exists('cacActivePolicyVersion') ? cacActivePolicyVersion() : 1;
+
+    $rows = [];
+    $rows[] = [
+        'policy_version' => $policyVersion,
+        'capability_id' => 'akira.theme.read@1',
+        'capability_version' => '1',
+        'provider' => 'cms-akira-theme',
+        'caller_module' => 'cms-akira-theme',
+        'allowed_roles' => 'admin,editor,administrator,superadmin',
+        'provider_activation_required' => true,
+        'requires_protocol' => 'v1',
+        'is_active' => true,
+    ];
+
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+}
+
+$catReadPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate() || $catReadPath === ''
+    || $catReadPath === '/cms-akira-theme' || str_starts_with($catReadPath, '/api/v1/cms-akira-theme')) {
+    catSeedThemeReadPolicies();
+}
 
 final class CatThemeException extends RuntimeException
 {
@@ -497,6 +553,77 @@ function catThemeValidate(string $slug): array
     }
     $result['checks']['disyl_lint'] = $lintErrors === [];
 
+    // Declared entity-view fields must agree with the module's registered
+    // contract. The contract is the source of truth; a declaration that names a
+    // field the contract does not carry is an error. A declaration for a view
+    // with no registered contract at all is a warning (fail-open).
+    $entityViewDeclarations = [];
+    $entityViewMap = catThemeReadJson($dir . '/entity-view-map.json');
+    if (is_array($entityViewMap) && is_array($entityViewMap['entity_views'] ?? null)) {
+        $entityViewDeclarations = $entityViewMap['entity_views'];
+    }
+
+    $entityViewContracts = null;
+    try {
+        if (function_exists('app') && ($app = app()) !== null && method_exists($app, 'entityViews')) {
+            $entityViewResolver = $app->entityViews();
+            if (is_object($entityViewResolver) && method_exists($entityViewResolver, 'registeredViewContracts')) {
+                $entityViewContracts = $entityViewResolver->registeredViewContracts();
+            }
+        }
+    } catch (Throwable) {
+        $entityViewContracts = null;
+    }
+
+    if (
+        $entityViewDeclarations === []
+        || !is_array($entityViewContracts)
+        || $entityViewContracts === []
+        || !class_exists(\Ikabud\Kernel\Services\ThemeViewContractDrift::class)
+    ) {
+        // Fail-open: a CLI bootstrap registers no module capabilities, and a theme
+        // may be validated for a module whose views are not loaded. Skip the check
+        // and record it as skipped — never an error, and never a manufactured pass.
+        $result['checks']['entity_view_contract'] = 'skipped';
+    } else {
+        $registeredFields = [];
+        foreach ($entityViewContracts as $viewKey => $contract) {
+            $fields = is_array($contract) ? ($contract['fields'] ?? null) : null;
+            if ($fields === '*' || $fields === ['*']) {
+                $registeredFields[(string) $viewKey] = ['*'];
+            } elseif (is_array($fields)) {
+                $registeredFields[(string) $viewKey] = array_values(array_filter($fields, 'is_string'));
+            } else {
+                $registeredFields[(string) $viewKey] = [];
+            }
+        }
+
+        $driftFindings = \Ikabud\Kernel\Services\ThemeViewContractDrift::compare($entityViewDeclarations, $registeredFields);
+        $contractFieldErrors = 0;
+        foreach ($driftFindings as $finding) {
+            // compare() declares its return shape, so these keys always exist and
+            // are always strings - guarding them with ?? is dead code and PHPStan
+            // rejects it as nullCoalesce.offset.
+            $entity = $finding['entity'];
+            $view = $finding['view'];
+            $field = $finding['field'];
+            $label = $entity . '.' . $view;
+            $reason = $finding['reason'];
+            if ($reason === \Ikabud\Kernel\Services\ThemeViewContractDrift::REASON_FIELD_NOT_IN_CONTRACT) {
+                $result['errors'][] = "entity-view-map '{$label}' declares field '{$field}' not present in the registered contract.";
+                $contractFieldErrors++;
+            } elseif ($reason === \Ikabud\Kernel\Services\ThemeViewContractDrift::REASON_CONTRACT_NOT_REGISTERED) {
+                $declaredEntry = $entityViewDeclarations[$entity][$view] ?? null;
+                $declaredFields = is_array($declaredEntry) ? ($declaredEntry['fields'] ?? null) : null;
+                $declaredLabel = is_array($declaredFields)
+                    ? implode(', ', array_filter($declaredFields, 'is_string'))
+                    : '';
+                $result['warnings'][] = "entity-view-map '{$label}' declares fields ({$declaredLabel}) but no entity view contract is registered for '{$label}'.";
+            }
+        }
+        $result['checks']['entity_view_contract'] = $contractFieldErrors === 0;
+    }
+
     $result['fallback_available'] = catThemeIsArkVisible(CAT_THEME_FALLBACK);
     if (!$result['fallback_available']) {
         $result['warnings'][] = 'Canonical fallback theme is unavailable.';
@@ -624,6 +751,35 @@ function catThemeCustomizerSchema(string $slug): array
 }
 
 /**
+ * Reject malformed and out-of-range numeric customizer values before the
+ * declarative provider can coerce or clamp them. Rejection is a 422 and the
+ * customization transaction stores no values.
+ */
+function catThemeValidateNumericControlValue(
+    mixed $value,
+    \Ikabud\Kernel\Contracts\ControlDefinition $control,
+    string $field,
+): void {
+    if (!is_int($value) && !is_float($value)
+        && (!is_string($value) || preg_match('/^-?(?:\d+(?:\.\d*)?|\.\d+)$/D', trim($value)) !== 1)) {
+        throw new CatThemeException("Customizer field {$field} must be a number.", 422);
+    }
+
+    $number = (float)$value;
+    if (!is_finite($number)) {
+        throw new CatThemeException("Customizer field {$field} must be a finite number.", 422);
+    }
+    $min = $control->constraints['min'] ?? null;
+    $max = $control->constraints['max'] ?? null;
+    if (is_numeric($min) && $number < (float)$min) {
+        throw new CatThemeException("Customizer field {$field} must be at least {$min}.", 422);
+    }
+    if (is_numeric($max) && $number > (float)$max) {
+        throw new CatThemeException("Customizer field {$field} must be at most {$max}.", 422);
+    }
+}
+
+/**
  * @param array<string,mixed> $values
  * @return array<string,array<string,mixed>>
  */
@@ -647,6 +803,15 @@ function catThemeValidateCustomizerValues(string $slug, array $values): array
         foreach ($submitted as $field => $value) {
             if (!is_scalar($value) && $value !== null) {
                 throw new CatThemeException("Customizer field {$sectionId}.{$field} must be a scalar value.", 422);
+            }
+            $control = $section->controls[(string)$field];
+            if (in_array($control->type, ['number', 'integer'], true)) {
+                catThemeValidateNumericControlValue($value, $control, "{$sectionId}.{$field}");
+            }
+            $tokenKey = '--' . str_replace('_', '-', (string) $field);
+            if (isset($definition->tokens[$tokenKey]) && is_scalar($value)
+                && preg_match('/[{};<>\x00-\x1F\x7F]/u', (string) $value) === 1) {
+                throw new CatThemeException("Customizer token {$sectionId}.{$field} contains unsafe CSS syntax.", 422);
             }
         }
         $result = $provider->validate(new \Ikabud\Kernel\Contracts\ThemeCustomizationSubmission(
@@ -1054,6 +1219,35 @@ function catThemeMutateCustomize(array $payload): array
     }
 }
 
+/**
+ * Governed read surface for the theme JSON routes and the Theme Studio page.
+ *
+ * The capability returns exactly the projections the module's read handlers have
+ * always served; `operation` selects which projection. A payload-supplied
+ * tenant_id is rejected for the same reason the individual read capabilities
+ * reject it: tenant identity comes from kernel context, never request data.
+ *
+ * @return array<string, mixed>
+ */
+function cat_cap_akira_theme_read_1(mixed $payload, string $capabilityId = 'akira.theme.read@1', string $caller = 'unknown'): array
+{
+    if ($payload !== null && !is_array($payload)) {
+        return ['ok' => false, 'error' => 'payload must be an object'];
+    }
+    $payload = is_array($payload) ? $payload : [];
+    if (array_key_exists('tenant_id', $payload)) {
+        return ['ok' => false, 'error' => 'tenant_id is supplied by kernel context'];
+    }
+
+    return match ((string)($payload['operation'] ?? '')) {
+        'resolve' => cat_cap_akira_theme_resolve_1([]),
+        'registry' => cat_cap_akira_theme_registry_1([]),
+        'blocks' => cat_cap_akira_theme_blocks_1([]),
+        'validate' => cat_cap_akira_theme_validate_1(['theme_slug' => $payload['theme_slug'] ?? null]),
+        default => ['ok' => false, 'error' => 'Unknown theme read operation'],
+    };
+}
+
 /** @return array<string, mixed> */
 function cat_cap_akira_theme_resolve_1(mixed $payload, string $capabilityId = 'akira.theme.resolve@1', string $caller = 'unknown'): array
 {
@@ -1175,15 +1369,44 @@ function catThemeAdmin(): ?array
     return $user;
 }
 
-/** @param array<string, mixed> $data */
+/**
+ * Wrap a Theme Studio content fragment in the shell-owned admin chrome.
+ *
+ * The shell capability is the sole page builder. Theme Studio owns only its
+ * controls and content; it does not duplicate the navigation, scripts, or
+ * document structure. A small chrome-free document keeps an explanatory error
+ * and the complete fragment available if governed shell rendering is denied.
+ *
+ * @param array<string, mixed> $data
+ */
 function catThemePage(string $title, string $body, array $data = []): string
 {
-    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        . '<title>' . catThemeEscape($title) . '</title><script src="https://cdn.tailwindcss.com"></script><script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>'
-        . '<script>tailwind.config={theme:{extend:{colors:{akira:{500:"#8b5cf6",600:"#7c3aed",700:"#6d28d9"}}}}}</script></head><body class="bg-slate-50 p-6 text-slate-800">'
-        . '<nav class="mb-6 flex gap-4" aria-label="Akira theme administration"><a href="/cms-akira-shell">Akira Shell</a> '
-        . '<a href="/cms-akira-theme">Themes</a> <a href="/auth/logout">Sign out</a></nav>'
-        . '<main><h1>' . catThemeEscape($title) . '</h1>' . $body . '</main></body></html>';
+    try {
+        $result = app()->cap()->call('akira.shell.admin_page@1', [
+            'title' => $title,
+            'body' => $body,
+            'active' => 'theme',
+        ], [
+            'caller' => ['module' => 'cms-akira-theme', 'user' => app()->user()],
+            'mode' => 'first',
+        ]);
+    } catch (Throwable) {
+        return catThemeShellFallback($title, $body);
+    }
+
+    $html = is_array($result) ? ($result['html'] ?? null) : null;
+    return is_string($html) && $html !== '' ? $html : catThemeShellFallback($title, $body);
+}
+
+function catThemeShellFallback(string $title, string $body): string
+{
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>' . catThemeEscape($title) . ' — CMS Akira</title></head>'
+        . '<body style="margin:2rem auto;max-width:64rem;font-family:system-ui,sans-serif;line-height:1.5;color:#1e293b">'
+        . '<p role="alert"><strong>The shared Akira administration shell could not be rendered.</strong> '
+        . 'This page is shown without the sidebar.</p><h1>' . catThemeEscape($title) . '</h1>' . $body
+        . '<p><a href="/cms-akira-shell">Return to the Akira dashboard</a></p></body></html>';
 }
 
 function catThemeCsrfField(): string
@@ -1232,4 +1455,7 @@ function catThemeEnforceMutationCsrf(): void
     }
 }
 
-catSeedActiveThemeRequestContext();
+$catContextPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if ($catContextPath === '' || !str_starts_with($catContextPath, '/cms-')) {
+    catSeedActiveThemeRequestContext();
+}

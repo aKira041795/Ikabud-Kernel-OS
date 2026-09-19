@@ -1,0 +1,126 @@
+## Result
+
+**Status:** Verification complete, except interactive browser automation was unavailable.
+
+### Changed
+
+- Added `tests/_support/tenant_fixture.php`
+  - Creates missing synthetic `kernel_tenants` rows.
+  - Creates encrypted shared-database connection rows matching the control-plane format.
+  - Clears negative tenant DB lookup state and verifies resolution.
+  - Activates modules through `saveTenantModuleSettingsForTenant()`.
+  - Asserts `moduleIsActive() === true`.
+  - Tracks created state and removes activation, connection, and tenant rows during cleanup.
+- Updated `modules/cms-akira/cms-akira-builder/tests/builder_contract_test.php`
+  - Uses the fixture for both synthetic tenants and required Akira modules.
+  - Selects the `akira-ark` fixture theme.
+  - Preserves all provenance, diff, foreign-revision, and authorization assertions.
+
+### Test suite
+
+```text
+Total: 103 files — 95 passed, 8 skipped (36503ms)
+```
+
+No failures. `storage/modules.json` was backed up and restored. Verified state includes all `cms-akira-*` modules and `gui-settings` enabled, with `daily-ledger` disabled.
+
+### Builder contract
+
+```text
+✓ render@1 renders an explicitly owned historical revision
+✓ unknown revision render fails closed
+✓ provenance unifies revisions/audits and returns a semantic known-pair diff
+✓ unauthorized caller is denied the governed provenance read
+...
+CMS Akira Builder: 41 passed, 0 failed
+```
+
+### Capability policy, tenant 54
+
+Query:
+
+```sql
+SELECT capability_id, capability_version, provider, caller_module,
+       allowed_roles, requires_protocol, is_active
+FROM capability_authorization_policies
+WHERE capability_id = 'akira.builder.provenance@1'
+  AND provider = 'cms-akira-builder';
+```
+
+Output:
+
+```text
+capability_id      akira.builder.provenance@1
+capability_version 1
+provider           cms-akira-builder
+caller_module
+allowed_roles      admin
+requires_protocol  v2
+is_active          1
+```
+
+The unauthorized editor denial path is proven by the green builder assertion above.
+
+### Live tenant 54 evidence
+
+Login:
+
+```json
+{"ok":true,"redirect":"/cms-akira-shell"}
+```
+
+`t4a-page` timeline returned revisions 3–6, including:
+
+- Revision 6: `draft edit`
+- Revision 5: `Restore after T4b verification`
+- Revision 4: `T4b live verification`
+- Revision 3: original creation
+- Publish and unpublish entries
+- Actor `charlienacario884`
+- Correlation IDs on recoverable audit entries
+
+Historical render comparison:
+
+```text
+current revision 6:
+acec8e44ec19d7b1b6b5cd65803d0ba1c7bb1943a3b03c80f01b93e5a1c3750f
+
+historical revision 4:
+7d1de798b4ef37acabf8e0f630e4520f2a637133281d2049d7a5863673dbe0c0
+```
+
+The historical render differs from the current draft.
+
+### Static/build verification
+
+```text
+Architecture Check:
+✓ All architecture checks passed (6 checks)
+
+PHPStan:
+[OK] No errors
+
+PHP CS Fixer:
+Found 0 of 4 files that can be fixed
+
+TypeScript:
+> tsc --noEmit
+
+Build:
+✓ 33 modules transformed.
+✓ built in 2.60s
+```
+
+The regenerated JS and CSS bundles remain in `public/admin/assets/cms-akira-builder/assets/`.
+
+### Browser evidence
+
+Interactive browser tooling was not available. Served editor HTML was captured and references:
+
+```text
+cms-akira-builder-admin.js
+```
+
+Source/build and live JSON verify the drawer, “View as of,” render, and diff wiring, but actual clicking, iframe inspection, and visual readability could not be independently browser-verified.
+
+No commit, push, branch, migration, schema change, or `.ai/**` modification was made.

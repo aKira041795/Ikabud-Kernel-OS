@@ -1,0 +1,98 @@
+Implementation complete. Here is the evidence report.
+
+## What changed
+
+- **`kernel/Services/ThemeViewContractDrift.php`** (new) — `final` class, one static method `compare(array $declaredViews, array $registeredFields): array`. Pure: no `app()`, container, file I/O or globals. Two distinct reasons: `contract_not_registered` (view has no contract entry; caller warns) and `field_not_in_contract` (contract exists but lacks the declared field; caller errors). Tolerates malformed `fields`. Constants `REASON_CONTRACT_NOT_REGISTERED` / `REASON_FIELD_NOT_IN_CONTRACT`.
+- **`modules/cms-akira/cms-akira-theme/helpers.php`** — `catThemeValidate()` now reads `entity-view-map.json`, pulls `app()->entityViews()->registeredViewContracts()`, converts to `"entity.view" => list<string>`, calls `compare()`, appends errors/warnings, and records `checks['entity_view_contract']` (`true`/`false`, or `'skipped'`). When no contract is obtainable (empty contracts, resolver unavailable) it **skips** — no error, no manufactured pass.
+- **Three maps corrected** (only `fields`; `actions`, names, composition untouched):
+  - `post.list` → `["title","subtitle","image","metadata","categories","actions","url"]`
+  - `post.detail` → `["title","subtitle","image","body","metadata","categories","actions","url"]`
+  - Files: `akira-editorial`, `akira-ark`, `akira-ark-demo`. `composition.detail` intentionally left as-is → `contract_not_registered` warning.
+- **`tests/akira_theme_view_contract_drift_test.php`** (new, pure) — requires the kernel class and `entity-views.php` directly, rebuilds the registered map via a bare `EntityViewResolver`, passes arrays. No `bootstrap.php`, no `MODE_INTEGRATION`.
+- **`modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php`** (new, wiring) — bootstraps, calls `requireNotLiveTenantDatabase()`, exercises `catThemeValidate()` for clean pass, forced error, and skip.
+
+No field genuinely read by a template is absent from the contract. Templates read `title, subtitle, image, body, metadata, url, categories`; all are registered, so no "finding to report" arose.
+
+## Required tests
+
+```
+$ php tests/akira_theme_view_contract_drift_test.php
+  akira-theme-view-contract-drift ... 26/26 passed, Assertions: 26
+  ✅ akira-editorial / akira-ark / akira-ark-demo: no declared field is absent from its contract
+  ✅ composition.detail reason is contract_not_registered (editorial and ark)
+  ✅ field_not_in_contract yields the dissenting field; contract_not_registered yields for an unregistered view
+  ✅ malformed declarations tolerated without throwing
+  exit 0
+```
+
+```
+$ php -l kernel/Services/ThemeViewContractDrift.php
+No syntax errors detected in kernel/Services/ThemeViewContractDrift.php
+exit 0
+```
+
+```
+$ php -l modules/cms-akira/cms-akira-theme/helpers.php
+No syntax errors detected in modules/cms-akira/cms-akira-theme/helpers.php
+exit 0
+```
+
+## Additional tests run
+
+```
+$ php modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php
+shipped editorial map agrees ... composition.detail warning ... forced field drift invalidates ... skip path records 'skipped'
+Akira theme entity-view contract wiring: 10 passed, 0 failed
+exit 0
+```
+**Wiring path was actually exercised**, not only the pure function: this module test calls `catThemeValidate()` with real registered contracts, forces a `field_not_in_contract` error, and proves the `'skipped'` fail-open path.
+
+```
+$ php -l tests/akira_theme_view_contract_drift_test.php
+No syntax errors detected in tests/akira_theme_view_contract_drift_test.php
+exit 0
+```
+```
+$ php -l modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php
+No syntax errors detected in modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php
+exit 0
+```
+```
+$ php modules/cms-akira/cms-akira-core/tests/post_entity_view_contract_test.php
+CMS Akira module-owned Post entity views: 5 passed, 0 failed
+exit 0
+```
+```
+$ php tests/akira_theme_safe_fallback_test.php
+27/27 passed
+exit 0
+```
+```
+$ php modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+SKIP: tenant 994701 does not activate required CLI module cms-akira-core
+exit 0
+```
+That is a **SKIP** (environment fixture absent), not a pass — reported as such, not counted as coverage of the drift check.
+
+```
+$ php -r '... json_decode the three maps ...'
+all three: VALID
+exit 0
+```
+```
+$ vendor/bin/php-cs-fixer fix --dry-run --config=.php-cs-fixer.dist.php --path-mode=intersection <kernel + module files>
+Found 0 of 1 files that can be fixed (each)
+```
+(`tests/` is outside the fixer's configured finder, so the pure test is not linted by it.)
+
+## Not run
+
+- `phpstan analyse` — not required by the contract; not run.
+- Full `php scripts/run-tests.php` — not run (only the targeted tests above).
+
+## Constraints observed
+
+- Source of truth is `cms-akira-core/helpers/entity-views.php`; no forbidden path was modified (verified via `git status`: only the 4 listed files modified, plus 3 new files — the kernel class and the two tests).
+- `compare()` is pure; the `tests/` file contains neither `bootstrap.php` nor `MODE_INTEGRATION` (grep count 0).
+- No existing assertion was weakened, skipped or deleted.
+- PHP 8.2-compatible syntax; no SQL/MySQL features.

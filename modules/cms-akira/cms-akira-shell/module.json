@@ -15,8 +15,18 @@
     "reads_tables": [],
     "migrations": [],
     "capabilities": {
-        "exposes": [],
+        "exposes": [
+            {
+                "id": "akira.shell.admin_page@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Render a module-owned admin content fragment inside the one CMS Akira shell chrome (sidebar, palette, Alpine, layout)"
+            }
+        ],
         "routes": {
+            "GET /cms-akira-theme": "akira.shell.admin_page@1",
             "GET /cms-akira-shell": "akira.post.admin.list@1",
             "GET /cms-akira-shell/posts": "akira.post.admin.list@1",
             "GET /cms-akira-shell/posts/new": "akira.taxonomy.list@1",
@@ -25,12 +35,25 @@
             "GET /cms-akira-shell/content-types": "akira.content_type.list@1",
             "GET /cms-akira-shell/media": "akira.media.library@1",
             "GET /cms-akira-shell/permissions": "akira.policy.list@1",
+            "GET /cms-akira-shell/authority": "akira.policy.list@1",
+            "GET /cms-akira-shell/provenance": "kernel.provenance.list@1",
+            "GET /cms-akira-shell/modules": "akira.module.list@1",
             "GET /cms-akira-shell/users": "akira.user.list@1",
+            "GET /cms-akira-shell/workflow": "akira.workflow.runs@1",
+            "GET /cms-akira-shell/search": "akira.search.query@1",
+            "GET /cms-akira-shell/backups": "akira.backup.list@1",
+            "GET /cms-akira-shell/redirects": "akira.redirect.list@1",
+            "POST /cms-akira-shell/redirects": "akira.redirect.create@1",
             "POST /cms-akira-shell/posts": "akira.post.create@1",
             "POST /cms-akira-shell/posts/{slug}": "akira.post.update@1",
+            "POST /cms-akira-shell/posts/{slug}/delete": "akira.post.delete@1",
             "POST /cms-akira-shell/posts/{slug}/taxonomies": "akira.post.set_taxonomies@1",
             "POST /cms-akira-shell/posts/{slug}/revisions/{revision_no}/revert": "akira.post.revision.revert@1",
             "POST /cms-akira-shell/posts/{slug}/workflow": "akira.workflow.transition@1",
+            "POST /cms-akira-shell/workflow/{entity_key}/transition": "akira.workflow.transition@1",
+            "POST /cms-akira-shell/search/rebuild": "akira.search.rebuild@1",
+            "POST /cms-akira-shell/backups": "akira.backup.create@1",
+            "POST /cms-akira-shell/exports": "akira.export.create@1",
             "POST /cms-akira-shell/categories": "akira.taxonomy.create@1",
             "POST /cms-akira-shell/categories/{id}": "akira.taxonomy.update@1",
             "POST /cms-akira-shell/categories/{id}/delete": "akira.taxonomy.delete@1",
@@ -42,15 +65,29 @@
             "POST /cms-akira-shell/media/{media_key}/delete-cancel": "akira.media.delete.cancel@1",
             "POST /cms-akira-shell/media/{media_key}/delete": "akira.media.delete@1",
             "POST /cms-akira-shell/permissions": "akira.policy.set_roles@1",
+            "POST /cms-akira-shell/modules/{module_id}": "akira.module.manage@1",
             "POST /cms-akira-shell/users/{id}/role": "akira.user.update_role@1",
-            "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1"
+            "POST /cms-akira-shell/users/{id}/active": "akira.user.set_active@1",
+            "POST /cms-akira-shell/users/{id}/revoke": "akira.user.revoke_sessions@1",
+            "GET /cms-akira-shell/settings": "akira.site.settings.get@1",
+            "POST /cms-akira-shell/settings": "akira.site.settings.update@1",
+            "GET /cms-akira-shell/compositions": "akira.shell.admin_page@1",
+            "GET /cms-akira-shell/compositions/{key}/edit": "akira.shell.admin_page@1",
+            "GET /cms-akira-shell/health": "akira.shell.admin_page@1"
         },
         "depends": [
+            "kernel.provenance.list@1",
             "akira.policy.list@1",
             "akira.policy.set_roles@1",
             "akira.user.list@1",
             "akira.user.update_role@1",
             "akira.user.set_active@1",
+            "akira.user.revoke_sessions@1",
+            "akira.module.list@1",
+            "akira.module.manage@1",
+            "akira.site.settings.get@1",
+            "akira.site.settings.public@1",
+            "akira.site.settings.update@1",
             "akira.post.admin.get@1",
             "akira.post.admin.list@1",
             "akira.post.create@1",
@@ -60,6 +97,15 @@
             "akira.post.revision.revert@1",
             "akira.workflow.evaluate@1",
             "akira.workflow.transition@1",
+            "akira.workflow.runs@1",
+            "akira.search.query@1",
+            "akira.search.rebuild@1",
+            "akira.backup.list@1",
+            "akira.backup.create@1",
+            "akira.export.create@1",
+            "akira.redirect.list@1",
+            "akira.redirect.create@1",
+            "akira.redirect.resolve@1",
             "akira.post.delete@1",
             "akira.taxonomy.get@1",
             "akira.taxonomy.list@1",
@@ -85,8 +131,137 @@
             "akira.seo.content_health@1"
         ]
     },
+    "governance": {
+        "exemptions": [
+            {
+                "method": "GET",
+                "route": "/",
+                "reason": "Public home page; anonymous readers have no actor role, so declaring this published-only surface would make dispatch fail with unknown_role."
+            },
+            {
+                "method": "GET",
+                "route": "/posts",
+                "reason": "Public posts archive; anonymous readers have no actor role, so declaring this published-only surface would make dispatch fail with unknown_role."
+            },
+            {
+                "method": "GET",
+                "route": "/posts/{slug}",
+                "reason": "Public published-post page; anonymous readers have no actor role, so declaring this published-only surface would make dispatch fail with unknown_role."
+            },
+            {
+                "method": "GET",
+                "route": "/sitemap.xml",
+                "reason": "Public unauthenticated crawler endpoint. Dispatch authority is fail-closed and refuses anonymous callers (empty actor role), so a capability declaration here would 403 every crawler. The handler reads only the published, tenant-scoped post projection through entity.list.post@1."
+            },
+            {
+                "method": "GET",
+                "route": "/robots.txt",
+                "reason": "Public unauthenticated crawler endpoint. Dispatch authority is fail-closed and refuses anonymous callers (empty actor role), so a capability declaration here would 403 every crawler. The handler reads no tenant data and names the sitemap for the requesting host."
+            },
+            {
+                "method": "GET",
+                "route": "/cms-akira-shell/forbidden",
+                "reason": "Public denial page; callers sent to this static 403 surface may have no recognized Akira actor role, so declaring it would replace the intended response with dispatch's unknown_role denial."
+            }
+        ]
+    },
     "routes": true,
     "events": [],
+    "admin_contributions": [
+        {
+            "id": "cms-akira-shell.authority",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Authority",
+            "route": "/cms-akira-shell/authority",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 55
+        },
+        {
+            "id": "cms-akira-shell.modules",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Modules & extensions",
+            "route": "/cms-akira-shell/modules",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 54
+        },
+        {
+            "id": "cms-akira-shell.provenance",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Provenance",
+            "route": "/cms-akira-shell/provenance",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 56
+        },
+        {
+            "id": "cms-akira-shell.search",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Search",
+            "route": "/cms-akira-shell/search",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 52
+        },
+        {
+            "id": "cms-akira-shell.workflow",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Workflow & approvals",
+            "route": "/cms-akira-shell/workflow",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 53
+        },
+        {
+            "id": "cms-akira-shell.backups",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Backup & export",
+            "route": "/cms-akira-shell/backups",
+            "active_key": "backups",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 51
+        },
+        {
+            "id": "cms-akira-shell.redirects",
+            "host": "cms-akira-shell",
+            "location": "sidebar",
+            "label": "Redirects",
+            "route": "/cms-akira-shell/redirects",
+            "active_key": "redirects",
+            "roles": [
+                "admin",
+                "administrator",
+                "superadmin"
+            ],
+            "order": 57
+        }
+    ],
     "nav": [
         {
             "label": "Akira Dashboard",

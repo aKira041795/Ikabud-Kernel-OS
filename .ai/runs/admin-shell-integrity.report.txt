@@ -1,0 +1,48 @@
+Implemented the code changes, but final browser acceptance is **blocked on authorization decision #97**.
+
+### Changes
+
+- Fixed sidebar as a viewport-height flex column.
+- Made navigation independently scrollable.
+- Moved Sign out into normal flow.
+- Added `aria-current="page"` for active navigation.
+- Converted Theme Studio to `akira.shell.admin_page@1`.
+- Added Theme Studio capability dependency and active key.
+- Added whole-admin browser journey at `tests/browser/akira-admin-shell.spec.ts`.
+- Screenshots target `test-results/`.
+- Recorded observation: the flat 20-link sidebar remains an information-architecture problem; not changed.
+
+### Falsification — pre-fix
+
+$ npx playwright test tests/browser/akira-admin-shell.spec.ts  
+2 failed.  
+900px: `nav links colliding with Sign out: Site settings, Provenance`  
+600px: `nav links colliding with Sign out: Permissions`
+
+### Post-fix browser run
+
+$ npx playwright test tests/browser/akira-admin-shell.spec.ts  
+2 failed after reaching `/cms-akira-theme`.  
+The layout collision assertions passed, but Theme Studio fell back without the sidebar because the existing active policy refuses widening its three-caller allowlist.
+
+Decision #97 requests authorization to add `cms-akira-theme` to that active policy row. The source seed already uses `cacActivePolicyVersion()` and includes the required caller. The governed Permissions form cannot change caller identity and made no mutation.
+
+### Required verification
+
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php  
+shell contract: 116 passed, 0 failed
+
+$ php -l modules/cms-akira/cms-akira-shell/helpers.php  
+No syntax errors detected in modules/cms-akira/cms-akira-shell/helpers.php
+
+$ php -l modules/cms-akira/cms-akira-theme/helpers.php  
+No syntax errors detected in modules/cms-akira/cms-akira-theme/helpers.php
+
+$ php ikabud theme:validate akira-editorial  
+All checks passed
+
+$ php ikabud workbench:governance --all --json  
+Completed successfully; Akira write ratio 100%, existing repository-wide findings remain reported.
+
+$ php _lint_disyl.php  
+not run — no `.disyl` file was changed.

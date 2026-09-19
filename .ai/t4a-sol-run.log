@@ -1,0 +1,41 @@
+status: PARTIAL
+
+changed:
+- `modules/cms-akira/cms-akira-builder/**`
+- `storage/cms-themes/akira-ark/**`
+
+implementation_summary:
+- theme_view: Added `entity.detail.composition` using dynamic theme-block includes.
+- block_binding: Replaced PHP-generated block HTML with active-theme catalogue/template projection.
+- validation: Canonical block IDs and recursive typed props; unknown blocks/properties rejected.
+- public_route: Added anonymous published-only `GET /p/{key}`.
+- governance: Publish/unpublish invalidate fragment and public page caches after commit; idempotency transaction unchanged.
+
+verification:
+- theme_validate: PASS — `akira-ark` valid, no errors/warnings; all requested checks true.
+- validate_errors: Implemented, but runtime integration unavailable.
+- public_render: Not verified; tenant 54 has builder/theme capabilities inactive and no published posts.
+- unpublished_404: Implemented, not runtime verified.
+- deterministic_modes: Not verified.
+- idempotent_publish: Existing pipeline preserved; runtime test unavailable.
+- cache_invalidation: Implemented post-commit.
+- tests: `theme_blocks_test.php` PASS. Existing builder/theme integration tests blocked by unavailable capability providers.
+- php_lint: PASS.
+- cs_fixer: PASS, 0 files changed.
+- phpstan: PASS, no errors.
+- logs: Clean after verification.
+- APCu reset: PASS; temporary script deleted.
+- tenant 54 `/`: HTTP 200.
+- pre-change composition rows: 0.
+- kernel edits: None.
+
+scope:
+  unexpected_files: None created or modified by this run.
+
+risks:
+- Full public-layout/deterministic compiled-vs-interpreted behavior remains unproven in the inactive real environment.
+- Existing admin UI still models the former vocabulary; T4b remains responsible for schema-driven editing.
+
+unresolved:
+- Tenant 54 resolved `cms-akira-posts`, not `akira-ark`, and exposed none of `akira.theme.blocks@1` or builder capabilities.
+- Mandatory end-to-end publication, anonymous rendering, duplicate-audit, and cache assertions could not be executed without activating/installing the governed module graph.

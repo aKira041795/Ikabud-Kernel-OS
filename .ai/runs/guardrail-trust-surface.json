@@ -1,0 +1,17 @@
+{
+    "id": "guardrail-trust-surface",
+    "contract": ".ai/guardrail-trust-surface.contract.md",
+    "contract_revision": "4d2aa6de0b797e57",
+    "allowed_count": 6,
+    "forbidden_count": 7,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T05:38:32+00:00",
+    "pid": 2193715,
+    "log": null,
+    "report": ".ai/guardrail-trust-surface.report.txt",
+    "status": "completed",
+    "finished_at": "2026-09-14T05:50:36+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 24070
+}

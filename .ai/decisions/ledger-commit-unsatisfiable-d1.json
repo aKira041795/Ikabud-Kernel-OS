@@ -1,0 +1,80 @@
+{
+    "schema": "ark.workbench-development-decision-request.v1",
+    "schema_version": "1.0",
+    "decision_id": "ledger-commit-unsatisfiable-d1",
+    "task_id": "akira-cms-completion",
+    "contract_revision": null,
+    "raised_at": "2026-09-15T15:10:00+00:00",
+    "raised_by": {
+        "role": "chair",
+        "model": null,
+        "harness": "pi"
+    },
+    "authority_level": "L4",
+    "question": "The ledger's commit gate is now permanently unsatisfiable, so the verified product work cannot be committed. Authorise the resolution surface, or conclude without committing?",
+    "why_now": "Three finished slices are complete and independently verified but uncommitted: the Theme Studio moved into the shared shell (same URL, shell-owned, theme supplies only the content fragment), a 75% shell performance win (1.572s -> 0.390s per GET; 43 SELECTs and 43 prepared statements removed per request), and the shell spec repaired so every test fits the unchanged 30s budget. commit-check reports NOT ELIGIBLE with 24 blocking runs, and 22 of them cannot be cleared by any existing route. MEASURED: (1) 18 runs are status=completed with trust_surface_mismatch. trustSurfaceMismatch() compares each run's recorded hash against the CURRENT digest, so any later trust-surface edit invalidates all history; the designed remedy is .ai/trust-surface-amendments.json, which has 12 prior entries each carrying a director_decision (CD-28, CD-48, CD-51 ...). The current digest c40959a0888c73e91df5cc2a410192cbd5db37b9f725b5284ec94bc53099e9f4 is NOT amended, and no recorded decision covers the edit that moved it. (2) 2 runs are status=blocked and acknowledgeBlock() would accept them, but --director-decision must resolve to a recorded decision (^## REF in .ai/chair-decisions.md or .ai/decisions/REF.json) and none applies. (3) 4 runs are status=abandoned and have NO path at all: acknowledgeBlock() refuses anything that is not status==='blocked' && scope_conformance.ok===false; the only successor relief is in_array(status, ['failed','silent']) at line 2064; and start refuses a predecessor that is not failed/silent/completed-with-failed-verification, so an abandoned run cannot even be linked to a successor. decorateRun() adds only age. The gate is literally $blocking === [] ? EXIT_OK : EXIT_GATE. Therefore committing is impossible without changing verifier behaviour, which CD-21 rule 4 and the required_for_trust_surface convention reserve to the owner. The four abandoned records are my own duplicate dispatches that I killed, plus the option-A shell-spec run superseded by the approved option B; none is a live run, and none is writing to the tree.",
+    "options": [
+        {
+            "id": "amend-and-acknowledge-only",
+            "label": "Record the trust-surface amendment and acknowledge the two blocked runs, but change no verifier behaviour",
+            "effect": "20 of 24 blocks clear. The 4 abandoned runs still block, so commit-check stays NOT ELIGIBLE and the product remains uncommitted",
+            "cost": "one amendment entry plus two acknowledgements; no code change",
+            "blast_radius": "low: append-only .ai/ artefacts only",
+            "reversibility": "reversible"
+        },
+        {
+            "id": "make-the-gate-satisfiable",
+            "label": "Extend the ledger's resolution surface so a terminal non-completed run can be closed by a recorded director decision, then amend and close all 24",
+            "effect": "The commit gate becomes satisfiable again. All 24 clear, the product can be committed, and any future abandoned run is resolvable the same way. Every existing check is retained - the escape widens, the check does not weaken, and each use still requires a recorded director decision with a mandatory reason",
+            "cost": "one bounded trust-surface edit, a new trust-surface amendment entry, and 24 recorded resolutions",
+            "blast_radius": "verifier: every future commit could cite the widened escape, so it must record a decision reference and a reason per use",
+            "reversibility": "reversible via the append-only record; runs are never mutated"
+        },
+        {
+            "id": "leave-the-gate-closed",
+            "label": "Do not change the verifier; record the 24 blocks as a known limitation and do not commit",
+            "effect": "No verifier change. The verified product work stays uncommitted and at risk, and the gate never reopens - every future slice adds blocks to a list that can only grow",
+            "cost": "zero now; unbounded later",
+            "blast_radius": "none now",
+            "reversibility": "trivial"
+        }
+    ],
+    "recommendation": {
+        "option_id": "make-the-gate-satisfiable",
+        "rationale": "It is the only option that restores the objective. The other two leave the gate permanently unsatisfiable: option 'amend-and-acknowledge-only' clears 20 of 24 and still cannot commit, and option 'leave-the-gate-closed' guarantees that every future session accumulates more unresolvable blocks. It preserves every check, mutates no run, deletes no provenance, and still requires a recorded director decision with a mandatory reason for each resolution - so it widens the escape rather than weakening the gate. Recorded honestly: this is the one option that changes verifier behaviour, and if you judge that to be weakening in the sense of the absolute prohibition, then 'leave-the-gate-closed' is the compliant default and I will not perform the change."
+    },
+    "default_if_no_response": "stop",
+    "impact_of_no_decision": "The three verified slices stay uncommitted. Nothing else is blocked - verification, dispatch and the Akira roadmap all continue - but the completed product work remains at risk and the commit gate stays permanently closed.",
+    "already_done": [
+        "Theme Studio moved into the shared shell, verified: npx playwright test tests/browser/akira-admin-shell.spec.ts passes, and the earlier akira-admin-shell spec passed 2/2 over real HTTP",
+        "Performance pass 1 and 2: 1.572s -> 0.390s per GET (-75%), 43 SELECTs and 43 prepared statements removed per request",
+        "Shell spec partition repair (option B, approved): full suite npx playwright test = 17 passed, 0 failed, 0 skipped at the DEFAULT 30s timeout; 20 asserted routes on each viewport; 40 screenshots; playwright.config.js byte-identical at SHA-256 03ac0549c9bed0082da4e974a7f45c402ddf34a474fb1098ece918d1fb97eac3",
+        "Two independent verification runs of the shell spec: worst case 20.4s per test against the 30s budget (the repair lane reported 7.5s, which did not reproduce and is recorded as optimistic)",
+        "Root cause of the earlier red suite proved by measurement: assertNoSignOutCollision() made ~40 Playwright round-trips per call and was called twice per route at 600px; batching it into one nav.evaluate() removed 109.2s of the 126.4s spent in collision checks"
+    ],
+    "checkpoint": {
+        "state": "work-complete-uncommitted",
+        "git_head": "5d20794",
+        "working_tree": "18 modified files: modules/cms-akira/* (Theme Studio + performance), tests/browser/akira-admin-shell.spec.ts (partition repair), .ai/dispatch-lane.sh and tools/ai-authority-preflight.php (harness tooling)",
+        "resume_command": "php tools/ai-autonomy.php resume ledger-commit-unsatisfiable-d1 --choose=<OPTION> --decisions-dir=.ai/decisions"
+    },
+    "evidence_refs": [
+        ".ai/runs/shell-spec-split.json",
+        ".ai/runs/shell-spec-split-2.json",
+        ".ai/trust-surface-amendments.json",
+        ".ai/chair-decisions.md",
+        "tools/ai-run.php:1958-2016 (acknowledgeBlock refusals)",
+        "tools/ai-run.php:2064 (successor relief: failed, silent only)",
+        "tools/ai-run.php:960-969 (predecessor must be a finished failure)",
+        "tools/ai-run.php:1352-1390 (trustSurfaceMismatch against the current digest)"
+    ],
+    "transport": {
+        "channel": "harpp-mcp",
+        "attempted": true,
+        "delivered": true,
+        "suppressed": false,
+        "harpp_decision_id": 103,
+        "harpp_state": "PENDING",
+        "delivered_at": "2026-09-15T15:12:00+00:00"
+    }
+}

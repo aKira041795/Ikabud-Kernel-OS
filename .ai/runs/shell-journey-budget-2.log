@@ -1,0 +1,76 @@
+Script started on 2026-09-15 18:26:17+08:00 [COMMAND="pi -p -a --thinking medium --model openai-codex/gpt-5.6-sol --name shell-journey-budget-2 @.ai/shell-journey-budget-2.contract.md $'Implement the attached contract exactly. Read it ALL before editing anything.\nDiagnose the mechanism FIRST and prove which hypothesis is true before changing any code.\nDo not edit the tenant database. Do not weaken or remove an existing assertion.\nRun every Required test and report exact pass/fail/skip counts.'" <not executed on terminal>]
+## Status: BLOCKED — residual cost is kernel-owned
+
+Implemented route/method gating across the remaining module helpers:
+
+- `cms-akira-builder/helpers.php`
+- `cms-akira-media/helpers.php`
+- `cms-akira-navigation/helpers.php`
+- `cms-akira-search/helpers.php`
+- `cms-akira-seo/helpers.php`
+- `cms-akira-workflow/helpers.php`
+
+Also narrowed predecessor gating in core/theme. Mutation policies reconcile before mutating requests; read policies reconcile only on routes that invoke them. Unknown/non-HTTP contexts retain fail-safe reconciliation.
+
+### Diagnosis and timing
+
+Confirmed mechanism:
+
+- Remaining module helpers unconditionally reconciled **29 policy rows across 9 batches** on dashboard GETs.
+- Four additional active-policy lookups and one workflow-definition upsert also ran.
+- `seedPolicy()` performs one SELECT per declaration.
+
+Cache-busted authenticated dashboard measurements:
+
+- Before this pass: median **0.869s**
+- After: median **0.390s**
+- Improvement: **55%**
+
+Final samples: `0.798, 0.390, 0.364, 0.390, 0.615s`, all HTTP 200 with the administration navigation present.
+
+The remaining cold-request authority cost is in forbidden scope:
+
+```text
+CapabilityAuthorizationRegistry::authorize()
+  -> rowsForVersion()
+  -> loads the full active policy set for each cold request
+```
+
+This is under `kernel/Capabilities/`; the contract explicitly requires stopping rather than widening scope.
+
+### Required-test results
+
+| Command | Result |
+|---|---|
+| `npx playwright test` | **9 passed, 2 failed, 0 skipped**, exit 1 |
+| Shell spec | **0 passed, 2 failed, 0 skipped**, both default 30s timeouts |
+| Capability test | **16 passed, 0 failed, 1 explicit live-tenant skip**, exit 0 |
+| PHP lint | **9 passed, 0 failed** |
+| PHPStan | **0 errors**, exit 0 |
+| `git diff --check` | Passed |
+
+Latest trace attributes the 30-second shell test to:
+
+- navigation: **8.427s**
+- locator waits: **8.112s**
+- screenshots: **4.513s**
+- remaining browser assertions/operations: approximately **9s**
+
+### Scope and integrity
+
+- No tenant database was manually edited.
+- No assertion, timeout, or test was changed.
+- `playwright.config.js` SHA-256 remains `03ac0549…eac3`.
+- Shell spec SHA-256 remains `a38e33a9…29bcd`.
+- No slice change was made under `kernel/`, `tools/`, or `tests/`.
+- The displayed `tools/ai-authority-preflight.php` diff was present at dispatch and remains unrelated.
+
+Authorisation remains fail-closed: mutation rows are reconciled before all mutating methods, route-used read rows are reconciled before dispatch, and unknown contexts retain the historical reconcile-all behavior. Browser read-authority and mutation journeys passed.
+
+Script done on 2026-09-15 18:46:28+08:00 [COMMAND_EXIT_CODE="0"]
+[dispatch-lane] pi exited 0
+RUN shell-journey-budget-2 finished: completed
+  exit:      0
+  log:       3353 bytes (.ai/runs/shell-journey-budget-2.log)
+  report:    0 bytes (.ai/runs/shell-journey-budget-2.report.txt)
+  scope:     OK delta=8

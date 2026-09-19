@@ -1,0 +1,13 @@
+status: PARTIAL
+changed: kernel/DiSyL/v4/Parser.php, tests/disyl_v4_compiler_test.php
+implementation_summary: Added lexical state for `<style>`, `<script>`, and `<textarea>` bodies. Braces are parsed as DiSyL only when the trimmed content is processable and contains no nested `{`, unquoted `:`, or unquoted `;`; otherwise the balanced brace block is preserved verbatim.
+verification:
+  regression_test: php tests/disyl_v4_compiler_test.php — PASS, 57 passed
+  disyl_tests: for f in tests/disyl*_test.php; do php "$f"; done — PASS, all 26 targeted files
+  http_home: HTTP 200, 0.349935s, akira-ark-card present; compiled fallback persisted
+  http_posts: HTTP 200, 0.326742s, akira-ark-card present; compiled fallback persisted
+  log_after: New compiled-render fallback/deprecated lines remain. FPM uses stale compiled/opcache state; cache file is not removable by current user and PHP-FPM reload requires sudo.
+scope:
+  unexpected_files: Pre-existing untracked `.ai/**` files; not modified
+risks: HTTP verification requires privileged cache removal or PHP 8.3 FPM reload.
+unresolved: Acceptance item 3 could not pass in the running server environment. PHP lint passed; CLI compiled regression and all DiSyL tests pass.

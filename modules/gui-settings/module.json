@@ -274,10 +274,15 @@
         "modes": [
           "first"
         ],
+        "requires_protocol": "v2",
         "description": "Apply GUI settings for a tenant"
       }
     ],
     "depends": [],
+    "routes": {
+      "POST /api/v1/admin/gui-settings": "gui_settings.apply@1",
+      "POST /api/v1/admin/gui-settings/reset": "gui_settings.apply@1"
+    },
     "policy": {
       "capabilities": {
         "gui_settings.apply@1": {

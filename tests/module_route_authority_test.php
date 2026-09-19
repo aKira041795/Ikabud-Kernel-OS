@@ -175,10 +175,28 @@ t(
         && ($akiraDeclared['DELETE /api/v1/cms-akira/posts/{slug}'] ?? null) === 'akira.post.delete@1',
     json_encode($akiraDeclared)
 );
+// The subject for this assertion — and for the undeclared-route probes below — must be a module that
+// declares NO route authority. It is DISCOVERED, not named. An earlier revision hardcoded
+// `gui-settings`, and on 2026-09-14 the P2 route-coverage programme correctly gave gui-settings its two
+// write declarations; this test then failed, reporting a correct change as a regression. The premise is
+// asserted here so that if the subject ever disappears the failure says so, instead of being a mystery.
+$declarationFree = null;
+foreach (array_keys(discoverModules()) as $candidateModule) {
+    if (moduleRouteAuthorityDeclarations((string) $candidateModule) === []) {
+        $declarationFree = (string) $candidateModule;
+        break;
+    }
+}
+if ($declarationFree === null) {
+    echo "SKIP: no declaration-free module remains; the undeclared-route path cannot be exercised\n";
+}
+
 t(
     'a module with no declarations yields an empty map',
-    moduleRouteAuthorityDeclarations('gui-settings') === [],
-    json_encode(moduleRouteAuthorityDeclarations('gui-settings'))
+    $declarationFree !== null && moduleRouteAuthorityDeclarations($declarationFree) === [],
+    $declarationFree === null
+        ? 'no declaration-free module found'
+        : $declarationFree . ': ' . json_encode(moduleRouteAuthorityDeclarations($declarationFree))
 );
 
 echo "\n=== FAIL-CLOSED PROBE (the semantic difference from call()) ===\n";
@@ -281,13 +299,13 @@ t(
 file_put_contents(STORAGE_PATH . '/logs/app.log', '');
 $_SERVER = $originalServer;
 $_SERVER['REQUEST_METHOD'] = 'POST';
-$_SERVER['REQUEST_URI'] = '/api/v1/admin/gui-settings';
+$_SERVER['REQUEST_URI'] = '/api/v1/undeclared-probe/action';
 
-$undeclaredAllowed = moduleRouteAuthorityEnforce(
-    'gui-settings',
+$undeclaredAllowed = $declarationFree !== null && moduleRouteAuthorityEnforce(
+    $declarationFree,
     'POST',
-    '/api/v1/admin/gui-settings',
-    '/api/v1/admin/gui-settings',
+    '/api/v1/undeclared-probe/action',
+    '/api/v1/undeclared-probe/action',
     null
 );
 
@@ -297,7 +315,13 @@ $undeclaredLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
 // page view would be noise. Compatibility debt is measured over mutations only —
 // the same denominator the census uses.
 file_put_contents(STORAGE_PATH . '/logs/app.log', '');
-$getAllowed = moduleRouteAuthorityEnforce('gui-settings', 'GET', '/admin/gui-settings', '/admin/gui-settings', null);
+$getAllowed = $declarationFree !== null && moduleRouteAuthorityEnforce(
+    $declarationFree,
+    'GET',
+    '/undeclared-probe',
+    '/undeclared-probe',
+    null
+);
 $getLog = @file_get_contents(STORAGE_PATH . '/logs/app.log') ?: '';
 
 t(
@@ -313,7 +337,8 @@ t(
 t(
     'an undeclared route is observed for the census and the gate',
     str_contains($undeclaredLog, 'route.authority.undeclared')
-        && str_contains($undeclaredLog, 'gui-settings'),
+        && $declarationFree !== null
+        && str_contains($undeclaredLog, $declarationFree),
     substr($undeclaredLog, 0, 400)
 );
 t(

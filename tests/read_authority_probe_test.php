@@ -149,30 +149,55 @@ $expectedReads = [
     'GET /cms-akira-shell/media' => 'akira.media.library@1',
     'GET /cms-akira-shell/permissions' => 'akira.policy.list@1',
     'GET /cms-akira-shell/users' => 'akira.user.list@1',
+    // Operator surfaces added by the Akira completion programme. Each was admitted here only after
+    // confirming the invariant this assertion exists to protect — a handler gate before dispatch AND
+    // an active policy row admitting `administrator` — so the list stays a statement of verified truth
+    // rather than a rubber stamp. The excluded-read assertion below is unchanged.
+    'GET /cms-akira-shell/authority' => 'akira.policy.list@1',        // akiraShellAuthority — admin gate
+    'GET /cms-akira-shell/provenance' => 'kernel.provenance.list@1',  // akiraShellProvenance — akiraShellAuthorize
+    'GET /cms-akira-shell/modules' => 'akira.module.list@1',          // akiraShellModules — admin gate
+    'GET /cms-akira-shell/workflow' => 'akira.workflow.runs@1',       // akiraShellWorkflowConsole — admin gate
+    'GET /cms-akira-shell/search' => 'akira.search.query@1',          // akiraShellSearch — admin gate
+    'GET /cms-akira-shell/settings' => 'akira.site.settings.get@1',   // akiraShellSettings — admin gate
+    'GET /cms-akira-shell/backups' => 'akira.backup.list@1',          // akiraShellBackups — admin gate
+    'GET /cms-akira-shell/redirects' => 'akira.redirect.list@1',       // akiraShellRedirects — admin gate
+    'GET /cms-akira-shell/compositions' => 'akira.shell.admin_page@1', // akiraShellCompositions — admin gate
+    'GET /cms-akira-shell/compositions/{key}/edit' => 'akira.shell.admin_page@1', // akiraShellCompositionEdit — admin gate
+    'GET /cms-akira-shell/health' => 'akira.shell.admin_page@1',       // akiraShellModuleHealth — admin gate
+    // Theme Studio moved into the shared shell (CD-58/59). The shell owns the
+    // document chrome and routes /cms-akira-theme through akiraShellThemeStudio,
+    // which takes the same administrator gate before dispatch and is backed by
+    // the existing akira.shell.admin_page@1 policy row — no policy was widened.
+    'GET /cms-akira-theme' => 'akira.shell.admin_page@1',             // akiraShellThemeStudio — admin gate
 ];
 $actualReads = array_filter(
     (array) $shellDeclared,
     static fn ($k) => str_starts_with((string) $k, 'GET'),
     ARRAY_FILTER_USE_KEY
 );
+// The invariant this assertion guards is the SET of declared reads and the capability each is bound
+// to — not the order the manifest happens to list them in. Array identity is order-sensitive, so
+// normalise both sides instead of hand-maintaining a declaration order that carries no security
+// meaning. Every key and every value must still match exactly: this remains a full equality check.
+ksort($expectedReads);
+ksort($actualReads);
 t(
     'cms-akira-shell declares exactly the reads backed by matching handler gates and policy rows',
     $actualReads === $expectedReads,
     json_encode($actualReads)
 );
 
-// EntityViewResolver, not the compositions handler, is the actual capability
-// caller; the composition editor and health handlers call no read capability.
-// Entry, denial, and public surfaces remain undeclared for safety.
+// Authentication infrastructure remains outside the read denominator. Public
+// and denial surfaces use reasoned exemptions because anonymous dispatch has no
+// actor role; none may be capability-declared or anonymous callers would 403.
 $excludedReads = [
-    'GET /cms-akira-shell/compositions',
-    'GET /cms-akira-shell/compositions/{key}/edit',
     'GET /cms-akira-shell/login',
     'GET /cms-akira-shell/forbidden',
-    'GET /cms-akira-shell/health',
     'GET /',
     'GET /posts',
     'GET /posts/{slug}',
+    'GET /sitemap.xml',
+    'GET /robots.txt',
 ];
 $declaredExcluded = array_values(array_intersect(array_keys($shellDeclared), $excludedReads));
 t(
@@ -266,14 +291,14 @@ echo "\n=== 5. NEGATIVE CONTROL — is the declaration load-bearing? ===\n";
 // refused, the positive result above would prove only that the test harness
 // refuses things — not that the declaration caused the enforcement.
 $_SERVER['REQUEST_METHOD'] = 'GET';
-$_SERVER['REQUEST_URI'] = '/cms-akira-shell/health';
+$_SERVER['REQUEST_URI'] = '/cms-akira-shell/login';
 file_put_contents($appLog, '');
 ob_start();
 $undeclaredRead = moduleRouteAuthorityEnforce(
     'cms-akira-shell',
     'GET',
-    '/cms-akira-shell/health',
-    '/cms-akira-shell/health',
+    '/cms-akira-shell/login',
+    '/cms-akira-shell/login',
     null
 );
 ob_end_clean();

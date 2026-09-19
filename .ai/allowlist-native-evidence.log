@@ -1,0 +1,28 @@
+Implementation complete. Summary:
+
+## What changed
+
+**`tools/ai-run.php`**
+- Extended `COMMAND_ALLOWLIST` **as data** — added `exec` and `env` fields plus three Python rules (anchored `^…$`, charset-restricted, `..` refused globally):
+  - `python3 -m py_compile <path>.py`
+  - `python3 -m unittest tests.<dotted.test_module>` (bounded to the repo's own `tests.*` package with a `test_*` leaf, so `os`/arbitrary modules are refused)
+  - `python3 tools/harpp-bridge/tests/<name>.py` with a `bridge_test` existence screen
+- Added `PYTHON_SHAPE_ENV` (`PYTHONDONTWRITEBYTECODE=1` + external `PYTHONPYCACHEPREFIX`) since `py_compile` ignores the former.
+- Refactored matching into `matchingAllowlistRule()`; `commandIsAllowlisted()` and `argvForCommand()` now read the **same** verdict, so `argv[0]` always comes from the matched rule — never the command text. A null rule means null argv and no execution.
+- `executeArgv()` takes per-rule env (merged over the inherited env so `PATH` survives).
+- `classifyCommand()` recognises the Python shapes (and any other `python3 …` so refusals are explicit rather than silent).
+- **Refused:** `python3 -c "…"`, bare `python3 evil.py`, chaining (`;`/`&&`/`|`), `..`, with the B-F1 reason documented in code.
+
+**`tests/ai_run_test.php`** — 11 new assertions (49 → 60):
+- `26a` real `py_compile` executes and reaches `RE_DERIVED`; `26b` git status **and** bytecode scan unchanged; `26c` bounded `unittest` executes; `26d` file-test existence screen; `26e` file-test rule declared.
+- `29-*` six D2 refusals, each asserting `method=null`, `observed_exit=null`, and sentinel absent.
+
+## Evidence (`.ai/allowlist-native-evidence.report.txt`)
+- **First claim:** `plan` on this contract → `ERROR: … not contract-authorisable`, **exit 2**. Rule 1 untouched.
+- D2: all six attacks `command_not_allowlisted`, `ls` shows sentinel absent.
+- D3: `status=RE_DERIVED method=independent_execution observed_exit=0` on a real repo `.py`.
+- AC4: `git status --porcelain` identical before/after; no in-repo `.pyc`; bytecode redirected to `/tmp/ai-run-pycache`.
+- AC5: `60/60, 59/59, 18/18, 17/17, 3/3`, zero skips; scope plans (`tools/`, `tools/ai-*.php`, `**/*.php` → exit 2; `docs/` → exit 0), check L4/ESCALATE vs L2/RECORD, loop block/advance all hold.
+- AC6: five revert experiments with the exact failing assertions recorded.
+
+Nothing staged/committed/pushed; no forbidden path touched (the S5 slice edit in `git status` predates and is external — the Chair's revision 2, not mine).

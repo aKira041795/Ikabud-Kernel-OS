@@ -1,0 +1,6 @@
+{# Block: cta — context: props #}
+<section class="cta" data-ark-block="cta">
+  <h3 class="t-headline-md cta__title">{props.title | esc_html}</h3>
+  {if props.subtitle}<p class="cta__body">{props.subtitle | esc_html}</p>{/if}
+  {if props.cta_label}<div class="cta__actions"><a class="btn" href="{props.cta_href | esc_url | esc_attr}">{props.cta_label | esc_html}</a></div>{/if}
+</section>

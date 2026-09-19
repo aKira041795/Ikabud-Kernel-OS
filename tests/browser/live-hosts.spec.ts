@@ -16,10 +16,23 @@ import { test, expect, type Page } from '@playwright/test';
 const KERNEL = process.env.KERNEL_URL ?? 'http://ikabudsix.test';
 const TENANT = process.env.TENANT_URL ?? 'http://akiracms.test';
 
-const KERNEL_USER = process.env.KERNEL_USER ?? 'akiraadmin';
-const KERNEL_PASS = process.env.KERNEL_PASS ?? 'iKabud6123!#';
-const TENANT_USER = process.env.TENANT_USER ?? 'charlienacario884';
-const TENANT_PASS = process.env.TENANT_PASS ?? 'iKabud6123!#';
+// Credentials are read from the environment. playwright.config.js loads the git-ignored
+// .env, so real values live there (see .env.example for the names).
+//
+// There is deliberately no literal fallback. The previous defaults embedded a working
+// administrator password in six tracked specs (it reached 8 commits of history), and the
+// tenant default had gone stale -- so the login form answered "Invalid username or
+// password", which is indistinguishable from an authorisation regression. Missing
+// configuration must never masquerade as a broken product.
+const KERNEL_USER = process.env.KERNEL_USER ?? '';
+const KERNEL_PASS = process.env.KERNEL_PASS ?? '';
+const TENANT_USER = process.env.TENANT_USER ?? '';
+const TENANT_PASS = process.env.TENANT_PASS ?? '';
+
+// This spec exists to drive the login form itself, so it must start from a clean
+// context: it deliberately opts out of the shared authenticated storageState and
+// performs a real form login for both hosts below.
+test.use({ storageState: { cookies: [], origins: [] } });
 
 /** Collect console errors and failed requests — invisible to curl. */
 function watch(page: Page) {

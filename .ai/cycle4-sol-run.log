@@ -1,0 +1,65 @@
+## Implementation result
+
+**status:** PARTIAL — implementation complete, but acceptance is not fully verified.
+
+**changed:**
+- Added governed `akira.builder.provenance@1` capability and `kernel.audit.list@1` dependency.
+- Added tenant-scoped unified revision/audit/publication timeline.
+- Added semantic block diff.
+- Extended `akira.builder.render@1` with tenant-scoped `revision_id`.
+- Added provenance HTTP endpoint.
+- Added responsive “History & provenance” drawer, historical preview, and diff UI.
+- Regenerated builder assets.
+- Extended builder contract tests.
+
+**verification:**
+- `php ikabud architecture:check`: **passed, 6 checks**
+- PHP lint on touched PHP: **passed**
+- PHPStan: **`[OK] No errors`**
+- CS fixer: **`Found 0 of 7 files that can be fixed`**
+- Builder UI `npm run type-check`: **passed**
+- Builder UI `npm run build`: **passed**
+- Shell contract: **100 passed, 0 failed**
+- Live tenant 54 provenance endpoint: **passed**
+  - Listed revisions r3–r6.
+  - Included actors, notes, publish/unpublish events, and correlation IDs.
+- Historical rendering:
+  - r4 SHA-256: `7d1de798b4ef37acabf8e0f630e4520f2a637133281d2049d7a5863673dbe0c0`
+  - current r6 SHA-256: `acec8e44ec19d7b1b6b5cd65803d0ba1c7bb1943a3b03c80f01b93e5a1c3750f`
+- Live semantic diff r4→r6:
+  - added: 2
+  - removed: 1
+  - reordered: 0
+  - props changed: 0
+
+**policy query command:**
+```bash
+php ikabud tinker "SELECT capability_id, provider, allowed_roles, provider_activation_required, requires_protocol, is_active FROM capability_authorization_policies WHERE capability_id='akira.builder.provenance@1'"
+```
+
+Observed base-database output:
+```text
+akira.builder.provenance@1  cms-akira-builder  admin  0  v2  1
+```
+
+The implementation seeds `provider_activation_required = true`, but the displayed base row remained from an earlier local verification run. Tenant 54’s live governed endpoint succeeded; its dedicated policy-row value was not directly queried.
+
+**unresolved:**
+- Standalone builder contract stops early:
+  ```text
+  CapabilityNotFoundException:
+  No permitted capability providers for: akira.builder.validate@1
+
+  CMS Akira Builder: 11 passed, 1 failed
+  ```
+  Therefore the newly added diff, foreign revision, and unauthorized-caller assertions exist but were not reached.
+- Full `php scripts/run-tests.php` was not run.
+- Browser interaction/screenshots were not captured.
+- Tenant 54’s dedicated policy row was not directly displayed.
+- No commit was created, per contract.
+
+**scope:** No schema changes, migrations, npm dependencies, or new writes. `.ai/**` was untouched. `storage/modules.json` was backed up and restored around test runs.
+
+**risks:** The standalone builder fixture’s activation setup must be corrected before acceptance. The stale base policy row should be reconciled and tenant 54’s actual row explicitly queried.
+
+**recommended_next_state:** `BLOCKED_VERIFICATION` — resolve the builder contract activation failure, rerun all suites, prove capability denial, query tenant-54 policy storage directly, and capture browser evidence.

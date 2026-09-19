@@ -15,6 +15,9 @@ require_once $root . '/tests/_support/env_guard.php';
 require_once dirname(__DIR__) . '/helpers.php';
 require_once dirname(__DIR__) . '/handlers.php';
 
+// Fail closed rather than mutate a live tenant's database.
+requireNotLiveTenantDatabase();
+
 $passed = 0;
 $failed = 0;
 $check = static function (bool $ok, string $label, string $detail = '') use (&$passed, &$failed): void {

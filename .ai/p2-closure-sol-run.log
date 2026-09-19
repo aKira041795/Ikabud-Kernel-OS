@@ -1,0 +1,148 @@
+## Result
+
+**status:** PASS_WITH_DISCLOSURE
+
+### changed
+
+- `migrations/017_capability_policy_grant_lifecycle.sql`
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php`
+- `src/helpers/module-migrations.php`
+- `tests/capability_policy_lifecycle_test.php`
+- `tests/capability_authorization_policy_migration_test.php`
+- `tests/tenant_entry_auth_shell_standard_test.php`
+- `docs/architecture/authority-store-adr.md`
+- `docs/architecture/akira-beyond-the-cms.md`
+
+### implementation summary
+
+- Added `granted | suspended | revoked` grant lifecycle.
+- `seedPolicy()` now:
+  - inserts absent declarations as granted;
+  - refreshes declaration fields only while granted;
+  - cannot alter suspended/revoked rows or `is_active`.
+- Added authenticated, transactional `transitionGrantState()`.
+- Grant transitions require a reason and record actor/time/reason through `kernel.audit.record@1`.
+- Authorization returns:
+  - `grant_revoked`
+  - `grant_suspended`
+  - `role_not_allowed`
+- Policy-version cloning preserves suspended/revoked states and refuses declaration edits to them.
+- Added the authority-store ADR without migrating stores.
+- Applied all twelve thesis changes.
+- Removed test reliance on live tenant 54; tenant integration now requires isolated fixture 9054.
+
+### verification
+
+- Lifecycle test: **8 passed, 0 failed**
+- Falsifier: **6 passed, 2 failed; exit 1**
+- Fresh database migration: applied once, rerun empty, existing row became granted
+- Full suite: **106 files — 97 passed, 9 skipped, 0 failed**
+- Governance gate: **PASS**, exit 0
+- PHPStan: **0 errors**
+- `git diff --check`: clean
+- Module state restored: `gui-settings` and all `cms-akira-*` ON; `daily-ledger` OFF
+
+### evidence
+
+Lifecycle:
+
+```text
+=== CAPABILITY POLICY GRANT LIFECYCLE ===
+  ✓ migration installs the explicit three-state lifecycle with granted default
+  ✓ pre-existing policy rows migrate to granted
+  ✓ migration runner re-run is clean
+  ✓ seed -> revoke -> seed remains revoked and cannot rewrite its declaration
+  ✓ revoked grant denies with grant_revoked
+  ✓ suspended grant denies with grant_suspended
+  ✓ present but unauthorized actor is role_not_allowed
+  ✓ explicit transitions record who, when, state, and reason through kernel audit
+
+Capability policy lifecycle tests: 8 passed, 0 failed
+```
+
+Falsification after temporarily restoring overwrite behavior, then reverting it:
+
+```text
+=== CAPABILITY POLICY GRANT LIFECYCLE ===
+  ✓ migration installs the explicit three-state lifecycle with granted default
+  ✓ pre-existing policy rows migrate to granted
+  ✓ migration runner re-run is clean
+  ✗ seed -> revoke -> seed remains revoked and cannot rewrite its declaration — {"grant_state":"granted","caller_module":"declared-caller","allowed_roles":"admin"}
+  ✗ revoked grant denies with grant_revoked — {"allowed":true,...,"reason":"allowed",...}
+  ✓ suspended grant denies with grant_suspended
+  ✓ present but unauthorized actor is role_not_allowed
+  ✓ explicit transitions record who, when, state, and reason through kernel audit
+
+Capability policy lifecycle tests: 6 passed, 2 failed
+FALSIFIER_EXIT=1
+```
+
+Fresh database:
+
+```text
+FRESH_DB_FIRST=["017_capability_policy_grant_lifecycle.sql"]
+FRESH_DB_SECOND=[]
+EXISTING_ROW_STATE=granted
+ENGINE=InnoDB
+```
+
+Full suite:
+
+```text
+workflow_concurrency_test                       PASS
+workflow_engine_test                            PASS
+workflow_lifecycle_test                         PASS
+workflow_runtime_guard_test                     PASS
+----------------------------------------------------------------
+
+Total: 106 files — 97 passed, 9 skipped  (54082ms)
+```
+
+Governance:
+
+```text
+GOVERNANCE GATE=PASS — no module added undeclared-route debt.
+...
+Akira (cms-akira-* + gui-settings)               5         31        0         28      33    15.2%
+
+EXIT=0
+```
+
+### D3 line map
+
+1. Competitive claim and diagram — lines **14–35**
+2. Generic delegated actor primitives — lines **128–138**
+3. Authority-owned segregation of duties — lines **140–143**
+4. Minimal tamper-evident verifier — lines **145–152**
+5. P5 renamed Grant; Consent reserved — lines **154–159**
+6. C6 findings promoted and ADR linked — lines **112–122**
+7. “No feature is implemented for parity alone” — lines **165–166**
+8. Two-domain acceptance rule — lines **199–202**
+9. Discipline flowchart — lines **186–197**
+10. Ecosystem framing — lines **8–10**
+11. P2 → P3 → P4 → P5 sequence — lines **124–125**
+12. No renaming/new major version — line **171**
+
+### scope
+
+- No route-authority dispatch mechanism changed.
+- No dependencies added.
+- No files under `modules/daily-ledger/**` modified.
+- No modules enabled or disabled permanently.
+- No branch, commit, or push created.
+- No authority-store migration implemented.
+
+### risks
+
+- The web/CLI authority-store ambiguity remains intentionally unresolved.
+- The operator entry point is currently the kernel registry method; there is no CLI command or UI.
+- The final suite has one additional skip because the tenant-entry test now requires isolated tenant fixture 9054 instead of borrowing live tenant 54.
+- Disclosure: the first suite run reached tenant 54 through the pre-existing tests and attempted a seed, which failed with “unknown column `grant_state`.” No successful tenant-54 write or migration occurred. The tests were then corrected to avoid tenant 54 entirely.
+
+### unresolved
+
+The ADR leaves physical store topology, central-versus-tenant precedence, declaration projection, consistency, and re-grant authority as chair open questions.
+
+### recommended next state
+
+**READY_FOR_REVIEW** — review D1 lifecycle and ADR decisions, then continue P2 closure. Resolve the authority-store contract before P3/P5.

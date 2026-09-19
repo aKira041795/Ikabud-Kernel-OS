@@ -9,7 +9,6 @@ return [
         '/api/v1/cms-akira-theme/themes' => 'cms-akira-theme:catThemeRegistryJson',
         '/api/v1/cms-akira-theme/blocks' => 'cms-akira-theme:catThemeBlocksJson',
         '/api/v1/cms-akira-theme/themes/{slug}/validate' => 'cms-akira-theme:catThemeValidateJson',
-        '/cms-akira-theme' => 'cms-akira-theme:catThemeAdminPage',
     ],
     'POST' => [
         '/api/v1/cms-akira-theme/themes/{slug}/activate' => 'cms-akira-theme:catThemeActivateJson',

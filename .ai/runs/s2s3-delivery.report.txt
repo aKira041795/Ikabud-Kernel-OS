@@ -1,0 +1,12 @@
+php tests/ai_project_test.php
+6/6 passed
+exit=0
+php tests/ai_loop_test.php
+8/8 passed
+exit=0
+php tests/ai_run_test.php
+31/31 passed
+exit=0
+php tests/ai_autonomy_test.php
+46/46 passed
+exit=0

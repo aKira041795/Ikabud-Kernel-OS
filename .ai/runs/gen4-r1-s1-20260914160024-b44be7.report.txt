@@ -1,0 +1,147 @@
+# GEN4-R1 S1 — the stale `runs_by_status` expectation
+
+Result: DONE. The stale expectation is corrected; the metrics suite is green, zero skips.
+
+The failing assertion expected the six statuses the metric used before `blocked` became a canonical
+run status today. The metric now emits seven. The metric is right; the expectation was stale. The
+correction adds the one missing explicit count and keeps strict full-array equality over every
+canonical status. `tools/ai-project.php` (trust-surface, frozen under CD-41) was not touched.
+
+## Authority and the route that made this legal
+
+Authority is CD-41 (named in the slice) plus the pre-declared `exceptions:` entry under CD-44, dated
+`2026-09-14T16:00:00+00:00` — before dispatch. The prohibition consults it rather than a
+justification. The harness returns:
+
+    $ php tools/ai-autonomy.php check "correct stale runs_by_status expectation" --path=tests/ai_project_metrics_test.php --contract=.ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md --level=L3
+    VERDICT: RECORD
+    level: L3
+    action: correct stale runs_by_status expectation
+    paths:
+      - tests/ai_project_metrics_test.php
+    reasons:
+      - path 'tests/ai_project_metrics_test.php' would trip the existing-test prohibition; authorised by exception 'correct the stale runs_by_status expectation in the metrics suite' (authority: CD-44; scope: tests/ai_project_metrics_test.php; decided_when: 2026-09-14T16:00:00+00:00)
+    authorised by exception:
+      - correct the stale runs_by_status expectation in the metrics suite (authority: CD-44)
+
+So the honest fix was not blocked this time. This is the CD-44 route working, recorded as the S1
+data point rather than as an obstacle.
+
+## The correction
+
+`tests/ai_project_metrics_test.php`, assertion 3. It now reads:
+
+    $h->test(
+        '3. runs by status counts every canonical status',
+        ($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0],
+        $resultA['output']
+    );
+
+The canonical list is not written from memory. Its authority is `RUN_STATUSES` at
+`tools/ai-run.php:58` — `running, completed, silent, failed, abandoned, blocked` — plus the metric's
+own `other` bucket for a status outside that list (`tools/ai-project.php:517`). A comment above the
+assertion records exactly that. The edit inserts the single key `'blocked' => 0` between `abandoned`
+and `running`; it removes no key, changes no other value, and relaxes no operator.
+
+A note on format: the harness extractor binds a command only when the whole line is the invocation,
+so the exact command appears on its own line below as well as after the `COMMAND:` label. That is a
+format adaptation, not a relaxation. The re-derivable claim of this report is the single command
+block; the non-vacuity and control observations after it are shown verbatim but are not separately
+re-derivable, because re-running them against the restored tree would observe the green state.
+
+CLAIM: The corrected metrics suite is green: every canonical status is counted, 16 of 16 assertions pass, zero skips, exit code 0.
+COMMAND: php tests/ai_project_metrics_test.php
+php tests/ai_project_metrics_test.php
+OBSERVED:
+  ✅ 3. runs by status counts every canonical status
+  RESULTS
+  16/16 passed
+  Assertions: 16
+  EXIT=0
+
+Non-vacuity — the expectation with `'blocked' => 0` temporarily removed (and nothing else changed),
+then restored, fails again on assertion 3:
+  ❌ 3. runs by status counts every canonical status — { "runs_by_status": { "completed": 1, "silent": 0, "failed": 1, "abandoned": 0, "blocked": 0, "running": 1, "other": 0 } }
+  15/16 passed
+  EXIT=1
+
+Control that matters — a probe against the live metric payload (`php /tmp/gen4-s1-probe.php`, run
+from the repo; it writes no repository file) shows the corrected assertion still catches a status
+silently dropped from the metric, or a wrong count:
+tool exit: 0
+actual runs_by_status: {"completed":1,"silent":0,"failed":0,"abandoned":0,"blocked":0,"running":1,"other":0}
+
+(a) stale expectation (no blocked)       === actual            : false
+(b) corrected expectation (with blocked) === actual            : true
+(c) corrected MINUS blocked in expectation === actual          : false
+(d) actual with canonical status completed dropped === corrected : false
+(e) actual with canonical status blocked dropped   === corrected : false
+(f) actual with a wrong failed count               === corrected : false
+
+The tree was restored after the temporary revert and the probe, and re-run once more:
+  16/16 passed
+  EXIT=0
+
+## Disposition, per the acceptance criteria
+
+1. The required pure suite exits 0 with 16 of 16 assertions and zero skips. MET.
+2. Assertion 3 still requires an explicit count for every canonical status, `blocked` included; it
+   is pasted above. MET.
+3. Non-vacuity: with `'blocked'` removed the suite fell to 15 of 16 and exit code 1; restored, it
+   is back to 16 of 16. MET, demonstrated by a temporary revert of the expectation only.
+4. Control: the corrected assertion rejects a canonical status dropped from the metric, a dropped
+   `blocked`, and a wrong count. MET.
+5. Does this edit weaken any existing test? No. It adds a required key and keeps the strict `===`
+   full-array comparison. The pre-existing assertion was the weaker one (six keys); the corrected
+   assertion is strictly stronger (seven keys) and can still fail, as the control demonstrates.
+
+The S1 prediction in the project charter was that the existing-test prohibition would block this
+correction. With CD-44's `exceptions:` route built and pre-declared, it did not: the matcher returned
+`VERDICT: RECORD`, not `ESCALATE`. That is the measured result this slice contributes. Freeze
+resumes on landing, per CD-44.
+S1 is done. The stale expectation is corrected and the suite is green.
+
+## What changed
+
+`tests/ai_project_metrics_test.php` — assertion 3 now names the seventh canonical status:
+
+```php
+($m['runs_by_status'] ?? null) === ['completed' => 1, 'silent' => 0, 'failed' => 1, 'abandoned' => 0, 'blocked' => 0, 'running' => 1, 'other' => 0]
+```
+
+plus a comment recording where the canonical list comes from: `RUN_STATUSES` at `tools/ai-run.php:58` (`running, completed, silent, failed, abandoned, blocked`) plus the metric's own `other` bucket (`tools/ai-project.php:517`). `tools/ai-project.php` was not touched. Nothing staged/committed/pushed; logs went to `/tmp`.
+
+## The authority route worked
+
+CD-44's pre-declared `exceptions:` entry is consulted, so this time the existing-test prohibition did **not** block the honest fix:
+
+```
+$ php tools/ai-autonomy.php check "correct stale runs_by_status expectation" --path=tests/ai_project_metrics_test.php --contract=.ai/projects/gen4-r1/slices/s1-stale-metrics-expectation.md --level=L3
+VERDICT: RECORD
+level: L3
+...
+reasons:
+  - path 'tests/ai_project_metrics_test.php' would trip the existing-test prohibition; authorised by exception '...' (authority: CD-44; ...)
+authorised by exception:
+  - correct the stale runs_by_status expectation in the metrics suite (authority: CD-44)
+```
+
+## Evidence (all acceptance criteria)
+
+- **Green:** `php tests/ai_project_metrics_test.php` → `16/16 passed`, `Assertions: 16`, `EXIT=0`.
+- **Non-vacuity:** with `'blocked' => 0` temporarily removed the same suite returned `15/16 passed`, `EXIT=1`; restored → `16/16`.
+- **Control:** a `/tmp` probe against the live metric payload shows the assertion is `true` for the corrected form and `false` for the stale form, for a dropped canonical status (`completed` or `blocked`), and for a wrong count.
+- **Weakening?** No. The edit adds a required key and keeps the strict full-array `===`; the pre-existing assertion was the weaker one (6 keys → 7 keys).
+
+## Claim binding
+
+Report written to the run's canonical path `.ai/runs/gen4-r1-s1-20260914160024-b44be7.report.txt` (found via the run record, not invented). The extractor sees exactly one claim, and it re-derives:
+
+```
+VERIFY — gen4-r1-s1-20260914160024-b44be7
+  [RE_DERIVED] TEST_RESULT  php tests/ai_project_metrics_test.php
+      claimed {"passed":16,"total":16,"exit_code":0} observed {"exit_code":0,"passed":16,"total":16}
+  summary: attempted=1 re-derived=1 contradicted=0 refused=0 not_re_derivable=0 unverified=0
+```
+
+The S1 prediction (that the prohibition would block a test correction) did not fire, because CD-44's exception route is now built and the declaration predates dispatch. That is the slice's measured result; the freeze resumes per CD-44.

@@ -1,0 +1,90 @@
+## Result block
+
+**status:** PARTIAL — implementation complete and test gates pass, but live acceptance failed.
+
+**changed:**
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php`
+- `kernel/Services/TenantProvisioner.php`
+- `src/helpers/module-migrations.php`
+- Eight `modules/cms-akira/*/helpers.php` files
+- `tests/capability_authorization_policy_migration_test.php`
+- `tests/capability_policy_lifecycle_test.php`
+
+**implementation summary:**
+- A1: Added explicit tenant-scoped seeding via `seedPolicyForCurrentScope()`. No tenant scope now skips and logs the reason. Converted all 14 ambient call sites found in the repository; none still use `app()->db()` for authority seeding.
+- Tenant provisioning and `tenant:migrate` now load helper declarations after establishing tenant scope.
+- A2: Seeding now:
+  - applies narrowing,
+  - leaves unchanged rows untouched,
+  - refuses and records widening,
+  - never changes suspended/revoked rows.
+- `allowed_roles` and `caller_module` use subset semantics; empty means unrestricted.
+- `requires_protocol`: `v1 → v2` is narrowing; `v2 → v1` is widening. Unknown protocol changes are refused.
+- `provider_activation_required`: `false → true` is narrowing; `true → false` is widening.
+- A3: `replaceActiveRowRoles()` requires an existing transaction and inserts clones directly with their final grant state.
+- Loudly: the migration test assertion pinning automatic governed-field updates was intentionally inverted to enforce ratified D-Q4.
+
+**verification:**
+- Focused policy migration: `18 passed, 0 failed`.
+- Focused lifecycle: `10 passed, 0 failed`.
+- Widening falsifier, with guard temporarily removed: `16 passed, 2 failed`, exit `1`; source restored afterward.
+- Full suite: `106 files — 97 passed, 9 skipped, 0 failed`, exit `0`.
+- Governance: `GOVERNANCE GATE=PASS`, exit `0`.
+- `storage/modules.json` restored as `kajagogoo:www-data`, mode `666`.
+- `git diff --check`: clean.
+- No `modules/daily-ledger/**` changes.
+
+**evidence:**
+```text
+tenant_scope=NULL helpers_loaded=15 kernel_rows_before=46 kernel_rows_after=46 delta=0
+```
+
+```text
+tenant_rows_before=43
+php ikabud tenant:migrate 54 cms-akira-core
+Nothing to migrate.
+tenant_rows_after=43
+```
+
+```text
+Capability authorization policy migration tests: 18 passed, 0 failed
+Capability policy lifecycle tests: 10 passed, 0 failed
+```
+
+Falsification:
+```text
+✗ seedPolicy applies narrowing and refuses widening...
+✗ a widening caller declaration is refused until operator re-grant
+Capability authorization policy migration tests: 16 passed, 2 failed
+FALSIFICATION_EXIT=1
+```
+
+Full raw outputs:
+- `/tmp/policy-seeding-composer-test-final.raw`
+- `/tmp/policy-seeding-governance.raw`
+
+Contaminated rows were not deleted:
+```text
+kernel_authority_rows=46 kernel_akira_rows=44
+```
+
+**scope:**
+- No commit, push, branch, dependency, or DDL added.
+- No contaminated authority rows removed.
+
+**risks:**
+- Seeding decisions are recorded through `write_log`; no new audit primitive was introduced.
+- Helper loading during tenant migration/provisioning now projects helper-owned declarations under explicit tenant scope.
+
+**unresolved:**
+- Live acceptance failed after the final suite:
+```text
+akiracms.test/       status=503
+akiracms.test/login  status=200
+akiracms.test/posts  status=503
+error_log_bytes=0
+```
+- Application logs report missing capability providers such as `cms.content.get@1`, `cms.themes.list@1`, and `cms.media.get@1`. Repairing those providers is outside this contract and was not attempted.
+- Fresh tenant provisioning policy-row counts were not directly measured, though the provisioning path was updated and `tenant_dedicated_provisioning_test.php` passed.
+
+**recommended next state:** BLOCKED_ON_LIVE_BASELINE — investigate the missing CMS capability providers, then rerun the three live checks.

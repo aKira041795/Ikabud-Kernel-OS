@@ -1,0 +1,437 @@
+# REPORT — guardrail-trust-surface: close the verified fail-opens and make the verifier trust surface unreachable
+
+repo: `/var/www/html/ikabudsix`
+contract: `.ai/guardrail-trust-surface.contract.md`
+authority: owner directive 2026-09-14 ("a strict guardrail that you as chair cannot break"); CD-21 rules 1-4
+PHP: `/usr/bin/php8.3` (8.3.33); `php` on PATH is 8.5.10, so every command below names 8.3 explicitly
+status: COMPLETE — D1-D4 implemented; the adversarial AC1 probe that passed before now fails as required.
+
+Every claim declares the command that demonstrates it. The setup for the probe contracts is at the end
+("SETUP") so the commands below are reproducible from a clean `/tmp`.
+
+## Scope disclosure (required by the standing harness contract)
+
+The contract's "Files likely affected" lists `tools/ai-autonomy.php`, `tools/ai-run.php`,
+`tools/ai-project.php`, `tests/ai_autonomy_test.php`, `tests/ai_run_test.php`, `tests/ai_project_test.php`.
+Two facts forced one additional, disclosed change:
+
+1. `tests/ai_contract_lint_test.php` test 3 pinned the historical contract
+   `.ai/scope-path-semantics.contract.md` as `parse === true`. That contract names `tools/ai-autonomy.php`,
+   `tools/ai-contract-lint.php` and `kernel/Workbench/Development/DevelopmentTaskContract.php` in
+   "Files likely affected", so D1 now refuses it (exit 2) by design. `tests/ai_run_test.php` test 32
+   re-derives and executes `tests/ai_contract_lint_test.php`, so the stale assertion would have made a
+   required suite fail. The assertion was updated to assert the intentional trust-surface refusal (still
+   exit 2, still phantom-free) rather than a parse success. This is an adaptation to the specified
+   behaviour, not a weakening: the assertion is strictly more specific (it names the refusal reason) and
+   the corpus/phantom checks are unchanged.
+2. `.ai/guardrail-trust-surface.contract.md` (this contract) itself names the trust surface, so from now
+   on `php tools/ai-autonomy.php plan --contract=.ai/guardrail-trust-surface.contract.md` exits 2. That is
+   the constituting change, performed once under the owner directive. Once shipped, any further change to
+   the trust surface requires the director.
+
+No `## Forbidden changes` path was touched. No test or gate was skipped or deleted, and none was relaxed
+(the one test-assertion adaptation is disclosed above and is strictly more specific than before). No new
+runtime dependency. No `scripts/run-tests.php` / `composer test` / CMS bootstrap was run.
+
+## D1 — the verifier trust surface is contract-unreachable (CD-21 rule 1)
+
+The single `l4Taxonomy()` list gained one `absolute` entry,
+`['reason' => 'modifying the verifier trust surface', 'class' => 'absolute', 'decidable' => true, 'matchers' => ['trust_surface']]`.
+The matcher `taxonomyMatcherMatches('trust_surface', $path)` delegates to `isTrustSurfacePath()`, whose
+docblock records the 2026-09-14 owner directive, the constituting-change status, and that subsequent
+amendments are director-only. The seven paths live in one function, `trustSurfacePaths()`. Ambiguity fails
+closed: exact file, directory covering a trust-surface file, glob that could match one, and unresolved
+symlink all match. `check` applies the matcher to `--path` values *and* to path-shaped tokens in the action
+text. `plan` refuses a contract that names a trust-surface file (exact, or a glob that could match one) in
+`allowed_scope`/`baseline_scope`; a broad directory entry such as `tools/` is not refused at plan time
+(over-blocking guard) because the concrete-path matcher still escalates every trust-surface edit at `check`.
+
+CLAIM: AC1 (adversarial) — the probe that passed before the fix now fails. `plan` on a contract listing `tools/ai-run.php` exits 2 and names the path and states the trust surface is not contract-authorisable.
+COMMAND: /usr/bin/php8.3 tools/ai-autonomy.php plan --contract=/tmp/gt-ev/ac1.md --decisions-dir=/tmp/gt-ev/dec; echo "EXIT=$?"
+OBSERVED:
+ERROR: contract names the verifier trust surface in its scope and is refused: tools/ai-run.php — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+
+CLAIM: AC1 (adversarial) — `check "widen the command allowlist to accept python3 evidence" --path=tools/ai-run.php` (the path IS inside `allowed_scope`) now returns ESCALATE / L4 / exit 3.
+COMMAND: /usr/bin/php8.3 tools/ai-autonomy.php check "widen the command allowlist to accept python3 evidence" --path=tools/ai-run.php --contract=/tmp/gt-ev/ac1.md; echo "EXIT=$?"
+OBSERVED:
+VERDICT: ESCALATE
+level: L4
+action: widen the command allowlist to accept python3 evidence
+paths:
+  - tools/ai-run.php
+reasons:
+  - path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT=3
+
+CLAIM: AC1 before-state — the exact same two probes passed on the unfixed HEAD of `tools/ai-autonomy.php` (plan exit 0, check RECORD/L2/exit 0). Reproduced by temporarily reverting only that file with `git stash`.
+COMMAND: git stash push -- tools/ai-autonomy.php; /usr/bin/php8.3 tools/ai-autonomy.php plan --contract=/tmp/gt-ev/ac1.md --decisions-dir=/tmp/gt-ev/dec; echo "plan EXIT=$?"; /usr/bin/php8.3 tools/ai-autonomy.php check "widen the command allowlist to accept python3 evidence" --path=tools/ai-run.php --contract=/tmp/gt-ev/ac1.md; echo "check EXIT=$?"; git stash pop
+OBSERVED:
+plan EXIT=0
+AUTONOMY ENVELOPE — /tmp/gt-ev/ac1.md
+objective: Probe.
+VERDICT: RECORD
+level: L2
+action: widen the command allowlist to accept python3 evidence
+paths:
+  - tools/ai-run.php
+reasons:
+check EXIT=0
+
+CLAIM: Non-vacuity guard — an ordinary in-scope path that is NOT on the trust surface still returns RECORD / L2 / exit 0, so the escalation above is attributable to the trust surface, not a blanket tightening.
+COMMAND: /usr/bin/php8.3 tools/ai-autonomy.php check "update the fixture notes" --path=tools/guardrail-notes.md --contract=/tmp/gt-ev/ordinary.md; echo "EXIT=$?"
+OBSERVED:
+VERDICT: RECORD
+level: L2
+action: update the fixture notes
+paths:
+  - tools/guardrail-notes.md
+reasons:
+  - path 'tools/guardrail-notes.md' matched 'tools' by directory prefix
+EXIT=0
+
+CLAIM: Over-blocking guard — a normal contract whose allowed scope is the broad `tools/` directory still plans cleanly (exit 0, no trust-surface refusal).
+COMMAND: /usr/bin/php8.3 tools/ai-autonomy.php plan --contract=/tmp/gt-ev/ordinary.md --decisions-dir=/tmp/gt-ev/dec >/dev/null; echo "EXIT=$?"
+OBSERVED:
+EXIT=0
+
+CLAIM: Action-text matcher — a bare action naming the verifier with NO `--path` still escalates (the matcher applies to the action, not only the path).
+COMMAND: /usr/bin/php8.3 tools/ai-autonomy.php check "edit tools/ai-project.php" --contract=/tmp/gt-ev/ordinary.md; echo "EXIT=$?"
+OBSERVED:
+VERDICT: ESCALATE
+level: L4
+action: edit tools/ai-project.php
+paths:
+reasons:
+  - path 'tools/ai-project.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT=3
+
+CLAIM: Every one of the seven enumerated trust-surface paths escalates when the contract allows it, and a glob that could match one fails closed. Covered by tests/ai_autonomy_test.php tests 41 and 43.
+COMMAND: /usr/bin/php8.3 tests/ai_autonomy_test.php 2>&1 | grep -E "4[0-5]\."
+OBSERVED:
+  ✅ 40. plan refuses a contract that names a trust-surface path, naming it
+  ✅ 40a. plan refuses a contract naming several trust-surface paths
+  ✅ 41. every enumerated trust-surface path escalates even when the contract allows it
+  ✅ 42. action text naming the verifier escalates without a --path
+  ✅ 43. a glob that could match a trust-surface file fails closed
+  ✅ 44. an ordinary in-scope path still records (non-vacuity guard)
+  ✅ 45. a broad `tools/` directory is not refused at plan time (over-blocking guard)
+
+NOTE — contradiction in the dispatch text vs the contract: the dispatch suggested `--path=tools/ai-project.php`
+as the "ordinary in-scope path" non-vacuity guard. `tools/ai-project.php` is one of the seven enumerated
+trust-surface paths in the contract, so a correct D1 escalates it. The non-vacuity guard therefore uses
+`tools/guardrail-notes.md`, an ordinary path. Escalating `tools/ai-project.php` is demonstrated above.
+
+## D2 — the trust surface is hashed into the ledger and commit-check refuses on mismatch (CD-21 rule 2)
+
+`tools/ai-run.php` records `trust_surface_hash` (sha256 of the seven files, sorted by path, concatenated)
+and `trust_surface_files` (per-file digests) at `start`. `commit-check` recomputes the digest and refuses
+with NOT ELIGIBLE / exit 3, naming the file(s) whose hash moved. A record with no hash (older ledger) or an
+`unavailable` hash is NOT blocked (documented trade-off in the code): failing closed on historical records
+would make the gate unusable. New records always carry the hash.
+
+Note on the architectural constraint: the *prohibition* remains single-sourced in `l4Taxonomy()`;
+`tools/ai-run.php` mirrors the same seven paths in its own `trustSurfacePaths()` only because both drivers
+define identical top-level constants and helper functions and so cannot `require` each other. The mirror is
+commented as such and pinned by tests: `tests/ai_autonomy_test.php` test 41 proves all seven escalate in
+the driver, and `tests/ai_run_test.php` test 3a proves the ledger records all seven keys, so drift in either
+list fails a suite.
+
+CLAIM: `start` records the aggregate hash and the seven per-file digests.
+COMMAND: mkdir -p /tmp/gt-ev/d2; printf 'content\n' > /tmp/gt-ev/d2/log.txt; /usr/bin/php8.3 tools/ai-run.php start --contract=/tmp/gt-ev/ordinary.md --lane=test --name=d2-run --log=/tmp/gt-ev/d2/log.txt --runs-dir=/tmp/gt-ev/d2; /usr/bin/php8.3 -r '$r=json_decode(file_get_contents("/tmp/gt-ev/d2/d2-run.json"),true); printf("trust_surface_hash=%s\nfiles=%d\n",$r["trust_surface_hash"],count($r["trust_surface_files"]));'
+OBSERVED:
+RUN d2-run started
+  contract:  /tmp/gt-ev/ordinary.md @ db3f6eef55fbf12e
+  scope:     1 allowed, 1 forbidden
+  lane:      test
+  pid:       2200488
+  trust:     350813c865f0214add0576e78ce90e59ed749021f52e3a19f947bff77d82915a
+  log:       /tmp/gt-ev/d2/log.txt
+  record:    /tmp/gt-ev/d2/d2-run.json
+trust_surface_hash=350813c865f0214add0576e78ce90e59ed749021f52e3a19f947bff77d82915a
+files=7
+
+CLAIM: AC4 — a completed run whose recorded trust-surface digest does not match the current seven files makes `commit-check` NOT ELIGIBLE / exit 3 and names the moved file. Demonstrated by an injected hash mismatch into a temp run record; the real trust-surface files are never edited.
+COMMAND: /usr/bin/php8.3 tools/ai-run.php finish --id=d2-run --exit=0 --runs-dir=/tmp/gt-ev/d2 >/dev/null; /usr/bin/php8.3 -r '$p="/tmp/gt-ev/d2/d2-run.json";$r=json_decode(file_get_contents($p),true);$r["trust_surface_files"]["tools/ai-run.php"]=str_repeat("0",64);$r["trust_surface_hash"]=str_repeat("1",64);file_put_contents($p,json_encode($r,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");'; /usr/bin/php8.3 tools/ai-run.php commit-check --runs-dir=/tmp/gt-ev/d2; echo "EXIT=$?"
+OBSERVED:
+COMMIT-CHECK — /tmp/gt-ev/d2
+  NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+  BLOCK  d2-run  trust_surface_mismatch  age=0s  pid=2200488  changed=tools/ai-run.php
+EXIT=3
+
+CLAIM: D2 before-state — the unfixed commit-check ignored a recorded mismatch entirely and returned ELIGIBLE / exit 0.
+COMMAND: mkdir -p /tmp/gt-ev/d2b; /usr/bin/php8.3 -r 'file_put_contents("/tmp/gt-ev/d2b/legacy.json", json_encode(["id"=>"legacy","status"=>"completed","trust_surface_hash"=>str_repeat("1",64),"trust_surface_files"=>["tools/ai-run.php"=>str_repeat("0",64)],"claim_verification"=>["results"=>[["status"=>"RE_DERIVED"]]]], JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");'; git stash push -- tools/ai-run.php; /usr/bin/php8.3 tools/ai-run.php commit-check --runs-dir=/tmp/gt-ev/d2b; echo "EXIT=$?"; git stash pop
+OBSERVED:
+COMMIT-CHECK — /tmp/gt-ev/d2b
+  ELIGIBLE — all 1 run(s) are completed
+EXIT=0
+
+CLAIM: The documented trade-off — a legacy record with no trust-surface hash is NOT blocked (exit 0), so historical runs are not spuriously refused.
+COMMAND: /usr/bin/php8.3 tests/ai_run_test.php 2>&1 | grep "25c."
+OBSERVED:
+  ✅ 25c. commit-check: a legacy record without a trust-surface hash is not blocked
+
+## D3 — commit-check fails closed on unreadable/malformed records (verified finding A-F3)
+
+`loadAllRuns()` already collected unreadable files in `errors`, but `commandCommitCheck()` dropped them from
+the gate and only printed a stderr warning. Every unreadable/malformed record is now added to `blocking`
+with status `unreadable`, making commit-check NOT ELIGIBLE / exit 3 and naming the file. Rationale stated in
+the code: an unreadable record cannot be shown to be non-blocking, so it is blocking.
+
+CLAIM: AC2 — a malformed run record in a temp runs dir now makes `commit-check` exit 3 and names the file (was exit 0).
+COMMAND: mkdir -p /tmp/gt-ev/d3; printf '{not valid json' > /tmp/gt-ev/d3/broken.json; /usr/bin/php8.3 tools/ai-run.php commit-check --runs-dir=/tmp/gt-ev/d3; echo "EXIT=$?"
+OBSERVED:
+COMMIT-CHECK — /tmp/gt-ev/d3
+  NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+  BLOCK  broken.json  unreadable  age=0s  pid=0
+WARN: unreadable run record /tmp/gt-ev/d3/broken.json
+EXIT=3
+
+CLAIM: D3 before-state — the same malformed record yielded ELIGIBLE / exit 0 on the unfixed HEAD of `tools/ai-run.php`.
+COMMAND: git stash push -- tools/ai-run.php; /usr/bin/php8.3 tools/ai-run.php commit-check --runs-dir=/tmp/gt-ev/d3; echo "EXIT=$?"; git stash pop
+OBSERVED:
+COMMIT-CHECK — /tmp/gt-ev/d3
+  ELIGIBLE — no runs recorded; nothing can be mid-flight
+WARN: unreadable run record /tmp/gt-ev/d3/broken.json
+EXIT=0
+
+## D4 — completion evidence is bound, not merely well-formed (verified finding A-F4)
+
+`assertRunReDerived()` now requires: `record['id'] === $runId`; `record['contract_revision']` present and
+equal to the slice contract's current revision; `claim_verification['contract_revision']` (when present)
+equal to `record['contract_revision']`; `claim_verification['rev']` equal to the current `git rev-parse HEAD`;
+`claim_verification['dirty'] === false`; and non-empty results all `RE_DERIVED`. The verify record now
+carries the start-time contract revision so the two cannot be swapped independently. This brings the older
+PHP gate up to the standard set by `harpp_wake.py:_stage_result_matches()`.
+
+AC3 — a foreign or stale run record is refused by the `done` transition (was accepted).
+
+CLAIM: D4 after-state — foreign id, stale rev refuse; a fully bound record is accepted.
+COMMAND: bash /tmp/gt-ev/evidence-d4.sh 2>&1 | sed -n '/D4 AFTER/,/D4 BEFORE/p'
+OBSERVED:
+===== D4 AFTER (fixed) =====
+--- done --run=foreign ---
+REFUSED: done refused: run foreign is missing, foreign, or not completed
+EXIT=3
+--- done --run=stale ---
+REFUSED: done refused: run stale records rev 0000000000000000000000000000000000000000, current HEAD is c243aff9fd3e7ba8a8c8a06120fa4cf32faa9329; the evidence does not describe this tree
+EXIT=3
+--- done --run=bound ---
+SLICE S1 -> done
+EXIT=0
+
+CLAIM: D4 before-state — the unfixed HEAD of `tools/ai-project.php` accepted all three records (foreign, stale, and bound), exit 0.
+COMMAND: bash /tmp/gt-ev/evidence-d4.sh 2>&1 | sed -n '/D4 BEFORE/,$p'
+OBSERVED:
+===== D4 BEFORE (tools/ai-project.php reverted to HEAD) =====
+--- done --run=foreign ---
+SLICE S1 -> done
+EXIT=0
+--- done --run=stale ---
+SLICE S1 -> done
+EXIT=0
+--- done --run=bound ---
+SLICE S1 -> done
+EXIT=0
+
+CLAIM: D4 dirty-tree and stale-contract-revision branches are additionally pinned by tests 14 and 15.
+COMMAND: /usr/bin/php8.3 tests/ai_project_test.php 2>&1 | grep -E "1[2-6]\."
+OBSERVED:
+  ✅ 12. a foreign run record (internal id != run id) is refused
+  ✅ 13. a stale revision is refused
+  ✅ 14. a dirty-tree verification is refused
+  ✅ 15. a stale contract revision is refused
+  ✅ 16. a fully bound record is accepted (positive control)
+
+## AC5 — required suites pass with zero skips, and every new test fails without its fix
+
+CLAIM: All three required suites pass, with zero skips.
+COMMAND: /usr/bin/php8.3 tests/ai_autonomy_test.php; echo "autonomy EXIT=$?"; /usr/bin/php8.3 tests/ai_run_test.php; echo "run EXIT=$?"; /usr/bin/php8.3 tests/ai_project_test.php; echo "project EXIT=$?"
+OBSERVED (suite tails):
+  RESULTS
+  53/53 passed
+  Assertions: 53
+
+  Suite: ai-autonomy
+  RESULTS
+  39/39 passed
+  Assertions: 39
+
+  Suite: ai-run
+  RESULTS
+  16/16 passed
+  Assertions: 16
+
+  Suite: ai-project
+
+autonomy EXIT=0
+run EXIT=0
+project EXIT=0
+
+CLAIM: The three result files record zero skips.
+COMMAND: for t in ai-autonomy ai-run ai-project; do /usr/bin/php8.3 -r '$d=json_decode(file_get_contents("test_results/".$argv[1].".json"),true);$x=$d["summary"];echo $argv[1]." passed=".$x["passed"]." failed=".$x["failed"]." skipped=".$x["skipped"]." total=".$x["total"]." exit=".$x["exit_code"]."\n";' "$t"; done
+OBSERVED:
+ai-autonomy passed=53 failed=0 skipped=0 total=53 exit=0
+ai-run passed=39 failed=0 skipped=0 total=39 exit=0
+ai-project passed=16 failed=0 skipped=0 total=16 exit=0
+
+CLAIM: Every new test fails when its fix is reverted. D1 (tools/ai-autonomy.php): tests 40, 40a, 41, 42 and 43 fail; the ordinary-path guard 44 and the broad-directory guard 45 still pass (they are not fix-dependent).
+COMMAND: cp tools/ai-autonomy.php /tmp/ai-autonomy.fixed.php; git stash push -- tools/ai-autonomy.php; /usr/bin/php8.3 tests/ai_autonomy_test.php 2>&1 | grep -E "4[0-5a]+\. .*(✅|❌)"; git stash pop
+OBSERVED:
+  ❌ 40. plan refuses a contract that names a trust-surface path, naming it
+  ❌ 40a. plan refuses a contract naming several trust-surface paths
+  ❌ 41. every enumerated trust-surface path escalates even when the contract allows it — failures=["tools/ai-run.php: exit 0","tools/ai-autonomy.php: exit 0","tools/ai-project.php: exit 0","tools/ai-loop.php: exit 0","tools/ai-contract-lint.php: exit 0","kernel/Workbench/Development/DevelopmentTaskContract.php: exit 0","tools/harpp-bridge/harpp_wake.py: exit 0"]
+  ❌ 42. action text naming the verifier escalates without a --path
+  ❌ 43. a glob that could match a trust-surface file fails closed
+  ✅ 44. an ordinary in-scope path still records (non-vacuity guard)
+  ✅ 45. a broad `tools/` directory is not refused at plan time (over-blocking guard)
+
+CLAIM: D2/D3 (tools/ai-run.php): tests 3a, 25a and 25b fail; 25c (legacy non-blocking) passes because it is a trade-off guard, not a fix-dependent assertion.
+COMMAND: git stash push -- tools/ai-run.php; /usr/bin/php8.3 tests/ai_run_test.php 2>&1 | grep -E "3a\.|25[abc]\."; git stash pop
+OBSERVED:
+  ❌ 3a. start records the trust-surface anchor (aggregate + seven files)
+  ❌ 25a. commit-check: a malformed record is NOT ELIGIBLE and names the file (D3)
+  ❌ 25b. commit-check: a trust-surface hash mismatch blocks and names the file (D2)
+  ✅ 25c. commit-check: a legacy record without a trust-surface hash is not blocked
+
+CLAIM: D4 (tools/ai-project.php): tests 12, 13, 14 and 15 fail; 16 (positive control) passes.
+COMMAND: git stash push -- tools/ai-project.php; /usr/bin/php8.3 tests/ai_project_test.php 2>&1 | grep -E "1[2-6]\."; git stash pop
+OBSERVED:
+  ❌ 12. a foreign run record (internal id != run id) is refused
+  ❌ 13. a stale revision is refused
+  ❌ 14. a dirty-tree verification is refused
+  ❌ 15. a stale contract revision is refused
+  ✅ 16. a fully bound record is accepted (positive control)
+
+## Files changed
+
+- tools/ai-autonomy.php — trust-surface list + fail-closed matcher as an `absolute` l4Taxonomy entry; plan refusal; action-text matching.
+- tools/ai-run.php — trust-surface digest recorded at start; commit-check refuses on mismatch and on unreadable records; verify records the contract revision.
+- tools/ai-project.php — assertRunReDerived binds id, contract revision, rev and dirty.
+- tests/ai_autonomy_test.php — tests 40-45; trust_surface added to the taxonomy probe set (test 28).
+- tests/ai_run_test.php — tests 3a, 25a, 25b, 25c.
+- tests/ai_project_test.php — tests 12-16; tests 3/4 fixtures made fully bound so they reach their intended assertion.
+- tests/ai_contract_lint_test.php — test 3 adapted to the intentional trust-surface refusal (disclosed above).
+
+## SETUP — recreate the probe contracts (run once before the commands above)
+```bash
+mkdir -p /tmp/gt-ev/dec
+cat > /tmp/gt-ev/ac1.md <<'MD'
+# SLICE — probe
+project: probe · status: READY_FOR_IMPLEMENTATION · revision: 1
+lane: deepseek/deepseek-v4-flash
+
+harness:
+  references: .ai/ai-autonomy-harness.contract.md
+  autonomy: L0-L3 unattended; L4 defers to the director
+  decisions_dir: .ai/decisions
+  decision_transport: harpp
+  evidence: real command output and exit codes
+
+## Objective
+Probe.
+
+## Architectural constraints
+- none
+
+## Files likely affected
+- `tools/ai-run.php` — verifier
+
+## Acceptance criteria
+- ok
+
+## Required tests
+- `php -l tools/ai-run.php`
+
+## Risks
+- none
+
+## Forbidden changes
+- `kernel/`
+MD
+cat > /tmp/gt-ev/ordinary.md <<'MD'
+# SLICE — ordinary probe
+status: READY_FOR_IMPLEMENTATION
+
+## Objective
+Ordinary non-vacuity probe.
+
+## Architectural constraints
+- none
+
+## Files likely affected
+- `tools/` — ordinary tools work
+
+## Acceptance criteria
+- ok
+
+## Required tests
+- `php -l tools/ai-run.php`
+
+## Risks
+- none
+
+## Forbidden changes
+- `kernel/`
+MD
+```
+
+### SETUP 2 — D4 fixture and evidence script
+
+The D4 commands call `/tmp/gt-ev/evidence-d4.sh`; create it once with exactly this content:
+```bash
+#!/usr/bin/env bash
+set -u
+cd /var/www/html/ikabudsix
+PHP=/usr/bin/php8.3
+EV=/tmp/gt-ev
+D4=$EV/d4
+rm -rf "$D4"; mkdir -p "$D4/projects/fixture/slices" "$D4/runs"
+cat > "$D4/projects/fixture/project.md" <<'MD'
+# PROJECT — fixture
+status: READY_FOR_IMPLEMENTATION
+
+## Slices
+| # | Slice | Delivers |
+|---|---|---|
+| **S1** | First | x |
+MD
+cat > "$D4/projects/fixture/slices/s1.md" <<'MD'
+# SLICE — S1
+status: READY_FOR_IMPLEMENTATION
+## Objective
+Fixture.
+## Architectural constraints
+- pure
+## Files likely affected
+- `tools/ai-project.php`
+## Acceptance criteria
+- criterion one
+## Required tests
+- `php -l tools/ai-project.php`
+## Risks
+- none
+## Forbidden changes
+- `kernel/`
+MD
+REV=$(git rev-parse HEAD)
+CREV=$($PHP -r 'require "kernel/Workbench/Development/DevelopmentTaskContract.php"; echo Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::revisionId(Ikabud\Kernel\Workbench\Development\DevelopmentTaskContract::parseCurrentTaskMarkdown(file_get_contents($argv[1])));' "$D4/projects/fixture/slices/s1.md")
+WRITE_RECORD='{ "id": "%s", "status": "completed", "contract_revision": "%s", "claim_verification": { "contract_revision": "%s", "rev": "%s", "dirty": %s, "results": [ { "status": "RE_DERIVED" } ] } }'
+printf "$WRITE_RECORD" "other-run" "$CREV" "$CREV" "$REV" "false" > "$D4/runs/foreign.json"
+printf "$WRITE_RECORD" "stale" "$CREV" "$CREV" "0000000000000000000000000000000000000000" "false" > "$D4/runs/stale.json"
+printf "$WRITE_RECORD" "bound" "$CREV" "$CREV" "$REV" "false" > "$D4/runs/bound.json"
+COMMON=(--project=fixture --projects-dir="$D4/projects" --runs-dir="$D4/runs")
+probe() { local id="$1"; rm -f "$D4/projects/fixture/state.json"; $PHP tools/ai-project.php transition "${COMMON[@]}" --slice=S1 --state=running --run="$id" >/dev/null; printf '%s\n' "--- done --run=$id ---"; $PHP tools/ai-project.php transition "${COMMON[@]}" --slice=S1 --state=done --run="$id"; printf 'EXIT=%s\n' "$?"; }
+printf '===== D4 AFTER (fixed) =====\n'
+probe foreign
+probe stale
+probe bound
+git stash push -- tools/ai-project.php >/dev/null 2>&1
+trap 'git stash pop >/dev/null 2>&1' EXIT
+printf '===== D4 BEFORE (tools/ai-project.php reverted to HEAD) =====\n'
+probe foreign
+probe stale
+probe bound
+```

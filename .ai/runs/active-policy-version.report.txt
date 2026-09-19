@@ -1,0 +1,138 @@
+# Implementation report — active policy version
+
+## What changed
+
+**Kernel (one additive static method only):**
+- `kernel/Capabilities/CapabilityAuthorizationRegistry.php`: added `public static function activePolicyVersionForCurrentScope(): int`. It mirrors `seedPolicyForCurrentScope()` exactly (`AuthorityScopeResolver::forApplication()`, `resolveForCapability([], ['user' => …])`, `database($scope)`), derives the version from `activePolicyRows()`, returns `1` for no app / no scope / no PDO / empty set / any `Throwable`, and never touches an ambient DB. No other kernel file or method was touched.
+
+**Every declaration seed now routes through that one resolver (inline re-derivations removed):**
+- `cms-akira-core/helpers.php` — 5 pinned rows, the shell-read inline block, and `cacSeedGovernancePolicies()`.
+- `cms-akira-core/helpers.php` — **`cacActivePolicyVersion()` deleted**; governance calls the kernel resolver.
+- `cms-akira-shell/helpers.php` — the **literal `30` is gone**, replaced by the resolver.
+- `cms-akira-builder`, `cms-akira-navigation`, `cms-akira-search`, `cms-akira-seo`, `cms-akira-theme`, `cms-akira-workflow`, `cms-akira-media`, `gui-settings` — pinned literals and/or inline blocks replaced.
+- `cms-akira-media/helpers.php` — `camMediaActivePolicyVersion()` also deleted (second named duplicate).
+- `tests/active_policy_version_test.php` — new pure source-level guard (no `require`/`include`, no `bootstrap.php`, no `MODE_INTEGRATION`).
+
+---
+
+## Required commands
+
+```
+$ php tests/active_policy_version_test.php
+  ✓ the detector catches a literal integer policy_version and ignores a resolver call
+  ✓ the kernel exposes the single static active policy version resolver
+  ✓ no declaration seed constructs a policy row with a literal integer policy_version
+  ✓ the module-local cacActivePolicyVersion() duplicate is deleted
+  ✓ the governance seed joins the kernel resolver
+  ✓ the shell seed no longer pins the observed tenant version 30
+  ✓ the media-local active-version duplicate is deleted
+active policy version: 7 passed, 0 failed; scanned 11 declaration-seed files
+exit=0
+```
+
+```
+$ php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+  ✓ administrator sees Delete and pending Approve/Cancel actions
+shell contract: 116 passed, 0 failed
+exit=0
+```
+
+```
+$ php -l kernel/Capabilities/CapabilityAuthorizationRegistry.php
+No syntax errors detected in kernel/Capabilities/CapabilityAuthorizationRegistry.php
+```
+
+```
+$ php -l modules/cms-akira/cms-akira-core/helpers.php
+No syntax errors detected in modules/cms-akira/cms-akira-core/helpers.php
+```
+
+```
+$ php -l modules/cms-akira/cms-akira-shell/helpers.php
+No syntax errors detected in modules/cms-akira/cms-akira-shell/helpers.php
+```
+
+```
+$ php ikabud workbench:governance --all --json
+exit=0
+cms-akira-shell summary:
+{
+    "module": "cms-akira-shell",
+    "dispatch_enforced": 27,
+    "bus_reachable": 27,
+    "exempt": 0,
+    "undeclared": 0,
+    "total": 27,
+    "ratio": 100,
+    "bus_ratio": 100,
+    "write_dispatch_enforced": 27,
+    "write_total": 27,
+    "write_ratio": 100,
+    "read_dispatch_enforced": 16,
+    "read_exempt": 0,
+    "read_undeclared": 8,
+    "read_total": 24,
+    "read_ratio": 66.7
+}
+```
+
+`php -l` was also run on every other changed PHP file (builder, navigation, search, seo, theme, workflow, media, gui-settings, theme test) — all reported no syntax errors.
+
+---
+
+## The new test fails when a literal is reintroduced — verified
+
+I temporarily restored `'policy_version' => 30` in `cms-akira-shell/helpers.php` and ran it:
+
+```
+$ php tests/active_policy_version_test.php
+  ...
+  ✗ no declaration seed constructs a policy row with a literal integer policy_version — offending file:line: modules/cms-akira/cms-akira-shell/helpers.php:11
+  ✗ the shell seed no longer pins the observed tenant version 30
+active policy version: 5 passed, 2 failed; scanned 11 declaration-seed files
+exit=1
+```
+
+Then reverted it. The guard is real, and it names the offending `file:line`.
+
+---
+
+## Supplementary regression evidence
+
+| Test | Result |
+|---|---|
+| `tests/cms_akira_policy_authority_contract_test.php` | 2 passed, 0 failed |
+| `tests/capability_policy_lifecycle_test.php` | 10 passed, 0 failed |
+| `tests/capability_authorization_policy_migration_test.php` | 18 passed, 0 failed |
+| `tests/capability_authority_audit_test.php` | 18 passed, 0 failed |
+| `tests/authority_scope_test.php` | 21 passed, 0 failed |
+| `tests/capability_call_modes_test.php` | 11 passed, 0 failed |
+| `modules/gui-settings/tests/gui_settings_route_authority_test.php` | 14 ok, 0 bad |
+| `modules/cms-akira/cms-akira-core/tests/user_revoke_sessions_test.php` | 24 passed, 0 failed |
+| `modules/cms-akira/cms-akira-shell/tests/provenance_surface_test.php` | 12 passed, 0 failed |
+| `modules/cms-akira/cms-akira-shell/tests/authority_surface_test.php` | 8 passed, 0 failed |
+| `modules/cms-akira/cms-akira-shell/tests/workflow_console_test.php` | 20 passed, 0 failed |
+| `modules/cms-akira/cms-akira-theme/tests/theme_read_authority_test.php` | 15 passed, **1 failed (pre-existing, below)** |
+| `modules/cms-akira/cms-akira-media/tests/media_contract_test.php` | SKIP — required table `cms_akira_media` absent |
+| `workflow_contract_test.php`, `search_contract_test.php`, `seo_contract_test.php`, `navigation_contract_test.php`, `builder_contract_test.php`, `post_mutation_test.php` | SKIP (live-tenant guard / missing table / inactive module) |
+
+Fail-safe probe (ad-hoc, not a committed test):
+- no `app()` defined → returned `int(1)`, no throw.
+- `app()` with a `user()` but no tenant/DB → returned `int(1)`, no throw.
+
+---
+
+## Reported findings (not silently changed)
+
+1. **Unlisted kernel instance of the same defect class — `kernel/Services/ModuleInstallService.php:78`.** Its default `policySeeder` builds rows with `'policy_version' => 1` and writes them with `new CapabilityAuthorizationRegistry($db)->seedPolicy($rows)`. On a late module install against a tenant whose active version has advanced, those rows land invisible, exactly like `akira.user.revoke_sessions@1` did. The contract forbids me from touching any kernel file other than the additive method, so I did **not** change it and did **not** add it to the guard's scanned list (doing either would violate the contract). This is a real remaining instance of the class and needs a follow-up slice or an explicit scope expansion.
+
+2. **`modules/cms-akira/cms-akira-theme/tests/theme_read_authority_test.php` was edited (reported, not forbidden).** Its `$seedJoinsActiveVersion` check source-inspected the old inline mechanism (`activePolicyRows()` + `$activeRows[0]['policy_version']`). Since the contract requires every declaration seed to use the single kernel resolver, I re-pointed that check at `activePolicyVersionForCurrentScope()`. The guarantee is unchanged (the seed joins the active version, never version 1); it is not weakened or deleted. Without this, the theme test gained one failure.
+
+3. **Pre-existing failure, not introduced here — `tests/gui_settings_route_authority_declaration_test.php` (7 passed, 1 failed).** It asserts the Akira census rollup `dispatch_enforced == total == 47`, but the tree reports `48`. I confirmed by stashing all my changes: the clean `6605efb` tree fails identically with the same 47-vs-48 census value. The same stale-47 expectation also makes the theme test's census assertion fail (the only theme failure left). Both are pre-existing and unrelated to this slice.
+
+---
+
+## Explicit statements
+
+- **Widening is still refused.** I changed no seed semantics (`seedPolicy()`, `widenedFields()`, `governedFieldsChanged()` untouched). The D-Q4 widening-refusal assertions in `tests/capability_authorization_policy_migration_test.php` still pass (18/0). That is expected, not a defect.
+- **Policy rows already seeded at `policy_version = 1` on existing tenants are NOT migrated by this slice.** This change only stops *new* declarations from landing at a pinned version. Existing invisible rows (including, potentially, rows written by `ModuleInstallService`) remain in the database and will still read as `missing_policy_row` until a follow-up migration or re-seed moves them.

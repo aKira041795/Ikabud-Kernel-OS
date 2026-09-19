@@ -1,0 +1,202 @@
+BRIEF VERIFICATION REPORT — brief-verify-3
+Generated: 2026-09-14 (L2 re-lane of an attempt that failed on the groq provider;
+independent confirmation because a failed attempt's successor must carry the gate)
+Repo: /var/www/html/ikabudsix
+HEAD: 00480ca037c9a5acbb6adbcbfd5c49fa9aa5cf13
+Branch: feat/akira-editorial-and-authority-coverage
+Subject: docs/reviews/harness-independent-evaluation-brief.md
+Scope: read-only verification. No tracked file was modified, staged, committed or pushed.
+       The only file written is this report itself. The working-tree brief is byte-identical
+       to the committed blob (see NON-MODIFICATION CHECK), so nothing was changed under test.
+
+====================================================================
+WHAT WAS ASKED
+====================================================================
+Verify exactly this and report what is actually observed: that
+docs/reviews/harness-independent-evaluation-brief.md preserves, VERBATIM,
+
+  (1) the section 0 culture sentence,
+  (2) the section 6 verdict template, and
+  (3) the glossary line defining the Chair.
+
+If any of the three does NOT hold, say so plainly. A failed confirmation is a valid
+result; a fabricated pass is not. Do not commit, stage or push.
+
+BASELINE USED FOR "PRESERVES VERBATIM"
+"Preserves" is a claim about an edit, so it must name the revision the edit is measured
+from. The deliverable was last touched by commit 9a24649 ("docs(review): refresh the
+independent evaluation brief; and a three-lane capability test"), whose own message states
+it "preserved verbatim the section 0 culture sentence, the verdict template and the Chair
+glossary line." The baseline is therefore that commit's parent:
+
+  9a24649^  =  995553aeb603c290705a970f17f1a55817a80608
+
+For each item I extracted the referent from the pre-refresh revision and from the current
+working tree, and diffed the two extractions. A `diff` exit of 0 means byte-identical.
+
+====================================================================
+REFERENCE POINTS (line numbers in each revision)
+====================================================================
+Section 0 header:   OLD line  12  ->  NEW line 18
+Culture sentence:   OLD line  25  ->  NEW line 33   (inside §0, which spans 18-37)
+Section 6 header:   OLD line 413  ->  NEW line 740
+Verdict template:   OLD lines 421-437  ->  NEW lines 742-758
+Glossary line:      OLD line 572  ->  NEW line 1017
+
+====================================================================
+CLAIM 1 — the section 0 culture sentence is preserved verbatim
+====================================================================
+COMMAND
+$ cd /var/www/html/ikabudsix
+$ git show 9a24649^:docs/reviews/harness-independent-evaluation-brief.md > /tmp/bv3/OLD.md
+$ cp docs/reviews/harness-independent-evaluation-brief.md /tmp/bv3/NEW.md
+$ sed -n '25p' /tmp/bv3/OLD.md | grep -oE '\*\*Please treat every claim in §2 as false until you reproduce it\.\*\*' > /tmp/bv3/old_culture.txt
+$ sed -n '33p' /tmp/bv3/NEW.md | grep -oE '\*\*Please treat every claim in §2 as false until you reproduce it\.\*\*' > /tmp/bv3/new_culture.txt
+$ diff /tmp/bv3/old_culture.txt /tmp/bv3/new_culture.txt; echo "diff exit=$?"
+$ md5sum /tmp/bv3/old_culture.txt /tmp/bv3/new_culture.txt
+
+OBSERVED (verbatim)
+--- extracted OLD (9a24649^, line 25) ---
+**Please treat every claim in §2 as false until you reproduce it.**
+--- extracted NEW (working tree, line 33) ---
+**Please treat every claim in §2 as false until you reproduce it.**
+diff exit=0
+c866870751e40d46edbed18fbc579576  /tmp/bv3/old_culture.txt
+c866870751e40d46edbed18fbc579576  /tmp/bv3/new_culture.txt
+
+RESULT: HOLDS. Same bytes (identical md5). The sentence remains inside §0 in the current
+revision (line 33, section spans lines 18-37).
+
+====================================================================
+CLAIM 2 — the section 6 verdict template is preserved verbatim
+====================================================================
+COMMAND
+$ sed -n '421,437p' /tmp/bv3/OLD.md > /tmp/bv3/old_verdict.txt
+$ sed -n '742,758p' /tmp/bv3/NEW.md > /tmp/bv3/new_verdict.txt
+$ diff /tmp/bv3/old_verdict.txt /tmp/bv3/new_verdict.txt; echo "diff exit=$?"
+$ md5sum /tmp/bv3/old_verdict.txt /tmp/bv3/new_verdict.txt
+
+OBSERVED (verbatim)
+--- OLD block (9a24649^, lines 421-437) ---
+```
+VERDICT: PASS | PASS_WITH_CHANGES | FAIL
+
+Central claim (bounded autonomous completion with structural prevention of
+harmful actions):
+  supported / partially supported / unsupported — because …
+
+Claims I reproduced:            C1 C2 C3 C4 C5 C6 C7 C8   (cross out any that failed)
+Claims I could falsify:         <list, with the command and observed output>
+
+Highest-risk gap:               …
+Would I rely on it for:         …
+Must change before wider use:   1. …  2. …  3. …
+
+Unlisted weaknesses I found:
+  …
+```
+--- NEW block (working tree, lines 742-758) ---
+```
+VERDICT: PASS | PASS_WITH_CHANGES | FAIL
+
+Central claim (bounded autonomous completion with structural prevention of
+harmful actions):
+  supported / partially supported / unsupported — because …
+
+Claims I reproduced:            C1 C2 C3 C4 C5 C6 C7 C8   (cross out any that failed)
+Claims I could falsify:         <list, with the command and observed output>
+
+Highest-risk gap:               …
+Would I rely on it for:         …
+Must change before wider use:   1. …  2. …  3. …
+
+Unlisted weaknesses I found:
+  …
+```
+diff exit=0
+3d513a8f41f153388c4f125ca7b1ee9c  /tmp/bv3/old_verdict.txt
+3d513a8f41f153388c4f125ca7b1ee9c  /tmp/bv3/new_verdict.txt
+
+RESULT: HOLDS. The fenced verdict template is byte-identical, including the fenced
+delimiters and all interior lines (identical md5).
+
+====================================================================
+CLAIM 3 — the glossary line defining the Chair is preserved verbatim
+====================================================================
+COMMAND
+$ sed -n '572p' /tmp/bv3/OLD.md > /tmp/bv3/old_chair.txt
+$ sed -n '1017p' /tmp/bv3/NEW.md > /tmp/bv3/new_chair.txt
+$ diff /tmp/bv3/old_chair.txt /tmp/bv3/new_chair.txt; echo "diff exit=$?"
+$ md5sum /tmp/bv3/old_chair.txt /tmp/bv3/new_chair.txt
+
+OBSERVED (verbatim)
+--- extracted OLD (9a24649^, line 572, under "Appendix C — Glossary") ---
+- **Chair** — the delegated project authority beneath the contract; decides, records, continues.
+--- extracted NEW (working tree, line 1017, under "Appendix C — Glossary") ---
+- **Chair** — the delegated project authority beneath the contract; decides, records, continues.
+diff exit=0
+468ca1a6a65a09676ccdb51699c86ea3  /tmp/bv3/old_chair.txt
+468ca1a6a65a09676ccdb51699c86ea3  /tmp/bv3/new_chair.txt
+
+RESULT: HOLDS. Same bytes (identical md5). This is the actual glossary entry under
+Appendix C — Glossary, not merely the §7.1 quotation of it.
+
+====================================================================
+NON-MODIFICATION CHECK
+====================================================================
+COMMAND
+$ git rev-parse HEAD
+$ git hash-object docs/reviews/harness-independent-evaluation-brief.md
+$ git rev-parse HEAD:docs/reviews/harness-independent-evaluation-brief.md
+$ git status --short
+$ git diff --stat -- docs/reviews/harness-independent-evaluation-brief.md; echo "exit=$?"
+
+OBSERVED (verbatim)
+HEAD=00480ca037c9a5acbb6adbcbfd5c49fa9aa5cf13
+brief_blob_now=f6b5a775a72a3f76793a57ed9824709add25ecb9
+brief_blob_head=f6b5a775a72a3f76793a57ed9824709add25ecb9
+--- git status --short ---
+ M .ai/chair-decisions.md
+?? .ai/_p13_closure_probe.php
+?? .ai/_p13_phase1_probe.php
+?? .ai/_p13_state_probe.php
+?? .ai/brief-verify-1.report.txt
+?? .ai/brief-verify-2.report.txt
+?? .ai/plan-review/
+?? .ai/research/
+?? .ai/runs/brief-verify-1.json
+?? .ai/runs/brief-verify-2.json
+?? .ai/runs/brief-verify-3.json
+?? .ai/standing-authorization-and-decisions.md
+--- git diff (brief) ---
+exit=0 (empty output = the brief is unchanged in the working tree)
+
+The brief's working-tree blob hash equals its HEAD blob hash
+(f6b5a775... both), proving the file under test was not modified by this verification.
+The ` M .ai/chair-decisions.md` and all untracked entries were present BEFORE this
+verification began (captured at the start of the run, identically). Nothing was staged,
+committed or pushed. The only file this run created is this report.
+
+====================================================================
+VERDICT
+====================================================================
+CLAIM: the brief preserves, verbatim, (1) the §0 culture sentence, (2) the §6 verdict
+       template, and (3) the glossary line defining the Chair.
+
+RESULT: HOLDS — all three are byte-identical to the pre-refresh revision (9a24649^,
+        995553a). diff exit=0 and matching md5 for each of the three extractions.
+
+  - No fabricated pass: each item was extracted independently from both revisions and
+    compared as bytes; the evidence above is the actual command output.
+  - No fabrication needed: the result is a clean pass, stated as such.
+
+BASIS AND BOUND (stated so the pass is not overread):
+  - "Verbatim" was measured against 9a24649^ (995553a), the immediate pre-refresh
+    revision and the one the refresh commit claims to have preserved the three items
+    from. It was NOT compared against the brief's first revision (aa41c91); the task
+    asked about preservation across the refresh, and this is the correct baseline for
+    that claim.
+  - All three items are present in the CURRENT working-tree brief, which is identical
+    to the committed file at HEAD, so the preservation also holds at HEAD.
+
+END OF REPORT

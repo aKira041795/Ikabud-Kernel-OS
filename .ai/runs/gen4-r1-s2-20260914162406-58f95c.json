@@ -1,0 +1,190 @@
+{
+    "id": "gen4-r1-s2-20260914162406-58f95c",
+    "contract": ".ai/projects/gen4-r1/slices/s2-gui-settings-route-authority.md",
+    "contract_revision": "74024b5b01b94889",
+    "allowed_count": 3,
+    "forbidden_count": 6,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T16:24:06+00:00",
+    "pid": 2634269,
+    "log": null,
+    "report": ".ai/runs/gen4-r1-s2-20260914162406-58f95c.report.txt",
+    "status": "blocked",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/standing-authorization-and-decisions.md"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/gen4-r1-s2-20260914162406-58f95c.json",
+        ".ai/runs/gen4-r1-s2-20260914162406-58f95c.report.txt"
+    ],
+    "harness_artifacts": [
+        ".ai/projects/gen4-r1/repair-decisions.json",
+        ".ai/projects/gen4-r1/state.json"
+    ],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": null,
+    "trust_surface_hash": "6ec30b419a6c7914ec6be6b4dd585d3851ec44a76a6537ef1293aa3ee5d7fdec",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+        "tools/ai-autonomy.php": "4fc95033dddf0e251856ba784c9c7897703d03e502e57be83322db45a018e8d5",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "32dfbbcfa7f21cf69b031f60d047c16a3200fcd5dc3b6e18f715cc1be9ceb347",
+        "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+    },
+    "claim_verification": {
+        "verified_at": "2026-09-14T16:32:37+00:00",
+        "contract_revision": "74024b5b01b94889",
+        "rev": "f6b95a5527af22f24bea2a895a2f615c9238fa20",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-gen4-r1-s2-20260914162406-58f95c-1",
+                "run": "gen4-r1-s2-20260914162406-58f95c",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l modules/gui-settings/helpers.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/gen4-r1-s2-20260914162406-58f95c.report.txt",
+                    "line": 85,
+                    "text": "php -l modules/gui-settings/helpers.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "f6b95a5527af22f24bea2a895a2f615c9238fa20",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-gen4-r1-s2-20260914162406-58f95c-2",
+                "run": "gen4-r1-s2-20260914162406-58f95c",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l modules/gui-settings/tests/gui_settings_route_authority_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/gen4-r1-s2-20260914162406-58f95c.report.txt",
+                    "line": 93,
+                    "text": "php -l modules/gui-settings/tests/gui_settings_route_authority_test.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "f6b95a5527af22f24bea2a895a2f615c9238fa20",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            }
+        ]
+    },
+    "finished_at": "2026-09-14T16:32:50+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 8405,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/projects/gen4-r1/state.json",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/gen4-r1-s2-20260914162406-58f95c.json",
+        ".ai/runs/gen4-r1-s2-20260914162406-58f95c.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        "modules/gui-settings/helpers.php",
+        "modules/gui-settings/module.json",
+        "modules/gui-settings/tests/gui_settings_route_authority_test.php"
+    ],
+    "scope_delta_paths": [
+        "modules/gui-settings/helpers.php",
+        "modules/gui-settings/module.json",
+        "modules/gui-settings/tests/gui_settings_route_authority_test.php"
+    ],
+    "scope_conformance": {
+        "ok": false,
+        "checked": [
+            "modules/gui-settings/helpers.php",
+            "modules/gui-settings/module.json",
+            "modules/gui-settings/tests/gui_settings_route_authority_test.php"
+        ],
+        "offending": [
+            {
+                "path": "modules/gui-settings/module.json",
+                "reasons": [
+                    "public API/capability contract change",
+                    "justification is absent or not grounded in contract acceptance/constraints"
+                ]
+            },
+            {
+                "path": "modules/gui-settings/tests/gui_settings_route_authority_test.php",
+                "reasons": [
+                    "path 'modules/gui-settings/tests/gui_settings_route_authority_test.php' matched 'modules/gui-settings/tests' by directory prefix",
+                    "path 'modules/gui-settings/tests/gui_settings_route_authority_test.php' trips an absolute prohibition: auth, authorisation, policy or security weakening (no justification can authorise it)",
+                    "path 'modules/gui-settings/tests/gui_settings_route_authority_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)"
+                ]
+            }
+        ],
+        "declared_harness_artifacts": [
+            ".ai/projects/gen4-r1/repair-decisions.json",
+            ".ai/projects/gen4-r1/state.json"
+        ]
+    },
+    "evidence_fingerprint": "03f5a2f10038a9422707fbd55c3d273f8be2e1b5b3310428f3562a2968159115",
+    "evidence_unavailable_reason": null
+}

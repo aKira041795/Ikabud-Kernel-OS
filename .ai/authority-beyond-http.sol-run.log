@@ -1,0 +1,148 @@
+## Result block
+
+**status:** IMPLEMENTED_WITH_LOCAL_GATE_LIMITATIONS
+
+**changed:**
+- `.governance-baseline.json`
+- `kernel/Workbench/Governance/GovernanceCensus.php`
+- `tests/workbench_governance_census_test.php`
+- `ikabud`
+- `docs/kernel/cli-tools-reference.md`
+
+**implementation summary:**
+- Added static non-HTTP capability-call inventory for:
+  `event`, `workflow`, `cli`, `workbench`, `service`, `worker`.
+- Reports `declared`, `unscoped`, or `unresolved`, with capability, source, and reason.
+- Keeps non-HTTP totals entirely separate from routed ratios.
+- Added independent frozen non-HTTP debt map and gate.
+- Dynamic capability IDs/provider routing remain unresolved.
+- Did not change schemas, migrations, authority behavior, wiring, or `modules/daily-ledger/**`.
+
+**verification:**
+- Governance fixture: PASS; all six transports detected.
+- Governance gate: PASS.
+- Gate falsifier:
+  - baseline: PASS
+  - temporary unscoped worker in `gui-settings`: BLOCKED, exit 1
+  - after removal: PASS
+- Architecture check: all 6 checks passed.
+- `composer test`: exit 0, **0 failed**.
+  - `Total: 108 files — 99 passed, 9 skipped (26556ms)`
+- PHPStan:
+  - `kernel/` + `src/`: 0 errors.
+  - changed census and test: 0 errors.
+  - full `kernel src tests` is not clean because of 685 pre-existing test findings.
+  - `composer analyse` is blocked by 424 findings in untouched `modules/daily-ledger`.
+  - PHPStan baseline unchanged.
+- PHP-CS-Fixer:
+  - changed census file: clean.
+  - repository-wide check is blocked by existing formatting in untouched `modules/daily-ledger`.
+- `git diff --check`: PASS.
+- `storage/modules.json` was absent, so no backup/restore was required.
+- Live HTTP checks were not run because the binding constraint prohibits network/runtime checks.
+- Existing `storage/logs/error.log`: 0 bytes.
+
+**evidence — routed baseline remains unchanged:**
+
+```text
+cms-akira-ai                       0/0    0.0%
+cms-akira-builder                  0/6    0.0%
+cms-akira-core                     5/5  100.0%
+cms-akira-editor                   0/0    0.0%
+cms-akira-media                    0/0    0.0%
+cms-akira-navigation               0/0    0.0%
+cms-akira-profile-headless         0/0    0.0%
+cms-akira-profile-minimal          0/0    0.0%
+cms-akira-profile-standard         0/0    0.0%
+cms-akira-profile-visual           0/0    0.0%
+cms-akira-search                   0/0    0.0%
+cms-akira-seo                      0/0    0.0%
+cms-akira-shell                    0/15   0.0%
+cms-akira-theme                    0/4    0.0%
+cms-akira-workflow                 0/1    0.0%
+daily-ledger                       0/52   0.0%
+gui-settings                       0/2    0.0%
+Akira aggregate                    5/33  15.2%
+```
+
+Akira bus-reachable remains 31; undeclared remains 28.
+
+**evidence — separate non-HTTP measure:**
+
+```text
+Module                             Declared/Total  Ratio   Unscoped  Unresolved
+cms-akira-ai                          0/1           0.0%      0          1
+cms-akira-builder                     0/7           0.0%      0          7
+cms-akira-core                        0/32          0.0%      0         32
+cms-akira-editor                      0/1           0.0%      0          1
+cms-akira-media                       0/5           0.0%      0          5
+cms-akira-navigation                  0/5           0.0%      0          5
+cms-akira-profile-headless            0/0           0.0%      0          0
+cms-akira-profile-minimal             0/0           0.0%      0          0
+cms-akira-profile-standard            0/0           0.0%      0          0
+cms-akira-profile-visual              0/0           0.0%      0          0
+cms-akira-search                      0/9           0.0%      0          9
+cms-akira-seo                         0/6           0.0%      0          6
+cms-akira-shell                       0/0           0.0%      0          0
+cms-akira-theme                       0/10          0.0%      0         10
+cms-akira-workflow                    0/5           0.0%      0          5
+daily-ledger                          0/0           0.0%      0          0
+gui-settings                          0/0           0.0%      0          0
+kernel                                1/14          7.1%      0         13
+TOTAL                                 1/95          1.1%      0         94
+```
+
+**gate evidence:**
+
+```text
+GOVERNANCE GATE=PASS — neither routed nor non-HTTP debt grew.
+
+GOVERNANCE GATE=BLOCKED
+  gui-settings: non-HTTP unscoped rose 0 -> 1
+
+GOVERNANCE GATE=PASS — neither routed nor non-HTTP debt grew.
+```
+
+**baseline diff:**
+
+```diff
+ {
+     "rule": "Frozen undeclared-route debt. Any module whose undeclared count rises fails the gate; modules must reach zero to be removed.",
++    "non_http_rule": "Frozen unscoped non-HTTP debt. Any module whose unscoped count rises fails the gate; unresolved sites are reported separately and are not debt.",
++    "non_http_baseline": [],
+     "baseline": {
+```
+
+The original routed baseline block was verified byte-for-byte identical.
+
+**local test skips:**
+- `capability_effect_invalidation_test.php`
+- `durable_idempotency_test.php`
+- `entity_fallback_test.php`
+- `entity_view_render_cache_test.php`
+- `error_page_contract_test.php`
+- `eventbus_durable_outbox_test.php`
+- `kernel_idempotency_capability_test.php`
+- `runner_timeout_test.php`
+- `tenant_entry_auth_shell_standard_test.php`
+
+**scope:**
+- Measurement and gating only.
+- No DB/network access.
+- No schema, migration, runtime authority, resolver, authorization, or entry-point wiring changes.
+- No restricted tests or Daily Ledger files modified.
+
+**risks:**
+- The measured result is predominantly unresolved. It must not be interpreted as 94 confirmed defects.
+- Generic service/helper call paths remain unresolved unless a named static path proves scope establishment.
+
+**unresolved — instrument still cannot see:**
+1. Capability IDs computed or held in variables.
+2. Dynamic provider selection, including `$options['provider']`.
+3. Capability dispatch hidden behind variable callables, reflection, `eval`, or generated code.
+4. Ambiguous dynamic/object-method call edges that cannot be resolved statically.
+5. Runtime-only registrations or DB-backed queue/schedule contents.
+6. External/non-PHP workers and services.
+7. Whether generic helpers are entered from HTTP or non-HTTP when no static entry path proves it.
+
+**recommended next state:** READY_FOR_REVIEW, with live HTTP verification and the pre-existing repository-wide PHPStan/php-cs-fixer debt explicitly handled by CI or a separate cleanup slice.

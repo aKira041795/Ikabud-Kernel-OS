@@ -1,0 +1,19 @@
+{
+    "schema": "ark.ai-project-chair-errors.v1",
+    "project": "harpp-gen4",
+    "note": "Explicit, editable list of Chair decisions later found to be wrong. Counted, never inferred from prose.",
+    "errors": [
+        {
+            "id": "CD-6",
+            "summary": "fabricated readiness"
+        },
+        {
+            "id": "CD-11",
+            "summary": "commit during a live run"
+        },
+        {
+            "id": "CD-12",
+            "summary": "a published claim that was false"
+        }
+    ]
+}
