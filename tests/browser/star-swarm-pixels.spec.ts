@@ -221,17 +221,53 @@ const OPEN_BEAM = `
     };
 `;
 
+/**
+ * Settles the formation and returns the dominant ink of one caste: rows of the colony are
+ * colour-coded, so this is how the palette is asserted rather than by reading a token.
+ */
+const SAMPLE_CASTE = `
+    const sampleCaste = (caste) => {
+        const game = window.StarSwarm;
+        game.test.spawnWave(2);
+        game.test.step(180);
+        const index = game.state.enemies.findIndex(
+            (enemy) => enemy.caste === caste && enemy.alive && !enemy.diving && !enemy.entering,
+        );
+        if (index < 0) return null;
+        const enemy = game.test.snapshotEnemy(index);
+        const stats = window.__px.stats(enemy.x, enemy.y, enemy.width, enemy.height);
+        const d = stats.dominant;
+        return {
+            ink: d.count,
+            dominant: d,
+            lum: Math.round(0.2126 * d.r + 0.7152 * d.g + 0.0722 * d.b),
+        };
+    };
+`;
+
 test.describe('star swarm pixels', () => {
     test('the play field is 16:9 @p5', async ({ page }) => {
         await boot(page);
 
         const size = await page.evaluate(() => {
             const canvas = (window as any).StarSwarm.lane.canvas as HTMLCanvasElement;
-            return { width: canvas.width, height: canvas.height };
+            const rect = canvas.getBoundingClientRect();
+            return {
+                backingW: canvas.width,
+                backingH: canvas.height,
+                shownW: rect.width,
+                shownH: rect.height,
+            };
         });
 
-        expect(size.width / size.height, 'the play field is 16:9').toBeCloseTo(16 / 9, 2);
-        expect(size.width, 'the wide field carries at least 1280 backing pixels').toBeGreaterThanOrEqual(1280);
+        expect(size.backingW / size.backingH, 'the play field is 16:9').toBeCloseTo(16 / 9, 2);
+        expect(size.backingW, 'the wide field carries at least 1280 backing pixels').toBeGreaterThanOrEqual(1280);
+        // The backing store is NOT what the director sees. A 16:9 canvas displayed inside a 4:3
+        // box passes the two checks above and still looks wrong on screen, which is exactly the
+        // report that prompted this assertion (2026-09-19), so the displayed geometry is asserted
+        // too. The stale-stylesheet cause of that report is covered by the versioned-asset probe.
+        expect(size.shownW, 'the field is displayed with a non-zero width').toBeGreaterThan(0);
+        expect(size.shownW / size.shownH, 'the field is displayed at 16:9, not stretched').toBeCloseTo(16 / 9, 2);
     });
 
     test('sprites are pixel matrices, not vector outlines @p4', async ({ page }) => {
@@ -492,5 +528,80 @@ test.describe('star swarm pixels', () => {
         expect(frames!.titleBright, 'the title lockup is the larger mark').toBeGreaterThan(frames!.bylineBright * 1.5);
         expect(frames!.titlePartial, 'the title is pixel blocks, not anti-aliased type').toBeLessThan(0.3);
         expect(frames!.bylinePartial, 'the byline is pixel blocks too').toBeLessThan(0.3);
+    });
+
+    test('the bee is painted the arcade yellow @p7', async ({ page }) => {
+        await boot(page);
+
+        const bee = await page.evaluate(`(() => {
+            ${SAMPLE_CASTE}
+            return sampleCaste('bee');
+        })()`);
+
+        expect(bee, 'a settled bee exists in the formation').not.toBeNull();
+        expect(bee!.ink, 'the bee box is dominated by its own ink').toBeGreaterThan(12);
+        expect(bee!.dominant.r, 'the bee is yellow: a strong red channel').toBeGreaterThanOrEqual(200);
+        expect(bee!.dominant.g, 'the bee is yellow: a strong green channel').toBeGreaterThanOrEqual(140);
+        expect(bee!.dominant.b, 'the bee is yellow: a weak blue channel').toBeLessThanOrEqual(140);
+    });
+
+    test('the butterfly is painted red, not mud @p7', async ({ page }) => {
+        await boot(page);
+
+        const butterfly = await page.evaluate(`(() => {
+            ${SAMPLE_CASTE}
+            return sampleCaste('butterfly');
+        })()`);
+
+        expect(butterfly, 'a settled butterfly exists in the formation').not.toBeNull();
+        expect(butterfly!.ink, 'the butterfly box is dominated by its own ink').toBeGreaterThan(12);
+        // Measured 2026-09-19: the butterfly rendered (88,40,24) -- luminance 49, a dark brown
+        // inherited from --color-tertiary. The arcade butterfly is vivid red (with white), so the
+        // assertion is on the PAINT, not on a token name.
+        const d = butterfly!.dominant;
+        const vividRed = d.r >= 180 && d.r >= d.g + 80 && d.r >= d.b + 80;
+        const white = d.r >= 200 && d.g >= 200 && d.b >= 200;
+        expect(vividRed || white, 'the butterfly is painted red or white, not a dark brown').toBe(true);
+        expect(butterfly!.lum, 'the butterfly is a vivid colour, not a muddy one').toBeGreaterThan(90);
+    });
+
+    test('the castes are painted in distinct, vivid colours @p7', async ({ page }) => {
+        await boot(page);
+
+        const castes = await page.evaluate(`(() => {
+            ${SAMPLE_CASTE}
+            const out = {};
+            for (const caste of ['bee', 'butterfly', 'boss']) out[caste] = sampleCaste(caste);
+            return out;
+        })()`);
+
+        for (const caste of ['bee', 'butterfly', 'boss']) {
+            expect(castes[caste], `a settled ${caste} exists in the formation`).not.toBeNull();
+        }
+        const lums = ['bee', 'butterfly', 'boss'].map((caste) => castes[caste].lum);
+        // A muddy formation is what the director saw: every caste must be a vivid colour, or the
+        // rows read as brown mush at arcade speed whatever the tokens say.
+        expect(Math.min(...lums), 'no caste is painted muddy (luminance floor)').toBeGreaterThan(90);
+        const keys = ['bee', 'butterfly', 'boss'].map(
+            (caste) => `${castes[caste].dominant.r},${castes[caste].dominant.g},${castes[caste].dominant.b}`,
+        );
+        expect(new Set(keys).size, 'the three castes are told apart by colour').toBe(3);
+    });
+
+    test('the page versions its assets so a visual change cannot be cached away @p7', async ({ page }) => {
+        await boot(page);
+
+        const assets = await page.evaluate(() => ({
+            css: Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map((node) => (node as HTMLLinkElement).href),
+            js: Array.from(document.querySelectorAll('script[src]')).map((node) => (node as HTMLScriptElement).src),
+        }));
+
+        expect(assets.css.length, 'the page links a stylesheet').toBeGreaterThan(0);
+        // An unversioned asset URL is why the director saw a 4:3 field after it became 16:9: the
+        // browser kept the old stylesheet, which carried no aspect-ratio. A version tied to the
+        // asset's own timestamp makes a stale copy impossible to keep.
+        const versioned = (url: string) => /[?&]v=\d{9,}/.test(url);
+        expect(assets.css.some(versioned), 'the stylesheet URL carries a timestamp version').toBe(true);
+        expect(assets.js.some(versioned), 'the script URL carries a timestamp version too').toBe(true);
     });
 });

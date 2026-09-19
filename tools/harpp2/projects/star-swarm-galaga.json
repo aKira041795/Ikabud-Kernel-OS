@@ -213,9 +213,9 @@
         {
             "id": "L3",
             "group": "legibility",
-            "statement": "The play field is 16:9 and at least 1280 backing pixels wide, with the formation, player and HUD laid out for the wide field.",
-            "probe": "the play field is 16:9",
-            "why": "Director decision 2026-09-19: widescreen. The arcade original is portrait (224x288 on a rotated monitor), so this is a deliberate modern reinterpretation, recorded as a deviation rather than presented as fidelity."
+            "statement": "The play field is 16:9 and at least 1280 backing pixels wide, AND is DISPLAYED at 16:9: the on-screen geometry is asserted too, because a 16:9 canvas shown inside a 4:3 box satisfies a backing-store check while looking wrong on screen.",
+            "probe": "the play field is 16:9|the field is displayed at 16:9",
+            "why": "Director decision 2026-09-19: widescreen. The arcade original is portrait (224x288 on a rotated monitor), so this is a deliberate modern reinterpretation, recorded as a deviation rather than presented as fidelity. The displayed-geometry half was added after the director reported the field had NOT changed to 16:9 while the backing store said it had: the cause was an unversioned stylesheet (S1), but the probe could not have told him either way until it measured what he sees."
         },
         {
             "id": "O1",
@@ -230,6 +230,34 @@
             "statement": "The opening shows 'Star Swarm' as a large pixel-block logo, then 'by IKON' as a smaller pixel-block byline. Both stages carry visible ink in the central band of the field, and the title lockup is markedly the larger mark.",
             "probe": "the title is drawn as logo ink|then the byline is drawn",
             "why": "The order is the requirement: the game's name first, the studio second, both actually rendered rather than present in string state only."
+        },
+        {
+            "id": "V6",
+            "group": "palette",
+            "statement": "The Bee is painted the arcade yellow: a vivid yellow with a strong red and green channel and a weak blue one (measured dominant ink, not a token name).",
+            "probe": "the bee is painted the arcade yellow|the bee is yellow: a strong red channel",
+            "why": "Director request 2026-09-19: 'assert the colours'. Row colour is how a player reads the caste hierarchy at arcade speed, and no probe checked it: C1 named the colours in prose only."
+        },
+        {
+            "id": "V7",
+            "group": "palette",
+            "statement": "The Butterfly is painted vivid red (with white), NOT a dark brown: the dominant ink is red-dominant (or near-white) and carries a luminance above 90.",
+            "probe": "the butterfly is painted red or white, not a dark brown",
+            "why": "Measured 2026-09-19: the butterfly rendered (88,40,24), luminance 49 -- it inherited --color-tertiary, a muddy brown, which is why the director read the formation as brown rows. This is the requirement the missing probe would have caught."
+        },
+        {
+            "id": "V8",
+            "group": "palette",
+            "statement": "No caste is painted muddy and all three are told apart by colour: every caste's dominant ink has luminance above 90, and the three dominant colours are pairwise distinct.",
+            "probe": "no caste is painted muddy|the three castes are told apart by colour",
+            "why": "A general floor rather than three fixed colours: it rules out the whole failure class (a formation that reads as brown mush) without forbidding a faithful palette choice, and it cannot be satisfied by one shared colour."
+        },
+        {
+            "id": "S1",
+            "group": "serving",
+            "statement": "The page requests its stylesheet and script with a version parameter tied to the asset's own timestamp, so a visual change cannot be served from a stale browser cache.",
+            "probe": "the stylesheet URL carries a timestamp version",
+            "why": "Director report 2026-09-19: 'game width did not change to 16:9'. It had -- backing store 1280x720 and displayed 1278x719 -- but the stylesheet URL was static and unversioned, so his browser kept the previous CSS, which carried no aspect-ratio. A stale asset made a delivered change look undelivered and cost a false defect report."
         }
     ],
     "spec_probes": {
@@ -239,7 +267,9 @@
         "chair_owned_groups": [
             "fidelity",
             "legibility",
-            "opening"
+            "opening",
+            "palette",
+            "serving"
         ]
     },
     "invariants": {
