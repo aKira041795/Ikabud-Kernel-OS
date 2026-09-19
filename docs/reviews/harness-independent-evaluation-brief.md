@@ -1,14 +1,18 @@
 # Independent Evaluation Brief — Ikabud Autonomous Development Harness
 
 **Prepared:** 2026-09-14 · **Revised:** 2026-09-15 (after the first GEN4-R1 measurements) · **Revised again:
-2026-09-17** — the operating harness is now **HARPP v2**; read **§8** before judging anything. · **Repo:**
-`/var/www/html/ikabudsix` · **Branch:** `feat/akira-editorial-and-authority-coverage`
+2026-09-17** — the operating harness was then **HARPP v2** (§8, now **retired**) · **Revised again: 2026-09-19**
+— the operating harness is now the lean **`tools/chair.php`**, and **HARPP v2 and the `ai-run.php` ledger are
+retired** (`tools/RETIRED.md`). **Read §9 before judging anything**, and read §7–§8 as the dated history they are.
+· **Repo:** `/var/www/html/ikabudsix` · **Branch:** `feat/akira-editorial-and-authority-coverage`
 **Commits under review:** `2ed552d` (HEAD as measured 2026-09-17), **twenty commits after** `baa02f1`, which was the
 target of the 2026-09-15 revision (`git rev-list --count baa02f1..HEAD` → `20`); `baa02f1` was itself fourteen
 commits after `995553a`, the tree of the first revision. The four commits named earlier — `ed48fff` (enforcement),
-`ba80298` (scope-path semantics), `d36b85f` (browser suite), `328da57` (run ledger) — remain in scope.
-**§1 and §2–§4 evaluate the v1 apparatus and are not retracted**; §8 records what changed and what has since been
-measured, and is the section a reviewer should read first.
+`ba80298` (scope-path semantics), `d36b85f` (browser suite), `328da57` (run ledger) — remain in scope. (No HEAD
+hash is cited for the 2026-09-19 revision: the reviewer should take `git rev-parse HEAD`.)
+**§1 and §2–§4 evaluate the v1 apparatus and are not retracted**; §8 records what changed and what was measured
+then; **§9 records the 2026-09-19 replacement and is the section a reviewer should read first.** Where §9 and §8
+disagree, §8 is the older statement of a retired instrument and is left standing as history.
 **Audience:** an independent senior engineer who has never seen this repository.
 **Time-box:** 2–4 hours. Everything in §3 runs in under two minutes except the optional browser suite.
 
@@ -17,6 +21,13 @@ measured, and is the section a reviewer should read first.
 > moved, the old value is kept beside the new one. Numbers taken from a named artefact rather than re-run are
 > labelled `NOT RE-MEASURED`. The author of this revision is the executing lane, not the independent reviewer;
 > these are the harness author's own re-measurements and are labelled as such.
+>
+> **Revision note, 2026-09-19.** §1–§8 are not retracted and not rewritten. On that date the operating harness
+> was replaced: `tools/chair.php` is live and `tools/harpp2/` and `tools/ai-run.php` are retired
+> (`tools/RETIRED.md`). §7 and §8 are therefore framed as **superseded history** rather than deleted, and §9
+> carries the new claims (**C16–C23**), the new limits (**§3.24–§3.30**), and the measured gaps between the
+> replacement and what it replaced. Where a §9 statement contradicts §8, the older statement stands unedited as
+> the record of what was true then.
 
 ---
 
@@ -50,6 +61,10 @@ harmful actions impossible rather than merely discouraged.
 
 ### 1.2 Components
 
+> **Superseded 2026-09-19 — see §9.** This is the **v1 inventory** as it stood on 2026-09-17; it is retained
+> unedited because §1–§6 and C1–C15 are a dated measurement of *that* apparatus. The v1 tools still run
+> (`tools/RETIRED.md`) but are no longer the operating harness; the live inventory is §9.2.
+
 | Component | Path | Role |
 |---|---|---|
 | **Policy** (normative) | `.github/instructions/ai-autonomy-escalation.instructions.md` | Authority ladder L0–L4, absolute prohibitions, the "options test", escalation rules |
@@ -81,6 +96,9 @@ is explicitly not an L4 condition** — the Chair decides, records, and continue
 
 ### 1.4 The loop
 
+> **Retired 2026-09-19 (§9.1).** The loop below is `tools/ai-loop.php` under the v1 driver. It is history; no
+> reviewer should grade today's harness against it.
+
 ```
 architect (contract) → implement (model lane) → verify (RE_DERIVED claims)
         ↑                                              │
@@ -101,6 +119,9 @@ context. Executor rate limits cause **reallocation, not escalation**.
 ---
 
 ## 2. The claims, and how to falsify each
+
+> **C1–C15 measure the v1 apparatus, retired 2026-09-19 (§9.1).** They remain falsifiable — the v1 tools still
+> run — but they are no longer claims about the operating harness. The live claims are **C16–C23** in §9.4.
 
 Set up once (the probe contract lives in `/tmp` deliberately — putting it in `.ai/` would make it corpus
 content):
@@ -544,7 +565,13 @@ gate blames the harness for its own writes and every real loop run blocks (the d
 all seventeen and adds five measured on 2026-09-15 (§3.18–§3.22), **seventeen → twenty-two**. No limit was
 deleted or softened; each existing limit is marked *open*, *partially closed*, or *closed*, and a closure is
 stated with the evidence that closed it. *(The section is split in this document: §3.1–§3.8 appear here;
-§3.9–§3.22 appear after §6, as originally written for §3.9–§3.10.)*
+§3.9–§3.30 appear after §6, as originally written for §3.9–§3.10.)*
+
+**Extended again 2026-09-19 (§9):** limits §3.1–§3.23 are statements about apparatus now **retired**
+(`tools/chair.php` replaced HARPP v2 and the `ai-run.php` ledger — §9.1), and **§3.24–§3.30** are added for the
+replacement. The count statement above is left as written rather than renumbered: a measurement record that
+rewrites its own published numbers is no longer a record, which is the same reason the red metrics result of
+§3.17 was preserved when it went green.
 
 **A reviewer who finds unlisted weaknesses here should discount this entire document.** These are the ones we
 know about.
@@ -679,6 +706,10 @@ decision (C10, C11). Everything else here stands.
 
 ## 4. Defects found and fixed during the session *(evidence of self-correction)*
 
+> **These are v1 findings (2026-09-14 and 2026-09-15), about apparatus retired on 2026-09-19 (§9.1).** §9.6
+> continues this table's discipline for the replacement — three defects, including two probes that passed for the
+> wrong reason and one undefined function authored by the chair.
+
 | # | Defect | How it was found | Status |
 |---|---|---|---|
 | 1 | `l4Triggers()` was dead code; enforcement used a separate hardcoded list | Reading the file while reviewing capability | Fixed — single taxonomy |
@@ -728,6 +759,10 @@ capability test that violated the cost-shape doctrine it had been citing (CD-40 
 
 ## 5. Questions for you
 
+> *Asked of the v1 apparatus on 2026-09-14.* They are kept because they are still the right questions to put to
+> a governance layer; Q2 (is the envelope the right control at all?) and Q4 (where is the next unit of effort?)
+> are re-opened in a sharper form by the replacement — §9.9.
+
 Please answer these directly, with the commands you ran.
 
 1. **Is the authority model real, or documentary?** C2 is the test. If you can produce a way to make an
@@ -755,7 +790,10 @@ Central claim (bounded autonomous completion with structural prevention of
 harmful actions):
   supported / partially supported / unsupported — because …
 
-Claims I reproduced:            C1 C2 C3 C4 C5 C6 C7 C8   (cross out any that failed)
+Claims I reproduced:            C1 C2 C3 C4 C5 C6 C7 C8   (retired apparatus — §9.1)
+Claims I reproduced:            C16 C17 C18 C19 C20 C21 C22 C23   (§9.4 — the live harness; cross out any that
+                                failed, and note that C22 and C23 are *defect* claims, so refuting either
+                                improves the harness)
 Claims I could falsify:         <list, with the command and observed output>
 
 Highest-risk gap:               …
@@ -971,7 +1009,132 @@ their own output poisons the claim. A slice evidenced by them through the loop w
 treating any line *mentioning* an exit code as that command's result is not. It is **recorded, not repaired** —
 the fix is a trust-surface change and requires its own director authorisation.
 
+### 3.24 The replacement harness cannot deliver a decision to the director
+
+**Status: open — a regression, recorded, not repaired.** Added 2026-09-19 (§9.4, C22). `tools/chair.php` contains
+no director transport:
+
+```bash
+grep -c harpp tools/chair.php      # → 3
+```
+
+**MEASURED:** the count is **3**, and all three occurrences are **comments or a comparison table**.
+`php tools/chair.php decide --task=<id> --decision=<text>` writes to `storage/private/chair/decisions/` and stops.
+
+This matters more than a missing feature, for two reasons. First, it is a **regression against harpp2**, which did
+deliver. Second, it violates this repository's own **"no silent non-delivery"** invariant: a filed decision that
+reaches nobody must print `DELIVERY: local-only — director NOT notified` and exit non-zero, and here the
+replacement has no delivery attempt to fail.
+
+**The wire is not the problem.** `harpp` is on `PATH`, `tools/harpp-bridge/` is in-tree, and
+`harpp decision list` reports **25 decisions** — delivery has been proven for the **old** harness and **not yet
+for the new one**.
+
+**What a reviewer must not read from this:** `decide` is not wrong. One of chair.php's own rules is that failure
+promotes the lane and exhaustion records a decision, and it does record one. The gap is that *recorded* and
+*delivered* are currently the same thing in the record — and they are not.
+
+### 3.25 The replacement keeps no structured run record and no concurrency control
+
+**Status: open.** Added 2026-09-19 (§9.4, C23).
+
+```bash
+grep -cE "flock|LOCK_EX|ledger|commit-check" tools/chair.php      # → 0
+```
+
+**MEASURED:** the count is **0**. Two `php tools/chair.php run` invocations can write the same working tree
+concurrently, and nothing serialises them. The completed run left one raw log,
+`storage/private/chair/runs/<task>-attempt1.log`, and **no structured record** — so "what happened in run N"
+requires reading a log by eye. The repository rule *"never commit during a live run"* is therefore
+**unenforceable, because there is nothing to ask**: 3.25 is the v1 §3.22 (concurrent runs, late `finish`
+misattribution) reintroduced at the *absence-of-a-ledger* level rather than the misattribution level.
+
+This is precisely what the retired ledger was built for, and `tools/RETIRED.md` keeps the idea
+("**The run ledger idea.** Never infer run state from log size or `pgrep`. Kept as a Workbench task record") —
+so the replacement inherited the principle without the record.
+
+### 3.26 `allowed_scope` is stated to the lane but not verified after the fact
+
+**Status: open.** Added 2026-09-19 (§9.5). **CLAIMED** — falsifiable by inspection:
+
+```bash
+grep -n "allowed_scope" tools/chair.php
+```
+
+`allowed_scope` **is** parsed and **is** used to build the lane's brief. Nothing compares the changed paths to it
+after the run: the brief tells the lane not to touch `tests/`, and **nothing checks**. This is the v1 **A-F2**
+defect (the loop that never compared changed paths to the envelope) minus the loop — with no loop, there is no
+dispatch-time baseline and so no post-dispatch comparison (§3.29).
+
+A reviewer should treat scope as a **statement of intent in the brief**, not as a binding constraint of the
+harness.
+
+### 3.27 Retrieval serves stale documents without complaint, and its recall is unmeasured
+
+**Status: open.** Added 2026-09-19 (§9.4, C20).
+
+```bash
+php kernel/Workbench/Retrieval/run.php stats
+```
+
+**MEASURED:** `stats` reports **`stale 8`**, and **no caller reads it** — a lane can be handed a document the
+index knows to be out of date, silently. **MEASURED:** `stats` reports **`used 2`**, so the outcome-feedback path
+(`recordUse()`, CLI `use`) barely exists in practice.
+
+**Breadth is unmeasured.** For the star-swarm task the brief delivered exactly **one** document —
+`public/star-swarm/star-swarm.js`, 2708 lines, relevance 89 — for a task that needed knowledge of counters, a
+glyph table, weapon constants, a render hook and a shot limit. That happened to be sufficient **because the task
+was confined to one file**. One observation is not a recall measurement, and this document does not claim one.
+
+### 3.28 The harness cannot yet prove that a probe is RED
+
+**Status: open — and this is the strongest single argument for the next unit of work.** Added 2026-09-19
+(§9.6). Rule 2 takes the baseline before any work and stops a run whose probe already passes (§9.4, C17) — but
+the *decision* that a probe is RED was made, in the one real run, **by hand**: the chair falsified the probe
+manually before dispatching a lane.
+
+Doing it by hand found **two false passes** in a row (§9.6, defects 18 and 19): an ink threshold that was already
+green because it measured pre-existing text, and a differential that stepped the simulation between readings and
+so measured starfield movement rather than the tally. Both would have advanced a lane against a probe that could
+not see the feature it was meant to judge.
+
+**The consequence for a reviewer:** a `probe PASS` in the current harness is only as good as a RED baseline that
+a human established, and the last two such baselines were wrong. Mechanising falsification — a probe must be
+shown to fail before the work and to pass after it — is the clearest gap this revision measured.
+
+### 3.29 There is no unattended loop
+
+**Status: open.** Added 2026-09-19 (§9.1). **CLAIMED** — falsifiable:
+
+```bash
+grep -nE "\badvance\b|\bwatch\b" tools/chair.php
+php tools/chair.php status
+```
+
+`advance` and `watch` do not exist. Every dispatch is **a human typing `run`**. The v1 apparatus at least had
+`ai-loop.php` advancing a slice on verified claims (C12, C13) and `harpp2/chain.sh` walking item after item;
+the replacement has neither, so "unattended" is presently a property of the *decision*, not of the *process*.
+`tools/chair.php status` reports state; nothing moves it forward by itself.
+
+### 3.30 Retry is a count, not a promotion ladder
+
+**Status: open.** Added 2026-09-19. **MEASURED** from the tool's own usage block:
+`php tools/chair.php run --task=<id> [--attempts=N]`.
+
+Stopping and retrying is `--attempts=N` — a **count**. The doctrine requires a **promotion ladder**:
+L1 implementation repair → L2 strategy change → L3 task decomposition → L4 phase reassessment, promoting the
+reasoning level rather than repeating the same attempt (`.github/instructions/ai-autonomy-escalation.instructions.md`;
+v1's C13, now retired with `ai-loop.php`). The replacement retains the *cheap to expensive* lane registry
+(`mechanical → visual/reasoning`, §9.2), which is the raw material for promotion, but nothing promotes on a
+repeated failure signature — a second identical attempt is currently as likely as a rung-up.
+
 ## 7. Review disposition — independent review of 2026-09-14
+
+> **Retained as dated history — superseded 2026-09-19 (§9.1).** This section records the disposition of an
+> independent review of the **v1** apparatus, and every mechanism it names — `ai-loop.php`, the repair ladder,
+> scope conformance, declared artefacts — belongs to the harness retired on 2026-09-19. It is not deleted: the
+> document's value is partly that it records what was true then. It is not a description of the operating
+> harness. Read §9 for the replacement and its measured gaps.
 
 **Verdict returned:** `PASS_WITH_CHANGES` · central claim **partially supported, approaching supported**.
 Full support was withheld, correctly, because semantic verification and independent claim re-derivation do
@@ -1122,6 +1285,13 @@ defects, authoring defects, and apparatus defects more sharply than the earlier 
 
 ## 8. Revision 2026-09-17 — HARPP v2, and what using the harness proved about it
 
+> **Retained as dated history — superseded 2026-09-19 (§9.1).** HARPP v2 is **retired, not deleted**
+> (`tools/RETIRED.md`): `tools/harpp2/` — `harpp2.php`, `chain.sh`, `dispatch.sh`, `e2e.sh`, `objectives/`,
+> `gates/`, `projects/` — and the `tools/ai-run.php` run ledger are no longer the operating harness, and
+> `tools/chair.php` is (§9.2). Every measurement below remains what it was on 2026-09-17 and is evidence about
+> the retired instrument; the lessons in §8.4 were **extracted** into the replacement rather than lost
+> (`tools/RETIRED.md`, "The best things in there, and where they went").
+
 > **Author of this revision:** the executing chair, not the independent reviewer. Every number below is labelled
 > either `RE-MEASURED` (re-run for this revision) or `RECORDED` (taken from a named artefact). Treat all of it as
 > falsifiable by the commands in §8.7.
@@ -1142,7 +1312,7 @@ What changed is the operating layer:
 - **Two days of product work then ran through v2** (the Star Swarm game module), which is why this revision has
   new evidence rather than new intentions.
 
-### 8.2 HARPP v2 — component inventory (`RE-MEASURED 2026-09-17`)
+### 8.2 HARPP v2 — component inventory (`RE-MEASURED 2026-09-17`; **every path here is RETIRED 2026-09-19**)
 
 | Component | Path | Role |
 |---|---|---|
@@ -1226,7 +1396,10 @@ expressed as requirements-as-data**, handed to the chain as *"complete this mile
 with the director staying out. The claim under measurement: *can HARPP complete a bounded project of multiple
 requirements, including detecting and repairing its own execution and verification failures, without Director
 intervention?* The original claim of this brief was only bounded unattended slice completion; that remains the
-conservative position until this experiment reports.
+conservative position until this experiment reports. **Note added 2026-09-19:** this experiment was named for the
+apparatus retired on that date, and **its outcome is not recorded in this revision** — §9 measures a different
+apparatus and does not answer its question. The §9.7 caveat (one single-file, single-lane run) stands in its
+place.
 - **Message types are a convention, not a transport fact.** `harpp msg send` has no type field, so the type lives in
   the title prefix (`E2E PASS:` · `E2E FAIL:` · `ITEM …`). A transport-level field remains a suggestion.
 - **The driver's own record for a chair-closed item is left intact.** `star-swarm-iteration-3b` still reads
@@ -1236,6 +1409,10 @@ conservative position until this experiment reports.
   re-run for this revision (`NOT RE-MEASURED`).
 
 ### 8.7 What an independent reviewer should falsify next
+
+> **The commands below drive the retired harness.** They still run (`tools/RETIRED.md`, "Using it for
+> reference") and are worth running as a worked example; they are not the live harness. The equivalent commands
+> for the replacement are §9.9.
 
 ```bash
 cd /var/www/html/ikabudsix
@@ -1250,8 +1427,288 @@ the overlap probe fails; restore and verify the sha256. **If a check cannot be m
 
 ---
 
-## Appendix A — Where things live
+## 9. Revision 2026-09-19 — the lean harness: what it has proved, and what it cannot yet do
 
+> **Author of this revision:** the executing chair, not the independent reviewer. Every statement below is
+> labelled **MEASURED** with the command that produced it, or **CLAIMED** / **UNVERIFIED**. §7 and §8 are not
+> retracted; they are dated history about apparatus that has since been retired. **This is the section a
+> reviewer should read first, and C16–C23 are the claims to falsify.**
+
+### 9.1 Supersession: what was retired on 2026-09-19, and why
+
+On **2026-09-19** the operating harness was replaced. **`tools/chair.php`** (~1000 lines, committed) is live;
+**`tools/harpp2/`** and **`tools/ai-run.php`** are **retired — not deleted**. The record is `tools/RETIRED.md`.
+
+The director's reason, quoted verbatim because it is this revision's justification: the process *"has become
+driven by too much measurement that it has lost site of the original goal. a dependable, efficient, optimized
+process"*. The response was to retire harpp2 and build the lean harness.
+
+`tools/RETIRED.md` carries the mapping and the four measured failures that motivated it — a `DROP` substring
+refusing a Playwright `--grep`; a moon threshold that passed on the *unfixed* product; a stale assertion; and a
+"simplification" that grew the acceptance battery 11 → 13. The pattern it names — **the machinery was trusted
+and never proved** — is why every guard in the replacement ends in a `--self-test` that asserts *both*
+directions.
+
+| Retired 2026-09-19 | Superseded by (per `tools/RETIRED.md`) |
+|---|---|
+| `tools/harpp2/harpp2.php` | `tools/chair.php run` |
+| `tools/harpp2/chain.sh`, `dispatch.sh`, `dispatch-dsh.sh`, `e2e.sh` | `chair.php plan` → `run` |
+| `tools/harpp2/objectives/`, `gates/`, `projects/` | the probe in a contract's `## Required tests` |
+| `tools/harpp2/escalations/` | a recorded chair decision |
+| `tools/ai-autonomy.php` | rule 3: the chair decides |
+| `tools/ai-run.php` (the run ledger) | `kernel/Workbench/Development` task records |
+| `tools/ai-project.php` | the kernel contract format |
+
+**What this means for §1–§8.** §1–§6 and C1–C15 measure the v1 apparatus; §7 is the disposition of an
+independent review of that apparatus; §8 measures HARPP v2. All three remain true *of what they measured*, and
+none describes the harness a reviewer is asked to judge today. The v1 tools still run, which is what makes them
+usable as a worked example — and is why §2's commands remain runnable as written.
+
+### 9.2 The replacement — component inventory (`MEASURED 2026-09-19`)
+
+| Component | Path | Role |
+|---|---|---|
+| **Live harness** | `tools/chair.php` | ~1000 lines, committed. `plan` · `run` · `probe` · `decide` · `status` · `lanes` · `--self-test` |
+| **Control plane** | `kernel/Workbench/Development/` | task records, the contract parser, lifecycle, git evidence, artifact ingestion — the state v1 kept in `.ai/` |
+| **Test-weakening gate** | `kernel/Workbench/Development/AssertionChange.php` | `analyse($old,$new,$markers)` → removed / loosened / cosmetic / counts |
+| **Retrieval (RAG)** | `kernel/Workbench/Retrieval/RetrievalIndex.php` + `run.php` | `index` · `search` · `stats` · `forget` · `use` · `--self-test` |
+| **Retrieval index on disk** | `storage/private/retrieval` | where `RETRIEVAL_ROOT` points |
+| **Chair decisions (local)** | `storage/private/chair/decisions/` | where `decide` writes — **locally only** (§3.24, C22) |
+| **Run logs** | `storage/private/chair/runs/<task>-attempt1.log` | raw per-attempt logs, no structured record (§3.25, C23) |
+| **Director channel** | HARPP — `harpp` on `PATH`; bridge in-tree at `tools/harpp-bridge/` | unchanged, healthy, and **not yet used by the replacement** (§3.24) |
+| **Retirement record** | `tools/RETIRED.md` | what was retired, why, and what was extracted rather than lost |
+
+The CLI, from the tool's own usage block:
+
+```bash
+php tools/chair.php plan   --contract=<file.md> [--task=<id>] [--actor=<id>]
+php tools/chair.php run    --task=<id> [--attempts=2] [--lane=<model>:<thinking>,...] [--dry]
+php tools/chair.php probe  --task=<id>
+php tools/chair.php decide --task=<id> --decision=<text> [--rationale=<text>]
+php tools/chair.php status [--task=<id>]
+php tools/chair.php lanes
+php tools/chair.php --self-test
+```
+
+**Lane registry, cheap to expensive** (`MEASURED` with `php tools/chair.php lanes`) — the **same model with
+different thinking budgets**, so "promotion" is a different budget rather than a different vendor, except at the
+top of the ladder:
+
+```
+mechanical -> deepseek/deepseek-v4-flash:low
+visual     -> openai-codex/gpt-5.6-sol:medium
+reasoning  -> openai-codex/gpt-5.6-sol:high
+```
+
+**Contract format:** seven headings — `## Objective`, `## Architectural constraints`, `## Files likely
+affected`, `## Acceptance criteria`, `## Required tests`, `## Risks`, `## Forbidden changes`. The **probe is the
+first command-shaped line under `## Required tests`**, and it is the acceptance (rule 1, §9.3).
+
+### 9.3 The five rules (`CLAIMED` — rules 2 and 5 are the two that carry a falsification, C17 and C18)
+
+Quoted from `tools/chair.php`'s own header, so a reviewer can diff the claim against the code:
+
+1. **THE PROBE IS THE ACCEPTANCE.** A task declares one command that decides it. There is no gate map, no phase
+   list, no second opinion. If the probe is wrong the task is wrong, and the fix is to fix the probe.
+2. **THE BASELINE IS TAKEN BEFORE ANY WORK.** `run` executes the probe first. A probe that passes before the
+   work is done is measuring the wrong property — that is how a moon threshold scored a pale-cyan planet as
+   "grey" on 2026-09-19. Here that case is not a judgement call: the run stops and says the task is already
+   satisfied.
+3. **THE CHAIR DECIDES.** Failure promotes the reasoning level and retries; exhaustion records a BLOCKED
+   decision with the options that were considered. Nothing is referred to the director.
+4. **CONTEXT IS RETRIEVED, NOT DUMPED.** The brief is assembled from the task's own scope, ranked by relevance
+   to its objective. No whole-repository reads.
+5. **THE FLOOR IS ABSOLUTE.** Destructive commands are refused — `rm -rf`, pushes, real `DROP` / `TRUNCATE`
+   statements — and every refusal pattern is proved in BOTH directions by `--self-test`.
+
+### 9.4 The claims to falsify — C16–C23
+
+**C16 — The live harness exists, runs, and self-tests its own guards.**
+
+```bash
+cd /var/www/html/ikabudsix
+wc -l tools/chair.php
+php tools/chair.php --self-test; echo "exit=$?"
+```
+**MEASURED:** `--self-test` reports **37/37**. **Failure mode:** a non-zero exit, or a partial pass, means the
+replacement is itself unproved — the exact defect `tools/RETIRED.md` names.
+
+**C17 — The probe is the acceptance, and a probe that already passes stops the run (rule 2).**
+
+```bash
+php tools/chair.php plan --contract=/tmp/probe.contract.md   # prints the probe and the brief
+php tools/chair.php run  --task=<id> --dry                   # shows the dispatch without spending a lane
+```
+**Falsification, by hand:** author a contract whose probe is already green on the untouched tree, then `run` it.
+Rule 2 says the run **stops** and reports the task already satisfied.
+**MEASURED:** it fired in practice — on the chair's own task, before any work was dispatched.
+**Failure mode:** a run that proceeds against an already-green probe is measuring the wrong property, which is
+the moon-threshold failure of 2026-09-19 that rule 2 was written from.
+
+**C18 — The safety floor is absolute, single-sourced, and proved in both directions.**
+
+```bash
+php tools/chair.php --self-test                     # refusals asserted as refusals, admitted forms as admitted
+grep -n "THE FLOOR IS ABSOLUTE" tools/chair.php
+```
+**MEASURED:** destructive-SQL and destructive-command refusal is self-tested **17/17 in both directions**.
+**History it was written from:** a `\bDROP\b` regex false positive had refused
+`npx playwright test --grep "the drop is legible as it expires"` — the word *drop*, from a requirement about a
+weapon that drops — costing **46 minutes and a discarded completion**. The floor is now **single-sourced**, so
+that class of error cannot be fixed in one copy while the other stays wrong.
+**Failure mode:** a refusal that cannot be shown to refuse, or an admitted command that cannot be shown to be
+admitted, is a policy that has never been tested.
+
+**C19 — Test-weakening is detected, and was falsified on a real file.**
+
+```bash
+php tools/chair.php --self-test                 # includes the assertion-change controls
+grep -n "REPOSITORY_MARKERS" kernel/Workbench/Development/AssertionChange.php
+```
+**MEASURED:** the detector is ported from harpp2 (`assertions.php` → `kernel/Workbench/Development/AssertionChange.php`).
+`analyse($old,$new,$markers)` → **removed / loosened / cosmetic / counts**. Against a **real file** it returned
+**`removed=1, ok=false`** — it caught the deletion it was asked to catch. The default marker set does **not**
+recognise this repository's own `$check(...)` idiom, which is why `REPOSITORY_MARKERS` exists.
+**Failure mode:** a detector that cannot be made to fail is decoration. Restore the deleted assertion afterwards
+and verify the restore.
+
+**C20 — The retrieval index exists, is measured, and is actually carved into the brief.**
+
+```bash
+php kernel/Workbench/Retrieval/run.php --self-test       # expect 28/28
+php kernel/Workbench/Retrieval/run.php stats
+php kernel/Workbench/Retrieval/run.php index             # a no-change pass: expect ~1.42s
+php kernel/Workbench/Retrieval/run.php index --force     # expect ~3.05s
+php kernel/Workbench/Retrieval/run.php search "<query>" --limit=12
+```
+**MEASURED:** self-test **28/28**; corpus **1229 documents**, **308,305 lines**, index **3,851,230 bytes**; a
+no-change pass **1.42s** against **3.05s** forced; `stats` reports **`stale 8`** and **`used 2`**.
+**MEASURED, and the important half of this claim:** the brief handed to a lane is **not a stub** — for the
+star-swarm task it delivered exactly **one** document, `public/star-swarm/star-swarm.js` (2708 lines,
+relevance 89). That happened to be sufficient because the task was confined to one file (§3.27).
+**Failure mode:** if `search` returns nothing for a query that obviously matches an indexed path, or the
+retrieved section of the brief is empty while `stats` reports a populated corpus, rule 4 is prose.
+
+**C21 — A real delegated run has happened (the first).**
+
+```bash
+php tools/chair.php status
+ls -l storage/private/chair/runs/
+```
+**MEASURED, 2026-09-19:** contract → `plan` → baseline **RED** → lane dispatch → probe **PASS on attempt 1**,
+lane exit **0**. The lane was a model (`gpt-5.6-sol`, `visual`/medium). It produced a correct implementation
+**and** independently solved a subtlety the chair had not specified — accumulating a per-stage tally
+independently of the beat's lifetime, so the completed stage could be published before the counters were reset.
+**Failure mode:** a run whose probe did not start RED is not evidence (C17); a lane exit `0` with no probe
+reading is prose, not evidence.
+
+**C22 — DEFECT: the lean harness cannot file a decision with the director.**
+
+```bash
+grep -c harpp tools/chair.php      # → 3
+```
+**MEASURED:** **3**, and all three are **comments or a comparison table**. `php tools/chair.php decide` writes to
+`storage/private/chair/decisions/` and stops. Nothing reaches a human.
+**Why this is a defect and not a design choice:** it is a **regression against harpp2**, which did deliver, and it
+violates this repository's own **"no silent non-delivery"** invariant. The wire is not the problem — `harpp` is
+on `PATH`, `tools/harpp-bridge/` is in-tree, and `harpp decision list` reports **25 decisions**: **delivery has
+been proven for the old harness and not yet for the new one.**
+**How to falsify C22:** show a delivered decision — a `harpp decision list` entry whose provenance is a
+`chair.php` run. Until then, "the chair decided" and "the director was told" are different facts (§3.24).
+
+**C23 — DEFECT: no concurrency control and no structured run record.**
+
+```bash
+grep -cE "flock|LOCK_EX|ledger|commit-check" tools/chair.php      # → 0
+ls -l storage/private/chair/runs/
+```
+**MEASURED:** **0**. Two `chair.php run` invocations can write the same tree concurrently. The completed run left
+one raw log (`storage/private/chair/runs/<task>-attempt1.log`) and **no structured record**, so "what happened in
+run N" requires reading a log by eye, and the repository rule *never commit during a live run* is
+**unenforceable because there is nothing to ask** (§3.25).
+**How to falsify C23:** point `status` at a run id some other tool can read, or produce a machine-readable
+record of an attempt.
+
+### 9.5 The measured gaps — the point of this revision
+
+Each gap was established by running a command, and each is carried into §3 as a formal limit:
+
+| Gap | Command that established it | Limit | Claim |
+|---|---|---|---|
+| The harness **cannot deliver a decision to the director** | `grep -c harpp tools/chair.php` → 3, all comments | §3.24 | C22 |
+| **No concurrency control, no structured run record** | `grep -cE "flock\|LOCK_EX\|ledger\|commit-check" tools/chair.php` → 0 | §3.25 | C23 |
+| `allowed_scope` is **used, not verified** | `grep -n allowed_scope tools/chair.php` (inspection) | §3.26 | — |
+| Retrieval **serves stale documents silently**; recall unmeasured | `…/run.php stats` → `stale 8`, `used 2` | §3.27 | C20 |
+| The harness **cannot prove a probe is RED** — the chair falsified it **by hand**, and that found **two false passes** | §9.6 | §3.28 | — |
+| **No unattended loop** — `advance` / `watch` do not exist; every dispatch is a human typing `run` | `grep -nE "\badvance\b|\bwatch\b" tools/chair.php` | §3.29 | — |
+| **Retry is `--attempts=N`**, not a promotion ladder (L1 → L2 → L3) | the tool's usage block | §3.30 | — |
+
+### 9.6 Defects found in this harness, by hand — the self-correction record (§4's discipline, continued)
+
+| # | Defect | How it was caught | Status |
+|---|---|---|---|
+| 18 | A probe passed **for the wrong reason**: an ink threshold on the announcement band was **already green before the feature existed**, because it measured pre-existing text | The chair stripped the counters from the drawn string while leaving them in state — **the probe still passed** | Superseded by the corrected probe |
+| 19 | The **replacement** differential **also passed against the falsified line**: it compared a small tally against a large one but **stepped the simulation between readings**, so it measured starfield movement rather than the tally | The chair asked what the second reading was actually of | Fixed — the correction renders the **same frame twice** via `game.render()` instead of stepping |
+| 20 | A defect **authored by the chair**: `updateOpening()` called `updateEnemies()`, which **does not exist anywhere in the file**. The opening beat threw on entry and never reached its terminal state, which is why a persistent instructions page never appeared. The real stepper is `updateFormation()` | The instructions page never appeared | Fixed — `updateFormation()` |
+| — | *(Retired harness, listed for the same table's sake)* the `\bDROP\b` false positive that cost 46 minutes; the moon threshold that passed on the unfixed product; the stale assertion; the acceptance battery that grew 11 → 13 | `tools/RETIRED.md` | Retired with the harness; the floor is now **single-sourced** (§9.4, C18) |
+
+The corrected probe is now **green on shipped code and red** (`Expected > 17262, Received 17262`) when the
+counters leave the screen — the proof the previous two versions did not have.
+
+**Generalisable lessons, stated as rules:**
+
+1. A threshold on *"something is drawn"* cannot distinguish what you added from what was already there.
+2. A differential is only valid if the frame is held still; stepping between readings measures the stepping.
+3. An undefined function in a game loop can present as *"the animation is stuck"* rather than as an error.
+
+### 9.7 What Star Swarm proves, and what it cannot
+
+**It proves the mechanism.** Contract → brief → lane → probe → verify, once, end to end, on a task whose probe
+was proven RED first and GREEN after (C21), with a lane that added correct, unrequested insight.
+
+**It does not prove the process.** Star Swarm is a **single-file, single-lane, single-probe, no-escalation**
+task. It did **not** touch:
+
+- multi-file scope;
+- a schema or a migration;
+- auth or authorization;
+- a decision requiring escalation — unsurprising, since §3.24 means escalation cannot currently be delivered;
+- a review → repair loop;
+- a release gate.
+
+The new evidence is therefore a **validation of the mechanism, not of the process**, and the parts of the process
+that have *not* been exercised are exactly the parts §3.25–§3.30 say are missing. **The conservative position of
+§0 stands: bounded unattended slice completion now has one positive instance and no streak** (§3.11's bar of
+10–20 slices is untouched).
+
+### 9.8 The honest position of this revision
+
+The replacement is **smaller and faster**, and it has **one** completed delegation to its name. It is also **less
+capable than what it replaced** in three measured ways — it cannot deliver a decision (§3.24), it keeps no run
+record and does not serialise runs (§3.25), and it cannot promote a failure (§3.30) — and its retrieval, though
+real and measured, has been observed on exactly one task (§3.27). A reviewer should treat it as a promising
+instrument with an unproven process behind it, and should falsify C16–C23 rather than read §8 as its equal.
+
+### 9.9 What an independent reviewer should falsify next
+
+```bash
+cd /var/www/html/ikabudsix
+php tools/chair.php --self-test                                # expect 37/37, both directions
+php tools/chair.php lanes                                      # expect mechanical / visual / reasoning
+php kernel/Workbench/Retrieval/run.php --self-test             # expect 28/28
+php kernel/Workbench/Retrieval/run.php stats                   # expect a populated corpus; note stale and used
+grep -c harpp tools/chair.php                                  # expect 3 -- then ask why it is not 0 (C22)
+grep -cE 'flock|LOCK_EX|ledger|commit-check' tools/chair.php   # expect 0 -- then ask what two overlapping runs do (C23)
+```
+
+Then do by hand what the chair had to do by hand: author a contract whose probe **already passes** on the
+untouched tree and confirm `run` **stops** (C17); then write a probe that passes **for the wrong reason** and
+confirm nothing in the harness catches it (§3.28). **If a check cannot be made to fail, it is decoration** — the
+sentence §8 ended on is the sentence this revision has to live up to.
+
+---
+
+## Appendix A — Where things live
 
 ```
 .github/instructions/ai-autonomy-escalation.instructions.md   policy (normative)
@@ -1259,22 +1716,35 @@ the overlap probe fails; restore and verify the sha256. **If a check cannot be m
 .ai/chair-decisions.md                                       CD-1 … CD-49 (was CD-1 … CD-40)
 .ai/trust-surface-amendments.json                            TSA-0001 … TSA-0011 (was TSA-0001 … TSA-0007; director-authorised)
 .ai/review-implementations.sol.md                            the 2026-09-14 independent review
-.ai/runs/                                                    run records + reports (the measurement source)
-.ai/projects/harpp-gen4/                                     the worked project (state, slices, metrics)
-.ai/projects/gen4-r1/                                        frozen-apparatus measurement programme
-.ai/decisions/                                               filed L4 decision records
+.ai/runs/                                                    v1 run records + reports (measurement source for C1–C15)
+.ai/projects/harpp-gen4/                                     the worked v1 project (state, slices, metrics)
+.ai/projects/gen4-r1/                                        frozen-apparatus measurement programme (v1)
+.ai/decisions/                                               v1 filed L4 decision records
+storage/private/chair/decisions/                             where `chair.php decide` writes — local only (C22)
+storage/private/chair/runs/<task>-attempt1.log               raw per-attempt logs, no structured record (C23)
+storage/private/retrieval/                                   the RAG index on disk
+
+tools/chair.php                                              THE LIVE HARNESS (2026-09-19) — §9
+kernel/Workbench/Development/                                task records, contract, lifecycle, AssertionChange
+kernel/Workbench/Retrieval/RetrievalIndex.php  .../run.php    the retrieval index and its CLI (RAG)
+tools/RETIRED.md                                             what was retired, why, and what was extracted
+tools/harpp-bridge/                                          the director-channel bridge, in-tree (live; unused by chair.php — C22)
+
+RETIRED 2026-09-19 — still runnable for reference (`tools/RETIRED.md`):
+tools/harpp2/                                                HARPP v2 (harpp2.php, chain.sh, dispatch.sh, e2e.sh, objectives/, gates/, projects/)
 tools/ai-autonomy.php  tools/ai-run.php  tools/ai-contract-lint.php
-tools/ai-loop.php      tools/ai-project.php
-tools/harpp-bridge/                                          the director-channel bridge, in-tree
+tools/ai-loop.php      tools/ai-project.php                   the v1 driver, run ledger, loop, contract lint and project tools
 tests/ai_autonomy_test.php  tests/ai_run_test.php  tests/ai_project_test.php
 tests/ai_project_metrics_test.php  tests/ai_contract_lint_test.php
-tests/ai_loop_test.php  tests/ai_autonomy_glob_scope_test.php
-tests/gui_settings_route_authority_declaration_test.php      S2's pure evidence test (new since `995553a`)
-modules/gui-settings/tests/gui_settings_route_authority_test.php  S2's module test (new since `995553a`)
-kernel/Workbench/Development/DevelopmentTaskContract.php     the parser
+tests/ai_loop_test.php  tests/ai_autonomy_glob_scope_test.php  v1 suites (the retired harness's own tests)
+tests/gui_settings_route_authority_declaration_test.php      S2's pure evidence test (v1 programme)
+modules/gui-settings/tests/gui_settings_route_authority_test.php  S2's module test (v1 programme)
+kernel/Workbench/Development/DevelopmentTaskContract.php     the contract parser (also used by chair.php)
 ```
 
 ## Appendix B — Exit codes
+
+*(The v1 driver's codes. `tools/chair.php`'s own exit codes are **NOT RE-MEASURED** in this brief — §9.4, C16.)*
 
 | Code | Meaning |
 |---|---|
