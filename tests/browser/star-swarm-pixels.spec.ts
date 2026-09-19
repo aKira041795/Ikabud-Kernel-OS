@@ -604,4 +604,112 @@ test.describe('star swarm pixels', () => {
         expect(assets.css.some(versioned), 'the stylesheet URL carries a timestamp version').toBe(true);
         expect(assets.js.some(versioned), 'the script URL carries a timestamp version too').toBe(true);
     });
+
+    test('the fighter crosses the field at arcade speed @p8', async ({ page }) => {
+        await boot(page);
+
+        const move = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.player.x = 4; // left edge, so a whole second of travel is available
+            const from = game.state.player.x;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+            game.test.step(60); // one second of game time, through the real input path
+            const moved = game.state.player.x - from;
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight' }));
+            return { moved, fieldWidth: game.lane.canvas.width };
+        });
+
+        // Measured 2026-09-19: 420 px/s against a 1280 px field = 3.05 s to cross, where the same
+        // speed took 1.9 s on the pre-widening 800 px field. The director felt exactly that, and it is
+        // why the requirement is expressed as a FRACTION OF THE FIELD rather than in pixels per second:
+        // a future resize must not be able to reintroduce the lag.
+        expect(move.moved / move.fieldWidth, 'the fighter crosses half the field in a second').toBeGreaterThanOrEqual(0.5);
+        // A floor alone invites the opposite defect. The arcade fighter is quick, not twitchy, and there is
+        // an existing verified assertion that two-ship collisions and dodge windows behave at this scale.
+        expect(move.moved / move.fieldWidth, 'the fighter is quick but not twitchy').toBeLessThanOrEqual(1.2);
+    });
+
+    test('a shot reaches the top of the field quickly @p8', async ({ page }) => {
+        await boot(page);
+
+        const travel = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            // Nothing to intercept the shot: this measures travel, not a collision.
+            game.state.enemies.length = 0;
+            game.state.player.x = game.lane.canvas.width / 2 - game.state.player.width / 2;
+            game.state.bullets.length = 0;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+            game.test.step(1);
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowUp' }));
+            const fired = game.state.bullets.length;
+            let frames = 0;
+            while (game.state.bullets.length > 0 && frames < 300) {
+                game.test.step(1);
+                frames += 1;
+            }
+            return { fired, frames, seconds: frames / 60 };
+        });
+
+        expect(travel.fired, 'pressing fire produces a shot').toBeGreaterThan(0);
+        // 1.16 s measured against the widened field; 0.97 s before it. A shot that dawdles across the
+        // screen is what makes firing feel unresponsive, and the 2-shot limit then caps the fire rate.
+        expect(travel.seconds, 'a shot clears the field in under 0.8 s').toBeLessThanOrEqual(0.8);
+        // And not instant: a shot that hits the top in a couple of frames removes the lead a diving enemy
+        // is supposed to have, which is a gameplay change dressed up as responsiveness.
+        expect(travel.seconds, 'a shot is fast but not instant').toBeGreaterThanOrEqual(0.25);
+    });
+
+    test('holding fire sustains an arcade rate @p8', async ({ page }) => {
+        await boot(page);
+
+        const rate = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.enemies.length = 0;
+            game.state.player.x = game.lane.canvas.width / 2 - game.state.player.width / 2;
+            game.state.bullets.length = 0;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+            let spawned = 0;
+            for (let frame = 0; frame < 60; frame += 1) {
+                const before = game.state.bullets.length;
+                game.test.step(1);
+                const after = game.state.bullets.length;
+                if (after > before) spawned += after - before;
+            }
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowUp' }));
+            return { spawned, live: game.state.bullets.length };
+        });
+
+        // 2/s measured. The arcade allows two shots in flight at once, so the honest fix is faster shots
+        // rather than a bigger allowance: at 0.8 s of travel the same limit sustains 2.5/s.
+        expect(rate.spawned, 'one second of held fire launches at least 2.5 shots').toBeGreaterThanOrEqual(2.5);
+    });
+
+    test('fire responds on the next frame @p8', async ({ page }) => {
+        await boot(page);
+
+        const latency = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.enemies.length = 0;
+            game.state.player.x = game.lane.canvas.width / 2 - game.state.player.width / 2;
+            game.state.bullets.length = 0;
+            const before = game.state.bullets.length;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+            game.test.step(1);
+            const after = game.state.bullets.length;
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowUp' }));
+            return { firedOnFirstFrame: after - before };
+        });
+
+        // A guard, not a repair: latency was already one frame. It stays asserted so a future input
+        // refactor cannot quietly introduce a key-repeat or key-up dependency.
+        expect(latency.firedOnFirstFrame, 'the first shot is fired on the frame after the keypress').toBeGreaterThan(0);
+    });
 });

@@ -46,6 +46,7 @@ $contractPath = $root . '/tools/harpp2/projects/star-swarm-galaga.json';
  *   5 — `legibility`  (the capture, the announced extra ship, the 16:9 field)
  *   6 — `opening`     (Star Swarm, then by IKON, before play)
  *   7 — `palette` + `serving` (the caste colours on pixels; assets that cannot go stale)
+ *   8 — `responsiveness` (the fighter, the shots, the fire rate -- measured against the field)
  *
  * WHERE A PROBE MUST LIVE — the anti-faking rule.
  * Phases 1-3 read STATE, and the state spec is in the rebuild lane's scope. Phases 4-6 read PIXELS, and
@@ -64,6 +65,7 @@ $phaseMap = [
     5 => ['legibility'],
     6 => ['opening'],
     7 => ['palette', 'serving'],
+    8 => ['responsiveness'],
 ];
 $phase = 0;
 foreach (array_slice($argv, 1) as $argument) {
@@ -71,12 +73,12 @@ foreach (array_slice($argv, 1) as $argument) {
         $phase = (int) $m[1];
     }
     if (str_starts_with($argument, '--help')) {
-        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1|2|3|4|5|6|7]\n";
+        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1|2|3|4|5|6|7|8]\n";
         exit(0);
     }
 }
 if ($phase !== 0 && !isset($phaseMap[$phase])) {
-    fwrite(STDERR, "unknown --phase={$phase}; expected 1, 2, 3, 4, 5, 6 or 7\n");
+    fwrite(STDERR, "unknown --phase={$phase}; expected 1, 2, 3, 4, 5, 6, 7 or 8\n");
     exit(2);
 }
 $activeGroups = $phase === 0 ? null : $phaseMap[$phase];

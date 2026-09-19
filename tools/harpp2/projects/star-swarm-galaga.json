@@ -258,6 +258,34 @@
             "statement": "The page requests its stylesheet and script with a version parameter tied to the asset's own timestamp, so a visual change cannot be served from a stale browser cache.",
             "probe": "the stylesheet URL carries a timestamp version",
             "why": "Director report 2026-09-19: 'game width did not change to 16:9'. It had -- backing store 1280x720 and displayed 1278x719 -- but the stylesheet URL was static and unversioned, so his browser kept the previous CSS, which carried no aspect-ratio. A stale asset made a delivered change look undelivered and cost a false defect report."
+        },
+        {
+            "id": "R1",
+            "group": "responsiveness",
+            "statement": "Holding a direction moves the fighter across at least HALF the field width in one second of game time (2.0 s to cross, where the same code took 3.05 s after the field was widened) and not more than 1.2 widths in a second (quick, not twitchy). The speed is derived from the field so a future resize cannot reintroduce the lag.",
+            "probe": "the fighter crosses half the field in a second",
+            "why": "Director report 2026-09-19: 'horizontal movement is sluggish'. Measured: PLAYER_SPEED 420 px/s against a 1280 px field = 3.05 s to cross; it was 1.9 s on the 800 px field. Widening the field diluted every absolute speed by 1.6x. Expressed as a fraction of the field so the fix cannot be undone by geometry."
+        },
+        {
+            "id": "R2",
+            "group": "responsiveness",
+            "statement": "A player shot clears the height of the field in at most 0.8 s and at least 0.25 s (measured 1.16 s after the widening, 0.97 s before it): fast, but not so fast that a diving enemy loses its lead.",
+            "probe": "a shot clears the field in under 0.8 s",
+            "why": "Director report 2026-09-19: 'shooting is sluggish'. Slow shots are felt twice: as latency to impact, and as a cap on the fire rate, because only two may be in flight at once."
+        },
+        {
+            "id": "R3",
+            "group": "responsiveness",
+            "statement": "Holding fire sustains at least 2.5 shots per second. The two-shots-in-flight allowance is FIDELITY and must not be raised to reach this: the rate has to come from shots that clear the field faster.",
+            "probe": "one second of held fire launches at least 2.5 shots",
+            "why": "Measured 2/s. With a 0.22 s cooldown the limiter is not the cooldown but the 1.16 s flight combined with PLAYER_SHOT_LIMIT = 2, so R3 follows from R2 rather than competing with it: at 0.8 s of travel the same limit sustains 2.5/s. The two requirements were set together on purpose, so the phase is satisfiable (CD-86)."
+        },
+        {
+            "id": "R4",
+            "group": "responsiveness",
+            "statement": "The first shot is fired on the frame after the keypress: input is not dependent on key repeat, and no key-up is needed between shots.",
+            "probe": "the first shot is fired on the frame after the keypress",
+            "why": "A guard, not a repair: latency measured one frame, so this passes today. It stays asserted so an input refactor cannot quietly introduce a key-repeat or key-up dependency."
         }
     ],
     "spec_probes": {
@@ -269,7 +297,8 @@
             "legibility",
             "opening",
             "palette",
-            "serving"
+            "serving",
+            "responsiveness"
         ]
     },
     "invariants": {
