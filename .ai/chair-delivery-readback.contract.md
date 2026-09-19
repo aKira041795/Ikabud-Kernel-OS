@@ -53,10 +53,9 @@ Fix the delivery path so a claim of delivery requires corroboration.
 
 ## Acceptance criteria
 
-- A writer that claims success and persists nothing is NOT reported as a delivery (probe: the read-back script).
-- The harness exits 4 and prints the undelivered line in that case (probe: the same script).
-- The self-test still passes in full: `php tools/chair.php --self-test`
-- The suppressed-response trap is still rejected: the self-test covers it.
+- A writer that claims success and persists nothing is NOT reported as a delivery: `bash tests/chair-delivery-readback-probe.sh`
+- The harness exits 4 and prints the undelivered line in that case: `bash tests/chair-delivery-readback-probe.sh`
+- The self-test passes in full, including the suppressed-response trap still being rejected: `php tools/chair.php --self-test`
 
 ## Required tests
 

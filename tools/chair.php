@@ -420,37 +420,43 @@ function commandCommitCheck(array $flags): int
 
 // ── the director channel ────────────────────────────────────────────────────────────────────────
 //
-// "No silent non-delivery": the local artifact is written FIRST, and delivery is claimed only on an
-// acknowledged HARPP submission. An undelivered decision prints exactly the line below and exits 4.
+// "No silent non-delivery": the local artifact is written FIRST, and delivery is claimed only when
+// the submitted decision can be read back from HARPP. An undelivered decision prints exactly the
+// line below and exits 4.
 
 const CHAIR_UNDELIVERED = 'DELIVERY: local-only — director NOT notified';
 
 /**
- * Only an acknowledged submission counts.
+ * Only a decision present in an independent HARPP read-back counts as delivered.
  *
- * Grounded in the bridge's real contract (`tools/harpp-bridge/harpp_client.py`), not in a guess:
- * `submit_decision()` returns `{"ok": True, "suppressed": True}` when notifications are disabled.
- * **`ok` is true and nobody is notified.** Reading that as delivery would be silent non-delivery
- * wearing the costume of success, which is the exact failure this invariant exists to prevent -- and
- * the trap is that it looks right. Suppression is therefore checked BEFORE success.
+ * The submit command's response is deliberately not an input here. A writer can return `ok: true`
+ * without persisting anything; accepting its own claim recreates the silent non-delivery this check
+ * exists to prevent. Both the local-list and remote-list response envelopes are understood because
+ * HARPP has emitted both shapes, but either must contain the exact decision key.
  */
-function deliveryAcknowledged(string $output, int $exit): bool
+function deliveryAcknowledged(string $output, int $exit, string $decisionKey): bool
 {
     if ($exit !== 0) {
         return false;
     }
 
     $decoded = json_decode(trim($output), true);
-    if (!is_array($decoded)) {
-        // A command that answered with something that is not an acknowledgement has not acknowledged.
+    if (!is_array($decoded) || ($decoded['suppressed'] ?? false) === true) {
         return false;
     }
 
-    if (($decoded['suppressed'] ?? false) === true) {
+    $decisions = $decoded['decisions'] ?? ($decoded['data']['decisions'] ?? null);
+    if (!is_array($decisions)) {
         return false;
     }
 
-    return ($decoded['ok'] ?? false) === true;
+    foreach ($decisions as $decision) {
+        if (is_array($decision) && ($decision['decision_key'] ?? null) === $decisionKey) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -511,15 +517,31 @@ function deliverDecision(string $decisionKey, string $title, string $body, strin
         escapeshellarg($decisionKey)
     );
 
-    $lines = [];
-    $exit = 0;
-    exec($command, $lines, $exit);
-    $output = implode("\n", $lines);
+    $submissionLines = [];
+    $submissionExit = 0;
+    exec($command, $submissionLines, $submissionExit);
+    $submissionOutput = implode("\n", $submissionLines);
+
+    // The writer's response is not evidence. Ask HARPP independently and require the exact key to be
+    // present in the returned decision collection before making any delivery claim.
+    $readbackCommand = sprintf('%s decision list --limit 50 2>&1', escapeshellarg($harpp));
+    $readbackLines = [];
+    $readbackExit = 0;
+    exec($readbackCommand, $readbackLines, $readbackExit);
+    $readbackOutput = implode("\n", $readbackLines);
+
+    $diagnostics = [];
+    if ($submissionOutput !== '') {
+        $diagnostics[] = 'submit: ' . $submissionOutput;
+    }
+    if ($readbackOutput !== '') {
+        $diagnostics[] = 'read-back: ' . $readbackOutput;
+    }
 
     return [
-        'ok' => deliveryAcknowledged($output, $exit),
-        'output' => $output,
-        'exit' => $exit,
+        'ok' => deliveryAcknowledged($readbackOutput, $readbackExit, $decisionKey),
+        'output' => implode("\n", $diagnostics),
+        'exit' => $readbackExit !== 0 ? $readbackExit : $submissionExit,
         'command' => $command,
     ];
 }
@@ -2804,16 +2826,18 @@ function selfTest(): int
     @rmdir($second['aside']);
 
     // The director channel. A delivery check that says "sent" too easily is worse than no check at all,
-    // because the whole invariant is that an unacknowledged decision is NOT delivered.
+    // because the whole invariant is that a decision absent from read-back is NOT delivered.
     say('the director channel:');
-    $check('an accepted submission counts as delivered', deliveryAcknowledged('{"ok": true, "decision_key": "t-1"}', 0));
-    $check('a bare ok:true counts as delivered', deliveryAcknowledged('{"ok": true}', 0));
-    // The trap, and the reason this check exists: suppression answers ok=true and notifies nobody.
-    $check('a SUPPRESSED submission is NOT delivery, even though ok is true', !deliveryAcknowledged('{"ok": true, "suppressed": true, "reason": "testing/quiet mode"}', 0));
-    $check('ok:false is not delivery', !deliveryAcknowledged('{"ok": false, "error": "nope"}', 0));
-    $check('output that is not JSON is not delivery', !deliveryAcknowledged('DEC-0002 submitted', 0));
-    $check('empty output is not delivery', !deliveryAcknowledged('', 0));
-    $check('a failed exit is not delivery even when the body says ok', !deliveryAcknowledged('{"ok": true}', 1));
+    $listed = '{"count":1,"decisions":[{"decision_key":"t-1"}]}';
+    $remoteListed = '{"ok":true,"data":{"decisions":[{"decision_key":"t-1"}]}}';
+    $check('a decision read back by its exact key counts as delivered', deliveryAcknowledged($listed, 0, 't-1'));
+    $check('the remote read-back envelope is also understood', deliveryAcknowledged($remoteListed, 0, 't-1'));
+    $check('the writer\'s bare ok:true claim is NOT delivery', !deliveryAcknowledged('{"ok": true}', 0, 't-1'));
+    $check('a different key is not corroboration', !deliveryAcknowledged($listed, 0, 't-2'));
+    $check('a SUPPRESSED read-back is NOT delivery, even when it contains the key', !deliveryAcknowledged('{"suppressed":true,"decisions":[{"decision_key":"t-1"}]}', 0, 't-1'));
+    $check('output that is not JSON is not delivery', !deliveryAcknowledged('DEC-0002 submitted', 0, 't-1'));
+    $check('empty output is not delivery', !deliveryAcknowledged('', 0, 't-1'));
+    $check('a failed read-back exit is not delivery even when the key is present', !deliveryAcknowledged($listed, 1, 't-1'));
 
     say('the deferred-decision artifact:');
     $parsed = decisionOptions('a|A|effect A|cheap|local|reversible; b|B|effect B|dear|wide|no');
