@@ -106,6 +106,17 @@
         U: ['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
         D: ['####.', '#...#', '#...#', '#...#', '#...#', '#...#', '####.'],
         F: ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
+        // COMPLETED 2026-09-19. The set carried only the letters the original opening needed -- "Star
+        // Swarm" and "by IKON" -- so the first screen that said anything else rendered "P ASMA ANCE"
+        // for "PLASMA LANCE" and "STA E" for "STAGE": the glyphs were simply absent and the renderer
+        // skipped them in silence. Missing letters are not a cosmetic gap in a game whose interface is
+        // text, so the alphabet is completed rather than the wording trimmed around its holes.
+        G: ['.###.', '#...#', '#....', '#..##', '#...#', '#...#', '.###.'],
+        J: ['..###', '...#.', '...#.', '...#.', '...#.', '#..#.', '.##..'],
+        Q: ['.###.', '#...#', '#...#', '#...#', '#.#.#', '#..#.', '.##.#'],
+        V: ['#...#', '#...#', '#...#', '#...#', '#...#', '.#.#.', '..#..'],
+        Y: ['#...#', '#...#', '.#.#.', '..#..', '..#..', '..#..', '..#..'],
+        Z: ['#####', '....#', '...#.', '..#..', '.#...', '#....', '#####'],
         '0': ['.###.', '#...#', '#..##', '#.#.#', '##..#', '#...#', '.###.'],
         '1': ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
         '2': ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
@@ -129,6 +140,20 @@
         D: EXTRA_SHIP_GLYPHS.D,
         E: EXTRA_SHIP_GLYPHS.E,
         F: EXTRA_SHIP_GLYPHS.F,
+        // Delegated to the one glyph source rather than copied, so the two sets cannot disagree about
+        // what an L looks like. These were simply absent: the alphabet carried only the letters the
+        // original opening needed, and the renderer SKIPS a character it has no glyph for, so new text
+        // came out as "P ASMA ANCE" and "STA E" with no error anywhere. A missing letter is not cosmetic
+        // in a game whose interface is text, so the alphabet is completed.
+        G: EXTRA_SHIP_GLYPHS.G,
+        H: EXTRA_SHIP_GLYPHS.H,
+        J: EXTRA_SHIP_GLYPHS.J,
+        L: EXTRA_SHIP_GLYPHS.L,
+        Q: EXTRA_SHIP_GLYPHS.Q,
+        V: EXTRA_SHIP_GLYPHS.V,
+        X: EXTRA_SHIP_GLYPHS.X,
+        Y: EXTRA_SHIP_GLYPHS.Y,
+        Z: EXTRA_SHIP_GLYPHS.Z,
         I: EXTRA_SHIP_GLYPHS.I,
         K: ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'],
         M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
@@ -234,6 +259,28 @@
         butterfly: Object.freeze({ formation: 80, flight: 160 }),
         boss: Object.freeze({ formation: 150, flight: Object.freeze([400, 800, 1600]) })
     });
+
+    // ── The level arc ───────────────────────────────────────────────────────────────────────────
+    // Star Swarm is ENDLESS, in the arcade sense: it does not run out of stages, it runs out of the
+    // player. But "endless" is not an answer to "how many levels", so the arc is made explicit: a
+    // LOOP is eight stages, the eighth is the one that can be completed, and finishing it starts the
+    // next loop with the colony faster and denser. The player is told which stage of which loop they
+    // are in, so the shape of the game is visible instead of merely experienced.
+    var STAGES_PER_LOOP = 8;
+    // An arcade-challenging stage sits inside the loop, as in the machine this follows.
+    var CHALLENGING_STAGE_IN_LOOP = 3;
+
+    // ── Special weapons ─────────────────────────────────────────────────────────────────────────
+    // Rapid fire shortens the COOLDOWN; it deliberately does NOT raise PLAYER_SHOT_LIMIT. The two-shots-
+    // in-flight rule is verified behaviour (W4) and a second verified requirement asserts that the lance
+    // is not a bullet -- so a power-up may make firing faster, never wider in that sense. Spread adds
+    // shots but spends the same limit, so it can never exceed it either.
+    var RAPID_FIRE_COOLDOWN = 0.09;
+    var RAPID_DURATION = 12;
+    var SPREAD_DURATION = 12;
+    var SPREAD_ANGLE = 0.22;
+    var WEAPON_KINDS = Object.freeze(['lance', 'rapid', 'spread']);
+    var STAGE_CLEAR_LIFE = 2.4;
     var CHALLENGING_PATTERNS = Object.freeze([
         Object.freeze({
             name: 'crossing-wings',
@@ -288,6 +335,23 @@
         challenging: false,
         challengingPattern: null,
         challengingDestroyed: 0,
+        // The level arc, derived from the wave rather than incremented in two places, so it cannot drift.
+        loop: 1,
+        stageInLoop: 1,
+        stagesPerLoop: STAGES_PER_LOOP,
+        // Live special-weapon timers, in seconds of game time. Zero means not held.
+        weapon: { rapid: 0, spread: 0 },
+        // The roster the opening screen teaches, DERIVED from the score table so the two cannot disagree.
+        // `note` answers the question a name alone cannot: WHICH one is the bee. A sprite, a name and a
+        // score still leave a new player staring at the formation wondering what they are looking at, so
+        // each row says what it looks like and where it flies.
+        legend: [
+            { caste: 'bee', name: 'Bee', points: ENEMY_SCORES.bee.formation, note: 'LOWER ROWS, YELLOW' },
+            { caste: 'butterfly', name: 'Butterfly', points: ENEMY_SCORES.butterfly.formation, note: 'MIDDLE ROWS, RED' },
+            { caste: 'boss', name: 'Boss Galaga', points: ENEMY_SCORES.boss.formation, note: 'TOP ROW, GREEN, CARRIES THE DROP' }
+        ],
+        // The between-stages beat: what the player sees after clearing a stage, and what it says.
+        stageClear: { life: 0, text: '' },
         perfectBonus: 0,
         announcement: null,
         powerup: {
@@ -848,6 +912,26 @@
     }
 
     function startWave(wave) {
+        // The arc, derived in one place. A stage that completes is announced before the next begins.
+        var completedStage = wave - 1;
+        if (completedStage >= 1) {
+            var completedLoop = Math.floor((completedStage - 1) / STAGES_PER_LOOP) + 1;
+            var completedInLoop = ((completedStage - 1) % STAGES_PER_LOOP) + 1;
+            var finishedLoop = completedInLoop === STAGES_PER_LOOP;
+            state.stageClear = {
+                life: STAGE_CLEAR_LIFE,
+                text: finishedLoop
+                    ? 'LOOP ' + completedLoop + ' COMPLETE'
+                    : 'STAGE ' + completedInLoop + ' OF ' + STAGES_PER_LOOP + ' CLEAR'
+            };
+            state.announcement = {
+                kind: finishedLoop ? 'loop' : 'stage',
+                text: state.stageClear.text,
+                life: STAGE_CLEAR_LIFE
+            };
+        }
+        state.loop = Math.floor((wave - 1) / STAGES_PER_LOOP) + 1;
+        state.stageInLoop = ((wave - 1) % STAGES_PER_LOOP) + 1;
         state.wave = wave;
         state.stage = wave;
         state.phase = 'entry';
@@ -1003,10 +1087,17 @@
         if (state.player.cooldown > 0 || state.shots.length >= PLAYER_SHOT_LIMIT) {
             return;
         }
-        state.player.cooldown = PLAYER_FIRE_COOLDOWN;
+        state.player.cooldown = state.weapon.rapid > 0 ? RAPID_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN;
         var muzzles = state.dualFighter
             ? [SINGLE_FIGHTER_WIDTH / 2, DUAL_FIGHTER_OFFSET + SINGLE_FIGHTER_WIDTH / 2]
             : [state.player.width / 2];
+        // Spread widens the single hull's volley into a V. It does NOT raise PLAYER_SHOT_LIMIT: the
+        // two-shots-in-flight rule is verified behaviour, so a power-up may change where shots go, never
+        // how many may be in the air. A dual hull is already a spread and is left alone.
+        if (state.weapon.spread > 0 && !state.dualFighter) {
+            var centre = state.player.width / 2;
+            muzzles = [centre - 14, centre + 14];
+        }
         var shotsBefore = state.shots.length;
         for (var i = 0; i < muzzles.length && state.shots.length < PLAYER_SHOT_LIMIT; i += 1) {
             state.bullets.push({
@@ -1272,7 +1363,10 @@
                 y: enemy.y + enemy.height / 2,
                 remaining: 7,
                 lifetime: 7,
-                kind: 'lance'
+                // Rotated by stage, deterministically: a player who wants the lance rather than rapid fire
+                // can learn which stages carry it, and a probe can predict what will drop instead of
+                // sampling randomness. Stage 1 drops the lance, which is also the one the tutorial teaches.
+                kind: WEAPON_KINDS[(state.stage - 1) % WEAPON_KINDS.length]
             });
         }
         disperseNeighbours(enemy);
@@ -1862,6 +1956,10 @@
             state.announcement.life -= dt;
             if (state.announcement.life <= 0) state.announcement = null;
         }
+        // The special-weapon windows run on game time, so a paused or unfocused game does not spend them.
+        state.weapon.rapid = Math.max(0, state.weapon.rapid - dt);
+        state.weapon.spread = Math.max(0, state.weapon.spread - dt);
+        state.stageClear.life = Math.max(0, state.stageClear.life - dt);
         for (i = state.explosions.length - 1; i >= 0; i -= 1) {
             var explosion = state.explosions[i];
             explosion.age += dt;
@@ -1895,17 +1993,35 @@
                 height: 20
             };
             if (intersects(pickupBounds, state.player)) {
-                if (state.powerup.charges < POWERUP_MAX_CHARGES) {
-                    state.powerup.charges += 1;
-                }
-                state.announcement = {
-                    kind: 'powerup',
-                    text: 'PLASMA LANCE',
-                    life: 2.6
-                };
+                grantPickup(pickup.kind);
                 state.pickups.splice(i, 1);
             }
         }
+    }
+
+    /**
+     * Apply a collected pickup.
+     *
+     * One place decides what a kind does, so the drop, the collection and the announcement cannot
+     * disagree about what the player just picked up. The charge path keeps its cap; the timed weapons
+     * set a window and are refreshed rather than stacked, so collecting two in a row extends the benefit
+     * instead of quietly multiplying it.
+     */
+    function grantPickup(kind) {
+        if (kind === 'rapid') {
+            state.weapon.rapid = RAPID_DURATION;
+            state.announcement = { kind: 'powerup', text: 'RAPID FIRE', life: 2.6 };
+            return;
+        }
+        if (kind === 'spread') {
+            state.weapon.spread = SPREAD_DURATION;
+            state.announcement = { kind: 'powerup', text: 'SPREAD SHOT', life: 2.6 };
+            return;
+        }
+        if (state.powerup.charges < POWERUP_MAX_CHARGES) {
+            state.powerup.charges += 1;
+        }
+        state.announcement = { kind: 'powerup', text: 'PLASMA LANCE', life: 2.6 };
     }
 
     function checkWaveCleared() {
@@ -2359,7 +2475,58 @@
                 theme.roles.reward
             );
         }
+        drawLegend(ctx, theme);
         return true;
+    }
+
+    /**
+     * The roster: what each caste is worth, drawn from ENEMY_SCORES itself.
+     *
+     * Derived from the score table rather than written out again, because a legend that disagrees with
+     * the scoring is worse than no legend -- it teaches the player something false. A legend also answers
+     * the question a new player actually has on the first screen: which of these things is worth shooting
+     * first, and what is it called.
+     */
+    function drawLegend(ctx, theme) {
+        var rows = state.legend;
+        var scale = Math.max(3, Math.floor(canvasWidth() / 420));
+        var rowHeight = ENEMY_HEIGHT + 16;
+        var top = canvasHeight() * 0.56;
+        for (var i = 0; i < rows.length; i += 1) {
+            var row = rows[i];
+            var y = top + i * rowHeight;
+            // x THEN y, then width and height. Two bugs lived on this one line: the height was omitted, so
+            // cellHeight was NaN and nothing drew at all; and the repair then passed x=30 and y=0.14*width,
+            // swapping them, so the sprites appeared as stray streaks near the title. Measured, not seen:
+            // the roster rows held 0 ink where the bee and butterfly belong. A sprite that draws somewhere
+            // else looks like a decoration, and reads as one.
+            drawPixelSprite(ctx, SPRITES[row.caste], canvasWidth() * 0.14, y, ENEMY_WIDTH, ENEMY_HEIGHT);
+            drawPixelText(ctx, row.name.toUpperCase(), scale, canvasWidth() * 0.28, y + 6, theme.text);
+            drawPixelText(ctx, row.note, Math.max(2, scale - 1), canvasWidth() * 0.28, y + 6 + scale * 6, theme.textMuted);
+            drawPixelText(ctx, String(row.points), scale, canvasWidth() * 0.72, y + 6, theme.roles.reward);
+        }
+        drawInstructions(ctx, theme, top + rows.length * rowHeight + 10);
+    }
+
+    /**
+     * How to play, on the screen that is already showing the roster.
+     *
+     * Written from the same constants the game uses -- the challenging stage number and the loop length --
+     * so the instructions cannot describe a game that is no longer being played. A control list that omits
+     * the special weapons is how a player never discovers them.
+     */
+    function drawInstructions(ctx, theme, top) {
+        var scale = Math.max(2, Math.floor(canvasWidth() / 520));
+        var lines = [
+            'MOVE  ARROWS OR A/D',
+            'FIRE  SPACE OR UP',
+            'PLASMA LANCE  PRESS S  WHEN CHARGED',
+            'SPECIALS  SHOOT THE MARKED CARRIER, CATCH WHAT IT DROPS',
+            'STAGE ' + CHALLENGING_STAGE_IN_LOOP + ' OF ' + STAGES_PER_LOOP + ' IS A BONUS ROUND  \u00b7  STAGE ' + STAGES_PER_LOOP + ' ENDS A LOOP'
+        ];
+        for (var i = 0; i < lines.length; i += 1) {
+            drawPixelText(ctx, lines[i], scale, canvasWidth() / 2, top + i * (scale * 7 + 8), theme.textMuted);
+        }
     }
 
     function drawExtraShipAnnouncement(ctx, theme) {
