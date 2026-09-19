@@ -1618,4 +1618,115 @@ test.describe('star swarm pixels', () => {
             'and the drawn ink tracks the counters -- the numbers are on the screen, not only in state',
         ).toBeGreaterThan(clear.inkSmall);
     });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p15 -- the drop has to arrive.
+    //
+    // Reported from play: "the drop item does not reach the bottom for the player to collect".
+    // Measured cause: the pickup falls at 18px/s and expires after 7s, so it travels 126px in a field
+    // 720px tall and dies about a quarter of the way down -- the player cannot reach it even by
+    // standing directly underneath. A reward that can never be collected is a taunt, not a reward.
+    // ---------------------------------------------------------------------------------------------
+    test('the carrier drop reaches the player instead of dying in mid-air @p15', async ({ page }) => {
+        await boot(page);
+
+        const drop = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+
+            const carrierIndex = game.state.enemies.findIndex(
+                (enemy: any) =>
+                    enemy.alive && game.state.carrier && enemy.enemyIndex === game.state.carrier.enemyIndex,
+            );
+            if (carrierIndex < 0) return { dropped: false, reason: 'no live carrier in the wave' };
+
+            game.test.kill(carrierIndex);
+            if (game.state.pickups.length === 0) return { dropped: false, reason: 'the carrier dropped nothing' };
+
+            const startY = game.state.pickups[0].y;
+            const playerY = game.state.player.y;
+            let lowest = startY;
+            let collected = false;
+
+            // Step until it is taken or gone. 1200 steps is well past any plausible lifetime, so a
+            // pickup still in the air at the end is reported rather than silently truncating the run.
+            let steps = 0;
+            for (; steps < 1200; steps += 1) {
+                game.test.step(1);
+                if (game.state.pickups.length === 0) {
+                    // Gone: either the player took it (reward reaches them) or it expired (defect).
+                    collected = lowest >= playerY - 40;
+                    break;
+                }
+                lowest = game.state.pickups[0].y;
+            }
+
+            return { dropped: true, startY, lowest, playerY, collected, steps };
+        });
+
+        expect(drop.dropped, String((drop as any).reason ?? 'the carrier drops a pickup when destroyed')).toBe(true);
+        // The assertion that carries the defect: the lowest point the drop reached must be at the
+        // player's row, not short of it. Anything above that line is unreachable by design.
+        expect(
+            drop.lowest,
+            'the drop descends to the player\'s row before it expires',
+        ).toBeGreaterThanOrEqual(drop.playerY! - 40);
+    });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p16 -- one weapon per stage, and the loop has eight of them.
+    //
+    // The director asked for "new weapons per level". That is a design decision, so it is grounded in
+    // three cabinets rather than taste:
+    //   * Galaga (1981) for the stage STRUCTURE -- an endless loop with a Challenging Stage every
+    //     fourth stage starting at 3, which is why 3 and 7 of an eight-stage loop are the challenging
+    //     ones, and why the two-shot ceiling (PLAYER_SHOT_LIMIT) is a reward and not a weapon.
+    //   * Raiden (1990) for WEAPON IDENTITY -- pickups are colour-coded and deterministic, so a player
+    //     learns which stage carries what instead of gambling on a random drop.
+    //   * Gradius (1985) for ESCALATION -- the arsenal grows with the run rather than being handed over
+    //     at the start, so each stage introduces something the player has not yet had.
+    // ---------------------------------------------------------------------------------------------
+    test('every stage of the loop carries a weapon of its own @p16', async ({ page }) => {
+        await boot(page);
+
+        const arsenal = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            const stagesPerLoop = game.state.stagesPerLoop;
+            const perStage: string[] = [];
+
+            for (let stage = 1; stage <= stagesPerLoop; stage += 1) {
+                game.test.spawnWave(stage);
+                game.test.step(120);
+                const carrierIndex = game.state.enemies.findIndex(
+                    (enemy: any) =>
+                        enemy.alive && game.state.carrier && enemy.enemyIndex === game.state.carrier.enemyIndex,
+                );
+                if (carrierIndex < 0) {
+                    perStage.push('CHALLENGING');
+                    continue;
+                }
+                game.test.kill(carrierIndex);
+                perStage.push(game.state.pickups.length ? String(game.state.pickups[0].kind) : 'NONE');
+            }
+
+            return { perStage, stagesPerLoop };
+        });
+
+        expect(arsenal.stagesPerLoop, 'the loop is the eight stages the roster describes').toBe(8);
+        expect(arsenal.perStage, 'no stage fails to name its weapon').not.toContain('NONE');
+
+        const carried = arsenal.perStage.filter((kind: string) => kind !== 'CHALLENGING');
+        expect(
+            new Set(carried).size,
+            'each stage that carries a weapon carries a different one: ' + carried.join(', '),
+        ).toBe(carried.length);
+
+        // Galaga's rule, which is what makes the challenging stages predictable rather than arbitrary.
+        const challenging = arsenal.perStage
+            .map((kind: string, index: number) => (kind === 'CHALLENGING' ? index + 1 : 0))
+            .filter((stage: number) => stage > 0);
+        expect(challenging, 'the challenging stages are Galaga\'s every fourth, starting at 3')
+            .toEqual([3, 7]);
+    });
 });

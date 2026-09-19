@@ -104,6 +104,7 @@
         B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
         O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
         U: ['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+        W: ['#...#', '#...#', '#...#', '#.#.#', '#.#.#', '##.##', '#...#'],
         D: ['####.', '#...#', '#...#', '#...#', '#...#', '#...#', '####.'],
         F: ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
         // COMPLETED 2026-09-19. The set carried only the letters the original opening needed -- "Star
@@ -271,15 +272,23 @@
     var CHALLENGING_STAGE_IN_LOOP = 3;
 
     // ── Special weapons ─────────────────────────────────────────────────────────────────────────
-    // Rapid fire shortens the COOLDOWN; it deliberately does NOT raise PLAYER_SHOT_LIMIT. The two-shots-
-    // in-flight rule is verified behaviour (W4) and a second verified requirement asserts that the lance
-    // is not a bullet -- so a power-up may make firing faster, never wider in that sense. Spread adds
-    // shots but spends the same limit, so it can never exceed it either.
+    // Weapons alter a volley, never Galaga's two-shots-in-flight ceiling. Each standard stage in the
+    // eight-stage loop has a fixed pickup, so the arsenal is learnable and repeats with the loop.
     var RAPID_FIRE_COOLDOWN = 0.09;
-    var RAPID_DURATION = 12;
-    var SPREAD_DURATION = 12;
+    var WEAPON_DURATION = 12;
+    var RAPID_DURATION = WEAPON_DURATION;
+    var SPREAD_DURATION = WEAPON_DURATION;
+    var TWIN_DURATION = WEAPON_DURATION;
+    var PIERCE_DURATION = WEAPON_DURATION;
+    var NOVA_DURATION = WEAPON_DURATION;
     var SPREAD_ANGLE = 0.22;
-    var WEAPON_KINDS = Object.freeze(['lance', 'rapid', 'spread']);
+    var NOVA_ANGLE = 0.36;
+    var PICKUP_LIFETIME = 7;
+    var PICKUP_FALL_SPEED = 80;
+    var WEAPON_KINDS = Object.freeze(['lance', 'rapid', 'spread', 'twin', 'pierce', 'nova']);
+    var STAGE_WEAPONS = Object.freeze([
+        'lance', 'rapid', null, 'spread', 'twin', 'pierce', null, 'nova'
+    ]);
     var STAGE_CLEAR_LIFE = 2.4;
     var CHALLENGING_PATTERNS = Object.freeze([
         Object.freeze({
@@ -340,7 +349,7 @@
         stageInLoop: 1,
         stagesPerLoop: STAGES_PER_LOOP,
         // Live special-weapon timers, in seconds of game time. Zero means not held.
-        weapon: { rapid: 0, spread: 0 },
+        weapon: { rapid: 0, spread: 0, twin: 0, pierce: 0, nova: 0 },
         // The roster the opening screen teaches, DERIVED from the score table so the two cannot disagree.
         // `note` answers the question a name alone cannot: WHICH one is the bee. A sprite, a name and a
         // score still leave a new player staring at the formation wondering what they are looking at, so
@@ -1032,6 +1041,11 @@
         state.powerup.remaining = 0;
         state.powerup.nextAt = FIRST_POWERUP_SCORE;
         state.powerup.uses = 0;
+        state.weapon.rapid = 0;
+        state.weapon.spread = 0;
+        state.weapon.twin = 0;
+        state.weapon.pierce = 0;
+        state.weapon.nova = 0;
         state.keys.lance = false;
         state.dualFighter = false;
         state.capturedFighter = null;
@@ -1095,26 +1109,48 @@
         if (state.player.cooldown > 0 || state.shots.length >= PLAYER_SHOT_LIMIT) {
             return;
         }
-        state.player.cooldown = state.weapon.rapid > 0 ? RAPID_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN;
-        var muzzles = state.dualFighter
-            ? [SINGLE_FIGHTER_WIDTH / 2, DUAL_FIGHTER_OFFSET + SINGLE_FIGHTER_WIDTH / 2]
-            : [state.player.width / 2];
-        // Spread widens the single hull's volley into a V. It does NOT raise PLAYER_SHOT_LIMIT: the
-        // two-shots-in-flight rule is verified behaviour, so a power-up may change where shots go, never
-        // how many may be in the air. A dual hull is already a spread and is left alone.
-        if (state.weapon.spread > 0 && !state.dualFighter) {
-            var centre = state.player.width / 2;
-            muzzles = [centre - 14, centre + 14];
+        state.player.cooldown = state.weapon.rapid > 0 || state.weapon.nova > 0
+            ? RAPID_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN;
+        var centre = state.player.width / 2;
+        var volley = state.dualFighter
+            ? [
+                { muzzle: SINGLE_FIGHTER_WIDTH / 2, angle: 0 },
+                { muzzle: DUAL_FIGHTER_OFFSET + SINGLE_FIGHTER_WIDTH / 2, angle: 0 }
+            ]
+            : [{ muzzle: centre, angle: 0 }];
+
+        // Pattern weapons are deliberately ordered from most advanced to least advanced. They still
+        // spend the same global two-shot allowance: width and direction change, capacity does not.
+        if (state.weapon.nova > 0) {
+            volley = [
+                { muzzle: centre - 26, angle: -NOVA_ANGLE },
+                { muzzle: centre + 26, angle: NOVA_ANGLE }
+            ];
+        } else if (state.weapon.twin > 0) {
+            volley = [
+                { muzzle: centre - 20, angle: 0 },
+                { muzzle: centre + 20, angle: 0 }
+            ];
+        } else if (state.weapon.spread > 0) {
+            volley = [
+                { muzzle: centre - 14, angle: -SPREAD_ANGLE },
+                { muzzle: centre + 14, angle: SPREAD_ANGLE }
+            ];
         }
+
         var shotsBefore = state.shots.length;
-        for (var i = 0; i < muzzles.length && state.shots.length < PLAYER_SHOT_LIMIT; i += 1) {
+        for (var i = 0; i < volley.length && state.shots.length < PLAYER_SHOT_LIMIT; i += 1) {
+            var speed = bulletSpeed();
             state.bullets.push({
-                x: state.player.x + muzzles[i] - 2,
+                x: state.player.x + volley[i].muzzle - 2,
                 y: state.player.y - 10,
                 width: 4,
                 height: 14,
                 role: 'ally',
-                speed: bulletSpeed()
+                speed: speed,
+                vx: Math.sin(volley[i].angle) * speed,
+                verticalSpeed: Math.cos(volley[i].angle) * speed,
+                piercing: state.weapon.pierce > 0
             });
         }
         if (state.shots.length > shotsBefore) playFireCue();
@@ -1370,12 +1406,11 @@
             state.pickups.push({
                 x: enemy.x + enemy.width / 2,
                 y: enemy.y + enemy.height / 2,
-                remaining: 7,
-                lifetime: 7,
-                // Rotated by stage, deterministically: a player who wants the lance rather than rapid fire
-                // can learn which stages carry it, and a probe can predict what will drop instead of
-                // sampling randomness. Stage 1 drops the lance, which is also the one the tutorial teaches.
-                kind: WEAPON_KINDS[(state.stage - 1) % WEAPON_KINDS.length]
+                remaining: PICKUP_LIFETIME,
+                lifetime: PICKUP_LIFETIME,
+                // Fixed by position in the eight-stage loop. Stages 3 and 7 are challenging stages and
+                // therefore have no carrier; every other stage introduces one distinct weapon.
+                kind: STAGE_WEAPONS[state.stageInLoop - 1]
             });
         }
         disperseNeighbours(enemy);
@@ -1876,15 +1911,16 @@
         var i;
         for (i = state.bullets.length - 1; i >= 0; i -= 1) {
             var bullet = state.bullets[i];
-            bullet.y -= bullet.speed * dt;
-            if (bullet.y + bullet.height < 0) {
+            bullet.x += (bullet.vx || 0) * dt;
+            bullet.y -= (bullet.verticalSpeed || bullet.speed) * dt;
+            if (bullet.y + bullet.height < 0 || bullet.x + bullet.width < 0 || bullet.x > canvasWidth()) {
                 state.bullets.splice(i, 1);
                 continue;
             }
             if (state.capturedFighter && state.capturedFighter.status === 'hostile'
                 && intersects(bullet, state.capturedFighter)) {
                 var hostile = state.capturedFighter;
-                state.bullets.splice(i, 1);
+                if (!bullet.piercing) state.bullets.splice(i, 1);
                 createExplosion(hostile.x + hostile.width / 2, hostile.y + hostile.height / 2, 'fighter');
                 state.capturedFighter = null;
                 addScore(500);
@@ -1896,9 +1932,9 @@
                     continue;
                 }
                 if (intersects(bullet, enemy)) {
-                    state.bullets.splice(i, 1);
+                    if (!bullet.piercing) state.bullets.splice(i, 1);
                     destroyEnemy(enemy);
-                    break;
+                    if (!bullet.piercing) break;
                 }
             }
         }
@@ -1968,6 +2004,9 @@
         // The special-weapon windows run on game time, so a paused or unfocused game does not spend them.
         state.weapon.rapid = Math.max(0, state.weapon.rapid - dt);
         state.weapon.spread = Math.max(0, state.weapon.spread - dt);
+        state.weapon.twin = Math.max(0, state.weapon.twin - dt);
+        state.weapon.pierce = Math.max(0, state.weapon.pierce - dt);
+        state.weapon.nova = Math.max(0, state.weapon.nova - dt);
         state.stageClear.life = Math.max(0, state.stageClear.life - dt);
         for (i = state.explosions.length - 1; i >= 0; i -= 1) {
             var explosion = state.explosions[i];
@@ -1988,7 +2027,7 @@
     function updatePickups(dt) {
         for (var i = state.pickups.length - 1; i >= 0; i -= 1) {
             var pickup = state.pickups[i];
-            pickup.y += 18 * dt;
+            pickup.y += PICKUP_FALL_SPEED * dt;
             pickup.remaining = Math.max(0, pickup.remaining - dt);
             if (pickup.remaining === 0) {
                 state.pickups.splice(i, 1);
@@ -2025,6 +2064,21 @@
         if (kind === 'spread') {
             state.weapon.spread = SPREAD_DURATION;
             state.announcement = { kind: 'powerup', text: 'SPREAD SHOT', life: 2.6 };
+            return;
+        }
+        if (kind === 'twin') {
+            state.weapon.twin = TWIN_DURATION;
+            state.announcement = { kind: 'powerup', text: 'TWIN SHOT', life: 2.6 };
+            return;
+        }
+        if (kind === 'pierce') {
+            state.weapon.pierce = PIERCE_DURATION;
+            state.announcement = { kind: 'powerup', text: 'PIERCE', life: 2.6 };
+            return;
+        }
+        if (kind === 'nova') {
+            state.weapon.nova = NOVA_DURATION;
+            state.announcement = { kind: 'powerup', text: 'NOVA', life: 2.6 };
             return;
         }
         if (state.powerup.charges < POWERUP_MAX_CHARGES) {
@@ -2278,7 +2332,15 @@
         // A compact pixel cross reads as the stored lance while keeping x/y as
         // the mark's centre. During the final two seconds, corner brackets
         // blink around it to make expiry visible without hiding the pickup.
-        ctx.fillStyle = theme.roles.reward;
+        var pickupColours = {
+            lance: theme.roles.reward,
+            rapid: theme.roles.threat,
+            spread: theme.roles.butterfly,
+            twin: theme.roles.ally,
+            pierce: theme.roles.magnet,
+            nova: theme.starBright
+        };
+        ctx.fillStyle = pickupColours[pickup.kind] || theme.roles.reward;
         ctx.fillRect(centreX - 2, centreY - 8, 4, 16);
         ctx.fillRect(centreX - 7, centreY - 2, 14, 4);
         ctx.fillStyle = theme.starBright;
@@ -2783,6 +2845,7 @@
         state.elapsed = 0;
         state.bullets = [];
         state.enemyBullets = [];
+        state.pickups = [];
         state.explosions = [];
         state.scorePopups = [];
         state.announcement = null;
@@ -2881,6 +2944,9 @@
             ENEMY_BULLET_SPEED: ENEMY_BULLET_SPEED,
             STAGE_CLEAR_DURATION: 0.75,
             CHALLENGING_PATTERNS: CHALLENGING_PATTERNS,
+            WEAPON_KINDS: WEAPON_KINDS,
+            STAGE_WEAPONS: STAGE_WEAPONS,
+            PICKUP_FALL_SPEED: PICKUP_FALL_SPEED,
             STARFIELD_DEPTHS: STARFIELD_DEPTHS,
             MOOD_RULES: MOOD_RULES
         },
