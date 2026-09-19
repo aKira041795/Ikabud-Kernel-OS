@@ -328,6 +328,83 @@
             "statement": "Losing the last life sounds its own game over cue, distinct from a routine hit.",
             "probe": "the end of the game sounds its own cue",
             "why": "Director request 2026-09-19: sound for 'game over'. It must be distinguishable from the hit cue that caused it, or the ending is not announced."
+        },
+        {
+            "id": "W1",
+            "group": "powerup",
+            "statement": "An earned firepower is granted at 10,000 points and every 20,000 after, stored to a maximum of three charges, and earning one is announced on the screen rather than granted in silence.",
+            "probe": "earning a charge is announced on screen|a charge is earned at the threshold",
+            "why": "Director request 2026-09-19: 'add a firepower when kill points reach x amount'. The announcement is in the requirement because the extra ship was once granted with 12 -> 12 rendered pixels: a reward the player cannot see is one they will not use."
+        },
+        {
+            "id": "W2",
+            "group": "powerup",
+            "statement": "Pressing S with a charge available consumes exactly one and opens the window; pressing S with NO charge does nothing at all -- no activation, no error, no charge invented.",
+            "probe": "S spends one charge|S does nothing without a charge",
+            "why": "Both halves are asserted because 'spend what you have' and 'do not invent what you lack' are different behaviours, and only the first is the happy path."
+        },
+        {
+            "id": "W3",
+            "group": "powerup",
+            "statement": "While the window is open the lance destroys an enemy it touches, through the same destruction path a shot uses, and the window expires on its own without refunding the charge.",
+            "probe": "the lance destroys an enemy it touches|the lance expires on its own",
+            "why": "The power-up has to do firepower and it has to be LIMITED USE, which is what the director asked for; an unexpiring lance is neither."
+        },
+        {
+            "id": "W4",
+            "group": "powerup",
+            "statement": "The lance is not a bullet: at most two player shots are in flight while the lance is being fired, so the verified arcade two-shot rule survives the power-up.",
+            "probe": "the lance is not a bullet",
+            "why": "The two-shots-in-flight rule is already verified fidelity (C4 and the state spec's [1, 2, 2, 2]). A multi-shot power-up would have bought this feature by invalidating that rule; a separate weapon class does not. Asserted WHILE the lance fires, not merely in the default state."
+        },
+        {
+            "id": "W5",
+            "group": "powerup",
+            "statement": "The HUD shows the stored charges and the live state of the window, so the player can see what they hold and when it is running.",
+            "probe": "the HUD shows the lance charges",
+            "why": "Legibility again, and the same lesson as the extra ship: a charge the player cannot count is a charge they cannot decide to spend."
+        },
+        {
+            "id": "B1",
+            "group": "bonus",
+            "statement": "A bonus round runs against a clock: a countdown of at least 15 seconds of game time, exposed as state.bonus.remaining, starting full when the round begins, never going negative, and rendered in the TOP BAND of the play field (the top 16% of the canvas) so the player can see it.",
+            "probe": "the bonus round has a countdown|the countdown never goes negative",
+            "why": "Director request 2026-09-19: 'a bonus round where i can kill all if possible all enemies, limited time'. The arcade challenging stage already exists (forty enemies, preset patterns, no fire, 100 each, a 10,000 perfect bonus) and had no clock, so this extends the round that exists rather than adding a second, near-identical mode that would drift from it."
+        },
+        {
+            "id": "B2",
+            "group": "bonus",
+            "statement": "Every bonus-round enemy is reachable and destroyable when the clock starts, so clearing all of them in time is possible; clearing them all awards the existing 10,000 perfect bonus and announces it on the screen.",
+            "probe": "every bonus enemy is reachable when the clock starts|clearing them all awards the perfect bonus",
+            "why": "'Kill all if possible' is only meaningful if all of them are actually killable -- the probe clears the field through the real destruction path, so the reward is earned by the same code a player's shots use."
+        },
+        {
+            "id": "B3",
+            "group": "bonus",
+            "statement": "When the clock reaches zero with enemies remaining the round ends cleanly: bonus inactive, remaining zero, no perfect bonus awarded, and play continues with no enemy left frozen on the field.",
+            "probe": "the round closes when the clock runs out",
+            "why": "A clock that ends the round by leaving a stuck field or a frozen enemy is a worse defect than no clock at all."
+        },
+        {
+            "id": "B4",
+            "group": "bonus",
+            "statement": "The HUD exposes the time remaining and the enemies left, so the player can see both the pressure and the progress.",
+            "probe": "the HUD shows the bonus clock and the enemies left",
+            "why": "A time limit nobody can see is not a time limit; it is just an unexplained end."
+        },
+        {
+            "id": "B5",
+            "group": "bonus",
+            "statement": "Nothing fires for the whole bonus round, including the transition out of it, measured against a standard stage in the same run so that a failed measurement can never be confused with a blind instrument.",
+            "probe": "nothing fires for the whole bonus round|the control stage fires",
+            "why": "Measured before this item was written, with a control: a bonus round fires 0 shots in 15 s where a standard stage fires 10. The rule already exists and is asserted over a window; the clock is where it could break -- enemies released from a frozen state while still on screen, or an expiry that drops into a firing regime with leftovers."
+        },
+        {
+            "id": "B6",
+            "group": "bonus",
+            "statement": "The round announces itself by name: BONUS ROUND is rendered on the play field in the central band, in the game's pixel idiom, and exposed as state.bonus.title.",
+            "probe": "the round announces itself as BONUS ROUND",
+            "why": "Director request 2026-09-19. Both halves are required: a probe cannot read text off a canvas, and a string sitting in state is exactly the claim this project was burned by when the extra ship was 'granted' with zero rendered pixels. Data carries the wording, ink carries the fact."
         }
     ],
     "spec_probes": {
@@ -341,7 +418,9 @@
             "palette": "tests/browser/star-swarm-pixels.spec.ts",
             "serving": "tests/browser/star-swarm-pixels.spec.ts",
             "responsiveness": "tests/browser/star-swarm-pixels.spec.ts",
-            "audio": "tests/browser/star-swarm-audio.spec.ts"
+            "audio": "tests/browser/star-swarm-audio.spec.ts",
+            "powerup": "tests/browser/star-swarm-pixels.spec.ts",
+            "bonus": "tests/browser/star-swarm-pixels.spec.ts"
         },
         "chair_owned_groups": [
             "fidelity",
@@ -350,7 +429,9 @@
             "palette",
             "serving",
             "responsiveness",
-            "audio"
+            "audio",
+            "powerup",
+            "bonus"
         ]
     },
     "invariants": {

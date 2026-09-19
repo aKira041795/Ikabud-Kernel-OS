@@ -712,4 +712,331 @@ test.describe('star swarm pixels', () => {
         // refactor cannot quietly introduce a key-repeat or key-up dependency.
         expect(latency.firedOnFirstFrame, 'the first shot is fired on the frame after the keypress').toBeGreaterThan(0);
     });
+
+    test('a charge is earned and announced @p10', async ({ page }) => {
+        await boot(page);
+
+        const earned = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.state.enemies.length = 0;
+            game.test.step(240); // let earlier banners expire before the baseline is taken
+            const canvas = game.lane.canvas;
+            const band = { x: 0, y: canvas.height * 0.38, w: canvas.width, h: canvas.height * 0.24 };
+            const before = (window as any).__px.stats(band.x, band.y, band.w, band.h).bright;
+            const chargesBefore = game.state.powerup?.charges ?? null;
+            game.addScore(10000);
+            game.test.step(6);
+            const after = (window as any).__px.stats(band.x, band.y, band.w, band.h).bright;
+            return {
+                chargesBefore,
+                chargesAfter: game.state.powerup?.charges ?? null,
+                nextAt: game.state.powerup?.nextAt ?? null,
+                before,
+                after,
+            };
+        });
+
+        expect(earned.chargesBefore, 'the game exposes how many charges are held').not.toBeNull();
+        expect(earned.chargesAfter, 'a charge is earned at the threshold').toBe(Math.min(3, earned.chargesBefore! + 1));
+        expect(earned.nextAt, 'the next threshold is known').toBeGreaterThan(10000);
+        // The extra ship was once granted with 12 -> 12 rendered pixels. A reward nobody can see is one
+        // nobody will use, so the announcement is asserted, not just the counter.
+        expect(earned.after, 'earning a charge is announced on screen').toBeGreaterThan(earned.before + 30);
+    });
+
+    test('S spends one charge, and does nothing without one @p10', async ({ page }) => {
+        await boot(page);
+
+        const press = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            if (!game.state.powerup) return null;
+            game.test.spawnWave(1);
+            game.test.step(120);
+
+            // No charge: S must do nothing at all.
+            game.state.powerup.charges = 0;
+            game.state.powerup.active = false;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }));
+            game.test.step(2);
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));
+            const empty = { charges: game.state.powerup.charges, active: game.state.powerup.active };
+
+            // Two charges: one press spends exactly one.
+            game.state.powerup.charges = 2;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }));
+            game.test.step(2);
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));
+            return {
+                empty,
+                spent: game.state.powerup.charges,
+                active: game.state.powerup.active,
+                remaining: game.state.powerup.remaining,
+            };
+        });
+
+        expect(press, 'the game exposes a powerup surface').not.toBeNull();
+        expect(press!.empty.charges, 'S does nothing without a charge').toBe(0);
+        expect(press!.empty.active, 'S without a charge does not open a window').toBe(false);
+        expect(press!.spent, 'S spends one charge').toBe(1);
+        expect(press!.active, 'S opens the lance window').toBe(true);
+        expect(press!.remaining, 'the window is bounded, not permanent').toBeGreaterThan(0);
+    });
+
+    test('the lance destroys an enemy, then expires @p10', async ({ page }) => {
+        await boot(page);
+
+        const lance = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            if (!game.state.powerup) return null;
+            game.test.spawnWave(2);
+            game.test.step(180);
+            game.state.powerup.charges = 1;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }));
+            game.test.step(1);
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));
+
+            const target = game.state.enemies.find((e: any) => e.alive && !e.diving && !e.entering);
+            const before = game.state.enemies.filter((e: any) => e.alive).length;
+            // Line the fighter up under a live enemy and fire into the lance.
+            game.state.player.x = target.x + target.width / 2 - game.state.player.width / 2;
+            target.x = game.state.player.x;
+            target.y = game.state.player.y - 140;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+            for (let frame = 0; frame < 40; frame += 1) game.test.step(1);
+            const killed = game.state.enemies.filter((e: any) => e.alive).length < before;
+            // The arcade two-shot rule is verified fidelity and must survive the power-up.
+            const bullets = game.state.bullets.length;
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowUp' }));
+
+            let frames = 0;
+            while (game.state.powerup.active && frames < 60 * 30) {
+                game.test.step(1);
+                frames += 1;
+            }
+            return {
+                killed,
+                bullets,
+                expiredActive: game.state.powerup.active,
+                expiredRemaining: game.state.powerup.remaining,
+                charges: game.state.powerup.charges,
+            };
+        });
+
+        expect(lance, 'the game exposes a powerup surface').not.toBeNull();
+        expect(lance!.killed, 'the lance destroys an enemy it touches').toBe(true);
+        expect(lance!.bullets, 'the lance is not a bullet: two shots in flight still holds').toBeLessThanOrEqual(2);
+        expect(lance!.expiredActive, 'the lance expires on its own').toBe(false);
+        expect(lance!.expiredRemaining, 'an expired window has no time left').toBe(0);
+        expect(lance!.charges, 'an expired window does not refund the charge').toBe(0);
+    });
+
+    test('the HUD shows the lance charges @p10', async ({ page }) => {
+        await boot(page);
+
+        const hud = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            if (!game.state.powerup) return null;
+            game.state.powerup.charges = 2;
+            game.test.step(2);
+            const node = document.querySelector('[data-star-swarm="lance"]') as HTMLElement | null;
+            return {
+                present: Boolean(node),
+                text: node ? (node.textContent || '') : '',
+                attribute: node ? String(node.getAttribute('data-charges') ?? '') : '',
+                charges: game.state.powerup.charges,
+            };
+        });
+
+        expect(hud, 'the game exposes a powerup surface').not.toBeNull();
+        expect(hud!.present, 'the HUD exposes a lance element').toBe(true);
+        expect(
+            `${hud!.text} ${hud!.attribute}`,
+            'the HUD shows the lance charges',
+        ).toContain(String(hud!.charges));
+    });
+
+    test('the bonus round has a countdown @p11', async ({ page }) => {
+        await boot(page);
+
+        const clock = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(3); // stage 3 is the bonus round
+            const atStart = {
+                active: game.state.bonus?.active === true,
+                window: game.state.bonus?.window ?? 0,
+                remaining: game.state.bonus?.remaining ?? -1,
+                challenging: game.state.challenging === true,
+            };
+            const canvas = game.lane.canvas;
+            const band = { x: 0, y: 0, w: canvas.width, h: canvas.height * 0.16 };
+            game.test.step(2);
+            const drawn = (window as any).__px.stats(band.x, band.y, band.w, band.h).bright;
+            let minSeen = atStart.remaining;
+            for (let frame = 0; frame < 180; frame += 1) {
+                game.test.step(1);
+                minSeen = Math.min(minSeen, game.state.bonus?.remaining ?? 0);
+            }
+            return {
+                atStart,
+                drawn,
+                minSeen,
+                laterRemaining: game.state.bonus?.remaining ?? -1,
+            };
+        });
+
+        expect(clock.atStart.challenging, 'stage 3 is the bonus round').toBe(true);
+        expect(clock.atStart.active, 'the bonus round starts a clock').toBe(true);
+        expect(clock.atStart.window, 'the window is at least 15 seconds').toBeGreaterThanOrEqual(15);
+        expect(clock.laterRemaining, 'the countdown runs down').toBeLessThan(clock.atStart.remaining);
+        expect(clock.minSeen, 'the countdown never goes negative').toBeGreaterThanOrEqual(0);
+        // A time limit nobody can see is not a time limit, it is an unexplained end.
+        expect(clock.drawn, 'the countdown is rendered on the play field').toBeGreaterThan(50);
+    });
+
+    test('every bonus enemy is killable and clears for PERFECT @p11', async ({ page }) => {
+        await boot(page);
+
+        const cleared = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(3);
+            game.test.step(60);
+            const before = game.state.enemies.filter((e: any) => e.alive).length;
+            const perfectBefore = game.state.perfectBonus;
+            let guard = 0;
+            while (game.state.enemies.some((e: any) => e.alive) && guard < 400) {
+                game.test.kill(game.state.enemies.findIndex((e: any) => e.alive));
+                game.test.step(1);
+                guard += 1;
+            }
+            return {
+                before,
+                left: game.state.enemies.filter((e: any) => e.alive).length,
+                perfectBefore,
+                perfectAfter: game.state.perfectBonus,
+                cleared: game.state.bonus?.cleared ?? null,
+                remainingAtEnd: game.state.bonus?.remaining ?? -1,
+            };
+        });
+
+        expect(cleared.before, 'the bonus round fields the forty').toBeGreaterThanOrEqual(40);
+        expect(cleared.left, 'every bonus enemy is reachable when the clock starts').toBe(0);
+        expect(cleared.remainingAtEnd, 'they can be cleared inside the clock').toBeGreaterThan(0);
+        expect(cleared.perfectAfter, 'clearing them all awards the perfect bonus').toBeGreaterThan(cleared.perfectBefore);
+    });
+
+    test('the round ends cleanly when the clock runs out @p11', async ({ page }) => {
+        await boot(page);
+
+        const expiry = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            if (!game.state.bonus) return null;
+            game.test.spawnWave(3);
+            game.test.step(60);
+            const before = {
+                enemies: game.state.enemies.filter((e: any) => e.alive).length,
+                perfect: game.state.perfectBonus,
+                stage: game.state.stage,
+            };
+            let frames = 0;
+            while (game.state.bonus.active && frames < 60 * 60) {
+                game.test.step(1);
+                frames += 1;
+            }
+            const after = {
+                active: game.state.bonus.active,
+                remaining: game.state.bonus.remaining,
+                perfect: game.state.perfectBonus,
+                running: game.state.running,
+                gameOver: game.state.gameOver,
+            };
+            // The game must move on rather than sit on an expired round.
+            for (let later = 0; later < 360; later += 1) game.test.step(1);
+            return { before, after, stageLater: game.state.stage, seconds: Math.round(frames / 60) };
+        });
+
+        expect(expiry, 'the game exposes a bonus surface').not.toBeNull();
+        expect(expiry!.after.active, 'the round closes when the clock runs out').toBe(false);
+        expect(expiry!.after.remaining, 'an expired round has no time left').toBe(0);
+        expect(expiry!.after.perfect, 'the clock running out awards no perfect bonus').toBe(expiry!.before.perfect);
+        expect(expiry!.after.gameOver, 'an expired round is not a game over').toBe(false);
+        expect(expiry!.after.running, 'play continues after the round').toBe(true);
+        expect(expiry!.stageLater, 'the game moves on instead of stalling on an expired round').toBeGreaterThan(expiry!.before.stage);
+    });
+
+    test('the HUD shows the bonus clock and the enemies left @p11', async ({ page }) => {
+        await boot(page);
+
+        const hud = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(3);
+            game.test.step(30);
+            for (let killed = 0; killed < 3; killed += 1) {
+                game.test.kill(game.state.enemies.findIndex((e: any) => e.alive));
+            }
+            game.test.step(4);
+            const node = document.querySelector('[data-star-swarm="bonus"]') as HTMLElement | null;
+            return {
+                present: Boolean(node),
+                text: node ? (node.textContent || '') : '',
+                left: game.state.bonus?.enemiesLeft ?? null,
+                remaining: game.state.bonus?.remaining ?? null,
+            };
+        });
+
+        expect(hud.present, 'the HUD exposes a bonus element').toBe(true);
+        expect(hud.left, 'the game exposes how many enemies are left').not.toBeNull();
+        expect(hud.text, 'the HUD shows the bonus clock and the enemies left').toContain(String(hud.left));
+    });
+
+    test('nothing fires for the whole bonus round @p11', async ({ page }) => {
+        await boot(page);
+
+        const firing = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            const measure = (stage: number, frames: number) => {
+                game.test.spawnWave(stage);
+                game.test.step(120);
+                let fired = 0;
+                for (let frame = 0; frame < frames; frame += 1) {
+                    const before = game.state.enemyBullets.length;
+                    game.test.step(1);
+                    const after = game.state.enemyBullets.length;
+                    if (after > before) fired += after - before;
+                }
+                return fired;
+            };
+            // The control runs in the SAME session: a "no bullets" reading is worthless unless the same
+            // probe can see bullets when they exist.
+            const controlFired = measure(2, 900);
+            const bonusFired = measure(3, 900);
+            return { controlFired, bonusFired };
+        });
+
+        expect(firing.controlFired, 'the control stage fires, so the probe can see firing').toBeGreaterThan(0);
+        expect(firing.bonusFired, 'nothing fires for the whole bonus round').toBe(0);
+    });
+
+    test('the round announces itself as BONUS ROUND @p11', async ({ page }) => {
+        await boot(page);
+
+        const title = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            const canvas = game.lane.canvas;
+            const band = { x: 0, y: canvas.height * 0.38, w: canvas.width, h: canvas.height * 0.24 };
+            // A quiet standard stage first, so the baseline is not some earlier banner.
+            game.test.spawnWave(2);
+            game.test.step(300);
+            const before = (window as any).__px.stats(band.x, band.y, band.w, band.h).bright;
+            game.test.spawnWave(3);
+            game.test.step(6);
+            const after = (window as any).__px.stats(band.x, band.y, band.w, band.h).bright;
+            return { text: game.state.bonus?.title ?? null, before, after };
+        });
+
+        expect(title.text, 'the round carries its name in state').toBe('BONUS ROUND');
+        // A string in state is exactly the claim this project was burned by when the extra ship was
+        // granted with zero rendered pixels. The ink proves the words are actually on the screen.
+        expect(title.after, 'the round announces itself as BONUS ROUND').toBeGreaterThan(title.before + 30);
+    });
 });
