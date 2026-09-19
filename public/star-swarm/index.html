@@ -1,12 +1,47 @@
 <!doctype html>
 <html lang="en" data-star-swarm-theme="1">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Star Swarm</title>
-  <link rel="stylesheet" href="/star-swarm/star-swarm.css?v=1789817777">
-  <style>#star-swarm{--color-surface:#faf8ff;--color-surface-raised:#ffffff;--color-text:#071747;--color-text-muted:#3e4947;--color-primary:#005c55;--color-primary-dark:#0f766e;--color-accent:#fea619;--color-error:#ba1a1a;--color-tertiary:#7f4025;--color-border:#bdc9c6;--ss-space-bg:#02030b;--ss-space-deep:#071126;--ss-nebula:#18356f;--ss-star-dim:#8ba3c7;--ss-star-bright:#f4f8ff;--ss-planet:#568bb0;--ss-planet-lit:#c9e7f2;--ss-ring:#f2c879;--ss-moon:#8a8a8a;--ss-moon-lit:#b4b4b4;--ss-moon-crater:#5c5c5c;--ss-role-threat:#f78c6b;--ss-role-butterfly:#ff6464;--ss-role-magnet:#39ff5a;--ss-role-ally:#4cc9f0;--ss-role-reward:#ffd166;--ss-role-hazard:#ef476f;--font-family-ui:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;--radius:0.5rem;--spacing-page:1.25rem}</style>
+  <link rel="stylesheet" href="/star-swarm/star-swarm.css?v=1789821374">
+  <style>
+    #star-swarm {
+      --color-surface: #faf8ff;
+      --color-surface-raised: #ffffff;
+      --color-text: #071747;
+      --color-text-muted: #3e4947;
+      --color-primary: #005c55;
+      --color-primary-dark: #0f766e;
+      --color-accent: #fea619;
+      --color-error: #ba1a1a;
+      --color-tertiary: #7f4025;
+      --color-border: #bdc9c6;
+      --ss-space-bg: #02030b;
+      --ss-space-deep: #071126;
+      --ss-nebula: #18356f;
+      --ss-star-dim: #8ba3c7;
+      --ss-star-bright: #f4f8ff;
+      --ss-planet: #568bb0;
+      --ss-planet-lit: #c9e7f2;
+      --ss-ring: #f2c879;
+      --ss-moon: #8a8a8a;
+      --ss-moon-lit: #b4b4b4;
+      --ss-moon-crater: #5c5c5c;
+      --ss-role-threat: #f78c6b;
+      --ss-role-butterfly: #ff6464;
+      --ss-role-magnet: #39ff5a;
+      --ss-role-ally: #4cc9f0;
+      --ss-role-reward: #ffd166;
+      --ss-role-hazard: #ef476f;
+      --font-family-ui: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --radius: 0.5rem;
+      --spacing-page: 1.25rem
+    }
+  </style>
 </head>
+
 <body class="star-swarm-page">
   <div id="star-swarm" class="star-swarm" data-star-swarm-root>
     <header class="star-swarm__hud">
@@ -33,21 +68,27 @@
     </header>
 
     <div class="star-swarm__stage">
-      <canvas id="star-swarm-canvas" class="star-swarm__canvas" width="1280" height="720" tabindex="0" aria-label="Star Swarm play field"></canvas>
+      <canvas id="star-swarm-canvas" class="star-swarm__canvas" width="1280" height="720" tabindex="0"
+        aria-label="Star Swarm play field"></canvas>
 
       <div id="star-swarm-overlay" class="star-swarm__overlay" data-star-swarm="overlay">
         <h1 class="star-swarm__title" data-star-swarm="overlay-title">Star Swarm</h1>
-        <p class="star-swarm__hint" data-star-swarm="overlay-hint">Arrows or A/D to move &middot; Space or Up to fire &middot; S for Plasma Lance &middot; P to pause</p>
+        <p class="star-swarm__hint" data-star-swarm="overlay-hint">Arrows or A/D to move &middot; Space or Up to fire
+          &middot; S for Plasma Lance &middot; P to pause</p>
         <button type="button" id="star-swarm-action" class="star-swarm__button" data-star-swarm="action">Start</button>
       </div>
     </div>
 
     <div class="star-swarm__touch" aria-hidden="true">
-      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="left" aria-label="Move left">&#9664;</button>
-      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="fire" aria-label="Fire">&#9650;</button>
-      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="right" aria-label="Move right">&#9654;</button>
+      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="left"
+        aria-label="Move left">&#9664;</button>
+      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="fire"
+        aria-label="Fire">&#9650;</button>
+      <button type="button" class="star-swarm__touch-button" data-star-swarm-control="right"
+        aria-label="Move right">&#9654;</button>
     </div>
   </div>
-  <script src="/star-swarm/star-swarm.js?v=1789821082" defer></script>
+  <script src="/star-swarm/star-swarm.js?v=1789821901" defer></script>
 </body>
+
 </html>

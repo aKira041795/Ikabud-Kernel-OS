@@ -351,7 +351,10 @@
             { caste: 'boss', name: 'Boss Galaga', points: ENEMY_SCORES.boss.formation, note: 'TOP ROW, GREEN, CARRIES THE DROP' }
         ],
         // The between-stages beat: what the player sees after clearing a stage, and what it says.
-        stageClear: { life: 0, text: '' },
+        stageClear: { life: 0, text: '', tally: 0, destroyed: 0 },
+        // Accumulated independently of the lifetime of the beat so startWave() can publish the completed
+        // stage's result before resetting the counters for the new formation.
+        stageTally: { tally: 0, destroyed: 0 },
         perfectBonus: 0,
         announcement: null,
         powerup: {
@@ -922,7 +925,9 @@
                 life: STAGE_CLEAR_LIFE,
                 text: finishedLoop
                     ? 'LOOP ' + completedLoop + ' COMPLETE'
-                    : 'STAGE ' + completedInLoop + ' OF ' + STAGES_PER_LOOP + ' CLEAR'
+                    : 'STAGE ' + completedInLoop + ' OF ' + STAGES_PER_LOOP + ' CLEAR',
+                tally: state.stageTally.tally,
+                destroyed: state.stageTally.destroyed
             };
             state.announcement = {
                 kind: finishedLoop ? 'loop' : 'stage',
@@ -930,6 +935,8 @@
                 life: STAGE_CLEAR_LIFE
             };
         }
+        state.stageTally.tally = 0;
+        state.stageTally.destroyed = 0;
         state.loop = Math.floor((wave - 1) / STAGES_PER_LOOP) + 1;
         state.stageInLoop = ((wave - 1) % STAGES_PER_LOOP) + 1;
         state.wave = wave;
@@ -969,6 +976,7 @@
 
     function addScore(points) {
         state.score += points;
+        state.stageTally.tally += points;
         state.highScore = Math.max(state.highScore, state.score);
         var shipsAwarded = 0;
         while (state.score >= state.extraShipAt) {
@@ -1114,7 +1122,7 @@
 
     function activatePowerup() {
         if (!state.running || state.paused || state.gameOver ||
-                state.powerup.active || state.powerup.charges < 1) {
+            state.powerup.active || state.powerup.charges < 1) {
             return false;
         }
         state.powerup.charges -= 1;
@@ -1355,6 +1363,7 @@
         releaseCapturedFighter(enemy);
         enemy.flash = 0.12;
         enemy.alive = false;
+        state.stageTally.destroyed += 1;
         if (state.carrier && state.carrier.alive &&
             state.carrier.enemyIndex === enemy.enemyIndex) {
             state.carrier.alive = false;
@@ -2043,14 +2052,40 @@
 
     function updateOpening(dt) {
         if (state.running || state.gameOver || state.opening.stage === 'done') return;
+        // 'ready' is a PAGE, not a beat: it has no timer and holds until the player starts. The roster
+        // and the controls used to be drawn during the title and byline beats, which are 2.25s and 1.75s,
+        // so the instructions were gone about four seconds after appearing -- unreadable by design, and
+        // the director said so. A screen you are meant to read must wait for the reader.
+        if (state.opening.stage === 'ready') return;
         state.opening.elapsed += dt;
         if (state.opening.stage === 'title' && state.opening.elapsed >= OPENING_TITLE_DURATION) {
             state.opening.stage = 'byline';
             state.opening.elapsed -= OPENING_TITLE_DURATION;
         }
         if (state.opening.stage === 'byline' && state.opening.elapsed >= OPENING_BYLINE_DURATION) {
-            state.opening.stage = 'done';
+            // Then the seeded army flies in, before the player is ever in control.
+            state.opening.stage = 'swarm';
             state.opening.elapsed = 0;
+        }
+        if (state.opening.stage === 'swarm') {
+            // The REAL wave with the REAL entrance, and nothing else live: no player, no firing, no
+            // diving. The entrance is the only thing stepping, and it is what the game will do again
+            // when the player takes over -- the intro is a demonstration of the game, not a cartoon of it.
+            //
+            // updateFormation() is the sole stepper of the entrance: it is where `entering` is advanced
+            // and finally cleared (entrance < 1). This previously called a function that does not exist
+            // anywhere in this file, so the beat threw and the opening never left 'swarm'.
+            if (state.enemies.length === 0) {
+                startWave(1);
+            }
+            updateFormation(dt);
+            var stillEntering = false;
+            for (var i = 0; i < state.enemies.length; i += 1) {
+                if (state.enemies[i].entering) { stillEntering = true; break; }
+            }
+            if (!stillEntering) {
+                state.opening.stage = 'ready';
+            }
         }
     }
 
@@ -2452,8 +2487,10 @@
 
     function drawOpening(ctx, theme) {
         var stage = state.opening.stage;
-        if (stage !== 'title' && stage !== 'byline') return false;
-        var centreY = canvasHeight() * 0.49;
+        // The swarm beat is the entered army itself, so this draws nothing and lets the field show.
+        if (stage === 'swarm') return false;
+        if (stage !== 'title' && stage !== 'byline' && stage !== 'ready') return false;
+        var centreY = canvasHeight() * 0.30;
         if (stage === 'title') {
             var titleScale = Math.max(8, Math.floor(canvasWidth() / 105));
             drawPixelText(
@@ -2464,7 +2501,7 @@
                 centreY - titleScale * 3.5,
                 theme.starBright
             );
-        } else {
+        } else if (stage === 'byline') {
             var bylineScale = Math.max(4, Math.floor(canvasWidth() / 240));
             drawPixelText(
                 ctx,
@@ -2475,6 +2512,7 @@
                 theme.roles.reward
             );
         }
+        // Drawn on 'ready' too, and 'ready' never times out.
         drawLegend(ctx, theme);
         return true;
     }
@@ -2569,6 +2607,19 @@
         ctx.fillRect(startX, startY + scale * 8, totalWidth, scale);
     }
 
+    function drawStageClearTally(ctx, theme) {
+        if (state.stageClear.life <= 0) return;
+        var scale = Math.max(3, Math.floor(canvasWidth() / 320));
+        drawPixelText(
+            ctx,
+            state.stageClear.destroyed + ' DESTROYED  ' + state.stageClear.tally + ' POINTS',
+            scale,
+            canvasWidth() / 2,
+            canvasHeight() / 2 + scale * 7,
+            theme.starBright
+        );
+    }
+
     function render() {
         var ctx = lane.ctx;
         var theme = lane.theme;
@@ -2602,6 +2653,7 @@
         drawEffects(ctx, theme);
         drawBonusStatus(ctx, theme);
         drawExtraShipAnnouncement(ctx, theme);
+        drawStageClearTally(ctx, theme);
         if (state.running && (state.player.invulnerable <= 0 || Math.floor(state.elapsed * 10) % 2 === 0)) drawRocket(ctx, state.player, theme);
     }
 
@@ -2644,7 +2696,7 @@
             lane.bonusEl.setAttribute('data-active', state.bonus.active ? 'true' : 'false');
             lane.bonusEl.textContent = state.challenging
                 ? Math.max(0, Math.ceil(state.bonus.remaining)) + 's \u00b7 '
-                    + state.bonus.enemiesLeft + ' LEFT'
+                + state.bonus.enemiesLeft + ' LEFT'
                 : '\u2014';
         }
     }

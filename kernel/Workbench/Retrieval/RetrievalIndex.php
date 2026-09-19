@@ -35,7 +35,26 @@ namespace Ikabud\Kernel\Workbench\Retrieval;
  * The API is the reusable part: the storage behind it is one class, so a table can replace this file
  * without a caller changing.
  *
- * @phpstan-type Entry array{hash:string, lines:int, terms:array<string,int>, indexed_at:string}
+ * WHAT BREAKS AS THE DATA ACCUMULATES, AND WHAT TO DO ABOUT EACH (the future-proofing, in order of
+ * what will bite first):
+ *
+ *   1. HASHING EVERY FILE ON EVERY CALL. Already addressed -- index() stats before it reads, so an
+ *      unchanged tree costs a stat per file rather than a read and a hash. This is the cost that
+ *      grows with the repository, and it is the first one to check if indexing slows down.
+ *   2. LOADING AND REWRITING ONE JSON DOCUMENT. Fine to a few thousand documents; past that, shard
+ *      the index by top-level prefix (kernel/, modules/, docs/, ...) behind the same API, and keep
+ *      index.json as a manifest of shards. Nothing outside this class needs to change.
+ *   3. RANKING THAT CANNOT LEARN. Lexical scoring cannot tell that `star-swarm.js` is the right answer
+ *      because it served the last three tasks. recordUse() gives it that: usage is a bounded boost, so
+ *      a file that has actually been used outranks one that merely mentions the words.
+ *   4. VOCABULARY THAT DOES NOT MATCH THE QUESTION. Lexical search fails when the caller asks in
+ *      different words than the code uses. search() reports `confidence`, and that is the decision
+ *      point for a hybrid: LOW means the local index found nothing useful and is the only honest time
+ *      to reach for an online or embedding-backed retriever. Local stays the default because code is
+ *      identifier-shaped -- exact names are what a searcher wants -- and because it is private,
+ *      offline and free. Online is a fallback for concepts, never the first call.
+ *
+ * @phpstan-type Entry array{hash:string, mtime:int, size:int, lines:int, terms:array<string,int>, uses:int, indexed_at:string}
  */
 final class RetrievalIndex
 {
@@ -115,21 +134,37 @@ final class RetrievalIndex
             $relative = $this->relative($file);
             $seen[$relative] = true;
 
+            // Stat before reading. As a repository accumulates, reading and hashing every file on every
+            // call is the cost that grows, and it grows with the part that did not change. The known
+            // race -- a write inside one second with an unchanged size -- is what --force is for.
+            $stat = @stat($file);
+            if ($stat === false) {
+                $skipped++;
+                continue;
+            }
+            $entry = $documents[$relative] ?? null;
+            if (!$force && $entry !== null
+                && ($entry['mtime'] ?? -1) === $stat['mtime']
+                && ($entry['size'] ?? -1) === $stat['size']) {
+                $unchanged++;
+                continue;
+            }
+
             $contents = @file_get_contents($file);
             if ($contents === false) {
                 $skipped++;
                 continue;
             }
-            $hash = hash('sha256', $contents);
-            if (!$force && ($documents[$relative]['hash'] ?? '') === $hash) {
-                $unchanged++;
-                continue;
-            }
 
             $documents[$relative] = [
-                'hash' => $hash,
+                'hash' => hash('sha256', $contents),
+                'mtime' => (int) $stat['mtime'],
+                'size' => (int) $stat['size'],
                 'lines' => substr_count($contents, "\n") + 1,
                 'terms' => $this->terms($contents, $relative),
+                // Usage survives a reindex: a file that has served tasks stays useful when its content
+                // changes slightly, and losing that on every edit would make the signal worthless.
+                'uses' => (int) ($entry['uses'] ?? 0),
                 'indexed_at' => gmdate(DATE_ATOM),
             ];
             $indexed++;
@@ -243,29 +278,81 @@ final class RetrievalIndex
                 $missing = array_values(array_diff($missing, [$term]));
             }
             if ($score > 0) {
-                $hits[] = ['path' => $path, 'score' => $score, 'lines' => (int) $entry['lines'], 'matched' => $matched];
+                // Bounded, so a file that has been used a hundred times cannot outrank a clearly better
+                // lexical match. Usage breaks ties and nudges; it does not decide.
+                $score += min(6, (int) ($entry['uses'] ?? 0));
+                $hits[] = ['path' => $path, 'score' => $score, 'lines' => (int) $entry['lines'], 'matched' => $matched, 'uses' => (int) ($entry['uses'] ?? 0)];
             }
         }
 
         usort($hits, static fn (array $a, array $b): int => $b['score'] <=> $a['score'] ?: strcmp($a['path'], $b['path']));
 
+        $sliced = array_slice($hits, 0, max(0, $limit));
+        $best = (int) ($sliced[0]['score'] ?? 0);
+
+        // The decision point for a hybrid retriever. LOW is the only honest signal that local lexical
+        // search has failed this question -- either nothing is indexed, the query has no searchable
+        // words, nothing matched at all, or most of the query's words are absent from the repository.
+        // A caller may then reach for an online or embedding-backed retriever; it should not do so when
+        // this says `good`, because code is identifier-shaped and exact names beat semantic proximity.
+        $confidence = 'good';
+        if ($documents === []) {
+            $confidence = 'empty';
+        } elseif ($terms === [] || $hits === [] || count($missing) > count($terms) / 2 || $best < 4) {
+            $confidence = 'low';
+        }
+
         return [
             'query' => $query,
             'terms' => $terms,
-            'hits' => array_slice($hits, 0, max(0, $limit)),
+            'hits' => $sliced,
             'indexed' => count($documents),
             'missing' => array_values($missing),
+            'confidence' => $confidence,
         ];
     }
 
-    /** @return array{documents:int, lines:int, bytes:int, updated_at:?string, stale:int, root:string} */
+    /**
+     * Record that these documents were actually used.
+     *
+     * The one signal a pure lexical index cannot derive: which files turned out to matter. The harness
+     * knows, because it sees what a lane changed and which context preceded the change, so it reports
+     * back and the next search ranks that file higher. This is what makes the index get more effective
+     * with use rather than only larger.
+     *
+     * @param list<string> $paths
+     * @return int how many were known to the index
+     */
+    public function recordUse(array $paths): int
+    {
+        $state = $this->load();
+        $count = 0;
+        foreach ($paths as $path) {
+            $relative = $this->relative($this->absolute($path));
+            if (!isset($state['documents'][$relative])) {
+                continue;
+            }
+            $state['documents'][$relative]['uses'] = (int) ($state['documents'][$relative]['uses'] ?? 0) + 1;
+            $count++;
+        }
+        if ($count > 0) {
+            $state['updated_at'] = gmdate(DATE_ATOM);
+            $this->store($state);
+        }
+
+        return $count;
+    }
+
+    /** @return array{documents:int, lines:int, bytes:int, updated_at:?string, stale:int, used:int, root:string} */
     public function stats(): array
     {
         $state = $this->load();
         $lines = 0;
         $stale = 0;
+        $used = 0;
         foreach ($state['documents'] as $path => $entry) {
             $lines += (int) $entry['lines'];
+            $used += (int) ($entry['uses'] ?? 0);
             $contents = @file_get_contents($this->absolute($path));
             if ($contents === false || hash('sha256', $contents) !== $entry['hash']) {
                 $stale++;
@@ -278,6 +365,7 @@ final class RetrievalIndex
             'bytes' => (int) (@filesize($this->indexPath) ?: 0),
             'updated_at' => $state['updated_at'] ?? null,
             'stale' => $stale,
+            'used' => $used,
             'root' => $this->root,
         ];
     }

@@ -62,8 +62,10 @@ require_once __DIR__ . '/../kernel/Workbench/Development/DevelopmentLifecycle.ph
 require_once __DIR__ . '/../kernel/Workbench/Development/GitEvidenceResolver.php';
 require_once __DIR__ . '/../kernel/Workbench/Development/DevelopmentArtifactIngestor.php';
 
+require_once __DIR__ . '/../kernel/Workbench/Development/AssertionChange.php';
 require_once __DIR__ . '/../kernel/Workbench/Retrieval/RetrievalIndex.php';
 
+use Ikabud\Kernel\Workbench\Development\AssertionChange;
 use Ikabud\Kernel\Workbench\Retrieval\RetrievalIndex;
 use Ikabud\Kernel\Workbench\Development\DevelopmentArtifactIngestor;
 use Ikabud\Kernel\Workbench\Development\DevelopmentLifecycle;
@@ -352,6 +354,43 @@ function runProbe(string $command, int $timeout = 900): array
 function chairIndex(): RetrievalIndex
 {
     return new RetrievalIndex(CHAIR_ROOT . '/storage/private/retrieval', CHAIR_ROOT);
+}
+
+/**
+ * Did the run delete or loosen an assertion in a test file it touched?
+ *
+ * The probe is the acceptance, and a probe can pass while the lane has removed the assertions that gave
+ * it meaning. That is the one way a green probe lies, so it is checked rather than assumed. Extracted
+ * from the retired harpp2 (see kernel/Workbench/Development/AssertionChange.php for why the comparison
+ * is behavioural rather than a line diff).
+ *
+ * @param list<string> $changed repository-relative paths
+ * @return list<string> findings, empty when nothing was weakened
+ */
+function assertionDrift(array $changed): array
+{
+    $findings = [];
+    foreach ($changed as $path) {
+        if (preg_match('/(_test\.php|Test\.php|\.spec\.ts)$/', $path) !== 1 || !is_file(CHAIR_ROOT . '/' . $path)) {
+            continue;
+        }
+        $old = shell_exec('cd ' . escapeshellarg(CHAIR_ROOT) . ' && git show ' . escapeshellarg('HEAD:' . $path) . ' 2>/dev/null');
+        if ($old === null || $old === '') {
+            continue; // a new test file has nothing to weaken
+        }
+        // REPOSITORY_MARKERS, not the default: this repository's tests assert with `$check(...)`, which
+        // the jest/phpunit default set does not recognise. Measured -- with the default markers, deleting
+        // a real assertion from a real test file was reported as a clean change.
+        $result = AssertionChange::analyse((string) $old, (string) file_get_contents(CHAIR_ROOT . '/' . $path), AssertionChange::REPOSITORY_MARKERS);
+        foreach ($result['removed'] as $assertion) {
+            $findings[] = "{$path}: removed: {$assertion}";
+        }
+        foreach ($result['loosened'] as $loosened) {
+            $findings[] = "{$path}: loosened: {$loosened}";
+        }
+    }
+
+    return $findings;
 }
 
 /**
@@ -682,7 +721,49 @@ function commandRun(array $options, array $flags): int
         }
 
         if ($after['exit'] === 0) {
+            // A green probe is not yet a verified run: the lane may have bought it by weakening the
+            // tests around it. Checked here, against HEAD, before anything is recorded as done.
+            $drift = assertionDrift($changed);
+            if ($drift !== []) {
+                record('WEAKENED', ['task' => $taskId, 'findings' => (string) count($drift)]);
+                foreach (array_slice($drift, 0, 6) as $finding) {
+                    say('  ' . $finding);
+                }
+                commandDecide([
+                    'task' => $taskId,
+                    'decision' => 'pass refused: the run weakened its own tests',
+                    'rationale' => 'The probe passes, but assertions were removed or loosened in the files '
+                        . 'this run touched. A pass obtained that way proves nothing, so it is not recorded '
+                        . 'as one. The chair decides: restore the assertions and re-run, or -- if the check '
+                        . 'was genuinely wrong -- correct the check openly, with the reason, which is a '
+                        . 'different change from deleting it.',
+                ]);
+                return 3;
+            }
+
+            if ($attempt > 1) {
+                // Failed once, passed on retry. That is harness instability, not a clean pass, and calling
+                // it clean would hide exactly the flakiness this project has been bitten by.
+                record('FLAKY', ['task' => $taskId, 'attempt' => (string) $attempt]);
+                commandDecide([
+                    'task' => $taskId,
+                    'decision' => 'verified, classified FLAKY (passed on attempt ' . $attempt . ')',
+                    'rationale' => 'The probe failed first and passed on retry. Recorded as instrument '
+                        . 'instability so it is not mistaken later for a clean pass, and so the probe is '
+                        . 'made deterministic rather than trusted.',
+                ]);
+            }
+
             record('VERIFIED', ['task' => $taskId, 'attempt' => (string) $attempt, 'probe' => $probe]);
+
+            // Tell the index which files actually served this task. That is the one signal lexical
+            // search cannot derive for itself, and reporting it back is what makes retrieval improve
+            // with use instead of only growing.
+            $used = chairIndex()->recordUse($changed);
+            if ($used > 0) {
+                record('INDEX', ['used' => (string) $used]);
+            }
+
             say('  Evidence is the probe above, run against the tree the lane produced.');
             say('  A warm client can still hold a stale asset: if the change is served, check the');
             say('  entry page versions its assets from the live file mtimes.');
@@ -890,6 +971,56 @@ function selfTest(): int
     $check('the stored array shape yields the probe', taskProbes($stored) === ['php tests/thing_test.php']);
     $check('a stored section that is a plain string also works', taskProbes(['required_tests' => '`npx playwright test x.spec.ts`']) === ['npx playwright test x.spec.ts']);
     $check('scope is read from allowed_scope entries', taskScope(['allowed_scope' => [['path' => 'tools/chair.php', 'kind' => 'file']]]) === ['tools/chair.php']);
+
+    say('assertion weakening is caught, and moving an assertion is not:');
+    // One assertion per line, because that is the shape this comparison is built for: it treats a LINE
+    // as an assertion. My first fixtures put two on one line and the controls failed -- correctly, and
+    // for a reason worth keeping visible: on a single-line style the whole line is one unit, so adding a
+    // third assertion reads as replacing the line. That limitation is asserted below rather than assumed
+    // away, because a project that writes assertions on one line is not covered by this guard.
+    $before = "test('x', () => {\n  expect(a).toBeGreaterThan(8);\n  expect(b).toBe(1);\n});";
+    $removedOne = "test('x', () => {\n  expect(b).toBe(1);\n});";
+    $loosenedOne = "test('x', () => {\n  expect(a).toBeGreaterThan(2);\n  expect(b).toBe(1);\n});";
+    $reindented = "test('x', () => {\n\t\texpect(a).toBeGreaterThan(8);\n\t\texpect(b).toBe(1);\n});";
+    $rewrapped = "test('x', () => {\n  expect(a).toBeGreaterThan(8);\n  expect(b)\n    .toBe(1);\n});";
+    $grown = "test('x', () => {\n  expect(a).toBeGreaterThan(8);\n  expect(b).toBe(1);\n  expect(c).toBe(2);\n});";
+    $oneLine = "expect(a).toBeGreaterThan(8); expect(b).toBe(1);";
+
+    $check('deleting an assertion is caught', AssertionChange::analyse($before, $removedOne)['removed'] !== []);
+    $check('loosening a bound is caught', AssertionChange::analyse($before, $loosenedOne)['loosened'] !== []);
+    $check('reindenting an assertion is NOT a removal', AssertionChange::analyse($before, $reindented)['ok']);
+    $check('adding an assertion is not a weakening', AssertionChange::analyse($before, $grown)['ok']);
+    $check('growth is visible in the counts', AssertionChange::analyse($before, $grown)['counts'] === ['old' => 2, 'new' => 3]);
+    // The two limits, asserted rather than assumed. Both come from the same design choice -- a LINE is
+    // an assertion -- and both are safe for this repository, whose PHP tests write one check per line and
+    // whose Playwright specs write one expect per statement. A project that minifies its assertions, or
+    // reflows one across lines, is NOT covered, and a reader should know that rather than discover it.
+    $check(
+        'KNOWN LIMITATION 1: two assertions on ONE line are one unit',
+        AssertionChange::analyse($oneLine, $oneLine . " expect(c).toBe(2);")['removed'] !== []
+    );
+    $check(
+        'KNOWN LIMITATION 2: reflowing one assertion across two lines reads as a removal',
+        AssertionChange::analyse($before, $rewrapped)['removed'] !== []
+    );
+
+    // False positives, asserted because they were REAL: this repository's markers were widened to catch
+    // its own `$check(...)`, and the first attempt lost the word boundaries -- after which a comment
+    // saying "RETIRED ASSERTIONS" and the line `$fail = 0;` counted as assertions while the genuine
+    // `$check(...)` line did not. A guard that counts comments is a guard that reports removals that
+    // never happened, which is how a reader learns to distrust it.
+    // Escaped, because in a double-quoted string a bare `$check(` interpolates the closure this very
+    // test uses and fatals with "Object of class Closure could not be converted to string".
+    $phpStyle = "\$check(\$a !== [], 'a message');";
+    $check('the repository idiom $check(...) is recognised', AssertionChange::canonical($phpStyle, AssertionChange::REPOSITORY_MARKERS) !== null);
+    // With REPOSITORY_MARKERS, which is the point: the first version of this control called analyse()
+    // without them, so it fed a repo-idiom fixture to the DEFAULT markers, which do not know `$check(`,
+    // found nothing to compare and reported no removal. The control was wrong, not the guard.
+    $check('and deleting it IS caught', AssertionChange::analyse($phpStyle, "// gone", AssertionChange::REPOSITORY_MARKERS)['removed'] !== []);
+    $check('the default markers alone do NOT see the repo idiom', AssertionChange::canonical($phpStyle) === null);
+    $check('a comment mentioning assertions is NOT an assertion', AssertionChange::canonical(' * RETIRED ASSERTIONS, 2026-09-19', AssertionChange::REPOSITORY_MARKERS) === null);
+    $check('a variable named $fail is NOT an assertion', AssertionChange::canonical('$fail = 0;', AssertionChange::REPOSITORY_MARKERS) === null);
+    $check('a variable named $fail is not an assertion on the default markers either', AssertionChange::canonical('$fail = 0;') === null);
 
     say('retrieval:');
     $ranked = retrieveContext('star swarm moon crater rendering', ['public/star-swarm'], 5);

@@ -8,6 +8,7 @@ declare(strict_types=1);
  * usage:
  *   php kernel/Workbench/Retrieval/run.php index [path...] [--force] [--root=<dir>]
  *   php kernel/Workbench/Retrieval/run.php search "<query>" [--limit=12] [--scope=path]
+ *   php kernel/Workbench/Retrieval/run.php use <path...>      report the files a task actually used
  *   php kernel/Workbench/Retrieval/run.php stats
  *   php kernel/Workbench/Retrieval/run.php forget <path...>
  *   php kernel/Workbench/Retrieval/run.php --self-test
@@ -106,7 +107,26 @@ function retrievalSelfTest(): int
     $check('scope bounds the search to its prefix', $scoped['hits'] === [] || str_contains($scoped['hits'][0]['path'], '/a/') === false || str_contains($scoped['hits'][0]['path'], 'moon'));
     $global = $index->search('moon', 5);
     $check('an unscoped search still sees everything', $global['hits'] !== []);
+    fwrite(STDOUT, "\nconfidence — the signal that decides whether to escalate to an online retriever:\n");
+    $check('a query that matches is GOOD', $index->search('cratered moon')['confidence'] === 'good');
+    $check('a query whose words are absent is LOW', $index->search('zzzznotpresent')['confidence'] === 'low');
+    $check('a query with no searchable words is LOW', $index->search('the and for')['confidence'] === 'low');
+    $check(
+        'an empty index is EMPTY, not merely low',
+        (new RetrievalIndex($sandbox . '/.empty', $sandbox))->search('moon')['confidence'] === 'empty'
+    );
 
+    fwrite(STDOUT, "\nusage feedback — the index gets better with use, not only larger:\n");
+    $beforeUse = $index->search('cratered moon')['hits'][0]['score'] ?? 0;
+    $used = $index->recordUse([$sandbox . '/a/moon_renderer.php']);
+    $check('recordUse counts a known document', $used === 1);
+    $check('recordUse ignores a path the index does not hold', $index->recordUse([$sandbox . '/nope.php']) === 0);
+    $afterUse = $index->search('cratered moon')['hits'][0]['score'] ?? 0;
+    $check('a used document ranks higher than it did', $afterUse > $beforeUse);
+    $check('usage survives a reindex', (function () use ($index, $sandbox): bool {
+        $index->index([$sandbox . '/a/moon_renderer.php'], true);
+        return $index->stats()['used'] >= 1;
+    })());
     fwrite(STDOUT, "\ncurrency — the two ways a cache lies:\n");
     $check('a fresh document is current', $index->isCurrent($sandbox . '/a/moon_renderer.php'));
     file_put_contents($sandbox . '/a/moon_renderer.php', "<?php\n// now it draws a ringed planet instead\n");
@@ -176,24 +196,36 @@ switch ($command) {
         }
         $scope = isset($cli['options']['scope']) ? explode(',', $cli['options']['scope']) : [];
         $result = $index->search($query, (int) ($cli['options']['limit'] ?? 12), $scope);
-        printf("%d hit(s) from %d indexed\n", count($result['hits']), $result['indexed']);
+        printf("%d hit(s) from %d indexed   confidence: %s\n", count($result['hits']), $result['indexed'], $result['confidence']);
         foreach ($result['hits'] as $hit) {
-            printf("  %4d  %-60s (%d lines)  [%s]\n", $hit['score'], $hit['path'], $hit['lines'], implode(' ', $hit['matched']));
+            printf("  %4d  %-60s (%d lines)  [%s]%s\n", $hit['score'], $hit['path'], $hit['lines'], implode(' ', $hit['matched']), $hit['uses'] > 0 ? "  used {$hit['uses']}x" : '');
         }
         if ($result['missing'] !== []) {
             printf("  not indexed anywhere: %s\n", implode(' ', $result['missing']));
         }
+        if ($result['confidence'] === 'low') {
+            fwrite(STDOUT, "  LOW confidence: the local index found nothing useful. This is the honest time to\n  reach for an online or embedding-backed retriever -- not before.\n");
+        }
         exit($result['hits'] === [] ? 1 : 0);
+
+    case 'use':
+        if ($rest === []) {
+            fwrite(STDERR, "usage: run.php use <path...>   (report the files a task actually used)\n");
+            exit(2);
+        }
+        printf("recorded use for %d document(s)\n", $index->recordUse($rest));
+        exit(0);
 
     case 'stats':
         $stats = $index->stats();
         printf(
-            "documents %d, lines %d, index %d bytes, updated %s, stale %d\nroot: %s\n",
+            "documents %d, lines %d, index %d bytes, updated %s, stale %d, used %d\nroot: %s\n",
             $stats['documents'],
             $stats['lines'],
             $stats['bytes'],
             $stats['updated_at'] ?? 'never',
             $stats['stale'],
+            $stats['used'],
             $stats['root']
         );
         exit(0);
@@ -207,5 +239,5 @@ switch ($command) {
         exit(0);
 }
 
-fwrite(STDERR, "usage: run.php <index|search|stats|forget> [...] | --self-test\n");
+fwrite(STDERR, "usage: run.php <index|search|stats|forget|use> [...] | --self-test\n");
 exit(2);

@@ -1541,4 +1541,81 @@ test.describe('star swarm pixels', () => {
         expect(field.moon, 'the moon is drawn in the frame being measured').toBeGreaterThan(200);
         expect(field.blackShare, 'the field still reads black with the moon in it').toBeGreaterThan(0.9);
     });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p14 -- the stage-clear beat.
+    //
+    // The level arc exists (a loop is eight stages) but nothing ACKNOWLEDGED a stage being cleared:
+    // the next wave simply began. A player who cannot tell a stage ended cannot tell the game has a
+    // shape, and the question "what happens after every level" had no answer on screen.
+    // ---------------------------------------------------------------------------------------------
+    test('clearing a stage announces itself with a beat @p14', async ({ page }) => {
+        await boot(page);
+
+        const clear = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(90);
+
+            // Clear the field through the REAL destruction path, then let the game notice.
+            for (let guard = 0; guard < 80; guard += 1) {
+                const index = game.state.enemies.findIndex((enemy: any) => enemy.alive);
+                if (index < 0) break;
+                game.test.kill(index);
+            }
+            game.test.step(120);
+
+            const canvas = game.lane.canvas;
+            const band = { x: 0, y: canvas.height * 0.36, w: canvas.width, h: canvas.height * 0.28 };
+            const px = (window as any).__px;
+
+            // Ink in the beat's band for a given pair of counters, with the beat held open and the
+            // simulation NOT advanced. Rendering the same frame twice is the point: stepping between
+            // measurements moves the starfield, and starfield noise is larger than the few glyphs a
+            // tally adds -- a differential built on step() passed against a drawn line that ignored
+            // the counters entirely. Holding the frame still is what makes the comparison mean anything.
+            const measure = (destroyed: number, tally: number) => {
+                game.state.stageClear.destroyed = destroyed;
+                game.state.stageClear.tally = tally;
+                game.state.stageClear.life = 2.4;
+                game.render();
+                return px.stats(band.x, band.y, band.w, band.h).bright;
+            };
+
+            return {
+                stage: game.state.stage,
+                life: game.state.stageClear ? game.state.stageClear.life : null,
+                text: game.state.stageClear ? game.state.stageClear.text : null,
+                tally: game.state.stageClear ? game.state.stageClear.tally : null,
+                destroyed: game.state.stageClear ? game.state.stageClear.destroyed : null,
+                // Ink for a small tally versus a large one, measured on the same field.
+                inkSmall: measure(12, 340),
+                inkLarge: measure(99999, 999999),
+            };
+        });
+
+        expect(clear.life, 'the game exposes a stage-clear beat').not.toBeNull();
+        expect(String(clear.text), 'the stage clear announces itself').toMatch(/STAGE|LOOP/i);
+        // The tally must be the stage's own, and it must be real: a beat that reported zero destroyed
+        // after a stage was cleared would be reporting the wrong thing, not the absence of a feature.
+        expect(clear.tally, 'the beat carries the points this stage earned').toBeGreaterThan(0);
+        expect(clear.destroyed, 'and the number of enemies destroyed').toBeGreaterThan(0);
+
+        // The two halves of the claim, measured separately and BOTH required.
+        //
+        // `state.stageClear.tally` proves the number exists. It does not prove anyone can see it, and
+        // this project has already shipped a value that lived in state and never reached the screen.
+        //
+        // An ink threshold alone does not close that gap either: the beat already drew "STAGE 1 OF 8
+        // CLEAR" before any tally existed, so a threshold passes whether or not the numbers are drawn.
+        // Verified by falsification -- stripping the counters from the drawn string while leaving them
+        // in state still cleared an ink assertion. What closes it is a DIFFERENTIAL: the same field
+        // drawn with a small tally and with a large one must differ, because the numbers are longer.
+        // If the drawn line ignores the counters, both measurements are identical and this fails.
+        expect(clear.inkSmall, 'the beat draws something, so the field is not blank').toBeGreaterThan(20);
+        expect(
+            clear.inkLarge,
+            'and the drawn ink tracks the counters -- the numbers are on the screen, not only in state',
+        ).toBeGreaterThan(clear.inkSmall);
+    });
 });
