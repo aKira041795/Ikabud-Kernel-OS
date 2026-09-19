@@ -1966,7 +1966,70 @@ test.describe('star swarm pixels', () => {
         expect(
             missing.absent,
             'these characters are drawn by the game but the renderer silently skips them, so they vanish from the screen: '
-                + JSON.stringify(missing.absent),
+            + JSON.stringify(missing.absent),
         ).toEqual([]);
+    });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p21 -- a perfect bonus grants a life, every time.
+    //
+    // Director, 2026-09-19: "add life when bonus is perfect, everytime."
+    //
+    // Today the challenging stage's perfect clear awards 10,000 points and nothing else. Galaga's
+    // challenging stage awards a perfect bonus of 10,000 for shooting all forty -- points only. The
+    // director wants the perfect clear to be worth a life as well, and on every occurrence.
+    //
+    // THE CONFOUND, which decides the shape of this probe: `addScore()` grants an extra ship whenever
+    // the score crosses `extraShipAt`. The perfect bonus calls addScore(10000), so a naive lives
+    // comparison would pass on a score threshold that has nothing to do with being perfect. The
+    // threshold is therefore pushed out of reach first, so the ONLY thing that can move `lives` is
+    // the bonus itself.
+    // ---------------------------------------------------------------------------------------------
+    test('a perfect bonus grants a life, every time @p21', async ({ page }) => {
+        await boot(page);
+
+        const bonus = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+
+            const perfectClear = () => {
+                game.test.spawnWave(3); // the challenging stage
+                game.test.step(120);
+                game.state.extraShipAt = 1e9; // so a life can only come from the bonus
+                const before = game.state.lives;
+                // The bonus fires on an exact count -- `challengingDestroyed === 40` -- so the wave is
+                // cleared across steps rather than in one sweep: the stage presents its enemies in
+                // groups, and killing only what is alive at this instant never reaches forty.
+                for (let guard = 0; guard < 6000; guard += 1) {
+                    const index = game.state.enemies.findIndex((enemy: any) => enemy.alive);
+                    if (index >= 0) {
+                        game.test.kill(index);
+                    }
+                    game.test.step(1);
+                    if (game.state.bonus.perfect) {
+                        break;
+                    }
+                }
+                return {
+                    before,
+                    after: game.state.lives,
+                    perfect: game.state.bonus.perfect,
+                    destroyed: game.state.challengingDestroyed,
+                };
+            };
+
+            return { first: perfectClear(), second: perfectClear() };
+        });
+
+        expect(bonus.first.perfect, 'the challenging stage was cleared perfectly').toBe(true);
+        expect(
+            bonus.first.after - bonus.first.before,
+            'a perfect bonus grants exactly one life',
+        ).toBe(1);
+        // "everytime" is the load-bearing word: this must not be a once-per-run reward.
+        expect(bonus.second.perfect, 'and the second perfect clear is perfect too').toBe(true);
+        expect(
+            bonus.second.after - bonus.second.before,
+            'and it grants one again the next time -- not once per run',
+        ).toBe(1);
     });
 });
