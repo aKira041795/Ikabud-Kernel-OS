@@ -123,3 +123,19 @@ The lane did not continue further because its product artifact and evidence comp
 
 The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
 
+The objective could not continue because the objective supplies no deterministic acceptance command; the stopping condition was authority.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The objective could not continue because Implemented and verified the Plasma Lance power-up; full acceptance cannot complete because the mandated @p3 command targets tests/browser/star-swarm-pixels.spec.ts, which contains no @p3 tests and is explicitly outside writable scope.; the stopping condition was boundary.
+
+The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
+

@@ -70,6 +70,14 @@
     var DUAL_FIGHTER_OFFSET = 46;
     var FIRST_EXTRA_SHIP_SCORE = 20000;
     var EXTRA_SHIP_INTERVAL = 70000;
+    // Plasma Lance is an intentional modern addition, not an arcade-fidelity
+    // feature. Score thresholds advance even when its three-charge store is full.
+    var FIRST_POWERUP_SCORE = 10000;
+    var POWERUP_SCORE_INTERVAL = 20000;
+    var POWERUP_MAX_CHARGES = 3;
+    var POWERUP_DURATION = 6;
+    var BONUS_WINDOW = 20;
+    var BONUS_TITLE_DURATION = 2.5;
     var OPENING_TITLE_DURATION = 2.25;
     var OPENING_BYLINE_DURATION = 1.75;
 
@@ -85,7 +93,27 @@
         S: ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
         H: ['#...#', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
         I: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '#####'],
-        P: ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....']
+        P: ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....'],
+        L: ['#....', '#....', '#....', '#....', '#....', '#....', '#####'],
+        N: ['#...#', '##..#', '##..#', '#.#.#', '#..##', '#..##', '#...#'],
+        C: ['.####', '#....', '#....', '#....', '#....', '#....', '.####'],
+        M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
+        B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
+        O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+        U: ['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+        D: ['####.', '#...#', '#...#', '#...#', '#...#', '#...#', '####.'],
+        F: ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
+        '0': ['.###.', '#...#', '#..##', '#.#.#', '##..#', '#...#', '.###.'],
+        '1': ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+        '2': ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
+        '3': ['####.', '....#', '....#', '.###.', '....#', '....#', '####.'],
+        '4': ['...#.', '..##.', '.#.#.', '#..#.', '#####', '...#.', '...#.'],
+        '5': ['#####', '#....', '#....', '####.', '....#', '....#', '####.'],
+        '6': ['.###.', '#....', '#....', '####.', '#...#', '#...#', '.###.'],
+        '7': ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
+        '8': ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
+        '9': ['.###.', '#...#', '#...#', '.####', '....#', '....#', '.###.'],
+        ':': ['.....', '..#..', '..#..', '.....', '..#..', '..#..', '.....']
     });
 
     // The opening is canvas-authored from the same rectangular cells as the
@@ -93,16 +121,34 @@
     // not an all-caps substitute supplied by a font or DOM heading.
     var OPENING_GLYPHS = Object.freeze({
         A: EXTRA_SHIP_GLYPHS.A,
-        B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
+        B: EXTRA_SHIP_GLYPHS.B,
+        C: EXTRA_SHIP_GLYPHS.C,
+        D: EXTRA_SHIP_GLYPHS.D,
+        E: EXTRA_SHIP_GLYPHS.E,
+        F: EXTRA_SHIP_GLYPHS.F,
         I: EXTRA_SHIP_GLYPHS.I,
         K: ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'],
         M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
         N: ['#...#', '##..#', '##..#', '#.#.#', '#..##', '#..##', '#...#'],
-        O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+        O: EXTRA_SHIP_GLYPHS.O,
+        P: EXTRA_SHIP_GLYPHS.P,
+
         R: EXTRA_SHIP_GLYPHS.R,
         S: EXTRA_SHIP_GLYPHS.S,
         T: EXTRA_SHIP_GLYPHS.T,
+        U: EXTRA_SHIP_GLYPHS.U,
         W: ['#...#', '#...#', '#...#', '#.#.#', '#.#.#', '##.##', '#...#'],
+        '0': EXTRA_SHIP_GLYPHS['0'],
+        '1': EXTRA_SHIP_GLYPHS['1'],
+        '2': EXTRA_SHIP_GLYPHS['2'],
+        '3': EXTRA_SHIP_GLYPHS['3'],
+        '4': EXTRA_SHIP_GLYPHS['4'],
+        '5': EXTRA_SHIP_GLYPHS['5'],
+        '6': EXTRA_SHIP_GLYPHS['6'],
+        '7': EXTRA_SHIP_GLYPHS['7'],
+        '8': EXTRA_SHIP_GLYPHS['8'],
+        '9': EXTRA_SHIP_GLYPHS['9'],
+        ':': EXTRA_SHIP_GLYPHS[':'],
         b: ['#....', '#....', '####.', '#...#', '#...#', '#...#', '####.'],
         y: ['#...#', '#...#', '#...#', '.####', '....#', '...#.', '.##..']
     });
@@ -217,6 +263,8 @@
         scoreEl: null,
         waveEl: null,
         livesEl: null,
+        lanceEl: null,
+        bonusEl: null,
         frame: 0,
         destroyed: false
     };
@@ -239,6 +287,23 @@
         challengingDestroyed: 0,
         perfectBonus: 0,
         announcement: null,
+        powerup: {
+            charges: 0,
+            active: false,
+            remaining: 0,
+            nextAt: FIRST_POWERUP_SCORE,
+            uses: 0
+        },
+        bonus: {
+            active: false,
+            remaining: 0,
+            window: BONUS_WINDOW,
+            enemiesLeft: 0,
+            cleared: false,
+            perfect: false,
+            title: '',
+            titleRemaining: 0
+        },
         opening: {
             stage: 'title',
             title: 'Star Swarm',
@@ -270,7 +335,7 @@
         planets: [],
         explosions: [],
         scorePopups: [],
-        keys: { left: false, right: false, fire: false },
+        keys: { left: false, right: false, fire: false, lance: false },
         lastTime: 0,
         elapsed: 0,
         audio: {
@@ -776,6 +841,14 @@
         state.stageKind = state.challenging ? 'challenging' : 'standard';
         state.challengingDestroyed = 0;
         state.perfectBonus = 0;
+        state.bonus.active = state.challenging;
+        state.bonus.remaining = state.challenging ? BONUS_WINDOW : 0;
+        state.bonus.window = BONUS_WINDOW;
+        state.bonus.enemiesLeft = state.challenging ? 40 : 0;
+        state.bonus.cleared = false;
+        state.bonus.perfect = false;
+        state.bonus.title = state.challenging ? 'BONUS ROUND' : '';
+        state.bonus.titleRemaining = state.challenging ? BONUS_TITLE_DURATION : 0;
         applyMood((wave - 1) % MOOD_RULES.length);
         state.enemies = createFormation(wave);
         state.enemyBullets = [];
@@ -785,14 +858,33 @@
     function addScore(points) {
         state.score += points;
         state.highScore = Math.max(state.highScore, state.score);
-        var awarded = 0;
+        var shipsAwarded = 0;
         while (state.score >= state.extraShipAt) {
             state.lives += 1;
             state.extraShipAt += EXTRA_SHIP_INTERVAL;
-            awarded += 1;
+            shipsAwarded += 1;
         }
-        if (awarded > 0) {
-            state.announcement = { kind: 'extra-ship', life: 2.6 };
+
+        var chargesAwarded = 0;
+        while (state.score >= state.powerup.nextAt) {
+            state.powerup.nextAt += POWERUP_SCORE_INTERVAL;
+            if (state.powerup.charges < POWERUP_MAX_CHARGES) {
+                state.powerup.charges += 1;
+                chargesAwarded += 1;
+            }
+        }
+
+        if (shipsAwarded > 0 || chargesAwarded > 0) {
+            var announcementText = shipsAwarded > 0 ? 'EXTRA SHIP' : '';
+            if (chargesAwarded > 0) {
+                announcementText += (announcementText ? ' ' : '') + 'PLASMA LANCE';
+            }
+            state.announcement = {
+                kind: shipsAwarded > 0 && chargesAwarded > 0 ? 'awards'
+                    : (chargesAwarded > 0 ? 'powerup' : 'extra-ship'),
+                text: announcementText,
+                life: 2.6
+            };
         }
         updateHud();
     }
@@ -815,6 +907,12 @@
         state.lives = 3;
         state.extraShipAt = FIRST_EXTRA_SHIP_SCORE;
         state.announcement = null;
+        state.powerup.charges = 0;
+        state.powerup.active = false;
+        state.powerup.remaining = 0;
+        state.powerup.nextAt = FIRST_POWERUP_SCORE;
+        state.powerup.uses = 0;
+        state.keys.lance = false;
         state.dualFighter = false;
         state.capturedFighter = null;
         state.bullets = [];
@@ -894,6 +992,19 @@
         if (state.shots.length > shotsBefore) playFireCue();
     }
 
+    function activatePowerup() {
+        if (!state.running || state.paused || state.gameOver ||
+                state.powerup.active || state.powerup.charges < 1) {
+            return false;
+        }
+        state.powerup.charges -= 1;
+        state.powerup.active = true;
+        state.powerup.remaining = POWERUP_DURATION;
+        state.powerup.uses += 1;
+        updateHud();
+        return true;
+    }
+
     function setMove(direction, pressed) {
         if (direction === 'left') {
             state.keys.left = pressed;
@@ -928,6 +1039,12 @@
         } else if (key === ' ' || key === 'Spacebar' || key === 'ArrowUp' || key === 'w' || key === 'W') {
             setMove('fire', true);
             event.preventDefault();
+        } else if (key === 's' || key === 'S') {
+            if (!state.keys.lance) {
+                state.keys.lance = true;
+                activatePowerup();
+            }
+            event.preventDefault();
         } else if (key === 'p' || key === 'P') {
             togglePause();
             event.preventDefault();
@@ -945,6 +1062,8 @@
             setMove('right', false);
         } else if (key === ' ' || key === 'Spacebar' || key === 'ArrowUp' || key === 'w' || key === 'W') {
             setMove('fire', false);
+        } else if (key === 's' || key === 'S') {
+            state.keys.lance = false;
         }
     }
 
@@ -1122,9 +1241,16 @@
         addScore(points);
         if (state.challenging) {
             state.challengingDestroyed += 1;
+            state.bonus.enemiesLeft = state.enemies.filter(function (target) {
+                return target.alive;
+            }).length;
             if (state.challengingDestroyed === 40) {
                 state.perfectBonus = 10000;
+                state.bonus.active = false;
+                state.bonus.cleared = true;
+                state.bonus.perfect = true;
                 addScore(state.perfectBonus);
+                state.announcement = { kind: 'perfect', text: 'PERFECT 10000', life: 2.6 };
             }
         }
         return true;
@@ -1388,6 +1514,13 @@
                 enemy.y = cubicBezier(
                     enemy.entryStartY, enemy.entryControlAY, enemy.entryControlBY, enemy.baseY, entrance
                 );
+                // Bonus targets keep following their preset entrance curves,
+                // but the visible portion is clipped to the field edge so the
+                // clock never runs while a target is beyond the player's reach.
+                if (state.challenging) {
+                    enemy.x = clamp(enemy.x, 0, canvasWidth() - enemy.width);
+                    enemy.y = clamp(enemy.y, 0, canvasHeight() - enemy.height);
+                }
                 var tangentX = cubicBezierTangent(
                     enemy.entryStartX, enemy.entryControlAX, enemy.entryControlBX, targetX, entrance
                 );
@@ -1538,6 +1671,62 @@
 
     function intersects(a, b) {
         return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    }
+
+    function plasmaLanceBounds() {
+        var width = 12;
+        return {
+            x: state.player.x + state.player.width / 2 - width / 2,
+            y: 0,
+            width: width,
+            height: Math.max(0, state.player.y)
+        };
+    }
+
+    function updateBonus(dt) {
+        if (!state.challenging) return;
+
+        state.bonus.titleRemaining = Math.max(0, state.bonus.titleRemaining - dt);
+        if (!state.bonus.active) return;
+
+        state.bonus.remaining = Math.max(0, state.bonus.remaining - dt);
+        state.bonus.enemiesLeft = state.enemies.filter(function (enemy) {
+            return enemy.alive;
+        }).length;
+        if (state.bonus.remaining > 0) return;
+
+        // Expiry removes the old targets before stage-clear begins. They never
+        // become a standard-stage firing formation and no timeout kill scores.
+        state.bonus.active = false;
+        state.bonus.remaining = 0;
+        state.bonus.enemiesLeft = 0;
+        state.enemyBullets = [];
+        for (var i = 0; i < state.enemies.length; i += 1) {
+            state.enemies[i].alive = false;
+            state.enemies[i].diving = false;
+            state.enemies[i].entering = false;
+        }
+        state.phase = 'stage-clear';
+        state.phaseElapsed = 0;
+    }
+
+    function updatePowerup(dt) {
+        if (!state.powerup.active) return;
+
+        state.powerup.remaining = Math.max(0, state.powerup.remaining - dt);
+        if (state.powerup.remaining === 0) {
+            state.powerup.active = false;
+            return;
+        }
+        if (!state.keys.fire) return;
+
+        var beam = plasmaLanceBounds();
+        for (var i = 0; i < state.enemies.length; i += 1) {
+            var enemy = state.enemies[i];
+            if (enemy.alive && intersects(beam, enemy)) {
+                destroyEnemy(enemy);
+            }
+        }
     }
 
     function updateBullets(dt) {
@@ -1691,12 +1880,15 @@
         state.phaseElapsed += dt;
         updateStarfield(dt);
         updatePlayer(dt);
+        updateBonus(dt);
         updateFormation(dt);
+        updatePowerup(dt);
         updateCapturedFighter(dt);
         updateEnemyFire(dt);
         updateBullets(dt);
         updateEffects(dt);
         checkWaveCleared();
+        updateHud();
     }
 
     // --- render ----------------------------------------------------------------
@@ -1857,6 +2049,15 @@
         }
     }
 
+    function drawPlasmaLance(ctx, theme) {
+        if (!state.powerup.active || !state.keys.fire) return;
+        var beam = plasmaLanceBounds();
+        ctx.fillStyle = theme.roles.reward;
+        ctx.fillRect(Math.round(beam.x), beam.y, beam.width, beam.height);
+        ctx.fillStyle = theme.starBright;
+        ctx.fillRect(Math.round(beam.x + 4), beam.y, 4, beam.height);
+    }
+
     function drawTractorBeams(ctx, theme) {
         for (var i = 0; i < state.enemies.length; i += 1) {
             var enemy = state.enemies[i];
@@ -1965,6 +2166,33 @@
         }
     }
 
+    function drawBonusStatus(ctx, theme) {
+        if (!state.challenging) return;
+        if (state.bonus.active) {
+            var seconds = String(Math.max(0, Math.ceil(state.bonus.remaining)));
+            var clockScale = Math.max(3, Math.floor(canvasWidth() / 320));
+            drawPixelText(
+                ctx,
+                'BONUS ' + seconds,
+                clockScale,
+                canvasWidth() / 2,
+                Math.max(10, canvasHeight() * 0.035),
+                theme.starBright
+            );
+        }
+        if (state.bonus.titleRemaining > 0) {
+            var titleScale = Math.max(5, Math.floor(canvasWidth() / 180));
+            drawPixelText(
+                ctx,
+                state.bonus.title,
+                titleScale,
+                canvasWidth() / 2,
+                canvasHeight() * 0.47 - titleScale * 3.5,
+                theme.roles.reward
+            );
+        }
+    }
+
     function drawOpening(ctx, theme) {
         var stage = state.opening.stage;
         if (stage !== 'title' && stage !== 'byline') return false;
@@ -1994,8 +2222,8 @@
     }
 
     function drawExtraShipAnnouncement(ctx, theme) {
-        if (!state.announcement || state.announcement.kind !== 'extra-ship') return;
-        var text = 'EXTRA SHIP';
+        if (!state.announcement) return;
+        var text = state.announcement.text || 'EXTRA SHIP';
         var scale = Math.max(4, Math.floor(canvasWidth() / 210));
         var spaceWidth = scale * 4;
         var glyphAdvance = scale * 6;
@@ -2051,6 +2279,7 @@
         for (i = 0; i < state.enemies.length; i += 1) if (state.enemies[i].alive) drawEnemy(ctx, state.enemies[i], theme);
         drawTractorBeams(ctx, theme);
         drawCapturedFighter(ctx, theme);
+        drawPlasmaLance(ctx, theme);
         for (i = 0; i < state.bullets.length; i += 1) drawPlayerShot(ctx, state.bullets[i], theme);
         for (i = 0; i < state.enemyBullets.length; i += 1) {
             var shot = state.enemyBullets[i];
@@ -2058,6 +2287,7 @@
             ctx.moveTo(shot.x + 2, shot.y); ctx.lineTo(shot.x + 6, shot.y + 6); ctx.lineTo(shot.x + 2, shot.y + 12); ctx.lineTo(shot.x - 2, shot.y + 6); ctx.closePath(); ctx.fill();
         }
         drawEffects(ctx, theme);
+        drawBonusStatus(ctx, theme);
         drawExtraShipAnnouncement(ctx, theme);
         if (state.running && (state.player.invulnerable <= 0 || Math.floor(state.elapsed * 10) % 2 === 0)) drawRocket(ctx, state.player, theme);
     }
@@ -2088,6 +2318,21 @@
         }
         if (lane.livesEl) {
             lane.livesEl.textContent = String(Math.max(0, state.lives));
+        }
+        if (lane.lanceEl) {
+            var charges = Math.max(0, state.powerup.charges);
+            lane.lanceEl.setAttribute('data-charges', String(charges));
+            lane.lanceEl.setAttribute('data-active', state.powerup.active ? 'true' : 'false');
+            lane.lanceEl.textContent = state.powerup.active
+                ? charges + ' \u00b7 ACTIVE ' + state.powerup.remaining.toFixed(1) + 's'
+                : String(charges);
+        }
+        if (lane.bonusEl) {
+            lane.bonusEl.setAttribute('data-active', state.bonus.active ? 'true' : 'false');
+            lane.bonusEl.textContent = state.challenging
+                ? Math.max(0, Math.ceil(state.bonus.remaining)) + 's \u00b7 '
+                    + state.bonus.enemiesLeft + ' LEFT'
+                : '\u2014';
         }
     }
 
@@ -2227,13 +2472,15 @@
         lane.scoreEl = lane.root.querySelector('[data-star-swarm="score"]');
         lane.waveEl = lane.root.querySelector('[data-star-swarm="wave"]');
         lane.livesEl = lane.root.querySelector('[data-star-swarm="lives"]');
+        lane.lanceEl = lane.root.querySelector('[data-star-swarm="lance"]');
+        lane.bonusEl = lane.root.querySelector('[data-star-swarm="bonus"]');
 
         layoutWideField();
         state.starLayers = createStarfieldLayers();
         state.planets = createPlanets();
         startWave(1);
         updateHud();
-        showOverlay('Star Swarm', 'Arrows or A/D to move \u00b7 Space or Up to fire \u00b7 P to pause', 'Start');
+        showOverlay('Star Swarm', 'Arrows or A/D to move \u00b7 Space or Up to fire \u00b7 S for Plasma Lance \u00b7 P to pause', 'Start');
 
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -2259,6 +2506,11 @@
             DUAL_FIGHTER_WIDTH: DUAL_FIGHTER_WIDTH,
             FIRST_EXTRA_SHIP_SCORE: FIRST_EXTRA_SHIP_SCORE,
             EXTRA_SHIP_INTERVAL: EXTRA_SHIP_INTERVAL,
+            FIRST_POWERUP_SCORE: FIRST_POWERUP_SCORE,
+            POWERUP_SCORE_INTERVAL: POWERUP_SCORE_INTERVAL,
+            POWERUP_MAX_CHARGES: POWERUP_MAX_CHARGES,
+            POWERUP_DURATION: POWERUP_DURATION,
+            BONUS_WINDOW: BONUS_WINDOW,
             ENEMY_SCORES: ENEMY_SCORES,
             BULLET_SPEED: bulletSpeed(),
             ENEMY_BULLET_SPEED: ENEMY_BULLET_SPEED,
@@ -2278,6 +2530,7 @@
         launchDiveGroup: launchDiveGroup,
         beginTractorBeam: beginTractorBeam,
         fireBullet: fireBullet,
+        activatePowerup: activatePowerup,
         fireEnemyShot: fireEnemyShot,
         destroyEnemy: destroyEnemy,
         startGame: startGame,
