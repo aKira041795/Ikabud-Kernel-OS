@@ -96,8 +96,6 @@ $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=8
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=9
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=10
 $ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p11"
-$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p2"
-$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p3"
 $ npx playwright test tests/browser/star-swarm-audio.spec.ts
 $ npx playwright test tests/browser/star-swarm.spec.ts
 $ php tests/star_swarm_visual_test.php
@@ -106,9 +104,9 @@ $ php tests/star_swarm_galaga_gate_test.php
 $ composer test
 ```
 
-`@p2` (scoring) and `@p3` (gameplay) plus the state spec are the guard on the arcade rules this round is built
-from: if any goes red, the clock changed the challenging stage rather than adding to it — report that rather
-than adjusting the arcade expectations.
+The **state spec** and **gate phases 2 and 3** are the guard on the arcade rules this round is built from: if any
+goes red, the clock changed the challenging stage rather than adding to it — report that rather than adjusting
+the arcade expectations.
 
 ## Boundaries
 

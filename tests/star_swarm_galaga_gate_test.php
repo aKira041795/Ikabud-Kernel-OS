@@ -186,6 +186,48 @@ $sandboxRoot = $sandbox(static function (string $root): void {
 [$code, $output] = $runGate($sandboxRoot, '--phase=1');
 $check($code === 1, 'an empty contract fails rather than passing vacuously');
 
+echo "\n=== mandated acceptance commands are meaningful ===\n";
+/*
+ * A command that cannot pass is an unsatisfiable acceptance, and it burns a dispatch every time.
+ * Measured 2026-09-19: p10 escalated at chunks 6 / verified 5 -- the lance was implemented and verified --
+ * because its acceptance list mandated `npx playwright test ... --grep "@p3"` against a spec that contains
+ * no @p3 test. Playwright exits non-zero on "no tests found", so the item could never turn green however
+ * good the work was. This check reads every objective, extracts each --grep tag, and requires the tag to
+ * exist in the spec the SAME command names.
+ */
+$objectiveFiles = glob($root . '/tools/harpp2/objectives/star-swarm-galaga-p*.md') ?: [];
+$specCache = [];
+$unmeasurable = [];
+$taggedCommands = 0;
+foreach ($objectiveFiles as $objectiveFile) {
+    $text = (string) file_get_contents($objectiveFile);
+    if (preg_match_all('/^\$\s+npx playwright test\s+(\S+)\s+--grep\s+"([^"]+)"/mi', $text, $matches, PREG_SET_ORDER) === 0) {
+        continue;
+    }
+    foreach ($matches as $match) {
+        $taggedCommands += 1;
+        $spec = $match[1];
+        $tag = ltrim($match[2], '@');
+        if (!isset($specCache[$spec])) {
+            $path = $root . '/' . ltrim($spec, '/');
+            $specCache[$spec] = is_file($path) ? (string) file_get_contents($path) : null;
+        }
+        if ($specCache[$spec] === null) {
+            $unmeasurable[] = basename($objectiveFile) . ': spec not found ' . $spec;
+            continue;
+        }
+        if (!str_contains((string) $specCache[$spec], '@' . $tag)) {
+            $unmeasurable[] = basename($objectiveFile) . ': no @' . $tag . ' test in ' . $spec;
+        }
+    }
+}
+$check($objectiveFiles !== [], 'the objectives are present');
+$check($taggedCommands > 0, 'the objectives mandate tagged spec runs (' . $taggedCommands . ' commands)');
+$check(
+    $unmeasurable === [],
+    'every mandated --grep tag exists in the spec it names' . ($unmeasurable === [] ? '' : ': ' . implode('; ', array_slice($unmeasurable, 0, 4)))
+);
+
 $sandboxRoot = $sandbox(static function (string $root): void {
     unlink($root . '/tests/browser/star-swarm-pixels.spec.ts');
 });

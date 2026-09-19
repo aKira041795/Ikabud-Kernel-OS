@@ -77,7 +77,6 @@ $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=7
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=8
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=9
 $ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p10"
-$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p3"
 $ npx playwright test tests/browser/star-swarm-audio.spec.ts
 $ npx playwright test tests/browser/star-swarm.spec.ts
 $ php tests/star_swarm_visual_test.php
@@ -86,7 +85,7 @@ $ php tests/star_swarm_galaga_gate_test.php
 $ composer test
 ```
 
-`@p3` (gameplay) and the state spec both cover the two-shot rule and the scoring table: if either goes red,
+The **state spec** and **gate phase 3** both cover the two-shot rule and the scoring table: if either goes red,
 the power-up broke the game rather than extending it — report that, do not retune the arcade rules to hide it.
 The audio spec is included because a new cue must not disturb the five that exist.
 
