@@ -49,7 +49,7 @@ reads as an *earned escalation* rather than an exception to a rule. W4 exists to
 
 Expose the surface as, at minimum:
 
-```js
+```
 state.powerup = { charges, active, remaining, nextAt, uses }   // remaining in seconds of game time
 ```
 

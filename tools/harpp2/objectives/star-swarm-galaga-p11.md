@@ -59,7 +59,7 @@ arcade rules and must survive unchanged.
 
 Expose the surface as, at minimum:
 
-```js
+```
 state.bonus = { active, remaining, window, enemiesLeft, cleared, perfect, title }   // seconds; title names the round
 ```
 
