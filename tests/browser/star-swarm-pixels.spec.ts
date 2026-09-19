@@ -1853,7 +1853,7 @@ test.describe('star swarm pixels', () => {
         expect(
             distinct,
             'the HUD renders different weapons differently, so a player can tell them apart: '
-                + JSON.stringify(hud.ink),
+            + JSON.stringify(hud.ink),
         ).toBeGreaterThan(1);
     });
 });
