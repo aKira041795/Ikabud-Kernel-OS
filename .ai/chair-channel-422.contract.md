@@ -53,10 +53,11 @@ abandon a working channel.
 
 ## Required tests
 
-- `bash tests/chair-delivery-readback-probe.sh`
+- `bash tests/chair-submit-shape-probe.sh`
 
 Also, and they must still pass:
 
+- `bash tests/chair-delivery-readback-probe.sh`
 - `php tools/chair.php --self-test`
 
 ## Risks
