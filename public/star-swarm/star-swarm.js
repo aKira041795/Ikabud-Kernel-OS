@@ -321,6 +321,8 @@
         bullets: [],
         enemyBullets: [],
         enemies: [],
+        carrier: null,
+        pickups: [],
         nursery: { x: 1120, y: 112, radius: 76 },
         formation: {
             direction: 1, speed: 40, elapsed: 0, diveCooldown: 2.5,
@@ -851,6 +853,13 @@
         state.bonus.titleRemaining = state.challenging ? BONUS_TITLE_DURATION : 0;
         applyMood((wave - 1) % MOOD_RULES.length);
         state.enemies = createFormation(wave);
+        state.pickups = [];
+        // Standard waves always expose one deterministic, living lance carrier.
+        // Challenging stages keep their fixed arcade roster and bonus rules.
+        state.carrier = state.challenging ? null : {
+            enemyIndex: Math.floor(state.enemies.length / 2),
+            alive: true
+        };
         state.enemyBullets = [];
         updateHud();
     }
@@ -1235,6 +1244,17 @@
         releaseCapturedFighter(enemy);
         enemy.flash = 0.12;
         enemy.alive = false;
+        if (state.carrier && state.carrier.alive &&
+            state.carrier.enemyIndex === enemy.enemyIndex) {
+            state.carrier.alive = false;
+            state.pickups.push({
+                x: enemy.x + enemy.width / 2,
+                y: enemy.y + enemy.height / 2,
+                remaining: 7,
+                lifetime: 7,
+                kind: 'lance'
+            });
+        }
         disperseNeighbours(enemy);
         createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.type);
         state.scorePopups.push({ x: enemy.x + enemy.width / 2, y: enemy.y, text: '+' + points, role: 'reward', life: 0.8 });
@@ -1838,12 +1858,43 @@
         }
     }
 
+    function updatePickups(dt) {
+        for (var i = state.pickups.length - 1; i >= 0; i -= 1) {
+            var pickup = state.pickups[i];
+            pickup.y += 18 * dt;
+            pickup.remaining = Math.max(0, pickup.remaining - dt);
+            if (pickup.remaining === 0) {
+                state.pickups.splice(i, 1);
+                continue;
+            }
+
+            var pickupBounds = {
+                x: pickup.x - 10,
+                y: pickup.y - 10,
+                width: 20,
+                height: 20
+            };
+            if (intersects(pickupBounds, state.player)) {
+                if (state.powerup.charges < POWERUP_MAX_CHARGES) {
+                    state.powerup.charges += 1;
+                }
+                state.announcement = {
+                    kind: 'powerup',
+                    text: 'PLASMA LANCE',
+                    life: 2.6
+                };
+                state.pickups.splice(i, 1);
+            }
+        }
+    }
+
     function checkWaveCleared() {
         if (state.gameOver) {
             return;
         }
         var remaining = state.enemies.some(function (enemy) { return enemy.alive; })
-            || Boolean(state.capturedFighter);
+            || Boolean(state.capturedFighter)
+            || state.pickups.length > 0;
         if (remaining) return;
         if (state.phase !== 'stage-clear') {
             state.phase = 'stage-clear';
@@ -1887,6 +1938,7 @@
         updateEnemyFire(dt);
         updateBullets(dt);
         updateEffects(dt);
+        updatePickups(dt);
         checkWaveCleared();
         updateHud();
     }
@@ -2011,6 +2063,64 @@
             ctx.fillRect(10, 10, 4, 4); ctx.fillRect(20, 10, 4, 4);
         }
         ctx.restore();
+    }
+
+    function drawCarrierMarker(ctx, enemy, theme) {
+        if (!state.carrier || !state.carrier.alive ||
+            state.carrier.enemyIndex !== enemy.enemyIndex) return;
+
+        // Pixel brackets add unmistakable bright ink without obscuring the
+        // caste silhouette. World-space coordinates keep the mark attached
+        // through entrance, formation movement and dives.
+        var left = Math.round(enemy.x - 4);
+        var top = Math.round(enemy.y - 4);
+        var right = Math.round(enemy.x + enemy.width + 2);
+        var bottom = Math.round(enemy.y + enemy.height + 2);
+        var arm = 7;
+        var thickness = 2;
+        ctx.fillStyle = theme.starBright;
+        ctx.fillRect(left, top, arm, thickness);
+        ctx.fillRect(left, top, thickness, arm);
+        ctx.fillRect(right - arm, top, arm, thickness);
+        ctx.fillRect(right - thickness, top, thickness, arm);
+        ctx.fillRect(left, bottom - thickness, arm, thickness);
+        ctx.fillRect(left, bottom - arm, thickness, arm);
+        ctx.fillRect(right - arm, bottom - thickness, arm, thickness);
+        ctx.fillRect(right - thickness, bottom - arm, thickness, arm);
+    }
+
+    function drawPickup(ctx, pickup, theme) {
+        var centreX = Math.round(pickup.x);
+        var centreY = Math.round(pickup.y);
+
+        // A compact pixel cross reads as the stored lance while keeping x/y as
+        // the mark's centre. During the final two seconds, corner brackets
+        // blink around it to make expiry visible without hiding the pickup.
+        ctx.fillStyle = theme.roles.reward;
+        ctx.fillRect(centreX - 2, centreY - 8, 4, 16);
+        ctx.fillRect(centreX - 7, centreY - 2, 14, 4);
+        ctx.fillStyle = theme.starBright;
+        ctx.fillRect(centreX - 1, centreY - 6, 2, 12);
+
+        var flashWindow = Math.min(2, pickup.lifetime);
+        var flashing = pickup.remaining <= flashWindow &&
+            Math.floor((pickup.lifetime - pickup.remaining) * 8) % 2 === 0;
+        if (!flashing) return;
+
+        var left = centreX - 10;
+        var top = centreY - 10;
+        var right = centreX + 8;
+        var bottom = centreY + 8;
+        var arm = 6;
+        var thickness = 2;
+        ctx.fillRect(left, top, arm, thickness);
+        ctx.fillRect(left, top, thickness, arm);
+        ctx.fillRect(right - arm, top, arm, thickness);
+        ctx.fillRect(right - thickness, top, thickness, arm);
+        ctx.fillRect(left, bottom - thickness, arm, thickness);
+        ctx.fillRect(left, bottom - arm, thickness, arm);
+        ctx.fillRect(right - arm, bottom - thickness, arm, thickness);
+        ctx.fillRect(right - thickness, bottom - arm, thickness, arm);
     }
 
     function drawPlayerShot(ctx, bullet, theme) {
@@ -2276,10 +2386,15 @@
         if (openingVisible) return;
 
         var i;
-        for (i = 0; i < state.enemies.length; i += 1) if (state.enemies[i].alive) drawEnemy(ctx, state.enemies[i], theme);
+        for (i = 0; i < state.enemies.length; i += 1) {
+            if (!state.enemies[i].alive) continue;
+            drawEnemy(ctx, state.enemies[i], theme);
+            drawCarrierMarker(ctx, state.enemies[i], theme);
+        }
         drawTractorBeams(ctx, theme);
         drawCapturedFighter(ctx, theme);
         drawPlasmaLance(ctx, theme);
+        for (i = 0; i < state.pickups.length; i += 1) drawPickup(ctx, state.pickups[i], theme);
         for (i = 0; i < state.bullets.length; i += 1) drawPlayerShot(ctx, state.bullets[i], theme);
         for (i = 0; i < state.enemyBullets.length; i += 1) {
             var shot = state.enemyBullets[i];

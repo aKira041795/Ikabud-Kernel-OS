@@ -139,3 +139,11 @@ The objective could not continue because Implemented and verified the Plasma Lan
 
 The lane did not continue further because its product artifact and evidence completed the remaining acceptance gates; objective completion, not authority, boundary, or irreversibility, ended the loop.
 
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The lane did not continue further because serial dispatch limits one lane to one verified chunk; this did not stop the objective, and the driver continued to the next failing acceptance gate.
+
+The objective could not continue because refused unsafe evidence command `npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "collecting the drop grants"`: destroy data; the stopping condition was boundary.
+
+The objective could not continue because refused unsafe evidence command `npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep 'the drop is legible as it expires @p12'`: destroy data; the stopping condition was boundary.
+
