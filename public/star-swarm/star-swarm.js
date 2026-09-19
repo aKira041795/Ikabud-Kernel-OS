@@ -272,8 +272,199 @@
         scorePopups: [],
         keys: { left: false, right: false, fire: false },
         lastTime: 0,
-        elapsed: 0
+        elapsed: 0,
+        audio: {
+            contextState: (window.AudioContext || window.webkitAudioContext) ? 'suspended' : 'unavailable',
+            sampleRate: 0,
+            count: 0,
+            beamActive: false,
+            log: []
+        }
     };
+
+    // Audio is deliberately created only when startGame() runs from the Start
+    // gesture. The public state contains measurements, while these graph nodes
+    // remain private so gameplay cannot depend on them.
+    var audioContext = null;
+    var beamAudio = null;
+    var AUDIO_LOG_LIMIT = 50;
+
+    function syncAudioState() {
+        if (!audioContext) return;
+        state.audio.contextState = audioContext.state === 'running' ? 'running' : 'suspended';
+        state.audio.sampleRate = Number(audioContext.sampleRate) || 0;
+    }
+
+    function initialiseAudio() {
+        if (audioContext) {
+            try {
+                if (audioContext.state === 'suspended') {
+                    var resumed = audioContext.resume();
+                    if (resumed && typeof resumed.then === 'function') {
+                        resumed.then(syncAudioState, syncAudioState);
+                    }
+                }
+                syncAudioState();
+            } catch (error) {
+                syncAudioState();
+            }
+            return audioContext;
+        }
+
+        var AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextConstructor) {
+            state.audio.contextState = 'unavailable';
+            state.audio.sampleRate = 0;
+            return null;
+        }
+
+        try {
+            audioContext = new AudioContextConstructor();
+            audioContext.addEventListener('statechange', syncAudioState);
+            if (audioContext.state === 'suspended') {
+                var resumeResult = audioContext.resume();
+                if (resumeResult && typeof resumeResult.then === 'function') {
+                    resumeResult.then(syncAudioState, syncAudioState);
+                }
+            }
+            syncAudioState();
+            return audioContext;
+        } catch (error) {
+            audioContext = null;
+            state.audio.contextState = 'unavailable';
+            state.audio.sampleRate = 0;
+            return null;
+        }
+    }
+
+    function recordAudioCue(cue, size, frequency, duration) {
+        state.audio.count += 1;
+        state.audio.log.push({
+            cue: cue,
+            at: state.elapsed,
+            size: size,
+            frequency: frequency,
+            duration: duration
+        });
+        if (state.audio.log.length > AUDIO_LOG_LIMIT) {
+            state.audio.log.splice(0, state.audio.log.length - AUDIO_LOG_LIMIT);
+        }
+    }
+
+    function playTone(cue, frequency, duration, size, wave, endFrequency) {
+        if (!audioContext || state.audio.contextState === 'unavailable') return;
+        try {
+            var now = audioContext.currentTime;
+            var oscillator = audioContext.createOscillator();
+            var gain = audioContext.createGain();
+            oscillator.type = wave;
+            oscillator.frequency.setValueAtTime(frequency, now);
+            if (endFrequency) {
+                oscillator.frequency.exponentialRampToValueAtTime(endFrequency, now + duration);
+            }
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.12, now + Math.min(0.018, duration / 3));
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(now);
+            oscillator.stop(now + duration + 0.01);
+            recordAudioCue(cue, size || 0, frequency, duration);
+        } catch (error) {
+            // Audio must never take the simulation down with it.
+        }
+    }
+
+    function playStartCue() {
+        initialiseAudio();
+        playTone('start', 330, 0.28, 0, 'triangle', 660);
+    }
+
+    function playFireCue() {
+        playTone('fire', 880, 0.07, 0, 'square', 440);
+    }
+
+    function playHitCue(enemy) {
+        if (!audioContext || state.audio.contextState === 'unavailable') return;
+        // Formation depth scales actors for perspective. Divide that transient
+        // scale out so the cue represents the enemy body's own caste size.
+        var bodyScale = Number(enemy.scale) || 1;
+        var size = Math.round(Math.max(enemy.width, enemy.height) / bodyScale * 100) / 100;
+        var frequency = Math.max(150, Math.round(680 - size * 6));
+        var duration = Math.min(0.32, 0.08 + size / 320);
+        try {
+            var now = audioContext.currentTime;
+            var oscillator = audioContext.createOscillator();
+            var noise = audioContext.createBufferSource();
+            var gain = audioContext.createGain();
+            var sampleCount = Math.max(1, Math.ceil(audioContext.sampleRate * duration));
+            var buffer = audioContext.createBuffer(1, sampleCount, audioContext.sampleRate);
+            var samples = buffer.getChannelData(0);
+            for (var i = 0; i < samples.length; i += 1) {
+                samples[i] = (((i * 1103515245 + 12345) >>> 16) % 65536) / 32768 - 1;
+            }
+            noise.buffer = buffer;
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(frequency, now);
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(80, frequency * 0.55), now + duration);
+            gain.gain.setValueAtTime(0.14, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            oscillator.connect(gain);
+            noise.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(now);
+            noise.start(now);
+            oscillator.stop(now + duration + 0.01);
+            noise.stop(now + duration + 0.01);
+            recordAudioCue('hit', size, frequency, duration);
+        } catch (error) {
+            // A failed effect is silent; enemy destruction still completes.
+        }
+    }
+
+    function startBeamCue() {
+        if (!audioContext || state.audio.contextState === 'unavailable' || beamAudio) return;
+        try {
+            var now = audioContext.currentTime;
+            var oscillator = audioContext.createOscillator();
+            var gain = audioContext.createGain();
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(118, now);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.055, now + 0.05);
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(now);
+            beamAudio = { oscillator: oscillator, gain: gain };
+            state.audio.beamActive = true;
+            recordAudioCue('beam', 0, 118, 1.8);
+        } catch (error) {
+            beamAudio = null;
+            state.audio.beamActive = false;
+        }
+    }
+
+    function stopBeamCue() {
+        state.audio.beamActive = false;
+        if (!beamAudio || !audioContext) {
+            beamAudio = null;
+            return;
+        }
+        try {
+            var now = audioContext.currentTime;
+            beamAudio.gain.gain.cancelScheduledValues(now);
+            beamAudio.gain.gain.setValueAtTime(Math.max(0.0001, beamAudio.gain.gain.value), now);
+            beamAudio.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+            beamAudio.oscillator.stop(now + 0.05);
+        } catch (error) {
+            // The node may already have stopped; the observable state is still closed.
+        }
+        beamAudio = null;
+    }
+
+    function playGameOverCue() {
+        playTone('gameover', 220, 0.65, 0, 'sawtooth', 70);
+    }
 
     // Galaga calls the player projectiles "shots". Keep the legacy bullets
     // name as the writable backing store while exposing the arcade term as a
@@ -615,6 +806,7 @@
     }
 
     function restartGame() {
+        stopBeamCue();
         state.gameOver = false;
         state.paused = false;
         state.opening.stage = 'done';
@@ -640,6 +832,7 @@
             return;
         }
         restartGame();
+        playStartCue();
     }
 
     function pauseGame() {
@@ -670,6 +863,8 @@
     function gameOver() {
         state.gameOver = true;
         state.running = false;
+        stopBeamCue();
+        playGameOverCue();
         showOverlay('Game Over', 'Final score: ' + state.score, 'Restart');
     }
 
@@ -685,6 +880,7 @@
         var muzzles = state.dualFighter
             ? [SINGLE_FIGHTER_WIDTH / 2, DUAL_FIGHTER_OFFSET + SINGLE_FIGHTER_WIDTH / 2]
             : [state.player.width / 2];
+        var shotsBefore = state.shots.length;
         for (var i = 0; i < muzzles.length && state.shots.length < PLAYER_SHOT_LIMIT; i += 1) {
             state.bullets.push({
                 x: state.player.x + muzzles[i] - 2,
@@ -695,6 +891,7 @@
                 speed: bulletSpeed()
             });
         }
+        if (state.shots.length > shotsBefore) playFireCue();
     }
 
     function setMove(direction, pressed) {
@@ -908,6 +1105,8 @@
     function destroyEnemy(enemy) {
         if (!enemy || !enemy.alive) return false;
         var points = enemyPointValue(enemy);
+        playHitCue(enemy);
+        if (enemy.tractorState === 'beam') stopBeamCue();
         if (enemy.escortLeaderIndex !== null) {
             var leader = state.enemies[enemy.escortLeaderIndex];
             if (leader && leader.alive && leader.diving) {
@@ -950,6 +1149,7 @@
         enemy.tractorAttempted = true;
         state.phase = 'tractor-beam';
         state.phaseElapsed = 0;
+        startBeamCue();
         return true;
     }
 
@@ -990,6 +1190,7 @@
                 state.phase = 'dive';
                 state.phaseElapsed = 0;
             }
+            if (enemy.tractorState !== 'beam') stopBeamCue();
             return enemy.tractorState !== 'idle';
         }
         if (enemy.tractorState === 'returning') {
@@ -1914,7 +2115,7 @@
 
     function onAction() {
         if (state.gameOver) {
-            restartGame();
+            startGame();
         } else if (state.paused) {
             resumeGame();
         } else if (!state.running) {
@@ -1924,6 +2125,7 @@
 
     function destroy() {
         lane.destroyed = true;
+        stopBeamCue();
         if (lane.frame) {
             cancelAnimationFrame(lane.frame);
             lane.frame = 0;
