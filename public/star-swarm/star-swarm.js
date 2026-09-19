@@ -1503,6 +1503,8 @@
                 state.bonus.active = false;
                 state.bonus.cleared = true;
                 state.bonus.perfect = true;
+                // Every perfect challenging-stage clear earns one ship, independently of score awards.
+                state.lives += 1;
                 addScore(state.perfectBonus);
                 state.announcement = { kind: 'perfect', text: 'PERFECT 10000', life: 2.6 };
             }
