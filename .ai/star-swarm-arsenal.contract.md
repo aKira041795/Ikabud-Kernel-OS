@@ -79,13 +79,16 @@ The six stages that carry a weapon must therefore carry **six distinct ones**:
 - A drop released at the carrier's row reaches the player's row before it is gone (probe @p15).
 - The six carrier stages carry six distinct weapons (probe @p16).
 - Stages 3 and 7 remain the challenging stages and carry no carrier (probe @p16).
-- `PLAYER_SHOT_LIMIT` is still 2 and no weapon can put a third shot in the air.
-- The HUD names the weapon currently held, and it changes when a new pickup is taken.
-- A collected weapon persists for the rest of the run rather than expiring on a timer.
+- A collected weapon persists for the rest of the run rather than expiring on a timer (probe @p17).
+- `PLAYER_SHOT_LIMIT` is still 2 and no weapon can put a third shot in the air (checked by hand; no
+  probe covers it, and the gate reports it as unprobed so it is not forgotten).
+- The HUD names the weapon currently held, and it changes when a new pickup is taken. **No probe
+  covers this; the chair verifies it with a screenshot.** It is left in the contract deliberately
+  unprobed rather than dressed up as verified, and `plan` prints it as unprobed every time.
 
 ## Required tests
 
-- `npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p15|@p16" --reporter=line`
+- `npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p15|@p16|@p17" --reporter=line`
 
 Then, because this touches shooting, the rest of the game's own suite must stay green:
 

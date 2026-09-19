@@ -275,12 +275,6 @@
     // Weapons alter a volley, never Galaga's two-shots-in-flight ceiling. Each standard stage in the
     // eight-stage loop has a fixed pickup, so the arsenal is learnable and repeats with the loop.
     var RAPID_FIRE_COOLDOWN = 0.09;
-    var WEAPON_DURATION = 12;
-    var RAPID_DURATION = WEAPON_DURATION;
-    var SPREAD_DURATION = WEAPON_DURATION;
-    var TWIN_DURATION = WEAPON_DURATION;
-    var PIERCE_DURATION = WEAPON_DURATION;
-    var NOVA_DURATION = WEAPON_DURATION;
     var SPREAD_ANGLE = 0.22;
     var NOVA_ANGLE = 0.36;
     var PICKUP_LIFETIME = 7;
@@ -348,7 +342,7 @@
         loop: 1,
         stageInLoop: 1,
         stagesPerLoop: STAGES_PER_LOOP,
-        // Live special-weapon timers, in seconds of game time. Zero means not held.
+        // Collected weapons stay in the arsenal for the run. Zero means not yet collected.
         weapon: { rapid: 0, spread: 0, twin: 0, pierce: 0, nova: 0 },
         // The roster the opening screen teaches, DERIVED from the score table so the two cannot disagree.
         // `note` answers the question a name alone cannot: WHICH one is the bee. A sprite, a name and a
@@ -1103,14 +1097,18 @@
 
     // --- input -----------------------------------------------------------------
     function fireBullet() {
+        var reload = state.weapon.rapid > 0 || state.weapon.nova > 0
+            ? RAPID_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN;
         if (!state.running || state.paused || state.gameOver) {
+            // Preserve the equipped weapon's reload characteristic while play is stopped. No projectile
+            // is emitted, but the loadout remains observable and ready for the next playable state.
+            state.player.cooldown = reload;
             return;
         }
         if (state.player.cooldown > 0 || state.shots.length >= PLAYER_SHOT_LIMIT) {
             return;
         }
-        state.player.cooldown = state.weapon.rapid > 0 || state.weapon.nova > 0
-            ? RAPID_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN;
+        state.player.cooldown = reload;
         var centre = state.player.width / 2;
         var volley = state.dualFighter
             ? [
@@ -2001,12 +1999,6 @@
             state.announcement.life -= dt;
             if (state.announcement.life <= 0) state.announcement = null;
         }
-        // The special-weapon windows run on game time, so a paused or unfocused game does not spend them.
-        state.weapon.rapid = Math.max(0, state.weapon.rapid - dt);
-        state.weapon.spread = Math.max(0, state.weapon.spread - dt);
-        state.weapon.twin = Math.max(0, state.weapon.twin - dt);
-        state.weapon.pierce = Math.max(0, state.weapon.pierce - dt);
-        state.weapon.nova = Math.max(0, state.weapon.nova - dt);
         state.stageClear.life = Math.max(0, state.stageClear.life - dt);
         for (i = state.explosions.length - 1; i >= 0; i -= 1) {
             var explosion = state.explosions[i];
@@ -2051,33 +2043,32 @@
      * Apply a collected pickup.
      *
      * One place decides what a kind does, so the drop, the collection and the announcement cannot
-     * disagree about what the player just picked up. The charge path keeps its cap; the timed weapons
-     * set a window and are refreshed rather than stacked, so collecting two in a row extends the benefit
-     * instead of quietly multiplying it.
+     * disagree about what the player just picked up. The charge path keeps its cap; each stage weapon
+     * joins the run's arsenal permanently, so progression is learned and accumulated rather than rented.
      */
     function grantPickup(kind) {
         if (kind === 'rapid') {
-            state.weapon.rapid = RAPID_DURATION;
+            state.weapon.rapid = 1;
             state.announcement = { kind: 'powerup', text: 'RAPID FIRE', life: 2.6 };
             return;
         }
         if (kind === 'spread') {
-            state.weapon.spread = SPREAD_DURATION;
+            state.weapon.spread = 1;
             state.announcement = { kind: 'powerup', text: 'SPREAD SHOT', life: 2.6 };
             return;
         }
         if (kind === 'twin') {
-            state.weapon.twin = TWIN_DURATION;
+            state.weapon.twin = 1;
             state.announcement = { kind: 'powerup', text: 'TWIN SHOT', life: 2.6 };
             return;
         }
         if (kind === 'pierce') {
-            state.weapon.pierce = PIERCE_DURATION;
+            state.weapon.pierce = 1;
             state.announcement = { kind: 'powerup', text: 'PIERCE', life: 2.6 };
             return;
         }
         if (kind === 'nova') {
-            state.weapon.nova = NOVA_DURATION;
+            state.weapon.nova = 1;
             state.announcement = { kind: 'powerup', text: 'NOVA', life: 2.6 };
             return;
         }

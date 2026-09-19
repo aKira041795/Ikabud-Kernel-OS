@@ -1729,4 +1729,75 @@ test.describe('star swarm pixels', () => {
         expect(challenging, 'the challenging stages are Galaga\'s every fourth, starting at 3')
             .toEqual([3, 7]);
     });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p17 -- a weapon you keep.
+    //
+    // The per-stage arsenal was delivered as six TIMERS (state.weapon = {rapid:0, spread:0, twin:0,
+    // pierce:0, nova:0}), so every weapon is lost twelve seconds after you take it. That defeats the
+    // design it was built for: Raiden's weapon is your weapon until you take another, and a weapon you
+    // cannot rely on cannot be learned. The probes passed anyway, which is the point -- nothing
+    // measured persistence, so nothing required it.
+    //
+    // Measured behaviourally rather than by reading state.weapon: the observable fact is how fast the
+    // ship fires, so that is what this asserts. A probe that read the timer fields would also break the
+    // moment persistence is implemented properly, i.e. exactly when it should pass.
+    // ---------------------------------------------------------------------------------------------
+    test('a weapon is kept, not lost on a timer @p17', async ({ page }) => {
+        await boot(page);
+
+        const kept = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(2); // stage 2 carries rapid
+            game.test.step(120);
+
+            // The reload time the ship has with no weapon in hand: the baseline this compares against,
+            // measured rather than hardcoded so the probe cannot drift from the game's own numbers.
+            game.state.weapon.rapid = 0;
+            game.state.weapon.spread = 0;
+            game.state.shots = [];
+            game.state.player.cooldown = 0;
+            game.fireBullet();
+            const bare = game.state.player.cooldown;
+
+            // Take the drop through the real path: destroy the carrier, then put the ship under it.
+            const carrierIndex = game.state.enemies.findIndex(
+                (enemy: any) =>
+                    enemy.alive && game.state.carrier && enemy.enemyIndex === game.state.carrier.enemyIndex,
+            );
+            if (carrierIndex < 0) return { collected: false, reason: 'no carrier in stage 2' };
+            game.test.kill(carrierIndex);
+            if (game.state.pickups.length === 0) return { collected: false, reason: 'no drop' };
+
+            const pickup = game.state.pickups[0];
+            game.state.player.x = pickup.x;
+            game.state.player.y = pickup.y;
+            game.test.step(2);
+            const collected = game.state.pickups.length === 0;
+            if (!collected) return { collected: false, reason: 'the ship did not take the drop' };
+
+            game.state.shots = [];
+            game.state.player.cooldown = 0;
+            game.fireBullet();
+            const armed = game.state.player.cooldown;
+
+            // Well past any plausible countdown -- 1800 steps is about thirty seconds of game time,
+            // and the timer model it replaced lasted twelve.
+            game.test.step(1800);
+            game.state.shots = [];
+            game.state.player.cooldown = 0;
+            game.fireBullet();
+            const later = game.state.player.cooldown;
+
+            return { collected: true, bare, armed, later };
+        });
+
+        expect(kept.collected, String((kept as any).reason ?? 'the ship takes the drop')).toBe(true);
+        // First that the weapon does anything at all, otherwise the persistence claim is empty.
+        expect(kept.armed, 'the collected weapon actually changes how the ship fires')
+            .toBeLessThan(kept.bare!);
+        // Then the claim itself: it is still in hand half a minute later.
+        expect(kept.later, 'and it is still in hand thirty seconds later -- not lost on a timer')
+            .toBe(kept.armed);
+    });
 });
