@@ -27,7 +27,10 @@ use Ikabud\Kernel\Workbench\Retrieval\RetrievalIndex;
 const RETRIEVAL_ROOT = __DIR__ . '/../../../storage/private/retrieval';
 const RETRIEVAL_DEFAULT_PATHS = ['kernel', 'src', 'public', 'templates', 'modules', 'docs', 'tools', 'tests'];
 
-/** @return array{args:list<string>, options:array<string,string>, flags:list<string>} */
+/**
+ * @param list<string> $argv
+ * @return array{args:list<string>, options:array<string,string>, flags:list<string>}
+ */
 function retrievalCli(array $argv): array
 {
     $args = [];
@@ -47,6 +50,7 @@ function retrievalCli(array $argv): array
     return ['args' => $args, 'options' => $options, 'flags' => $flags];
 }
 
+/** @param array<string,string> $options */
 function retrievalRoot(array $options): string
 {
     return isset($options['root']) ? rtrim($options['root'], '/') : RETRIEVAL_ROOT;
@@ -124,12 +128,12 @@ function retrievalSelfTest(): int
     // The assertion is the type invariant, not merely "it did not throw": a search that survives by
     // luck on a digit-free query would satisfy a smoke test and still be broken. Every term the
     // caller is handed must be a string, because that is the property that was violated.
-    $numeric = $index->search('cratered moon stage 2 wave', 5);
-    $check('a query containing digits does not throw', is_array($numeric));
-    $check('the search reports the terms it used', ($numeric['terms'] ?? []) !== []);
+    $numeric = $index->search('cratered moon stage 2026 wave', 5);
+    $check('a query containing digits does not throw', in_array('2026', $numeric['terms'], true));
+    $check('the search reports the terms it used', $numeric['terms'] !== []);
     $check(
         'and every reported term is a STRING -- the property that was violated',
-        array_filter($numeric['terms'] ?? [], static fn ($term): bool => !is_string($term)) === []
+        count(array_filter($numeric['terms'], 'is_string')) === count($numeric['terms'])
     );
     $check('a query with no searchable words is LOW', $index->search('the and for')['confidence'] === 'low');
     $check(
@@ -248,7 +252,7 @@ function retrievalSelfTest(): int
     $check(
         'stats names the documents feedback is ranking, with the credit each is earning',
         ($usedStats['used_paths'][0]['path'] ?? '') === 'crowd/sheet1.php'
-            && ($usedStats['used_paths'][0]['boost'] ?? 0) === 1
+            && $usedStats['used_paths'][0]['boost'] === 1
             && ($usedStats['used_paths'][0]['last_used_at'] ?? null) !== null
     );
 

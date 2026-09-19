@@ -72,7 +72,7 @@ final class RetrievalIndex
         'must' => 1, 'not' => 1, 'are' => 1, 'was' => 1, 'were' => 1, 'its' => 1, 'has' => 1,
         'have' => 1, 'been' => 1, 'will' => 1, 'would' => 1, 'should' => 1, 'could' => 1, 'each' => 1,
         'also' => 1, 'only' => 1, 'more' => 1, 'most' => 1, 'such' => 1, 'same' => 1, 'because' => 1,
-        'about' => 1, 'which' => 1, 'where' => 1, 'what' => 1, 'does' => 1, 'done' => 1, 'done' => 1,
+        'about' => 1, 'which' => 1, 'where' => 1, 'what' => 1, 'does' => 1, 'done' => 1,
     ];
 
     /** Extensions worth indexing. A retrieval index that eats binaries is a retrieval index that lies. */
@@ -123,7 +123,6 @@ final class RetrievalIndex
     public const USE_HALF_LIFE_DAYS = 14;
 
     private string $indexPath;
-    private string $lockPath;
 
     /**
      * @param string      $root            where the index itself lives
@@ -148,7 +147,6 @@ final class RetrievalIndex
         $canonical = realpath($candidate);
         $this->repositoryRoot = rtrim($canonical !== false ? $canonical : $candidate, '/');
         $this->indexPath = rtrim($root, '/') . '/index.json';
-        $this->lockPath = rtrim($root, '/') . '/index.lock';
         if (!is_dir($root) && !mkdir($root, 0775, true) && !is_dir($root)) {
             throw new \RuntimeException("Unable to create retrieval index root: {$root}");
         }
@@ -241,8 +239,8 @@ final class RetrievalIndex
             }
             $entry = $documents[$relative] ?? null;
             if (!$force && $entry !== null
-                && ($entry['mtime'] ?? -1) === $stat['mtime']
-                && ($entry['size'] ?? -1) === $stat['size']) {
+                && $entry['mtime'] === $stat['mtime']
+                && $entry['size'] === $stat['size']) {
                 $unchanged++;
                 continue;
             }
@@ -438,10 +436,10 @@ final class RetrievalIndex
                 // common ones. Scaling by the share of terms matched makes breadth of match part of the
                 // rank rather than only the weight of each individual term.
                 $score *= count($matched) / max(1, count($terms));
-                $uses = (int) ($entry['uses'] ?? 0);
+                $uses = (int) $entry['uses'];
                 $hits[] = [
                     'path' => $path,
-                    'score' => (int) round($score) + self::useBoost($uses, (int) ($entry['last_used_at'] ?? 0), $now),
+                    'score' => (int) round($score) + self::useBoost($uses, (int) $entry['last_used_at'], $now),
                     'lines' => (int) $entry['lines'],
                     'matched' => $matched,
                     'uses' => $uses,
@@ -477,7 +475,7 @@ final class RetrievalIndex
             'hits' => $sliced,
             'indexed' => $indexed,
             'retired' => $retired,
-            'missing' => array_values($missing),
+            'missing' => $missing,
             'confidence' => $confidence,
         ];
     }
@@ -506,7 +504,7 @@ final class RetrievalIndex
             if (!isset($state['documents'][$relative])) {
                 continue;
             }
-            $state['documents'][$relative]['uses'] = (int) ($state['documents'][$relative]['uses'] ?? 0) + 1;
+            $state['documents'][$relative]['uses'] = (int) $state['documents'][$relative]['uses'] + 1;
             $state['documents'][$relative]['last_used_at'] = time();
             $count++;
         }
@@ -610,12 +608,12 @@ final class RetrievalIndex
             if (self::isRetired($path)) {
                 $retired++;
             }
-            $uses = (int) ($entry['uses'] ?? 0);
+            $uses = (int) $entry['uses'];
             $used += $uses;
             if ($uses === 0) {
                 continue;
             }
-            $lastUsedAt = (int) ($entry['last_used_at'] ?? 0);
+            $lastUsedAt = (int) $entry['last_used_at'];
             $usedPaths[] = [
                 'path' => $path,
                 'uses' => $uses,
