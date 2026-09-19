@@ -39,6 +39,8 @@ declare(strict_types=1);
  * 3. THE CHAIR DECIDES. Failure promotes the reasoning level and retries; exhaustion records a
  *    BLOCKED decision with the options that were considered. Nothing is referred to the director.
  *    The director is informed when something ships, never asked to unblock what was delegated.
+ *    `advance` IS this rule, bounded: attempt 1 on the task's own lane, each failure one rung more
+ *    capable, and `--max` attempts later a recorded blocked decision rather than one more attempt.
  *
  * 4. CONTEXT IS RETRIEVED, NOT DUMPED. The brief is assembled from the task's own scope, ranked
  *    by relevance to its objective. No whole-repository reads.
@@ -48,11 +50,12 @@ declare(strict_types=1);
  *    `--self-test`, so a policy that cries wolf is caught here rather than in a live run.
  *
  * usage:
- *   php tools/chair.php plan   --contract=<file.md> [--task=<id>] [--actor=<id>]
- *   php tools/chair.php run    --task=<id> [--attempts=2] [--lane=<model>:<thinking>,...] [--dry]
- *   php tools/chair.php probe  --task=<id>
- *   php tools/chair.php decide --task=<id> --decision=<text> [--rationale=<text>]
- *   php tools/chair.php status [--task=<id>]
+ *   php tools/chair.php plan    --contract=<file.md> [--task=<id>] [--actor=<id>]
+ *   php tools/chair.php run     --task=<id> [--attempts=2] [--lane=<model>:<thinking>,...] [--falsify] [--dry]
+ *   php tools/chair.php advance --task=<id> [--max=3] [--kind=<kind>] [--lane=<model>:<thinking>] [--falsify]
+ *   php tools/chair.php probe   --task=<id>
+ *   php tools/chair.php decide  --task=<id> --decision=<text> [--rationale=<text>]
+ *   php tools/chair.php status  [--task=<id>]
  *   php tools/chair.php --self-test
  */
 
@@ -255,6 +258,9 @@ function lockRelease($handle): void
  * A run holds the lock for its whole life, so two runs cannot write the same tree and a commit can be
  * refused while one is live. The lock is released even when the body throws.
  *
+ * The run id is handed to the body, so a record a body writes -- a BLOCKED entry, say -- can name the
+ * run that made it instead of floating in the ledger unattributable.
+ *
  * @param array<string,string> $options
  */
 function withRunLock(array $options, callable $body): int
@@ -273,10 +279,11 @@ function withRunLock(array $options, callable $body): int
         'task' => $options['task'] ?? '',
         'lane' => $options['lane'] ?? '',
         'kind' => $options['kind'] ?? '',
+        'mode' => $options['mode'] ?? '',
     ]);
 
     try {
-        $exit = $body();
+        $exit = $body($run);
     } catch (Throwable $error) {
         ledgerAppend(['phase' => 'finish', 'run' => $run, 'exit' => 2, 'error' => $error->getMessage()]);
         lockRelease($handle);
@@ -623,7 +630,14 @@ function runProbe(string $command, int $timeout = 900): array
  */
 function chairIndex(): RetrievalIndex
 {
-    return new RetrievalIndex(CHAIR_ROOT . '/storage/private/retrieval', CHAIR_ROOT);
+    // realpath, NOT CHAIR_ROOT -- and this was a real defect, measured 2026-09-19 while wiring the
+    // staleness gate. CHAIR_ROOT is deliberately unnormalised ('.../tools/..'), and the index computes
+    // every stored key AND every lookup by stripping the root it was given. A root containing '..'
+    // strips nothing, so keys became absolute-with-the-leading-slash-dropped, and isCurrent() then
+    // looked for the file at <root>/<that key> -- a path that cannot exist. `isCurrent()` returned
+    // false for a file that had JUST been indexed, so the staleness gate could never be satisfied and
+    // every index() call wrote a duplicate mangled key. Normalising the root fixes both.
+    return new RetrievalIndex(CHAIR_ROOT . '/storage/private/retrieval', realpath(CHAIR_ROOT) ?: CHAIR_ROOT);
 }
 
 /**
@@ -684,6 +698,86 @@ function retrieveContext(string $objective, array $scope, int $limit = 12): arra
         static fn (array $hit): array => ['path' => $hit['path'], 'score' => $hit['score'], 'lines' => $hit['lines']],
         $result['hits']
     );
+}
+
+/**
+ * Which of these retrieved paths is the index describing WRONGLY?
+ *
+ * The index answers this directly (`isCurrent`), which is the whole reason context comes from a
+ * persisted index rather than a walk: a walk has no memory to be stale. Measured 2026-09-19: `stats()`
+ * reported `stale 8` while the harness handed context to lanes without ever asking. A lane briefed from
+ * a description of code that has since changed is not merely unhelpful -- it is confidently wrong.
+ *
+ * @param list<string> $paths repository-relative paths, as retrieval returns them
+ * @return list<string>
+ */
+function staleContextPaths(array $paths): array
+{
+    $index = chairIndex();
+    $stale = [];
+    foreach ($paths as $path) {
+        if (!$index->isCurrent($path)) {
+            $stale[] = $path;
+        }
+    }
+
+    return $stale;
+}
+
+/**
+ * Null when the retrieved context may be handed to a lane, else why it may not.
+ *
+ * Fail closed, deliberately: a stale path that a FORCED re-index could not repair is a path whose file
+ * is gone, and the honest response is to stop rather than to brief a lane from a memory of deleted code.
+ *
+ * @param list<string> $stale
+ */
+function staleContextRefusal(array $stale): ?string
+{
+    if ($stale === []) {
+        return null;
+    }
+
+    return 'refusing to brief a lane with stale context: ' . implode(', ', array_slice($stale, 0, 8))
+        . (count($stale) > 8 ? ' (+' . (count($stale) - 8) . ' more)' : '')
+        . ' did not come back current after a forced re-index. The index is describing something that is '
+        . 'not on disk, so the retrieval is wrong rather than merely old. Fail closed and re-index the '
+        . 'repository before dispatching: a lane briefed from a stale index is confidently wrong.';
+}
+
+/**
+ * The context for a brief, with staleness checked, repaired and re-checked rather than assumed.
+ *
+ * Three steps, in this order and no other: look (`isCurrent`), repair (`index` with force, because
+ * mtime+size is exactly what fails to notice the change being repaired), then RETRIEVE AGAIN so the
+ * ranking reflects what was just indexed. Anything still stale after that is a refusal, not a warning.
+ *
+ * @param list<string> $scope repository-relative files or directories
+ * @return list<array{path:string, score:int, lines:int}>
+ */
+function currentContext(string $objective, array $scope, int $limit = 12): array
+{
+    $context = retrieveContext($objective, $scope, $limit);
+    $found = staleContextPaths(array_column($context, 'path'));
+    $repaired = 'no';
+
+    if ($found !== []) {
+        chairIndex()->index($found, true);
+        $context = retrieveContext($objective, $scope, $limit);
+        $refusal = staleContextRefusal(staleContextPaths(array_column($context, 'path')));
+        if ($refusal !== null) {
+            fail($refusal);
+        }
+        $repaired = 'yes';
+    }
+
+    record('CONTEXT', [
+        'files' => (string) count($context),
+        'stale' => (string) count($found),
+        'repaired' => $repaired,
+    ]);
+
+    return $context;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -750,16 +844,21 @@ function writeBrief(array $task, string $objective, array $context, string $prob
 /**
  * Changed paths in the working tree, excluding the harness's own scratch storage.
  *
- * @return list<string>
+ * The status CODE is kept rather than thrown away, because reverting needs it: a path HEAD holds is
+ * restored with `git checkout HEAD --`, while a path a run CREATED has no committed copy and must be
+ * MOVED aside -- deleting it would destroy work nothing else has a copy of.
+ *
+ * @return array<string,string> repository-relative path => the two-character git status code
  */
-function changedPaths(): array
+function workingTreeEntries(): array
 {
     $output = shell_exec('cd ' . escapeshellarg(CHAIR_ROOT) . ' && git status --porcelain 2>/dev/null');
-    $paths = [];
+    $entries = [];
     foreach (preg_split('/\R/', (string) $output) ?: [] as $line) {
         if (trim($line) === '') {
             continue;
         }
+        $code = substr($line, 0, 2);
         $path = trim(substr($line, 3));
         if (str_contains($path, ' -> ')) {
             $path = trim(explode(' -> ', $path)[1]);
@@ -767,10 +866,279 @@ function changedPaths(): array
         if (str_starts_with($path, 'storage/private/') || str_starts_with($path, '.ai/')) {
             continue;
         }
-        $paths[] = $path;
+        $entries[$path] = $code;
     }
 
-    return array_values(array_unique($paths));
+    return $entries;
+}
+
+/** @return list<string> */
+function changedPaths(): array
+{
+    return array_keys(workingTreeEntries());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Falsification: take the change away and watch the probe go red.
+//
+// On 2026-09-19 the chair proved a probe was not vacuous BY HAND -- revert the changed files to HEAD,
+// re-run the probe expecting RED, restore, then verify the restore by hash. The loop is mechanical and
+// easy to skip, which is precisely why it is a command: a green probe proves the probe passes, and only
+// the revert proves it passes BECAUSE OF THE CHANGE.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Does HEAD hold a copy of this path -- i.e. can `git checkout HEAD --` bring it back? */
+function committedInHead(string $path): bool
+{
+    $ignored = [];
+    $exit = 0;
+    exec('cd ' . escapeshellarg(CHAIR_ROOT) . ' && git cat-file -e '
+        . escapeshellarg('HEAD:' . $path) . ' 2>/dev/null', $ignored, $exit);
+
+    return $exit === 0;
+}
+
+/** Where a newly-added file waits while the probe is run against its absence. */
+function falsifyAsideName(string $path): string
+{
+    return str_replace('/', '%', $path);
+}
+
+/**
+ * Null when the revert may proceed, else why it must not.
+ *
+ * The guard exists because `git checkout HEAD --` is indifferent to whose work it discards. It is only
+ * ever pointed at files the RUN changed, but a tree that was already dirty means the run's change and
+ * someone else's are the same path, and a revert that swept that up would destroy work with no committed
+ * copy -- the one outcome that must never depend on a probe's verdict.
+ *
+ * @param list<string> $runChanged paths this run changed
+ * @param list<string> $baseline   paths already uncommitted BEFORE the run started
+ */
+function falsifyRefusal(array $runChanged, array $baseline): ?string
+{
+    $foreign = array_values(array_diff($baseline, $runChanged));
+    if ($foreign === []) {
+        return null;
+    }
+
+    return 'cannot falsify: the working tree already had ' . count($foreign) . ' uncommitted change(s) '
+        . 'this run did not make (' . implode(', ', array_slice($foreign, 0, 6))
+        . (count($foreign) > 6 ? ', ...' : '') . '). Reverting to HEAD must never be able to sweep up '
+        . 'work that is not the run\'s. Commit or stash those paths, then re-run with --falsify.';
+}
+
+/**
+ * Null when the probe went RED without the change, else the finding.
+ *
+ * A probe that still passes once the change is gone is measuring something else -- the moon-threshold
+ * failure of 2026-09-19 in its general form. That is a finding about the INSTRUMENT, so the message says
+ * so rather than blaming a lane that did nothing wrong.
+ */
+function probeDependenceRefusal(int $exitAfterRevert): ?string
+{
+    if ($exitAfterRevert !== 0) {
+        return null;
+    }
+
+    return 'the probe does not depend on the change: it still PASSES with the run\'s changes reverted, so '
+        . 'it is not measuring what this task claims to be about. The finding is about the probe, not the '
+        . 'lane -- the next action is to fix the instrument.';
+}
+
+/**
+ * Which files did not come back exactly as they were?
+ *
+ * A restore is not done when the copy returns; it is done when the bytes are proven identical. Content
+ * hashes on both sides, so "RESTORE OK" is a measurement rather than a hope.
+ *
+ * @param array<string,string> $expected path => sha256 before the revert
+ * @param array<string,string> $actual   path => sha256 after the restore
+ * @return list<string>
+ */
+function restoreVerified(array $expected, array $actual): array
+{
+    $mismatches = [];
+    foreach ($expected as $path => $hash) {
+        if (($actual[$path] ?? null) !== $hash) {
+            $mismatches[] = (string) $path;
+        }
+    }
+
+    return $mismatches;
+}
+
+/**
+ * Back up, in memory, the files that are about to be taken away -- before anything is reverted.
+ *
+ * Two classifications, because they need opposite reverts: a path HEAD holds is restored from HEAD,
+ * while a path the run CREATED has no committed copy and is MOVED aside. A file the run DELETED is
+ * backed up from HEAD, because HEAD is the only place its bytes still exist.
+ *
+ * @param list<string> $paths repository-relative
+ * @return array{added:list<string>, modified:list<string>, contents:array<string,string>, hashes:array<string,string>, aside:string}
+ */
+function falsifyBackup(array $paths): array
+{
+    $aside = chairStateDir() . '/falsify/' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3));
+    if (!is_dir($aside) && !mkdir($aside, 0775, true) && !is_dir($aside)) {
+        fail("cannot create the falsify backup directory {$aside}");
+    }
+
+    $backup = ['added' => [], 'modified' => [], 'contents' => [], 'hashes' => [], 'aside' => $aside];
+    foreach ($paths as $path) {
+        $absolute = CHAIR_ROOT . '/' . $path;
+        if (committedInHead($path)) {
+            $backup['modified'][] = $path;
+            $contents = is_file($absolute)
+                ? (string) file_get_contents($absolute)
+                : (string) shell_exec('cd ' . escapeshellarg(CHAIR_ROOT) . ' && git show '
+                    . escapeshellarg('HEAD:' . $path) . ' 2>/dev/null');
+        } else {
+            $backup['added'][] = $path;
+            $contents = is_file($absolute) ? (string) file_get_contents($absolute) : '';
+        }
+        $backup['contents'][$path] = $contents;
+        $backup['hashes'][$path] = hash('sha256', $contents);
+    }
+
+    return $backup;
+}
+
+/**
+ * Take the change away.
+ *
+ * @param array<string,mixed> $backup
+ */
+function falsifyRevert(array $backup): void
+{
+    if ($backup['modified'] !== []) {
+        $output = [];
+        $exit = 0;
+        exec('cd ' . escapeshellarg(CHAIR_ROOT) . ' && git checkout HEAD -- '
+            . implode(' ', array_map('escapeshellarg', $backup['modified'])) . ' 2>&1', $output, $exit);
+        if ($exit !== 0) {
+            // Nothing has been moved aside yet and every backup is still in memory, so failing here is
+            // fail-closed rather than half-reverted. The shutdown net restores whatever did change.
+            fail('could not revert to HEAD: ' . implode(' | ', $output));
+        }
+    }
+
+    foreach ($backup['added'] as $path) {
+        $absolute = CHAIR_ROOT . '/' . $path;
+        if (is_file($absolute) && !@rename($absolute, $backup['aside'] . '/' . falsifyAsideName($path))) {
+            fail("could not move {$path} aside");
+        }
+    }
+}
+
+/**
+ * Put the files back, and prove it byte by byte.
+ *
+ * Idempotent, because two things call it: the `finally` in falsifyProbe(), and the shutdown handler that
+ * exists because `try/finally` does NOT run when PHP exits -- and runProbe() can exit(2) if it cannot
+ * start the probe at all. Both paths must leave the tree exactly as the lane left it.
+ *
+ * @param array<string,mixed> $backup
+ * @return array{ok:bool, mismatches:list<string>}
+ */
+function falsifyRestore(array $backup): array
+{
+    foreach ($backup['modified'] as $path) {
+        @file_put_contents(CHAIR_ROOT . '/' . $path, (string) $backup['contents'][$path]);
+    }
+    foreach ($backup['added'] as $path) {
+        $aside = $backup['aside'] . '/' . falsifyAsideName($path);
+        if (is_file($aside)) {
+            @rename($aside, CHAIR_ROOT . '/' . $path);
+        }
+    }
+
+    $actual = [];
+    foreach (array_keys($backup['hashes']) as $path) {
+        $absolute = CHAIR_ROOT . '/' . $path;
+        $actual[$path] = is_file($absolute) ? hash('sha256', (string) @file_get_contents($absolute)) : '';
+    }
+    $mismatches = restoreVerified($backup['hashes'], $actual);
+    if (is_dir((string) $backup['aside'])) {
+        @rmdir((string) $backup['aside']);
+        // And the parent, when this was the last backup in it: a self-test (or a refusal before the first
+        // revert) must not leave scratch state behind that a later reader has to interpret.
+        @rmdir(dirname((string) $backup['aside']));
+    }
+
+    return ['ok' => $mismatches === [], 'mismatches' => $mismatches];
+}
+
+/**
+ * The backup a terminating process must still restore, or null when none is in flight.
+ *
+ * A `finally` covers an exception; it does not cover `exit()`, which PHP runs without unwinding -- and
+ * runProbe() exits when it cannot start the probe. Losing the restore in that window would leave the
+ * tree reverted, which is the one outcome the whole mechanism exists to prevent, so the in-flight
+ * backup is registered as a shutdown handler as well.
+ *
+ * @param array<string,mixed>|false|null $arm false to disarm, an array to arm, null to read
+ * @return array<string,mixed>|null
+ */
+function falsifyInFlight(array|false|null $arm = null): ?array
+{
+    static $current = null;
+    if ($arm !== null) {
+        $current = $arm === false ? null : $arm;
+    }
+
+    return $current;
+}
+
+/**
+ * Revert, re-run the probe expecting RED, restore, and verify the restore.
+ *
+ * @param list<string> $runChanged paths this run changed
+ * @param list<string> $baseline   paths already uncommitted before the run started
+ * @return array{verdict:string, exit:int, output:string}
+ */
+function falsifyProbe(string $probe, array $runChanged, array $baseline): array
+{
+    $refusal = falsifyRefusal($runChanged, $baseline);
+    if ($refusal !== null) {
+        fail($refusal);
+    }
+
+    $backup = falsifyBackup($runChanged);
+    falsifyInFlight($backup);
+    record('FALSIFY', ['phase' => 'backup', 'files' => (string) count($runChanged), 'aside' => $backup['aside']]);
+
+    try {
+        falsifyRevert($backup);
+        record('FALSIFY', ['phase' => 'reverted', 'files' => (string) count($runChanged)]);
+        $after = runProbe($probe);
+    } finally {
+        $restore = falsifyRestore($backup);
+        falsifyInFlight(false);
+    }
+
+    if ($restore['mismatches'] !== []) {
+        record('RESTORE', ['verdict' => 'FAILED', 'files' => (string) count($restore['mismatches'])]);
+        foreach (array_slice($restore['mismatches'], 0, 8) as $path) {
+            say('    not restored: ' . $path);
+        }
+        say('  the backup is kept at ' . $backup['aside'] . ' -- restore it by hand before anything else.');
+        fail('RESTORE FAILED: ' . count($restore['mismatches']) . ' file(s) did not come back '
+            . 'byte-identical to their content before the falsification');
+    }
+
+    record('RESTORE', ['verdict' => 'OK', 'files' => (string) count($backup['hashes'])]);
+    say('  RESTORE OK -- every file is byte-identical to its content before the falsification.');
+
+    $exit = (int) ($after['exit'] ?? -1);
+    $dependenceRefusal = probeDependenceRefusal($exit);
+    $verdict = $dependenceRefusal === null
+        ? 'probe-depends-on-the-change'
+        : 'probe-does-not-depend-on-the-change';
+    record('FALSIFY', ['verdict' => $verdict, 'probe_exit' => (string) $exit]);
+
+    return ['verdict' => $verdict, 'exit' => $exit, 'output' => (string) ($after['output'] ?? '')];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -804,6 +1172,104 @@ const CHAIR_LANES = [
 function laneFor(string $kind): ?array
 {
     return CHAIR_LANES[$kind] ?? null;
+}
+
+/**
+ * The attempt ladder, cheap to expensive, read from the registry.
+ *
+ * The registry's ORDER is the ladder, and the order is the point: a second failure on the same probe is
+ * evidence about the executor, not about the task, so it must raise the reasoning level rather than
+ * replay the attempt. That is the repository's repair ladder -- L1 implementation repair, L2
+ * implementation-strategy change, L3 task decomposition -- expressed as a list of lanes.
+ *
+ * @return list<string>
+ */
+function registryLadder(): array
+{
+    $ladder = [];
+    foreach (CHAIR_LANES as $entry) {
+        $ladder[] = $entry['lane'];
+    }
+
+    return $ladder;
+}
+
+/**
+ * How many attempts an advance is allowed.
+ *
+ * Bounded, because the bound is what makes exhaustion a RECORDED decision instead of a mood: `--max`
+ * over the cap is clamped rather than obeyed, and an absent or unreadable value falls back to the
+ * default rather than to a single attempt (one attempt is `run`, not an advance).
+ */
+function advanceAttempts(?string $raw): int
+{
+    $requested = (int) ($raw ?? '3');
+    if ($requested <= 0) {
+        return 3;
+    }
+
+    return min(5, $requested);
+}
+
+/**
+ * The lane per attempt: start where the task was routed, promote one rung per failure, never past the
+ * top. Clamping rather than refusing at the top rung, because running out of rungs is NOT a stop --
+ * `--max` is the bound, and exhaustion is what produces the recorded decision.
+ *
+ * @param list<string> $ladder
+ * @return list<string>
+ */
+function attemptLanes(array $ladder, int $startIndex, int $max): array
+{
+    if ($ladder === []) {
+        return [];
+    }
+
+    $top = count($ladder) - 1;
+    $start = $startIndex >= 0 ? min($startIndex, $top) : 0;
+    $lanes = [];
+    for ($attempt = 0; $attempt < $max; $attempt++) {
+        $lanes[] = $ladder[min($start + $attempt, $top)];
+    }
+
+    return $lanes;
+}
+
+/**
+ * The attempt plan for an advance: the registry ladder, entered at the lane the task was routed to.
+ *
+ * `--lane` names the rung to start on. When it IS a registry lane, promotion continues up the registry
+ * from there. When the registry does not know it, the advance is bounded to that lane alone -- a lane an
+ * operator named explicitly is not silently replaced by a rung they did not ask for.
+ *
+ * Thrown rather than exited for an unknown `--kind`, so --self-test can prove the rejection in both
+ * directions, exactly as decisionOptions() does for a malformed option.
+ *
+ * @return list<string>
+ */
+function advancePlan(string $lane, string $kind, int $max): array
+{
+    $ladder = registryLadder();
+
+    if ($lane !== '') {
+        $index = array_search($lane, $ladder, true);
+
+        return attemptLanes($index === false ? [$lane] : $ladder, $index === false ? 0 : (int) $index, $max);
+    }
+
+    $start = 0;
+    if ($kind !== '') {
+        $entry = laneFor($kind);
+        if ($entry === null) {
+            throw new RuntimeException(
+                'unknown --kind=' . $kind . '; known kinds: ' . implode(', ', array_keys(CHAIR_LANES))
+            );
+        }
+        $index = array_search($entry['lane'], $ladder, true);
+        $start = $index === false ? 0 : (int) $index;
+    }
+
+    return attemptLanes($ladder, $start, $max);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -873,6 +1339,8 @@ function commandLanes(): int
     say('  A kind is chosen per task with --kind=<kind>. The probe judges every lane identically,');
     say('  so a wrong guess costs one cycle, not a bad merge -- which is what makes routing by');
     say('  strength of work safe rather than merely cheap.');
+    say('  `advance` reads THIS order as its ladder: attempt 1 on the task\'s kind, each failure one');
+    say('  rung further down the list, and a recorded blocked decision when --max is reached.');
 
     return 0;
 }
@@ -902,27 +1370,71 @@ function commandProbe(array $options): int
     return $result['exit'] === 0 ? 0 : 1;
 }
 
-/** @param array<string,string> $options @param list<string> $flags */
-function commandRun(array $options, array $flags): int
+/**
+ * `run` -- replay a ladder the operator named, bounded by --attempts.
+ *
+ * @param array<string,string> $options
+ * @param list<string>        $flags
+ */
+function commandRun(array $options, array $flags, string $run = ''): int
 {
     $taskId = $options['task'] ?? '';
     if ($taskId === '') {
         fail('run needs --task=<id>');
     }
-
-    $repo = repository();
-    $task = $repo->getTask($taskId);
-    $contract = taskContract($repo, $task);
-    $objective = trim((string) ($task['objective'] ?? '')) ?: trim(sectionText($contract['objective'] ?? ''));
-    $probes = taskProbes($contract);
-    if ($probes === []) {
-        fail("task {$taskId} declares no probe; put the deciding command in `## Required tests`");
-    }
-    $probe = $probes[0];
-    $scope = taskScope($contract);
-
     $attempts = max(1, (int) ($options['attempts'] ?? 2));
 
+    return attemptLoop(
+        $taskId,
+        $options,
+        $flags,
+        attemptLanes(laneSelection($options), 0, $attempts),
+        $run,
+        'run'
+    );
+}
+
+/**
+ * `advance` -- the bounded attempt ladder.
+ *
+ * `run --attempts=N` REPEATS the same attempt; the doctrine requires the opposite: a second failure
+ * promotes the reasoning level (L1 implementation repair -> L2 implementation-strategy change -> L3 task
+ * decomposition), and exhaustion produces a recorded blocked decision rather than one more try. That is
+ * what this command is -- `run` with a ladder that means something, and a stop that is written down.
+ *
+ * @param array<string,string> $options
+ * @param list<string>        $flags
+ */
+function commandAdvance(array $options, array $flags, string $run = ''): int
+{
+    $taskId = $options['task'] ?? '';
+    if ($taskId === '') {
+        fail('advance needs --task=<id>');
+    }
+
+    $max = advanceAttempts($options['max'] ?? null);
+    try {
+        $plan = advancePlan($options['lane'] ?? '', $options['kind'] ?? '', $max);
+    } catch (RuntimeException $error) {
+        fail($error->getMessage());
+    }
+
+    record('LADDER', [
+        'attempts' => (string) count($plan),
+        'lanes' => implode(' > ', $plan),
+    ]);
+
+    return attemptLoop($taskId, $options, $flags, $plan, $run, 'advance');
+}
+
+/**
+ * The lane ladder a `run` was asked for: an explicit list, or the lane of a declared kind of work.
+ *
+ * @param array<string,string> $options
+ * @return list<string>
+ */
+function laneSelection(array $options): array
+{
     // A kind of work names its lane; --lane overrides it outright. Retrying promotes one rung, because a
     // second failure on the same probe is evidence about the executor, not about the task.
     $ladder = $options['lane'] ?? '';
@@ -944,7 +1456,58 @@ function commandRun(array $options, array $flags): int
         }
     }
 
-    record('RUN', ['task' => $taskId, 'state' => (string) ($task['state'] ?? '-'), 'attempts' => (string) $attempts]);
+    return $lanes;
+}
+
+/**
+ * The bounded attempt loop, shared by `run` and `advance`.
+ *
+ * Everything after the lane is chosen is identical -- baseline, brief, dispatch, probe, drift,
+ * falsification -- so it lives here once and only the PLAN differs: `run` replays a ladder an operator
+ * named, `advance` promotes from the registry. The lane for attempt N is decided before the loop starts,
+ * so the bound is a fact rather than a running total.
+ *
+ * @param array<string,string> $options
+ * @param list<string>        $flags
+ * @param list<string>        $plan the lane for each attempt, already bounded
+ */
+function attemptLoop(string $taskId, array $options, array $flags, array $plan, string $run, string $mode): int
+{
+    $repo = repository();
+    $task = $repo->getTask($taskId);
+    $contract = taskContract($repo, $task);
+    $objective = trim((string) ($task['objective'] ?? '')) ?: trim(sectionText($contract['objective'] ?? ''));
+    $probes = taskProbes($contract);
+    if ($probes === []) {
+        fail("task {$taskId} declares no probe; put the deciding command in `## Required tests`");
+    }
+    $probe = $probes[0];
+    $scope = taskScope($contract);
+    $attempts = count($plan);
+    if ($attempts === 0) {
+        fail('no attempt plan: the lane ladder is empty');
+    }
+
+    record('RUN', [
+        'task' => $taskId,
+        'state' => (string) ($task['state'] ?? '-'),
+        'attempts' => (string) $attempts,
+        'mode' => $mode,
+    ]);
+
+    // Captured ONCE, before any attempt. Falsification needs the tree as the RUN found it, not as the
+    // current attempt found it: the guard asks whether the tree held work that is not this run's, and the
+    // revert set is everything the run changed -- otherwise a pass bought on attempt 2 by attempt 1's
+    // edits would be "falsified" with those very edits still in the tree, and the probe would still pass.
+    $runBaseline = changedPaths();
+    if (in_array('falsify', $flags, true)) {
+        // Asked BEFORE a lane is spent: a refusal that arrives after a run has already done the work has
+        // still cost the run, which is the opposite of what a guard is for.
+        $earlyRefusal = falsifyRefusal([], $runBaseline);
+        if ($earlyRefusal !== null) {
+            fail($earlyRefusal);
+        }
+    }
 
     // RULE 2. The baseline, before anything is implemented.
     $baseline = runProbe($probe);
@@ -964,8 +1527,8 @@ function commandRun(array $options, array $flags): int
 
     $previous = '';
     for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-        $lane = $lanes[min($attempt - 1, count($lanes) - 1)] ?? $lanes[0];
-        $context = retrieveContext($objective, $scope);
+        $lane = $plan[$attempt - 1];
+        $context = currentContext($objective, $scope);
         $brief = writeBrief($task, $objective, $context, $probe, $previous);
         record('ATTEMPT', ['n' => (string) $attempt, 'lane' => $lane, 'brief' => $brief]);
 
@@ -1011,6 +1574,32 @@ function commandRun(array $options, array $flags): int
                 return 3;
             }
 
+            // Mechanised falsification, before anything is recorded as verified: a green probe is not yet
+            // evidence, because it might be green without the change. The revert is what makes the pass
+            // mean something, and it is precisely the step that is easy to skip by hand.
+            if (in_array('falsify', $flags, true)) {
+                $falsified = falsifyProbe(
+                    $probe,
+                    array_values(array_diff(changedPaths(), $runBaseline)),
+                    $runBaseline
+                );
+                $dependenceRefusal = probeDependenceRefusal($falsified['exit']);
+                if ($dependenceRefusal !== null) {
+                    say('  ' . $dependenceRefusal);
+                    commandDecide([
+                        'task' => $taskId,
+                        'decision' => 'probe refused: it does not depend on the change',
+                        'rationale' => 'The probe passed with the run\'s changes reverted, so it does not '
+                            . 'measure what this task claims. The finding is about the instrument, not the '
+                            . 'lane: correct the probe, with the reason, before the next attempt -- and do '
+                            . 'not weaken it to obtain a pass.',
+                    ]);
+
+                    return 3;
+                }
+                say('  Falsified: the probe went RED with the change reverted, so it measures the change.');
+            }
+
             if ($attempt > 1) {
                 // Failed once, passed on retry. That is harness instability, not a clean pass, and calling
                 // it clean would hide exactly the flakiness this project has been bitten by.
@@ -1024,7 +1613,14 @@ function commandRun(array $options, array $flags): int
                 ]);
             }
 
-            record('VERIFIED', ['task' => $taskId, 'attempt' => (string) $attempt, 'probe' => $probe]);
+            // Which lane got there, and after how many attempts: a pass on the third attempt from the top
+            // rung is a different fact about the task than a pass on the first, and the record says which.
+            record('VERIFIED', [
+                'task' => $taskId,
+                'attempt' => (string) $attempt,
+                'lane' => $lane,
+                'probe' => $probe,
+            ]);
 
             // Tell the index which files actually served this task. That is the one signal lexical
             // search cannot derive for itself, and reporting it back is what makes retrieval improve
@@ -1042,21 +1638,66 @@ function commandRun(array $options, array $flags): int
 
         $previous = $after['output'];
         if ($attempt < $attempts) {
-            record('PROMOTE', ['reason' => 'probe failed', 'next' => $lanes[min($attempt, count($lanes) - 1)] ?? $lane]);
+            record('PROMOTE', [
+                'reason' => 'probe failed',
+                'from' => $lane,
+                'next' => $plan[$attempt],
+            ]);
         }
     }
 
-    // RULE 3. Exhaustion is a recorded decision, not a question for the director.
+    // RULE 3. Exhaustion is a recorded decision, not a question for the director -- and not one more
+    // attempt. The ladder ended; what follows is a REASON, in the ledger and in the task's decisions.
+    return commandExhausted($taskId, $plan, $run);
+}
+
+/**
+ * The ledger record of an exhausted run.
+ *
+ * Phase `blocked`, never `start`: commit-check reads a `start` without a `finish` as a live or abandoned
+ * run, and exhaustion is neither -- it is a finished decision, and it must not be able to block a commit.
+ *
+ * @return array<string,mixed>
+ */
+function blockedEntry(string $taskId, int $attempts, string $stopReason, string $run = ''): array
+{
+    return [
+        'phase' => 'blocked',
+        'run' => $run,
+        'task' => $taskId,
+        'attempts' => $attempts,
+        'stop_reason' => $stopReason,
+    ];
+}
+
+/**
+ * Stop, and say why in a form that survives the run.
+ *
+ * `run` and `advance` both end here once the plan is spent: a chair decision carrying the options that
+ * were considered, a BLOCKED line naming the stop reason and the attempts made, and a ledger entry so the
+ * stop is a fact about the run rather than a line of output somebody has to remember.
+ *
+ * @param list<string> $plan
+ */
+function commandExhausted(string $taskId, array $plan, string $run): int
+{
     commandDecide([
         'task' => $taskId,
-        'decision' => 'parked after ' . $attempts . ' attempts',
-        'rationale' => 'The probe still fails. Options, in the order the chair would take them: '
-            . '(a) the probe is wrong -- fix it and restate the task; '
-            . '(b) the task is too large -- split it so each part has its own probe; '
-            . '(c) the work is genuinely hard -- keep the lane and raise reasoning. '
-            . 'Nothing here needs the director: it needs the next decision, which is the chair\'s.',
+        'decision' => 'parked after ' . count($plan) . ' attempts (stop_reason=ATTEMPTS_EXHAUSTED)',
+        'rationale' => 'The probe still fails after every lane in the ladder was tried. Options, in the '
+            . 'order the chair would take them: (a) the probe is wrong -- fix it and restate the task; '
+            . '(b) the task is too large -- split it so each part has its own probe; (c) the work is '
+            . 'genuinely hard -- keep the top lane and raise reasoning further. Nothing here needs the '
+            . 'director: it needs the next decision, which is the chair\'s.',
     ]);
-    record('BLOCKED', ['task' => $taskId, 'attempts' => (string) $attempts]);
+    ledgerAppend(blockedEntry($taskId, count($plan), 'ATTEMPTS_EXHAUSTED', $run));
+    record('BLOCKED', [
+        'task' => $taskId,
+        'attempts' => (string) count($plan),
+        'stop_reason' => 'ATTEMPTS_EXHAUSTED',
+        'lanes' => implode(' > ', $plan),
+    ]);
+    say('  No further attempt will be made. The ladder ended at ' . $plan[count($plan) - 1] . '.');
 
     return 3;
 }
@@ -1107,10 +1748,16 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
  * one as a local file and a good intention is exactly the silent non-delivery the policy forbids, and
  * it is what this file did before 2026-09-19.
  *
+ * `$flags` defaults to empty because the IN-LOOP callers record a chair decision and have no flags of
+ * their own: every call site inside a run passed one argument, and the declaration needed two, so the
+ * baseline-already-passes path, the weakened-assertions path and the exhaustion path all died with
+ * `ArgumentCountError` -- paths the self-test could not reach. A default is the honest fix: those
+ * callers never meant to escalate, and `--escalate` remains a flag only the command line can pass.
+ *
  * @param array<string,string> $options
  * @param list<string> $flags
  */
-function commandDecide(array $options, array $flags): int
+function commandDecide(array $options, array $flags = []): int
 {
     $taskId = $options['task'] ?? '';
     if ($taskId === '') {
@@ -1394,6 +2041,146 @@ function selfTest(): int
     $check('the objective retrieves files rather than nothing', $ranked !== []);
     $check('retrieval is bounded by the requested limit', count($ranked) <= 5);
 
+    // The staleness gate. Measured 2026-09-19: `stats()` reported `stale 8` and the harness briefed lanes
+    // from the index anyway. A lane handed a description of code that has changed is confidently wrong,
+    // so this is checked, repaired, re-checked, and refused if the repair did not work.
+    say('context staleness, and the repair that must work before a lane sees anything:');
+    $selftestFile = 'storage/cache/chair-selftest-' . bin2hex(random_bytes(4)) . '.php';
+    file_put_contents(CHAIR_ROOT . '/' . $selftestFile, "<?php // staleness self-test\n");
+    chairIndex()->index([$selftestFile], true);
+    $check('a file that has just been indexed reads as current', staleContextPaths([$selftestFile]) === []);
+    file_put_contents(CHAIR_ROOT . '/' . $selftestFile, "<?php // changed after indexing, and longer\n");
+    $check('a file changed after indexing reads as STALE', staleContextPaths([$selftestFile]) === [$selftestFile]);
+    chairIndex()->index([$selftestFile], true);
+    $check('a forced re-index repairs the staleness', staleContextPaths([$selftestFile]) === []);
+    $check('fresh context is handed over rather than refused', staleContextRefusal([]) === null);
+    $check(
+        'stale context is refused, and the refusal names the path',
+        str_contains((string) staleContextRefusal([$selftestFile]), $selftestFile)
+    );
+    unlink(CHAIR_ROOT . '/' . $selftestFile);
+    $check(
+        'a path that is GONE cannot be made current, so it stays stale and the gate fails closed',
+        staleContextPaths([$selftestFile]) === [$selftestFile]
+    );
+    chairIndex()->forget([$selftestFile]);
+
+    // The bounded attempt ladder. `run --attempts=N` repeated an attempt; the doctrine requires a second
+    // failure to promote the reasoning level, so the promotion is asserted rather than assumed.
+    say('the bounded attempt ladder:');
+    $ladder = registryLadder();
+    $check(
+        'the ladder is the registry, cheapest first and top last',
+        count($ladder) === count(CHAIR_LANES)
+        && $ladder[0] === CHAIR_LANES['mechanical']['lane']
+        && $ladder[count($ladder) - 1] === CHAIR_LANES['reasoning']['lane']
+    );
+    $check(
+        'attempt 1 uses the lane the task was routed to',
+        advancePlan('', 'visual', 3)[0] === CHAIR_LANES['visual']['lane']
+        && advancePlan('', 'mechanical', 3)[0] === CHAIR_LANES['mechanical']['lane']
+    );
+    $check(
+        'a failure PROMOTES to a more capable lane rather than repeating the attempt',
+        advancePlan('', 'mechanical', 3)[1] === CHAIR_LANES['visual']['lane']
+        && advancePlan('', 'visual', 3)[1] === CHAIR_LANES['reasoning']['lane']
+    );
+    $check(
+        'promotion stops at the top rung instead of inventing a fourth lane',
+        advancePlan('', 'visual', 3) === [
+            CHAIR_LANES['visual']['lane'],
+            CHAIR_LANES['reasoning']['lane'],
+            CHAIR_LANES['reasoning']['lane'],
+        ]
+    );
+    $check('the plan never exceeds --max, whatever the ladder holds', count(advancePlan('', 'mechanical', 2)) === 2);
+    $check(
+        'a lane the registry does not know is used as named, not silently upgraded to a registry rung',
+        advancePlan('some/model:low', '', 2) === ['some/model:low', 'some/model:low']
+    );
+    $check('a known --kind is accepted', advancePlan('', 'mechanical', 1) === [CHAIR_LANES['mechanical']['lane']]);
+    $unknownKindRejected = false;
+    try {
+        advancePlan('', 'nonsense', 1);
+    } catch (RuntimeException $error) {
+        $unknownKindRejected = true;
+    }
+    $check('an unknown --kind is rejected rather than silently defaulted', $unknownKindRejected);
+    $check('the default advance is three attempts', advanceAttempts(null) === 3);
+    $check('--max is honoured', advanceAttempts('1') === 1);
+    $check('--max is bounded, so exhaustion is bounded too', advanceAttempts('99') === 5);
+    $check('an unreadable --max falls back to the default, not to one attempt', advanceAttempts('abc') === 3);
+
+    say('exhaustion is a recorded blocked decision, and never one more attempt:');
+    $blockedTask = 'selftest-blocked-' . bin2hex(random_bytes(3));
+    $check(
+        'exhaustion returns 3 rather than reporting success',
+        commandExhausted($blockedTask, ['a:low', 'b:high'], 'selftest-run') === 3
+    );
+    $blocked = null;
+    foreach (ledgerRead() as $entry) {
+        if (($entry['task'] ?? '') === $blockedTask) {
+            $blocked = $entry;
+        }
+    }
+    $check(
+        'the ledger carries a blocked record for the exhausted run',
+        is_array($blocked) && ($blocked['phase'] ?? '') === 'blocked'
+    );
+    $check(
+        'the blocked record names the stop reason, the attempts made, and the run',
+        is_array($blocked)
+        && ($blocked['stop_reason'] ?? '') === 'ATTEMPTS_EXHAUSTED'
+        && ($blocked['attempts'] ?? 0) === 2
+        && ($blocked['run'] ?? '') === 'selftest-run'
+    );
+    // The other direction, and the reason the phase is `blocked` and not `start`: a stop is a FINISHED
+    // decision, so it must not read as a live or abandoned run and block a commit.
+    $check('a blocked record does NOT make commit-check see a live run', commandCommitCheck([]) === 0);
+    unlink(chairStateDir() . '/decisions/' . $blockedTask . '.jsonl');
+
+    // Falsification -- the loop the chair ran by hand on 2026-09-19, mechanised. Every guard is proved in
+    // both directions: the revert must refuse a tree it did not make, and the probe must go red.
+    say('falsification -- the probe must go RED when the change is taken away:');
+    $check('a tree whose only changes are the run\'s own may be falsified', falsifyRefusal(['src/a.php'], []) === null);
+    $foreignRefusal = falsifyRefusal(['src/a.php'], ['src/b.php']);
+    $check('uncommitted work the run did not make refuses the revert', $foreignRefusal !== null);
+    $check(
+        'and the refusal names the path that would have been swept up',
+        str_contains((string) $foreignRefusal, 'src/b.php')
+    );
+    $check('a probe that goes RED without the change proves it measures the change', probeDependenceRefusal(1) === null);
+    $check('a probe that stays GREEN without the change is a finding, not a pass', probeDependenceRefusal(0) !== null);
+    $check('a restore that reproduces every hash is OK', restoreVerified(['a.php' => 'h1'], ['a.php' => 'h1']) === []);
+    $check('a restore that does not is reported, not assumed', restoreVerified(['a.php' => 'h1'], ['a.php' => 'h2']) === ['a.php']);
+
+    // The mechanics, for real, on a file this self-test owns. It is UNTRACKED, so no `git checkout` is
+    // involved and the repository's own working tree is never touched by a self-test -- which is the only
+    // way this belongs in a test at all.
+    $fixture = 'storage/cache/chair-falsify-' . bin2hex(random_bytes(4)) . '.php';
+    file_put_contents(CHAIR_ROOT . '/' . $fixture, "<?php // falsify self-test\n");
+    $backup = falsifyBackup([$fixture]);
+    falsifyRevert($backup);
+    $check('reverting a file the run created takes it out of the tree', !is_file(CHAIR_ROOT . '/' . $fixture));
+    $restored = falsifyRestore($backup);
+    $check(
+        'the restore puts it back byte-identical, and says so',
+        $restored['ok']
+        && is_file(CHAIR_ROOT . '/' . $fixture)
+        && hash('sha256', (string) file_get_contents(CHAIR_ROOT . '/' . $fixture)) === $backup['hashes'][$fixture]
+    );
+    // The other direction: a restore that CANNOT reproduce the bytes must be reported, not assumed.
+    $second = falsifyBackup([$fixture]);
+    falsifyRevert($second);
+    file_put_contents($second['aside'] . '/' . falsifyAsideName($fixture), 'tampered');
+    $broken = falsifyRestore($second);
+    $check(
+        'a restore that cannot reproduce the bytes is reported as FAILED',
+        !$broken['ok'] && $broken['mismatches'] === [$fixture]
+    );
+    unlink(CHAIR_ROOT . '/' . $fixture);
+    @rmdir($second['aside']);
+
     // The director channel. A delivery check that says "sent" too easily is worse than no check at all,
     // because the whole invariant is that an unacknowledged decision is NOT delivered.
     say('the director channel:');
@@ -1453,6 +2240,18 @@ function selfTest(): int
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
+// The shutdown net for a falsification in flight. `try/finally` does not run when PHP exits, and
+// runProbe() exits when it cannot start the probe -- without this, that exit would leave the tree
+// reverted, which is the one outcome the whole backup exists to prevent. It returns immediately when
+// nothing is in flight, so it costs a no-op on every other invocation.
+register_shutdown_function(static function (): void {
+    $backup = falsifyInFlight();
+    if ($backup !== null) {
+        falsifyRestore($backup);
+        say('  chair: the process exited mid-falsification; the files were restored from the backup.');
+    }
+});
+
 $cli = cli($argv);
 $cli['options']['_flags'] = implode(',', $cli['flags']);
 
@@ -1461,7 +2260,9 @@ if (in_array('self-test', $cli['flags'], true)) {
 }
 
 if ($cli['command'] === '') {
-    say('usage: php tools/chair.php <plan|run|probe|decide|status|lanes|commit-check> [options]');
+    say('usage: php tools/chair.php <plan|run|advance|probe|decide|status|lanes|commit-check> [options]');
+    say('       php tools/chair.php run --task=<id> [--attempts=2] [--lane=<model>:<thinking>,...] [--falsify] [--dry]');
+    say('       php tools/chair.php advance --task=<id> [--max=3] [--kind=mechanical|visual|reasoning] [--falsify]');
     say('       php tools/chair.php decide --task=<id> --decision=<text>');
     say('       php tools/chair.php decide --escalate --task=<id> --title=<t>');
     say('            --options="id|label|effect|cost|blast_radius|reversibility; ..." --recommend=<id>');
@@ -1473,7 +2274,16 @@ exit(match ($cli['command']) {
     'plan' => commandPlan($cli['options']),
     // Wrapped, not inlined: a run holds the lock for its whole life and leaves a record of it. The
     // ledger decides commit eligibility, not the state of the tree.
-    'run' => withRunLock($cli['options'], static fn (): int => commandRun($cli['options'], $cli['flags'])),
+    'run' => withRunLock(
+        $cli['options'] + ['mode' => 'run'],
+        static fn (string $run): int => commandRun($cli['options'], $cli['flags'], $run)
+    ),
+    // `advance` takes a DIFFERENT lane per attempt and ends in a recorded blocked decision, but it takes
+    // the same lock: two writers on one tree is what the lock exists to prevent, whatever the command is.
+    'advance' => withRunLock(
+        $cli['options'] + ['mode' => 'advance'],
+        static fn (string $run): int => commandAdvance($cli['options'], $cli['flags'], $run)
+    ),
     'probe' => commandProbe($cli['options']),
     'lanes' => commandLanes(),
     'decide' => commandDecide($cli['options'], $cli['flags']),
