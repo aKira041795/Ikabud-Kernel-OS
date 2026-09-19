@@ -314,7 +314,13 @@ final class RetrievalIndex
     {
         $state = $this->load();
         $documents = $state['documents'];
-        $terms = array_keys($this->terms($query, ''));
+        // strval is load-bearing, not cosmetic. PHP coerces numeric-string array keys to integers, so
+        // array_keys() over a term map hands back the INT 2 for the token "2" -- and any query
+        // containing a number then crashed the whole search in str_contains(). Measured 2026-09-19 on
+        // the first real task: "the carrier drop reaches stage 2" took retrieval down, and with it
+        // every delegated run, because the harness could not build a brief. Normalised once here so
+        // every consumer downstream is safe rather than each one casting defensively.
+        $terms = array_map('strval', array_keys($this->terms($query, '')));
         $indexed = count($documents);
 
         // Document frequency, for the query's terms only: one pass over the term maps, no extra reads.

@@ -112,6 +112,22 @@ function retrievalSelfTest(): int
     fwrite(STDOUT, "\nconfidence — the signal that decides whether to escalate to an online retriever:\n");
     $check('a query that matches is GOOD', $index->search('cratered moon')['confidence'] === 'good');
     $check('a query whose words are absent is LOW', $index->search('zzzznotpresent')['confidence'] === 'low');
+
+    // A query containing a NUMBER. PHP coerces numeric-string array keys to integers, so array_keys()
+    // over a term map hands back the INT 2 for the token "2", and str_contains() then throws -- which
+    // took retrieval down and, with it, every delegated run, because the harness could not build a
+    // brief. Measured 2026-09-19 on the first real task.
+    //
+    // The assertion is the type invariant, not merely "it did not throw": a search that survives by
+    // luck on a digit-free query would satisfy a smoke test and still be broken. Every term the
+    // caller is handed must be a string, because that is the property that was violated.
+    $numeric = $index->search('cratered moon stage 2 wave', 5);
+    $check('a query containing digits does not throw', is_array($numeric));
+    $check('the search reports the terms it used', ($numeric['terms'] ?? []) !== []);
+    $check(
+        'and every reported term is a STRING -- the property that was violated',
+        array_filter($numeric['terms'] ?? [], static fn ($term): bool => !is_string($term)) === []
+    );
     $check('a query with no searchable words is LOW', $index->search('the and for')['confidence'] === 'low');
     $check(
         'an empty index is EMPTY, not merely low',
