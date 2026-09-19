@@ -164,6 +164,31 @@ async function installProbe(page: Page) {
                 }
                 return ink;
             },
+            /**
+             * Distinct grey levels in a region, by share of the region. "Shaded body" and "flat disc"
+             * are the same colour and different pictures, so this is the measurement that tells a
+             * cratered moon from a circle: a flat disc has one level above the noise floor, a
+             * cratered one has several.
+             */
+            shades(x: number, y: number, width: number, height: number) {
+                w.StarSwarm.render();
+                const region = read(x, y, width, height);
+                const histogram = new Map<number, number>();
+                let total = 0;
+                for (let i = 0; i < region.pixels.length; i += 4) {
+                    const luma = Math.round(
+                        0.2126 * region.pixels[i] + 0.7152 * region.pixels[i + 1] + 0.0722 * region.pixels[i + 2],
+                    );
+                    const bucket = Math.min(15, Math.max(0, Math.floor(luma / 16)));
+                    histogram.set(bucket, (histogram.get(bucket) ?? 0) + 1);
+                    total += 1;
+                }
+                const shares = [...histogram.entries()]
+                    .map(([bucket, count]) => ({ level: bucket * 16 + 8, share: total ? count / total : 0 }))
+                    .sort((a, b) => b.share - a.share);
+                // 3% is the floor that stops a stray anti-aliased edge counting as a distinct shade.
+                return { total, shares, levelsAbove3pct: shares.filter((s) => s.share >= 0.03).length };
+            },
         };
     });
 }
@@ -1038,5 +1063,482 @@ test.describe('star swarm pixels', () => {
         // A string in state is exactly the claim this project was burned by when the extra ship was
         // granted with zero rendered pixels. The ink proves the words are actually on the screen.
         expect(title.after, 'the round announces itself as BONUS ROUND').toBeGreaterThan(title.before + 30);
+    });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p12 -- the carrier, the drop and the grab.
+    //
+    // The director asked the question phase 10 did not answer: "when can a player get the beam?" The
+    // threshold rule answers "at 10,000 points", which is not a decision the player makes. This is:
+    // one enemy carries the lance, kill it, and collect what drops before it is gone.
+    //
+    // The marker probe is a DIFFERENTIAL -- the same box measured with the flag on that enemy and
+    // with the flag moved to another one. The sprite, its caste, its wing frame and any neighbour
+    // whose sprite overlaps the box are identical in both readings and cancel out. An absolute
+    // reading could not tell a marked carrier from a sprite that happens to be drawn larger.
+    // ---------------------------------------------------------------------------------------------
+    test('exactly one carrier is in play and it is marked on the field @p12', async ({ page }) => {
+        await boot(page);
+
+        const carrier = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+
+            // The surface this item is about. It is absent today, and it must fail as a NAMED
+            // requirement rather than as a TypeError, or the lane reads a crash instead of the
+            // requirement it is being asked to satisfy.
+            if (!game.state.carrier) return null;
+
+            const live = game.state.enemies
+                .map((enemy: any, index: number) => ({ enemy, index }))
+                .filter((entry: any) => entry.enemy.alive);
+            if (live.length < 2) return null;
+
+            const named = game.state.carrier?.enemyIndex ?? null;
+            const carrierAlive = game.state.carrier?.alive ?? null;
+
+            const box = (enemy: any) => [enemy.x - 6, enemy.y - 6, enemy.width + 12, enemy.height + 12];
+            const readCarrierLook = (enemy: any, flagOn: number) => {
+                game.state.carrier.enemyIndex = flagOn;
+                const [x, y, w, h] = box(enemy);
+                return (window as any).__px.ink(x, y, w, h);
+            };
+
+            return {
+                named,
+                carrierAlive,
+                aliveCount: live.length,
+                aMarked: readCarrierLook(live[0].enemy, live[0].index),
+                aPlain: readCarrierLook(live[0].enemy, live[1].index),
+                bMarked: readCarrierLook(live[1].enemy, live[1].index),
+                bPlain: readCarrierLook(live[1].enemy, live[0].index),
+            };
+        });
+
+        expect(carrier, 'exactly one carrier is in play and it is marked on the field').not.toBeNull();
+        expect(carrier!.named, 'the game names the enemy carrying the lance').toBeGreaterThanOrEqual(0);
+        expect(carrier!.carrierAlive, 'the carrier is a living enemy, not a placeholder').toBe(true);
+        expect(carrier!.aMarked, 'exactly one carrier is in play and it is marked on the field').toBeGreaterThan(
+            carrier!.aPlain,
+        );
+        // And the mark follows the carrier rather than being a fixed decoration on one sprite.
+        expect(carrier!.bMarked, 'the mark moves with the carrier').toBeGreaterThan(carrier!.bPlain);
+    });
+
+    test('killing the carrier drops a collectable that drifts @p12', async ({ page }) => {
+        await boot(page);
+
+        const drop = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            if (!Array.isArray(game.state.pickups) || !game.state.carrier) return null;
+            game.state.pickups.length = 0;
+
+            const index = game.state.carrier.enemyIndex;
+            const carrier = game.state.enemies[index];
+            const origin = { x: carrier.x, y: carrier.y };
+            game.test.kill(index); // the real destruction path, not a forced removal from the array
+            game.test.step(1);
+
+            const first = game.state.pickups[0] ?? null;
+            const settled = first
+                ? { x: first.x, y: first.y, remaining: first.remaining, lifetime: first.lifetime, kind: first.kind }
+                : null;
+
+            game.test.step(120);
+            const later = game.state.pickups[0] ?? null;
+            return {
+                origin,
+                count: settled ? game.state.pickups.length : 0,
+                settled,
+                after: later ? { y: later.y, remaining: later.remaining } : null,
+            };
+        });
+
+        expect(drop, 'killing the carrier drops a collectable that drifts').not.toBeNull();
+        expect(drop!.settled, 'the carrier leaves a collectable behind').not.toBeNull();
+        expect(drop!.count, 'killing one carrier drops exactly one collectable').toBe(1);
+        expect(drop!.settled!.lifetime, 'the drop is collectable for at least five seconds').toBeGreaterThanOrEqual(5);
+        expect(drop!.settled!.remaining, 'the lifetime starts positive').toBeGreaterThan(0);
+        expect(drop!.settled!.remaining, 'the lifetime never exceeds its own bound').toBeLessThanOrEqual(
+            drop!.settled!.lifetime,
+        );
+        expect(Math.abs(drop!.settled!.x - drop!.origin.x), 'the drop appears at the carrier').toBeLessThan(24);
+        expect(drop!.after, 'the drop is still collectable a moment later').not.toBeNull();
+        expect(drop!.after!.y, 'the drop drifts downward').toBeGreaterThan(drop!.settled!.y);
+        expect(drop!.after!.remaining, 'the lifetime decreases in game time').toBeLessThan(drop!.settled!.remaining);
+    });
+
+    test('collecting the drop grants exactly one charge and announces it @p12', async ({ page }) => {
+        await boot(page);
+
+        const collected = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            // A quiet field: no sprite ink and no earlier banner to be mistaken for this one.
+            game.state.enemies.length = 0;
+            game.state.enemyBullets.length = 0;
+            game.state.explosions.length = 0;
+            game.state.scorePopups.length = 0;
+            if (!Array.isArray(game.state.pickups)) return null;
+            game.state.pickups.length = 0;
+            game.test.step(240);
+
+            game.state.powerup.charges = 0;
+            const player = game.state.player;
+            const canvas = game.lane.canvas;
+            const band = { x: 0, y: canvas.height * 0.38, w: canvas.width, h: canvas.height * 0.24 };
+            const before = (window as any).__px.stats(band.x, band.y, band.w, band.h).bright;
+
+            // Placed on the player, and then collected by the game's own collision path.
+            game.state.pickups.push({
+                x: player.x + player.width / 2,
+                y: player.y + player.height / 2,
+                remaining: 4,
+                lifetime: 5,
+                kind: 'lance',
+            });
+            game.test.step(2);
+
+            return {
+                charges: game.state.powerup.charges,
+                pickupsLeft: game.state.pickups.length,
+                before,
+                after: (window as any).__px.stats(band.x, band.y, band.w, band.h).bright,
+            };
+        });
+
+        expect(collected, 'collecting the drop grants exactly one charge and announces it').not.toBeNull();
+        expect(collected!.charges, 'a collected drop grants exactly one charge').toBe(1);
+        expect(collected!.pickupsLeft, 'a collected drop leaves the field').toBe(0);
+        expect(collected!.after, 'the earned charge is announced on screen').toBeGreaterThan(collected!.before + 30);
+    });
+
+    test('an uncollected drop expires with nothing granted @p12', async ({ page }) => {
+        await boot(page);
+
+        const expired = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.enemies.length = 0;
+            if (!Array.isArray(game.state.pickups)) return null;
+            game.state.pickups.length = 0;
+            game.state.powerup.charges = 0;
+
+            const canvas = game.lane.canvas;
+            // Far from the player, so only the clock can end this one.
+            game.state.pickups.push({
+                x: canvas.width * 0.2,
+                y: canvas.height * 0.3,
+                remaining: 5,
+                lifetime: 5,
+                kind: 'lance',
+            });
+            game.test.step(30);
+            const mid = game.state.pickups.length;
+            const midRemaining = game.state.pickups[0]?.remaining ?? null;
+            game.test.step(6 * 60);
+            return {
+                mid,
+                midRemaining,
+                left: game.state.pickups.length,
+                charges: game.state.powerup.charges,
+                remaining: game.state.pickups[0]?.remaining ?? null,
+            };
+        });
+
+        expect(expired, 'an uncollected drop expires with nothing granted').not.toBeNull();
+        expect(expired!.mid, 'the drop is still waiting after half a second').toBe(1);
+        expect(expired!.midRemaining, 'and its clock is running down').toBeLessThan(5);
+        expect(expired!.left, 'an expired drop leaves the field').toBe(0);
+        expect(expired!.charges, 'an expired drop grants no charge').toBe(0);
+        expect(expired!.remaining, 'an expired drop leaves nothing behind').toBeNull();
+    });
+
+    test('the drop is legible as it expires @p12', async ({ page }) => {
+        await boot(page);
+
+        const flash = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.enemies.length = 0;
+            game.state.enemyBullets.length = 0;
+            if (!Array.isArray(game.state.pickups)) return null;
+            game.state.pickups.length = 0;
+
+            const canvas = game.lane.canvas;
+            game.state.pickups.push({
+                x: canvas.width * 0.2,
+                y: canvas.height * 0.3,
+                remaining: 6,
+                lifetime: 6,
+                kind: 'lance',
+            });
+
+            // Early: the mark must be there, and must be steady, or "it changes later" means nothing.
+            const early: number[] = [];
+            for (let frame = 0; frame < 4; frame += 1) {
+                game.test.step(6);
+                const drop = game.state.pickups[0];
+                if (!drop) break;
+                early.push((window as any).__px.ink(drop.x - 12, drop.y - 12, 24, 24));
+            }
+
+            // Then walk the last two seconds, sampling the same relative box as the drop drifts.
+            game.test.step(Math.max(0, Math.round((game.state.pickups[0]?.remaining ?? 0) * 60) - 120));
+            const late: number[] = [];
+            for (let frame = 0; frame < 16; frame += 1) {
+                game.test.step(6);
+                const drop = game.state.pickups[0];
+                if (!drop) break;
+                late.push((window as any).__px.ink(drop.x - 12, drop.y - 12, 24, 24));
+            }
+
+            const spread = (values: number[]) =>
+                values.length ? Math.max(...values) - Math.min(...values) : 0;
+            const mean = (values: number[]) =>
+                values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
+
+            return { early, late, earlySpread: spread(early), lateSpread: spread(late), earlyMean: mean(early) };
+        });
+
+        expect(flash, 'the drop is legible as it expires').not.toBeNull();
+        expect(flash!.early.length, 'the drop is on the field long enough to be measured').toBeGreaterThan(2);
+        // The location check. Without it, "the ink changed" is satisfied by ink that was never there.
+        expect(flash!.earlyMean, 'the drop is drawn, and the probe is looking at it').toBeGreaterThan(4);
+        expect(flash!.earlySpread, 'and it is steady while there is time to spare').toBeLessThanOrEqual(
+            flash!.earlyMean * 0.4,
+        );
+        expect(flash!.late.length, 'the drop survives into the final seconds').toBeGreaterThan(3);
+        // A flash is a visible change. The deadline must be something the player can see, not discover.
+        expect(flash!.lateSpread, 'the drop is legible as it expires').toBeGreaterThan(flash!.earlyMean * 0.4);
+    });
+
+    test('the score threshold remains a guarantee @p12', async ({ page }) => {
+        await boot(page);
+
+        const guarantee = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            // The starved case: no carrier collected, no drop waiting, nothing held. Clearing the
+            // drops must NOT be a prerequisite for measuring the guarantee -- the backstop exists
+            // precisely for a player who never meets a carrier, so it is measured without one.
+            if (Array.isArray(game.state.pickups)) game.state.pickups.length = 0;
+            game.state.powerup.charges = 0;
+            game.state.powerup.active = false;
+            const before = game.state.powerup.charges;
+            game.addScore(10000);
+            game.test.step(4);
+            return { before, after: game.state.powerup.charges };
+        });
+
+        expect(guarantee, 'the score threshold remains a guarantee').not.toBeNull();
+        expect(guarantee!.before, 'the guarantee is measured from empty').toBe(0);
+        expect(guarantee!.after, 'the score threshold remains a guarantee').toBe(1);
+    });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p13 -- presentation: the score row on black, and the moon.
+    //
+    // The score row is DOM, not canvas, so this is the first probe in this project that measures
+    // DOM PIXELS. It screenshots the HUD element and decodes that PNG inside the browser, because a
+    // probe that reads getComputedStyle would report the fix whether or not anything on screen moved.
+    // ---------------------------------------------------------------------------------------------
+    test('the score row renders on black and stays legible @p13', async ({ page }) => {
+        await boot(page);
+
+        const hud = page.locator('.star-swarm__hud');
+        await expect(hud).toBeVisible();
+        const shot = await hud.screenshot();
+
+        const pixels = await page.evaluate(async (base64: string) => {
+            const image = new Image();
+            await new Promise<void>((resolve, reject) => {
+                image.onload = () => resolve();
+                image.onerror = () => reject(new Error('the HUD screenshot did not decode'));
+                image.src = `data:image/png;base64,${base64}`;
+            });
+            const surface = document.createElement('canvas');
+            surface.width = image.width;
+            surface.height = image.height;
+            const context = surface.getContext('2d');
+            if (!context) return null;
+            context.drawImage(image, 0, 0);
+            const data = context.getImageData(0, 0, surface.width, surface.height).data;
+            let total = 0;
+            let dark = 0;
+            let bright = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const high = Math.max(data[i], data[i + 1], data[i + 2]);
+                const low = Math.min(data[i], data[i + 1], data[i + 2]);
+                total += 1;
+                // Near-black and near-neutral: a saturated dark blue would not be black space.
+                if (high <= 60 && high - low <= 24) dark += 1;
+                if (high >= 160) bright += 1;
+            }
+            return {
+                total,
+                dark,
+                bright,
+                darkShare: total ? dark / total : 0,
+                brightShare: total ? bright / total : 0,
+            };
+        }, shot.toString('base64'));
+
+        const contrast = await page.evaluate(() => {
+            const row = document.querySelector('.star-swarm__hud') as HTMLElement | null;
+            const value = row?.querySelector('[data-star-swarm="score"]') as HTMLElement | null;
+            if (!row || !value) return null;
+            const parse = (colour: string) => {
+                const match = colour.match(/rgba?\(([^)]+)\)/);
+                if (!match) return null;
+                const parts = match[1].split(',').map((part) => parseFloat(part));
+                return { rgb: parts.slice(0, 3), alpha: parts.length > 3 ? parts[3] : 1 };
+            };
+            const luminance = (rgb: number[]) => {
+                const [red, green, blue] = rgb.map((value2) => {
+                    const channel = value2 / 255;
+                    return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+                });
+                return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+            };
+            const background = parse(getComputedStyle(row).backgroundColor);
+            const foreground = parse(getComputedStyle(value).color);
+            if (!background || !foreground || background.alpha < 1) return null;
+            const one = luminance(foreground.rgb);
+            const two = luminance(background.rgb);
+            return {
+                ratio: (Math.max(one, two) + 0.05) / (Math.min(one, two) + 0.05),
+                background: background.rgb,
+                foreground: foreground.rgb,
+            };
+        });
+
+        expect(pixels, 'the score row renders and its own pixels can be read').not.toBeNull();
+        expect(pixels!.darkShare, 'the score row renders on black').toBeGreaterThan(0.6);
+        expect(contrast, 'the score row has an opaque background to measure against').not.toBeNull();
+        expect(contrast!.ratio, 'the score row stays legible').toBeGreaterThanOrEqual(7);
+        expect(pixels!.brightShare, 'the values are still bright ink on that black').toBeGreaterThan(0.004);
+    });
+
+    test('the nursery body reads as a moon, with no ring @p13', async ({ page }) => {
+        await boot(page);
+
+        const body = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.enemies.length = 0;
+            game.state.bullets.length = 0;
+            game.state.enemyBullets.length = 0;
+            game.state.explosions.length = 0;
+            game.state.scorePopups.length = 0;
+
+            const nursery = game.state.nursery;
+            const radius = nursery.radius;
+            const ink = (x: number, y: number, w: number, h: number) => (window as any).__px.ink(x, y, w, h);
+
+            // Inscribed box: inside the disc, so the black corners of a bounding box cannot be
+            // counted as a "shade" of the body.
+            const inner = radius * 0.5;
+            const shades = (window as any).__px.shades(
+                nursery.x - inner,
+                nursery.y - inner,
+                inner * 2,
+                inner * 2,
+            );
+            const stats = (window as any).__px.stats(
+                nursery.x - inner,
+                nursery.y - inner,
+                inner * 2,
+                inner * 2,
+            );
+
+            // A ring extends past the disc, so an empty band just outside the radius IS the
+            // measurement of its absence. Four sides, and the disc itself as the control.
+            const outside = {
+                left: ink(nursery.x - radius - 24, nursery.y - 8, 16, 16),
+                right: ink(nursery.x + radius + 8, nursery.y - 8, 16, 16),
+                top: ink(nursery.x - 8, nursery.y - radius - 24, 16, 16),
+                bottom: ink(nursery.x - 8, nursery.y + radius + 8, 16, 16),
+            };
+            const disc = ink(nursery.x - radius * 0.7, nursery.y - radius * 0.7, radius * 1.4, radius * 1.4);
+
+            const dominant = stats.dominant;
+            const chroma = Math.max(dominant.r, dominant.g, dominant.b)
+                - Math.min(dominant.r, dominant.g, dominant.b);
+            const luma = Math.round(0.2126 * dominant.r + 0.7152 * dominant.g + 0.0722 * dominant.b);
+            // Only shades that are a real part of the body count; a stray edge is not a crater.
+            const real = shades.shares.filter((shade: any) => shade.share >= 0.03);
+            const levels = real.map((shade: any) => shade.level);
+
+            return {
+                outside,
+                disc,
+                dominant,
+                chroma,
+                blueRed: dominant.b - dominant.r,
+                luma,
+                shadeCount: real.length,
+                shadeRange: levels.length ? Math.max(...levels) - Math.min(...levels) : 0,
+            };
+        });
+
+        // The control first: if the body is not where the probe looks, nothing else here means anything.
+        expect(body.disc, 'the probe is looking at the body, which is drawn').toBeGreaterThan(200);
+
+        // A channel spread of 30 is NOT enough to call a body grey: measured before this item was
+        // written, the blue planet's dominant ink is [232, 248, 248], a spread of 16 that passed a
+        // spread-only test while sitting there plainly cyan. So neutrality is asserted as a spread
+        // AND as a blue-red gap, and the moon is additionally required to be a mid grey tone rather
+        // than the near-white (luminance 245) disc that is there now.
+        expect(body.chroma, 'the body reads as a moon').toBeLessThanOrEqual(24);
+        expect(body.blueRed, 'and it is neutral, not the pale cyan it was').toBeLessThanOrEqual(12);
+        expect(body.luma, 'the moon is a grey tone, not a near-white disc').toBeLessThanOrEqual(200);
+        expect(body.luma, 'and it is not a black hole either').toBeGreaterThanOrEqual(60);
+        // Craters are tonal structure. Two shades 16 apart is a two-stop gradient across a flat disc,
+        // which is what is there now; craters need a third shade and real separation.
+        expect(body.shadeCount, 'the moon is shaded by craters, not a flat disc').toBeGreaterThanOrEqual(3);
+        expect(body.shadeRange, 'and that shading has real tonal range').toBeGreaterThanOrEqual(48);
+
+        for (const [side, ink] of Object.entries(body.outside)) {
+            expect(ink, `the ring is gone (${side} of the body is black space)`).toBeLessThanOrEqual(12);
+        }
+    });
+
+    test('the field still reads black with the moon in it @p13', async ({ page }) => {
+        await boot(page);
+
+        const field = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.enemies.length = 0;
+            game.state.bullets.length = 0;
+            game.state.enemyBullets.length = 0;
+            game.state.explosions.length = 0;
+            game.state.scorePopups.length = 0;
+
+            const canvas = game.lane.canvas;
+            const nursery = game.state.nursery;
+            const whole = (window as any).__px.stats(0, 0, canvas.width, canvas.height);
+            const moon = (window as any).__px.ink(
+                nursery.x - nursery.radius * 0.7,
+                nursery.y - nursery.radius * 0.7,
+                nursery.radius * 1.4,
+                nursery.radius * 1.4,
+            );
+            return { blackShare: whole.blackShare, moon };
+        });
+
+        // Both halves, so the claim cannot be satisfied by not drawing the moon at all.
+        expect(field.moon, 'the moon is drawn in the frame being measured').toBeGreaterThan(200);
+        expect(field.blackShare, 'the field still reads black with the moon in it').toBeGreaterThan(0.9);
     });
 });

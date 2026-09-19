@@ -72,6 +72,8 @@ $phaseMap = [
     9 => ['audio'],
     10 => ['powerup'],
     11 => ['bonus'],
+    12 => ['pickup'],
+    13 => ['hud', 'moon'],
 ];
 $phase = 0;
 foreach (array_slice($argv, 1) as $argument) {
@@ -79,12 +81,12 @@ foreach (array_slice($argv, 1) as $argument) {
         $phase = (int) $m[1];
     }
     if (str_starts_with($argument, '--help')) {
-        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1..11]\n";
+        echo "usage: php tools/harpp2/gates/star_swarm_galaga_gate.php [--phase=1..13]\n";
         exit(0);
     }
 }
 if ($phase !== 0 && !isset($phaseMap[$phase])) {
-    fwrite(STDERR, "unknown --phase={$phase}; expected 1 through 11\n");
+    fwrite(STDERR, "unknown --phase={$phase}; expected 1 through 13\n");
     exit(2);
 }
 $activeGroups = $phase === 0 ? null : $phaseMap[$phase];

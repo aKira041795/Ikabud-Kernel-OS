@@ -405,6 +405,83 @@
             "statement": "The round announces itself by name: BONUS ROUND is rendered on the play field in the central band, in the game's pixel idiom, and exposed as state.bonus.title.",
             "probe": "the round announces itself as BONUS ROUND",
             "why": "Director request 2026-09-19. Both halves are required: a probe cannot read text off a canvas, and a string sitting in state is exactly the claim this project was burned by when the extra ship was 'granted' with zero rendered pixels. Data carries the wording, ink carries the fact."
+        },
+        {
+            "id": "D1",
+            "group": "pickup",
+            "statement": "In a standard wave exactly one enemy carries the lance, and it is distinguishable ON THE RENDERED FIELD by a drawn marker, so the player can choose the right target.",
+            "probe": "exactly one carrier is in play and it is marked on the field",
+            "why": "Director request 2026-09-19: '1 enemy with the beam weapon, when hit, player need to get it before it disappears'. A carrier the player cannot pick out is just a random enemy that happened to drop something, so the marker is measured in ink, not read from a flag -- the same lesson as the extra-ship announcement."
+        },
+        {
+            "id": "D2",
+            "group": "pickup",
+            "statement": "Destroying the carrier drops a collectable at its position that drifts downward, with a bounded lifetime that decreases in game time and never goes negative.",
+            "probe": "killing the carrier drops a collectable that drifts",
+            "why": "The drop is what makes the decision: a weapon that appears in the player's hands with no action is the threshold rule again, not this one."
+        },
+        {
+            "id": "D3",
+            "group": "pickup",
+            "statement": "Flying into the drop grants exactly one charge, announced on screen, and the drop leaves the field.",
+            "probe": "collecting the drop grants exactly one charge and announces it",
+            "why": "Exactly one, because the charge is the currency phase 10 verified; the announcement because an unnoticeable grant is the same defect as an unrendered extra ship."
+        },
+        {
+            "id": "D4",
+            "group": "pickup",
+            "statement": "A drop that is not collected expires: it leaves the field, grants nothing, and leaves nothing behind.",
+            "probe": "an uncollected drop expires with nothing granted",
+            "why": "The director's rule stated as its own requirement -- get it before it disappears. A drop that waits forever is not a decision, and an expiry that still grants a charge would silently delete the urgency."
+        },
+        {
+            "id": "D5",
+            "group": "pickup",
+            "statement": "The drop is legible as its deadline approaches: its rendered ink changes in the final portion of its life, so the player sees the deadline rather than discovering it by losing the pickup.",
+            "probe": "the drop is legible as it expires",
+            "why": "Legibility is the recurring defect in this project, and a deadline nobody can see is just an unexplained loss."
+        },
+        {
+            "id": "D6",
+            "group": "pickup",
+            "statement": "The score threshold remains a guarantee: reaching it while holding no charge still grants one, so two carriers missed in a row cannot leave the weapon unreachable for the rest of a run.",
+            "probe": "the score threshold remains a guarantee",
+            "why": "This item ADDS a way to earn the lance; it must not take one away. Phase 10's W1 is verified behaviour, and it is also the anti-starvation backstop for a player who misses every carrier."
+        },
+        {
+            "id": "H1",
+            "group": "hud",
+            "statement": "The rendered score row sits on black: at least 60% of the HUD's own rendered pixels are near-black, measured from the HUD element's pixels rather than from a CSS declaration.",
+            "probe": "the score row renders on black",
+            "why": "Director request 2026-09-19: 'score row, black background color'. The row takes --color-surface-raised, which the page sets to #ffffff, so a white bar sits over a black space field. The HUD is DOM, not canvas, so this is the first probe in the project that measures DOM pixels -- a style lookup would report the fix whether or not the row changed."
+        },
+        {
+            "id": "H2",
+            "group": "hud",
+            "statement": "The row stays legible on that black: bright ink is present in the rendered row and the computed contrast ratio between the values' colour and their background is at least 7:1.",
+            "probe": "the score row stays legible",
+            "why": "Going black must not mean going dim. A score nobody can read is not an improvement, and this is the requirement that stops the fix being satisfied by deleting the contrast."
+        },
+        {
+            "id": "M1",
+            "group": "moon",
+            "statement": "The nursery body reads as a moon: its dominant rendered ink is neutral grey -- channel spread at most 24 AND a blue-red gap of at most 12 -- it is a mid grey tone (luminance between 60 and 200) rather than a near-white disc, and it carries craters: at least three shades each holding 3% of the body, the brightest and darkest of them at least 48 luminance apart.",
+            "probe": "the body reads as a moon",
+            "why": "Director request 2026-09-19: 'planet, change to moon, make it look like the moon'. CHAIR CORRECTION, measured 2026-09-19 before dispatch: this requirement was first written as a channel spread of at most 30, and the probe PASSED against the blue planet that is actually on screen. The body's dominant ink is [232, 248, 248] -- a spread of 16 that satisfies a spread-only test while sitting there plainly cyan -- so the threshold was a bad instrument, not a passing feature. It became a spread AND a blue-red gap, plus a mid-tone luminance band that excludes the near-white (luminance 245) disc, plus a third shade and a 48-level range so a two-stop radial gradient across a flat disc cannot pass as craters (it is exactly 2 shades, 16 apart, today). The lesson is the standing one: a probe that passes before the work is done is measuring the wrong property."
+        },
+        {
+            "id": "M2",
+            "group": "moon",
+            "statement": "The body carries no ring: an annulus sampled just outside the body's radius is essentially black space, measured on the rendered field.",
+            "probe": "the ring is gone",
+            "why": "Already true when this item was written, and asserted as a REGRESSION GUARD rather than as work -- measured 2026-09-19: all four bands just outside the radius read 0 ink, because phase 4 replaced the ringed planet with black space and the renderer ignores planet.ring. It is kept because the moon is a large pale body, and M2 plus M3 are what stop this item buying its look by putting a ring (or a glow) back. Precedent: B5, asserted for the same reason."
+        },
+        {
+            "id": "M3",
+            "group": "moon",
+            "statement": "The field still reads black with the moon drawn on it: at least 90% of the play field is near-black in the frame that contains the moon.",
+            "probe": "the field still reads black with the moon in it",
+            "why": "This is the guard on V3. A large bright body is exactly how a verified 'black space' requirement gets quietly broken, and the moon is deliberately a big pale object."
         }
     ],
     "spec_probes": {
@@ -420,7 +497,10 @@
             "responsiveness": "tests/browser/star-swarm-pixels.spec.ts",
             "audio": "tests/browser/star-swarm-audio.spec.ts",
             "powerup": "tests/browser/star-swarm-pixels.spec.ts",
-            "bonus": "tests/browser/star-swarm-pixels.spec.ts"
+            "bonus": "tests/browser/star-swarm-pixels.spec.ts",
+            "pickup": "tests/browser/star-swarm-pixels.spec.ts",
+            "hud": "tests/browser/star-swarm-pixels.spec.ts",
+            "moon": "tests/browser/star-swarm-pixels.spec.ts"
         },
         "chair_owned_groups": [
             "fidelity",
@@ -431,7 +511,10 @@
             "responsiveness",
             "audio",
             "powerup",
-            "bonus"
+            "bonus",
+            "pickup",
+            "hud",
+            "moon"
         ]
     },
     "invariants": {
