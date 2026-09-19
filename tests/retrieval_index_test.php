@@ -82,6 +82,28 @@ $check(
     $scope['output']
 );
 
+echo "\n=== recall: retrieval is measured against a known answer, not against a file count ===\n";
+// `search` returning *a* document is not evidence that it returned the RIGHT one, and until this
+// existed nothing measured the difference. The cases and the ranks they must appear within are in
+// run.php with the reason each one exists; printed here so the ranks are evidence rather than a claim.
+$recall = $run('php kernel/Workbench/Retrieval/run.php recall');
+echo $recall['output'] . "\n";
+$check(
+    'every known query retrieves its known answer within its rank',
+    $recall['exit'] === 0,
+    'exit ' . $recall['exit'] . ': ' . substr($recall['output'], -300)
+);
+
+// The other direction, and the reason to believe the check above: the SAME cases pointed at a scope
+// that cannot contain the answer must MISS. A recall check that cannot report a miss would pass
+// whatever it was handed, which is exactly how the previous state of this file reported success.
+$recallControl = $run('php kernel/Workbench/Retrieval/run.php recall --control');
+$check(
+    'and the same check reports a MISS when the answer cannot be in scope',
+    $recallControl['exit'] === 0 && str_contains($recallControl['output'], '[MISS]'),
+    'exit ' . $recallControl['exit'] . ': ' . substr($recallControl['output'], -300)
+);
+
 echo "\n=== summary ===\n";
 printf("  %d passed, %d failed\n", $pass, $fail);
 exit($fail === 0 ? 0 : 1);

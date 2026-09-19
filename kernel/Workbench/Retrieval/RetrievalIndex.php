@@ -45,8 +45,10 @@ namespace Ikabud\Kernel\Workbench\Retrieval;
  *      the index by top-level prefix (kernel/, modules/, docs/, ...) behind the same API, and keep
  *      index.json as a manifest of shards. Nothing outside this class needs to change.
  *   3. RANKING THAT CANNOT LEARN. Lexical scoring cannot tell that `star-swarm.js` is the right answer
- *      because it served the last three tasks. recordUse() gives it that: usage is a bounded boost, so
- *      a file that has actually been used outranks one that merely mentions the words.
+ *      because it served the last three tasks. recordUse() gives it that: usage is a BOUNDED boost with
+ *      a half-life, so a file that has actually been used outranks one that merely mentions the words,
+ *      and a file that served tasks months ago stops outranking them. Unbounded usage credit would be
+ *      worse than none: the ranker would converge on what it already recommended and never recover.
  *   4. VOCABULARY THAT DOES NOT MATCH THE QUESTION. Lexical search fails when the caller asks in
  *      different words than the code uses. search() reports `confidence`, and that is the decision
  *      point for a hybrid: LOW means the local index found nothing useful and is the only honest time
@@ -54,7 +56,8 @@ namespace Ikabud\Kernel\Workbench\Retrieval;
  *      identifier-shaped -- exact names are what a searcher wants -- and because it is private,
  *      offline and free. Online is a fallback for concepts, never the first call.
  *
- * @phpstan-type Entry array{hash:string, mtime:int, size:int, lines:int, terms:array<string,int>, uses:int, indexed_at:string}
+ * @phpstan-type Entry array{hash:string, mtime:int, size:int, lines:int, terms:array<string,int>, uses:int, last_used_at:int, indexed_at:string}
+ * @phpstan-type Hit array{path:string, score:int, lines:int, matched:list<string>, uses:int}
  */
 final class RetrievalIndex
 {
@@ -73,6 +76,39 @@ final class RetrievalIndex
 
     private const VERSION = 1;
 
+    /**
+     * Default breadth of a search, in hits.
+     *
+     * A single document is not a context set, and a caller that asks once should not have to know the
+     * right limit to get a usable answer. Eight is the top of the band that stays actionable: measured
+     * 2026-09-19, the previous default of twelve filled its extra four slots with documents that matched
+     * only common words (`kernel/App.php` for a browser-game objective), and breadth a caller cannot act
+     * on is not context. Distinctness is delivered by the spread rule below, not by a bigger number.
+     */
+    public const DEFAULT_LIMIT = 8;
+
+    /** A term found in the path is worth this many body occurrences (which stop counting at the cap). */
+    private const PATH_TERM_BONUS = 8;
+
+    /** Body occurrences of one term stop adding score here, so repetition cannot beat coverage. */
+    private const BODY_TERM_CAP = 4;
+
+    /**
+     * At most this many hits per top-level area in one result.
+     *
+     * A lane handed eight near-copies of one directory has been given one answer, not eight. Measured
+     * 2026-09-19: the moon query returned three files under `tests/browser`-adjacent areas and pushed the
+     * file that actually draws the creature below the cut. Two per area keeps the top of the list about
+     * the areas that answer the question; the displaced hits are backfilled, so nothing is lost.
+     */
+    private const SPREAD_QUOTA = 2;
+
+    /** Ceiling on the ranking credit usage can earn a document, whatever its history. */
+    public const USE_BOOST_MAX = 6;
+
+    /** Days after which usage credit halves. */
+    public const USE_HALF_LIFE_DAYS = 14;
+
     private string $indexPath;
     private string $lockPath;
 
@@ -88,9 +124,16 @@ final class RetrievalIndex
         private readonly string $root,
         ?string $repositoryRoot = null
     ) {
-        $this->repositoryRoot = $repositoryRoot !== null
-            ? rtrim($repositoryRoot, '/')
-            : (realpath($root . '/../../..') ?: rtrim($root, '/'));
+        // CANONICALISE THE ROOT. Measured 2026-09-19 with `new RetrievalIndex($dir.'/.index', $dir.'/sub/..')`:
+        // the stored key became `tmp/norm-.../sub/thing.php` (the absolute path with its leading slash
+        // dropped, because `str_replace($repositoryRoot, '', $real)` strips nothing from a root that
+        // contains `..`), `isCurrent()` then looked for the file at `<root>/tmp/norm-.../sub/thing.php` --
+        // a path that cannot exist -- and answered FALSE for a file that had just been indexed, while
+        // `stats()` reported `stale 1` on an index that was correct. realpath() resolves the `..`;
+        // the fallback keeps the old behaviour for a root that does not exist (nothing to index).
+        $candidate = $repositoryRoot !== null ? $repositoryRoot : ($root . '/../../..');
+        $canonical = realpath($candidate);
+        $this->repositoryRoot = rtrim($canonical !== false ? $canonical : $candidate, '/');
         $this->indexPath = rtrim($root, '/') . '/index.json';
         $this->lockPath = rtrim($root, '/') . '/index.lock';
         if (!is_dir($root) && !mkdir($root, 0775, true) && !is_dir($root)) {
@@ -163,8 +206,10 @@ final class RetrievalIndex
                 'lines' => substr_count($contents, "\n") + 1,
                 'terms' => $this->terms($contents, $relative),
                 // Usage survives a reindex: a file that has served tasks stays useful when its content
-                // changes slightly, and losing that on every edit would make the signal worthless.
+                // changes slightly, and losing that on every edit would make the signal worthless. The
+                // timestamp comes with it, because the credit decays and an undated credit cannot.
                 'uses' => (int) ($entry['uses'] ?? 0),
+                'last_used_at' => (int) ($entry['last_used_at'] ?? 0),
                 'indexed_at' => gmdate(DATE_ATOM),
             ];
             $indexed++;
@@ -242,30 +287,54 @@ final class RetrievalIndex
     /**
      * Rank indexed documents against a query.
      *
-     * Ranking, and why in this order:
-     *   - a term in the PATH is worth far more than a term in the body: a file called `moon.php` is
-     *     about the moon in a way that a file mentioning it once is not;
-     *   - body frequency saturates, so a file that repeats one word cannot outrank one that covers
-     *     the query;
-     *   - a query term that appears nowhere does not silently vanish: coverage is reported, so a
-     *     caller can tell "nothing matched" from "the index is empty".
+     * THE RANKING RULE, stated in full, because a rule that cannot be written down is not a rule:
+     *
+     *   1. TERM WEIGHT. A term's weight is its rarity in the corpus (idf): `cratered` discriminates,
+     *      `render` does not. Measured 2026-09-19 without it: a browser-game objective ranked
+     *      `kernel/App.php` and `src/helpers/module-manager.php` in the top eight on the strength of
+     *      "adding", "stage", "path", "table" and "render" -- terms that say nothing about the question.
+     *   2. PATH BEATS BODY. A term in the path scores PATH_TERM_BONUS, a term in the body at most
+     *      BODY_TERM_CAP: `star-swarm.js` is about the swarm in a way a file mentioning it is not.
+     *   3. BODY FREQUENCY SATURATES at BODY_TERM_CAP, so repeating one word cannot outrank covering
+     *      the query, and the total is scaled by COVERAGE -- the share of the query's terms the document
+     *      matched. Measured 2026-09-19 without it: a 11250-line handler that happened to contain six of
+     *      the query's common words ranked above the 177-line file that contains the subject.
+     *   4. USE BOOST, bounded and decaying -- see useBoost() for the bound and why it must decay.
+     *   5. SPREAD. At most SPREAD_QUOTA hits per top-level area, with the displaced hits backfilled in
+     *      score order: a lane handed eight near-copies of one directory has been given one answer.
+     *      The rule can only reshuffle what the scores already ranked, never invent a hit.
+     *
+     * A query term that appears nowhere does not silently vanish: it is reported in `missing`, so a
+     * caller can tell "nothing matched" from "the index is empty".
      *
      * @param list<string> $scope optional path prefixes the result must fall under
-     * @return array{query:string, terms:list<string>, hits:list<array{path:string, score:int, lines:int, matched:list<string>}>, indexed:int, missing:list<string>}
+     * @return array{query:string, terms:list<string>, hits:list<Hit>, indexed:int, missing:list<string>, confidence:string}
      */
-    public function search(string $query, int $limit = 12, array $scope = []): array
+    public function search(string $query, int $limit = self::DEFAULT_LIMIT, array $scope = []): array
     {
         $state = $this->load();
         $documents = $state['documents'];
         $terms = array_keys($this->terms($query, ''));
+        $indexed = count($documents);
 
+        // Document frequency, for the query's terms only: one pass over the term maps, no extra reads.
+        $df = array_fill_keys($terms, 0);
+        foreach ($documents as $entry) {
+            foreach ($terms as $term) {
+                if (isset($entry['terms'][$term])) {
+                    $df[$term]++;
+                }
+            }
+        }
+
+        $now = time();
         $hits = [];
         $missing = $terms;
         foreach ($documents as $path => $entry) {
             if ($scope !== [] && !$this->underScope($path, $scope)) {
                 continue;
             }
-            $score = 0;
+            $score = 0.0;
             $matched = [];
             foreach ($terms as $term) {
                 $inPath = str_contains(strtolower($path), $term);
@@ -274,20 +343,30 @@ final class RetrievalIndex
                     continue;
                 }
                 $matched[] = $term;
-                $score += ($inPath ? 8 : 0) + min(4, $inBody);
+                $score += (($inPath ? self::PATH_TERM_BONUS : 0) + min(self::BODY_TERM_CAP, $inBody))
+                    * self::idf($indexed, $df[$term]);
                 $missing = array_values(array_diff($missing, [$term]));
             }
             if ($score > 0) {
-                // Bounded, so a file that has been used a hundred times cannot outrank a clearly better
-                // lexical match. Usage breaks ties and nudges; it does not decide.
-                $score += min(6, (int) ($entry['uses'] ?? 0));
-                $hits[] = ['path' => $path, 'score' => $score, 'lines' => (int) $entry['lines'], 'matched' => $matched, 'uses' => (int) ($entry['uses'] ?? 0)];
+                // Coverage: a document that matches five of eleven query terms is a weaker answer than
+                // one that matches eleven, and without this a long file wins on raw repetition of the
+                // common ones. Scaling by the share of terms matched makes breadth of match part of the
+                // rank rather than only the weight of each individual term.
+                $score *= count($matched) / max(1, count($terms));
+                $uses = (int) ($entry['uses'] ?? 0);
+                $hits[] = [
+                    'path' => $path,
+                    'score' => (int) round($score) + self::useBoost($uses, (int) ($entry['last_used_at'] ?? 0), $now),
+                    'lines' => (int) $entry['lines'],
+                    'matched' => $matched,
+                    'uses' => $uses,
+                ];
             }
         }
 
         usort($hits, static fn (array $a, array $b): int => $b['score'] <=> $a['score'] ?: strcmp($a['path'], $b['path']));
 
-        $sliced = array_slice($hits, 0, max(0, $limit));
+        $sliced = $this->spread($hits, $limit);
         $best = (int) ($sliced[0]['score'] ?? 0);
 
         // The decision point for a hybrid retriever. LOW is the only honest signal that local lexical
@@ -296,7 +375,7 @@ final class RetrievalIndex
         // A caller may then reach for an online or embedding-backed retriever; it should not do so when
         // this says `good`, because code is identifier-shaped and exact names beat semantic proximity.
         $confidence = 'good';
-        if ($documents === []) {
+        if ($indexed === 0) {
             $confidence = 'empty';
         } elseif ($terms === [] || $hits === [] || count($missing) > count($terms) / 2 || $best < 4) {
             $confidence = 'low';
@@ -306,7 +385,7 @@ final class RetrievalIndex
             'query' => $query,
             'terms' => $terms,
             'hits' => $sliced,
-            'indexed' => count($documents),
+            'indexed' => $indexed,
             'missing' => array_values($missing),
             'confidence' => $confidence,
         ];
@@ -319,6 +398,10 @@ final class RetrievalIndex
      * knows, because it sees what a lane changed and which context preceded the change, so it reports
      * back and the next search ranks that file higher. This is what makes the index get more effective
      * with use rather than only larger.
+     *
+     * `uses` grows without limit because it is a fact worth reporting; the RANKING credit is capped and
+     * decays (useBoost), so a hundred uses buy exactly as much as six did, and this month's uses buy
+     * more than last year's. Also stamps `last_used_at`, which is what makes the decay possible.
      *
      * @param list<string> $paths
      * @return int how many were known to the index
@@ -333,6 +416,7 @@ final class RetrievalIndex
                 continue;
             }
             $state['documents'][$relative]['uses'] = (int) ($state['documents'][$relative]['uses'] ?? 0) + 1;
+            $state['documents'][$relative]['last_used_at'] = time();
             $count++;
         }
         if ($count > 0) {
@@ -343,34 +427,193 @@ final class RetrievalIndex
         return $count;
     }
 
-    /** @return array{documents:int, lines:int, bytes:int, updated_at:?string, stale:int, used:int, root:string} */
+    /**
+     * The ranking credit a document has earned by having served a completed run.
+     *
+     * WHY THIS IS BOUNDED AND WHY IT DECAYS. Outcome feedback that only ever adds is a ranker that
+     * recommends what it already recommended: every served task makes the same files look better, so
+     * the context set narrows towards whatever it started with and nothing new can ever enter it. That
+     * is worse than no feedback -- it is a self-reinforcing loop wearing the word "learning". So:
+     *
+     *   - the credit is CAPPED at USE_BOOST_MAX (6), below one path-term match, so a favourite cannot
+     *     outrank a clearly better lexical match however many tasks it has served;
+     *   - it HALVES every USE_HALF_LIFE_DAYS (14) of not being used, and a single use is therefore worth
+     *     NOTHING after two half-lives (28 days), so a file that served tasks months ago must earn its
+     *     place again. Measured 2026-09-19: the boost is the smallest term in the score, and that is
+     *     deliberate -- it breaks ties and nudges, it does not decide;
+     *   - a document with no timestamp (indexed before this existed) gets NO credit rather than
+     *     permanent credit, because an undated use cannot be aged and "forever" is the one answer that
+     *     reproduces the failure above.
+     *
+     * ROUNDED, not floored: a fresh use has an age of one second by the time anything reads it, so
+     * floor() made a just-recorded use worth zero -- the credit would have disappeared between the run
+     * that earned it and the search that should have used it. Rounding keeps credit 1 at 1 until the
+     * age is worth half a unit.
+     *
+     * Public and pure so the bound and the decay can be asserted directly, without waiting 14 days.
+     */
+    public static function useBoost(int $uses, int $lastUsedAt, ?int $now = null): int
+    {
+        $credit = min(self::USE_BOOST_MAX, max(0, $uses));
+        if ($credit === 0) {
+            return 0;
+        }
+        $age = max(0, ($now ?? time()) - $lastUsedAt);
+
+        return (int) round($credit * (0.5 ** ($age / (self::USE_HALF_LIFE_DAYS * 86400))));
+    }
+
+    /**
+     * The indexed documents that no longer describe what is on disk, by path.
+     *
+     * `stats()` reported a bare `stale` count and nothing consumed it. A count cannot be acted on;
+     * these paths can, in both of the ways staleness matters:
+     *
+     *   - RE-INDEX exactly them -- `index($index->stalePaths())` re-reads those documents and no others,
+     *     which is the cheap repair for a repository where one file changed;
+     *   - REFUSE to serve them -- a caller that must not brief a lane from a description of code that
+     *     has changed can check this list (or `isCurrent()` per path) and stop.
+     *
+     * A document whose file is gone is in this list too: that is the same fact, one step further on.
+     * Paths are repository-relative, exactly as `search()` returns them.
+     *
+     * @return list<string>
+     */
+    public function stalePaths(): array
+    {
+        $stale = [];
+        foreach ($this->load()['documents'] as $path => $entry) {
+            $contents = @file_get_contents($this->absolute($path));
+            if ($contents === false || hash('sha256', $contents) !== $entry['hash']) {
+                $stale[] = $path;
+            }
+        }
+
+        return $stale;
+    }
+
+    /**
+     * What is in the index, in numbers a human can act on.
+     *
+     * `stale` was the only actionable figure and it was a count; `stale_paths` is the list to re-index.
+     * `used_paths` says which files outcome feedback is actually ranking -- if it is one file used two
+     * hundred times, the feedback is a rut and this shows it; if it is empty, the loop is not wired to
+     * anything and no amount of indexing will make retrieval learn.
+     *
+     * @return array{documents:int, lines:int, bytes:int, updated_at:?string, stale:int, stale_paths:list<string>, used:int, used_paths:list<array{path:string, uses:int, boost:int, last_used_at:?string}>, root:string}
+     */
     public function stats(): array
     {
         $state = $this->load();
         $lines = 0;
-        $stale = 0;
         $used = 0;
+        $now = time();
+        $usedPaths = [];
         foreach ($state['documents'] as $path => $entry) {
             $lines += (int) $entry['lines'];
-            $used += (int) ($entry['uses'] ?? 0);
-            $contents = @file_get_contents($this->absolute($path));
-            if ($contents === false || hash('sha256', $contents) !== $entry['hash']) {
-                $stale++;
+            $uses = (int) ($entry['uses'] ?? 0);
+            $used += $uses;
+            if ($uses === 0) {
+                continue;
             }
+            $lastUsedAt = (int) ($entry['last_used_at'] ?? 0);
+            $usedPaths[] = [
+                'path' => $path,
+                'uses' => $uses,
+                'boost' => self::useBoost($uses, $lastUsedAt, $now),
+                'last_used_at' => $lastUsedAt > 0 ? gmdate(DATE_ATOM, $lastUsedAt) : null,
+            ];
         }
+        usort(
+            $usedPaths,
+            static fn (array $a, array $b): int => $b['boost'] <=> $a['boost']
+                ?: $b['uses'] <=> $a['uses']
+                ?: strcmp($a['path'], $b['path'])
+        );
+        $stale = $this->stalePaths();
 
         return [
             'documents' => count($state['documents']),
             'lines' => $lines,
             'bytes' => (int) (@filesize($this->indexPath) ?: 0),
             'updated_at' => $state['updated_at'] ?? null,
-            'stale' => $stale,
+            'stale' => count($stale),
+            'stale_paths' => $stale,
             'used' => $used,
+            'used_paths' => array_slice($usedPaths, 0, 10),
             'root' => $this->root,
         ];
     }
 
     // ── Internals ───────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A term's weight: how much rarer it is in the corpus than in general (smoothed idf).
+     *
+     * 1.0 for a term that occurs in every document, rising as it becomes rare. Never below 1, so a
+     * common term still counts for something and a query of common words still returns something --
+     * it just cannot outrank a query term that actually discriminates.
+     */
+    private static function idf(int $documents, int $documentFrequency): float
+    {
+        return 1.0 + log(($documents + 1) / ($documentFrequency + 1));
+    }
+
+    /**
+     * The area a path belongs to: its top-level directory, the unit the spread rule spreads over.
+     *
+     * Top-level, not immediate parent: `kernel/Workbench/Retrieval/a.php` and `kernel/App.php` are one
+     * area, because eight files of kernel are still one answer to a lane.
+     */
+    private static function area(string $path): string
+    {
+        $slash = strpos($path, '/');
+
+        return $slash === false ? $path : substr($path, 0, $slash);
+    }
+
+    /**
+     * Select a ranked set with a per-area quota, then backfill the displaced hits in score order.
+     *
+     * The two passes are what make this a spread rather than a filter: pass one takes the best hits
+     * while no area exceeds SPREAD_QUOTA, and pass two fills any remaining slots with the hits that
+     * were deferred, still in score order. The result is exactly `$limit` hits, in the order a caller
+     * should read them, and never a different set of documents than the scores chose.
+     *
+     * @param list<Hit> $hits score-ordered
+     * @return list<Hit>
+     */
+    private function spread(array $hits, int $limit): array
+    {
+        $limit = max(0, $limit);
+        if ($limit === 0 || count($hits) <= $limit) {
+            return array_slice($hits, 0, $limit);
+        }
+
+        $taken = [];
+        $deferred = [];
+        $quota = [];
+        foreach ($hits as $hit) {
+            $area = self::area($hit['path']);
+            if (($quota[$area] ?? 0) >= self::SPREAD_QUOTA) {
+                $deferred[] = $hit;
+                continue;
+            }
+            $quota[$area] = ($quota[$area] ?? 0) + 1;
+            $taken[] = $hit;
+            if (count($taken) === $limit) {
+                return $taken;
+            }
+        }
+        foreach ($deferred as $hit) {
+            $taken[] = $hit;
+            if (count($taken) === $limit) {
+                break;
+            }
+        }
+
+        return $taken;
+    }
 
     /**
      * Terms of a document: words of four or more characters, with stopwords removed.
