@@ -128,7 +128,29 @@
         '7': ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
         '8': ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
         '9': ['.###.', '#...#', '#...#', '.####', '....#', '....#', '.###.'],
-        ':': ['.....', '..#..', '..#..', '.....', '..#..', '..#..', '.....']
+        ':': ['.....', '..#..', '..#..', '.....', '..#..', '..#..', '.....'],
+        // Punctuation the interface actually prints. The glyph set only carried letters and digits, so the
+        // renderer silently skipped every mark below -- measured 2026-09-19: 18 characters vanished, which
+        // is why the instructions page still renders `A/D` as `A D`. Authored in the same 5x7 cell as the
+        // rest of the table so they sit on the same baseline and advance.
+        '/': ['....#', '....#', '...#.', '..#..', '.#...', '#....', '#....'],
+        '#': ['.#.#.', '.#.#.', '#####', '.#.#.', '#####', '.#.#.', '.#.#.'],
+        '%': ['##..#', '##..#', '...#.', '..#..', '.#...', '#..##', '#..##'],
+        '&': ['.##..', '#..#.', '#..#.', '.##..', '#.#.#', '#..#.', '.##.#'],
+        '*': ['.....', '..#..', '#.#.#', '.###.', '#.#.#', '..#..', '.....'],
+        '+': ['.....', '..#..', '..#..', '#####', '..#..', '..#..', '.....'],
+        '=': ['.....', '.....', '#####', '.....', '#####', '.....', '.....'],
+        '<': ['....#', '...#.', '..#..', '.#...', '..#..', '...#.', '....#'],
+        '>': ['#....', '.#...', '..#..', '...#.', '..#..', '.#...', '#....'],
+        '?': ['.###.', '#...#', '....#', '...#.', '..#..', '.....', '..#..'],
+        '@': ['.###.', '#...#', '#.###', '#.#.#', '#.###', '#....', '.###.'],
+        '[': ['.###.', '.#...', '.#...', '.#...', '.#...', '.#...', '.###.'],
+        ']': ['.###.', '...#.', '...#.', '...#.', '...#.', '...#.', '.###.'],
+        '{': ['..##.', '.#...', '.#...', '##...', '.#...', '.#...', '..##.'],
+        '}': ['.##..', '...#.', '...#.', '...##', '...#.', '...#.', '.##..'],
+        '~': ['.....', '.....', '.##.#', '#..##', '.....', '.....', '.....'],
+        '^': ['..#..', '.#.#.', '#...#', '.....', '.....', '.....', '.....'],
+        '|': ['..#..', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..']
     });
 
     // The opening is canvas-authored from the same rectangular cells as the
@@ -178,6 +200,26 @@
         '8': EXTRA_SHIP_GLYPHS['8'],
         '9': EXTRA_SHIP_GLYPHS['9'],
         ':': EXTRA_SHIP_GLYPHS[':'],
+        // Delegated to the one glyph source rather than duplicated, so the opening/instructions renderer
+        // and the announcement renderer cannot disagree about what a mark looks like.
+        '/': EXTRA_SHIP_GLYPHS['/'],
+        '#': EXTRA_SHIP_GLYPHS['#'],
+        '%': EXTRA_SHIP_GLYPHS['%'],
+        '&': EXTRA_SHIP_GLYPHS['&'],
+        '*': EXTRA_SHIP_GLYPHS['*'],
+        '+': EXTRA_SHIP_GLYPHS['+'],
+        '=': EXTRA_SHIP_GLYPHS['='],
+        '<': EXTRA_SHIP_GLYPHS['<'],
+        '>': EXTRA_SHIP_GLYPHS['>'],
+        '?': EXTRA_SHIP_GLYPHS['?'],
+        '@': EXTRA_SHIP_GLYPHS['@'],
+        '[': EXTRA_SHIP_GLYPHS['['],
+        ']': EXTRA_SHIP_GLYPHS[']'],
+        '{': EXTRA_SHIP_GLYPHS['{'],
+        '}': EXTRA_SHIP_GLYPHS['}'],
+        '~': EXTRA_SHIP_GLYPHS['~'],
+        '^': EXTRA_SHIP_GLYPHS['^'],
+        '|': EXTRA_SHIP_GLYPHS['|'],
         b: ['#....', '#....', '####.', '#...#', '#...#', '#...#', '####.'],
         y: ['#...#', '#...#', '#...#', '.####', '....#', '...#.', '.##..']
     });
@@ -941,11 +983,10 @@
                 tally: state.stageTally.tally,
                 destroyed: state.stageTally.destroyed
             };
-            state.announcement = {
-                kind: finishedLoop ? 'loop' : 'stage',
-                text: state.stageClear.text,
-                life: STAGE_CLEAR_LIFE
-            };
+            // The beat is drawn by drawStageClearTally() from state.stageClear itself. It used to be
+            // published as an announcement, which drew the text from a DIFFERENT table and left the
+            // beat's own `text` field unread; a probe that sets stageClear directly then saw no text at
+            // all. One source of truth now owns the whole beat.
         }
         state.stageTally.tally = 0;
         state.stageTally.destroyed = 0;
@@ -2722,6 +2763,17 @@
     function drawStageClearTally(ctx, theme) {
         if (state.stageClear.life <= 0) return;
         var scale = Math.max(3, Math.floor(canvasWidth() / 320));
+        // The beat's own text is drawn here, from state.stageClear, not merely stashed in state for an
+        // announcement to pick up. If this line is removed, characters the game prints go back to being
+        // silently skipped, which is exactly the defect the p20 probe exists to catch.
+        drawPixelText(
+            ctx,
+            state.stageClear.text,
+            scale,
+            canvasWidth() / 2,
+            canvasHeight() / 2 - scale * 5,
+            theme.starBright
+        );
         drawPixelText(
             ctx,
             state.stageClear.destroyed + ' DESTROYED  ' + state.stageClear.tally + ' POINTS',
