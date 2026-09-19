@@ -173,6 +173,276 @@ function ingestor(DevelopmentTaskRepository $repo): DevelopmentArtifactIngestor
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
+// The ledger, the lock, and the director channel.
+//
+// The retired harness recorded run state properly and the lean replacement did not:
+// `grep -cE "flock|LOCK_EX|ledger|commit-check" tools/chair.php` returned 0 on 2026-09-19. Two runs
+// could write the same tree, nothing survived a run as a record, and the repository rule "never
+// commit during a live run" could not be asked because there was nothing to ask.
+//
+// And `grep -c harpp tools/chair.php` returned 3 -- all of them comments or a comparison table. The
+// harness could think and could not speak. HARPP was healthy the whole time (25 decisions on the
+// server, `harpp` on PATH, `tools/harpp-bridge/` in-tree); the wire was simply absent.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+function chairStateDir(): string
+{
+    $dir = CHAIR_ROOT . '/storage/private/chair';
+    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        fail("cannot create {$dir}");
+    }
+
+    return $dir;
+}
+
+/** @param array<string,mixed> $entry */
+function ledgerAppend(array $entry): void
+{
+    $entry['at'] = $entry['at'] ?? gmdate(DATE_ATOM);
+    file_put_contents(
+        chairStateDir() . '/ledger.jsonl',
+        json_encode($entry, JSON_UNESCAPED_SLASHES) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+}
+
+/** @return list<array<string,mixed>> */
+function ledgerRead(): array
+{
+    $path = chairStateDir() . '/ledger.jsonl';
+    if (!is_file($path)) {
+        return [];
+    }
+    $entries = [];
+    foreach (preg_split('/\R/', (string) file_get_contents($path)) ?: [] as $line) {
+        $decoded = json_decode(trim($line), true);
+        if (is_array($decoded)) {
+            $entries[] = $decoded;
+        }
+    }
+
+    return $entries;
+}
+
+/**
+ * @return resource|null null when the lock is already held and $blocking is false
+ */
+function lockAcquire(bool $blocking)
+{
+    $path = chairStateDir() . '/.run.lock';
+    $handle = fopen($path, 'c');
+    if ($handle === false) {
+        fail("cannot open {$path}");
+    }
+    $flags = $blocking ? LOCK_EX : (LOCK_EX | LOCK_NB);
+    if (!flock($handle, $flags)) {
+        fclose($handle);
+
+        return null;
+    }
+
+    return $handle;
+}
+
+/** @param resource $handle */
+function lockRelease($handle): void
+{
+    flock($handle, LOCK_UN);
+    fclose($handle);
+}
+
+/**
+ * A run holds the lock for its whole life, so two runs cannot write the same tree and a commit can be
+ * refused while one is live. The lock is released even when the body throws.
+ *
+ * @param array<string,string> $options
+ */
+function withRunLock(array $options, callable $body): int
+{
+    $handle = lockAcquire(false);
+    if ($handle === null) {
+        record('LOCKED', ['reason' => 'another run holds the lock']);
+
+        return 3;
+    }
+
+    $run = gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3));
+    ledgerAppend([
+        'phase' => 'start',
+        'run' => $run,
+        'task' => $options['task'] ?? '',
+        'lane' => $options['lane'] ?? '',
+        'kind' => $options['kind'] ?? '',
+    ]);
+
+    try {
+        $exit = $body();
+    } catch (Throwable $error) {
+        ledgerAppend(['phase' => 'finish', 'run' => $run, 'exit' => 2, 'error' => $error->getMessage()]);
+        lockRelease($handle);
+        throw $error;
+    }
+
+    ledgerAppend(['phase' => 'finish', 'run' => $run, 'exit' => $exit]);
+    lockRelease($handle);
+
+    return $exit;
+}
+
+/**
+ * Commit eligibility is decided by the ledger, not by how the tree looks -- a tree can look coherent
+ * while a run is still writing to it.
+ *
+ * An abandoned run must have an unblock route. The retired ledger's lack of one is a recorded defect
+ * (brief §3.21), so an unfinished record with a free lock is reported as abandoned and does NOT block
+ * unless --strict is given.
+ *
+ * @param list<string> $flags
+ */
+function commandCommitCheck(array $flags): int
+{
+    $handle = lockAcquire(false);
+    if ($handle === null) {
+        record('COMMIT', ['eligible' => 'no', 'reason' => 'a run holds the lock']);
+
+        return 3;
+    }
+    lockRelease($handle);
+
+    $open = [];
+    $closed = [];
+    foreach (ledgerRead() as $entry) {
+        $run = (string) ($entry['run'] ?? '');
+        if ((string) ($entry['phase'] ?? '') === 'start') {
+            $open[$run] = $entry;
+        } elseif ((string) ($entry['phase'] ?? '') === 'finish') {
+            $closed[$run] = true;
+        }
+    }
+    $abandoned = array_keys(array_diff_key($open, $closed));
+
+    if ($abandoned === []) {
+        record('COMMIT', ['eligible' => 'yes', 'reason' => 'no run is live and the ledger is closed']);
+
+        return 0;
+    }
+
+    $strict = in_array('strict', $flags, true);
+    record('COMMIT', ['eligible' => $strict ? 'no' : 'yes', 'abandoned' => (string) count($abandoned)]);
+    foreach ($abandoned as $run) {
+        say('  unfinished run: ' . $run . ' (abandoned, not live -- the lock is free)');
+    }
+
+    return $strict ? 3 : 0;
+}
+
+// ── the director channel ────────────────────────────────────────────────────────────────────────
+//
+// "No silent non-delivery": the local artifact is written FIRST, and delivery is claimed only on an
+// acknowledged HARPP submission. An undelivered decision prints exactly the line below and exits 4.
+
+const CHAIR_UNDELIVERED = 'DELIVERY: local-only — director NOT notified';
+
+/**
+ * Only an acknowledged submission counts.
+ *
+ * Grounded in the bridge's real contract (`tools/harpp-bridge/harpp_client.py`), not in a guess:
+ * `submit_decision()` returns `{"ok": True, "suppressed": True}` when notifications are disabled.
+ * **`ok` is true and nobody is notified.** Reading that as delivery would be silent non-delivery
+ * wearing the costume of success, which is the exact failure this invariant exists to prevent -- and
+ * the trap is that it looks right. Suppression is therefore checked BEFORE success.
+ */
+function deliveryAcknowledged(string $output, int $exit): bool
+{
+    if ($exit !== 0) {
+        return false;
+    }
+
+    $decoded = json_decode(trim($output), true);
+    if (!is_array($decoded)) {
+        // A command that answered with something that is not an acknowledgement has not acknowledged.
+        return false;
+    }
+
+    if (($decoded['suppressed'] ?? false) === true) {
+        return false;
+    }
+
+    return ($decoded['ok'] ?? false) === true;
+}
+
+/**
+ * Parse `id|label|effect|cost|blast_radius|reversibility` entries separated by `;`.
+ *
+ * The deferred-decision contract names six fields per option, so all six are required. A field left as
+ * a placeholder would be a decorative artifact, which is the failure this whole file exists to avoid.
+ *
+ * @return list<array<string,string>>
+ */
+function decisionOptions(string $raw): array
+{
+    $options = [];
+    foreach (explode(';', $raw) as $chunk) {
+        $chunk = trim($chunk);
+        if ($chunk === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $chunk));
+        if (count($parts) !== 6) {
+            // Thrown rather than exited so the self-test can prove the rejection in both directions.
+            throw new RuntimeException(
+                'each --options entry needs six fields, id|label|effect|cost|blast_radius|reversibility,'
+                . ' separated by ";" -- got ' . count($parts)
+            );
+        }
+        $options[] = [
+            'id' => $parts[0],
+            'label' => $parts[1],
+            'effect' => $parts[2],
+            'cost' => $parts[3],
+            'blast_radius' => $parts[4],
+            'reversibility' => $parts[5],
+        ];
+    }
+
+    return $options;
+}
+
+/**
+ * @return array{ok:bool, output:string, exit:int, command:string}
+ */
+function deliverDecision(string $decisionKey, string $title, string $body, string $requested): array
+{
+    $harpp = trim((string) shell_exec('command -v harpp 2>/dev/null'));
+    if ($harpp === '') {
+        return ['ok' => false, 'output' => '', 'exit' => 127, 'command' => 'harpp is not on PATH'];
+    }
+
+    $command = sprintf(
+        '%s decision submit --title=%s --body=%s --requested=%s --priority=%s --source=%s --decision-key=%s 2>&1',
+        escapeshellarg($harpp),
+        escapeshellarg($title),
+        escapeshellarg($body),
+        escapeshellarg($requested),
+        escapeshellarg('high'),
+        escapeshellarg('chair'),
+        escapeshellarg($decisionKey)
+    );
+
+    $lines = [];
+    $exit = 0;
+    exec($command, $lines, $exit);
+    $output = implode("\n", $lines);
+
+    return [
+        'ok' => deliveryAcknowledged($output, $exit),
+        'output' => $output,
+        'exit' => $exit,
+        'command' => $command,
+    ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
 // The probe: the one command that decides a task.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -829,31 +1099,128 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
     return $exit;
 }
 
-function commandDecide(array $options): int
+/**
+ * A chair decision is recorded; an L4 is delivered.
+ *
+ * The distinction is the doctrine's: a decision the chair can make is provenance the owner may inspect
+ * afterwards, while an L4 is an interruption and therefore requires an acknowledged delivery. Filing
+ * one as a local file and a good intention is exactly the silent non-delivery the policy forbids, and
+ * it is what this file did before 2026-09-19.
+ *
+ * @param array<string,string> $options
+ * @param list<string> $flags
+ */
+function commandDecide(array $options, array $flags): int
 {
     $taskId = $options['task'] ?? '';
-    $decision = $options['decision'] ?? '';
-    if ($taskId === '' || $decision === '') {
-        fail('decide needs --task=<id> and --decision=<text>');
+    if ($taskId === '') {
+        fail('decide needs --task=<id>');
     }
 
-    $dir = CHAIR_ROOT . '/storage/private/chair/decisions';
+    $dir = chairStateDir() . '/decisions';
     if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
         fail("cannot create {$dir}");
     }
-    $entry = [
-        'at' => gmdate(DATE_ATOM),
+
+    if (!in_array('escalate', $flags, true)) {
+        $decision = $options['decision'] ?? '';
+        if ($decision === '') {
+            fail('decide needs --decision=<text>, or --escalate to file an L4 with the director');
+        }
+        $entry = [
+            'at' => gmdate(DATE_ATOM),
+            'task' => $taskId,
+            'decision' => $decision,
+            'rationale' => $options['rationale'] ?? '',
+            'authority' => 'chair',
+            'owner_intervention' => 'not required',
+        ];
+        file_put_contents($dir . '/' . $taskId . '.jsonl', json_encode($entry, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
+        record('DECISION', ['task' => $taskId, 'chair' => $decision, 'owner_intervention' => 'not required']);
+
+        return 0;
+    }
+
+    // ── L4: the deferred-decision contract, shape and all ────────────────────────────────────────
+    $title = $options['title'] ?? '';
+    $recommend = $options['recommend'] ?? '';
+    $rationale = $options['rationale'] ?? '';
+    $choices = [];
+    try {
+        $choices = decisionOptions((string) ($options['options'] ?? ''));
+    } catch (RuntimeException $error) {
+        fail($error->getMessage());
+    }
+
+    if ($title === '') {
+        fail('--escalate needs --title=<short title>');
+    }
+    if (count($choices) < 2 || count($choices) > 4) {
+        fail('--escalate needs 2 to 4 mutually exclusive --options entries, got ' . count($choices));
+    }
+    $ids = array_column($choices, 'id');
+    if ($recommend === '' || !in_array($recommend, $ids, true)) {
+        fail('--escalate needs --recommend=<id> naming one of: ' . implode(', ', $ids));
+    }
+
+    $decisionKey = $taskId . '-' . gmdate('Ymd-His');
+    $artifact = [
+        'urn' => 'urn:ikabud:workbench:development-decision-request:v1',
+        'decision_key' => $decisionKey,
+        'decision_id' => $decisionKey,
         'task' => $taskId,
-        'decision' => $decision,
-        'rationale' => $options['rationale'] ?? '',
-        'authority' => 'chair',
-        'owner_intervention' => 'not required',
+        'title' => $title,
+        'authority' => 'L4',
+        'options' => $choices,
+        'recommendation' => ['option' => $recommend, 'why' => $rationale],
+        'default_if_no_response' => 'stop',
+        'resume' => 'php tools/chair.php run --task=' . $taskId,
+        'transport' => ['status' => 'pending'],
+        'filed_at' => gmdate(DATE_ATOM),
     ];
-    file_put_contents($dir . '/' . $taskId . '.jsonl', json_encode($entry, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
 
-    record('DECISION', ['task' => $taskId, 'chair' => $decision]);
+    // The local artifact is written BEFORE delivery is attempted. A decision that is not delivered is
+    // still a filed decision; a decision that is neither is a lost one.
+    $path = $dir . '/' . $decisionKey . '.json';
+    file_put_contents($path, json_encode($artifact, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+    record('L4', ['task' => $taskId, 'key' => $decisionKey, 'artifact' => $path]);
 
-    return 0;
+    $body = $title . "\n\nOptions:\n"
+        . implode("\n", array_map(
+            static fn (array $option): string => sprintf(
+                '  %s: %s -- %s (cost: %s; blast radius: %s; reversibility: %s)',
+                $option['id'],
+                $option['label'],
+                $option['effect'],
+                $option['cost'],
+                $option['blast_radius'],
+                $option['reversibility']
+            ),
+            $choices
+        ))
+        . "\n\nRecommendation: " . $recommend . ($rationale !== '' ? " -- {$rationale}" : '')
+        . "\n\nDefault if no response: stop."
+        . "\nResume: php tools/chair.php run --task=" . $taskId;
+
+    $delivery = deliverDecision($decisionKey, $title, $body, $recommend . ': ' . $rationale);
+
+    if ($delivery['ok']) {
+        record('DELIVERED', ['key' => $decisionKey]);
+        ledgerAppend(['phase' => 'decision', 'key' => $decisionKey, 'task' => $taskId, 'delivered' => true]);
+
+        return 0;
+    }
+
+    say(CHAIR_UNDELIVERED);
+    say('  retry: ' . $delivery['command']);
+    say('  exit:  ' . $delivery['exit']);
+    if (trim($delivery['output']) !== '') {
+        say('  said:  ' . trim($delivery['output']));
+    }
+    say('  the artifact is at ' . $path . ' and the work is parked at a resumable checkpoint.');
+    ledgerAppend(['phase' => 'decision', 'key' => $decisionKey, 'task' => $taskId, 'delivered' => false]);
+
+    return 4;
 }
 
 function commandStatus(array $options): int
@@ -1027,6 +1394,57 @@ function selfTest(): int
     $check('the objective retrieves files rather than nothing', $ranked !== []);
     $check('retrieval is bounded by the requested limit', count($ranked) <= 5);
 
+    // The director channel. A delivery check that says "sent" too easily is worse than no check at all,
+    // because the whole invariant is that an unacknowledged decision is NOT delivered.
+    say('the director channel:');
+    $check('an accepted submission counts as delivered', deliveryAcknowledged('{"ok": true, "decision_key": "t-1"}', 0));
+    $check('a bare ok:true counts as delivered', deliveryAcknowledged('{"ok": true}', 0));
+    // The trap, and the reason this check exists: suppression answers ok=true and notifies nobody.
+    $check('a SUPPRESSED submission is NOT delivery, even though ok is true', !deliveryAcknowledged('{"ok": true, "suppressed": true, "reason": "testing/quiet mode"}', 0));
+    $check('ok:false is not delivery', !deliveryAcknowledged('{"ok": false, "error": "nope"}', 0));
+    $check('output that is not JSON is not delivery', !deliveryAcknowledged('DEC-0002 submitted', 0));
+    $check('empty output is not delivery', !deliveryAcknowledged('', 0));
+    $check('a failed exit is not delivery even when the body says ok', !deliveryAcknowledged('{"ok": true}', 1));
+
+    say('the deferred-decision artifact:');
+    $parsed = decisionOptions('a|A|effect A|cheap|local|reversible; b|B|effect B|dear|wide|no');
+    $check('options parse into the six named fields', count($parsed) === 2 && $parsed[1]['id'] === 'b');
+    $check('the six fields are all carried through', $parsed[0]['reversibility'] === 'reversible');
+    $rejected = false;
+    try {
+        decisionOptions('a|A|effect|cheap|local');
+    } catch (RuntimeException $error) {
+        $rejected = true;
+    }
+    $check('a five-field option is rejected rather than silently accepted', $rejected);
+
+    // The lock and the ledger, which are what make "never commit during a live run" askable.
+    say('the lock and the ledger:');
+    $held = lockAcquire(false);
+    $check('the first holder gets the lock', $held !== null);
+    $check('a second run is refused while one holds the lock', lockAcquire(false) === null);
+    if ($held !== null) {
+        lockRelease($held);
+    }
+    $reacquired = lockAcquire(false);
+    $check('the lock is available again once released', $reacquired !== null);
+    if ($reacquired !== null) {
+        lockRelease($reacquired);
+    }
+
+    $ledgerProbe = 'self-test-' . bin2hex(random_bytes(4));
+    ledgerAppend(['phase' => 'start', 'run' => $ledgerProbe]);
+    $written = false;
+    foreach (ledgerRead() as $entry) {
+        if (($entry['run'] ?? '') === $ledgerProbe) {
+            $written = true;
+        }
+    }
+    $check('a run is recorded in the ledger', $written);
+    $check('an unfinished run reads as abandoned while the lock is free', commandCommitCheck([]) === 0);
+    $check('and --strict makes that abandoned run block a commit', commandCommitCheck(['strict']) === 3);
+    ledgerAppend(['phase' => 'finish', 'run' => $ledgerProbe, 'exit' => 0]);
+
     say('');
     say(sprintf('  => %d passed, %d failed', $pass, $fail));
 
@@ -1043,17 +1461,23 @@ if (in_array('self-test', $cli['flags'], true)) {
 }
 
 if ($cli['command'] === '') {
-    say('usage: php tools/chair.php <plan|run|probe|decide|status> [options]');
+    say('usage: php tools/chair.php <plan|run|probe|decide|status|lanes|commit-check> [options]');
+    say('       php tools/chair.php decide --task=<id> --decision=<text>');
+    say('       php tools/chair.php decide --escalate --task=<id> --title=<t>');
+    say('            --options="id|label|effect|cost|blast_radius|reversibility; ..." --recommend=<id>');
     say('       php tools/chair.php --self-test');
     exit(0);
 }
 
 exit(match ($cli['command']) {
     'plan' => commandPlan($cli['options']),
-    'run' => commandRun($cli['options'], $cli['flags']),
+    // Wrapped, not inlined: a run holds the lock for its whole life and leaves a record of it. The
+    // ledger decides commit eligibility, not the state of the tree.
+    'run' => withRunLock($cli['options'], static fn (): int => commandRun($cli['options'], $cli['flags'])),
     'probe' => commandProbe($cli['options']),
     'lanes' => commandLanes(),
-    'decide' => commandDecide($cli['options']),
+    'decide' => commandDecide($cli['options'], $cli['flags']),
     'status' => commandStatus($cli['options']),
+    'commit-check' => commandCommitCheck($cli['flags']),
     default => fail('unknown command: ' . $cli['command']),
 });
