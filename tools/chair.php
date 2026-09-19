@@ -506,14 +506,16 @@ function deliverDecision(string $decisionKey, string $title, string $body, strin
         return ['ok' => false, 'output' => '', 'exit' => 127, 'command' => 'harpp is not on PATH'];
     }
 
+    $workbenchState = 'ARCHITECTURE_DECISION_REQUIRED';
     $command = sprintf(
-        '%s decision submit --title=%s --body=%s --requested=%s --priority=%s --source=%s --decision-key=%s 2>&1',
+        '%s decision submit --title=%s --body=%s --requested=%s --priority=%s --source=%s --workbench-state=%s --decision-key=%s 2>&1',
         escapeshellarg($harpp),
         escapeshellarg($title),
         escapeshellarg($body),
         escapeshellarg($requested),
         escapeshellarg('high'),
         escapeshellarg('chair'),
+        escapeshellarg($workbenchState),
         escapeshellarg($decisionKey)
     );
 
@@ -522,9 +524,13 @@ function deliverDecision(string $decisionKey, string $title, string $body, strin
     exec($command, $submissionLines, $submissionExit);
     $submissionOutput = implode("\n", $submissionLines);
 
-    // The writer's response is not evidence. Ask HARPP independently and require the exact key to be
-    // present in the returned decision collection before making any delivery claim.
-    $readbackCommand = sprintf('%s decision list --limit 50 2>&1', escapeshellarg($harpp));
+    // The writer's response is not evidence. Ask HARPP independently in the same workbench-state
+    // window and require the exact key in the returned decision collection before claiming delivery.
+    $readbackCommand = sprintf(
+        '%s decision list --limit 200 --workbench-state=%s 2>&1',
+        escapeshellarg($harpp),
+        escapeshellarg($workbenchState)
+    );
     $readbackLines = [];
     $readbackExit = 0;
     exec($readbackCommand, $readbackLines, $readbackExit);
