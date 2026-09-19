@@ -1800,4 +1800,60 @@ test.describe('star swarm pixels', () => {
         expect(kept.later, 'and it is still in hand thirty seconds later -- not lost on a timer')
             .toBe(kept.armed);
     });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p18 -- the HUD has to say what you are holding.
+    //
+    // Six weapons arrive one per stage, and nothing on screen names the one in your hands. A player
+    // who cannot tell a lance from a nova cannot learn the arsenal, which is the whole point of
+    // giving each stage its own weapon. This is the last of the three acceptance criteria that the
+    // 2026-09-19 run left unmet because it was written as prose and no probe measured it.
+    //
+    // THE CONFOUND, and why the measurement looks the way it does: comparing a weapon collected on
+    // stage 1 against one collected on stage 8 would also differ in score, stage number and elapsed
+    // time -- so the HUD would differ for reasons that have nothing to do with the weapon, and the
+    // probe would pass on a game that names nothing. Everything except the held weapon is therefore
+    // held constant: same stage, same score, same frame, re-rendered rather than stepped. This is the
+    // third time today that a differential needed the frame frozen before it measured the right thing.
+    // ---------------------------------------------------------------------------------------------
+    test('the HUD names the weapon you are holding @p18', async ({ page }) => {
+        await boot(page);
+
+        const hud = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            const px = (window as any).__px;
+            const canvas = game.lane.canvas;
+            // The strip along the top, where the score and status already live.
+            const band = { x: 0, y: 0, w: canvas.width, h: canvas.height * 0.12 };
+
+            game.test.spawnWave(1);
+            game.test.step(120);
+            game.state.score = 0;
+
+            // The kinds the game itself knows, read from the game rather than hardcoded, so this does
+            // not silently stop testing anything the day the arsenal changes shape.
+            const kinds: string[] = Object.keys(game.state.weapon ?? {});
+            const ink: Record<string, number> = {};
+
+            for (const kind of kinds) {
+                for (const other of kinds) {
+                    game.state.weapon[other] = 0;
+                }
+                game.state.weapon[kind] = 999;
+                game.render();
+                ink[kind] = px.stats(band.x, band.y, band.w, band.h).bright;
+            }
+
+            return { kinds, ink };
+        });
+
+        expect(hud.kinds.length, 'the game exposes the weapons it knows').toBeGreaterThan(1);
+        // The claim: the HUD is not indifferent to which weapon is held.
+        const distinct = new Set(Object.values(hud.ink)).size;
+        expect(
+            distinct,
+            'the HUD renders different weapons differently, so a player can tell them apart: '
+                + JSON.stringify(hud.ink),
+        ).toBeGreaterThan(1);
+    });
 });
