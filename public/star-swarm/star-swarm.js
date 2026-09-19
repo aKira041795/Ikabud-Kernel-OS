@@ -272,9 +272,10 @@
     var CHALLENGING_STAGE_IN_LOOP = 3;
 
     // ── Special weapons ─────────────────────────────────────────────────────────────────────────
-    // Weapons alter a volley, never Galaga's two-shots-in-flight ceiling. Each standard stage in the
-    // eight-stage loop has a fixed pickup, so the arsenal is learnable and repeats with the loop.
+    // The two-shot ceiling counts volleys, not the projectiles within a pattern. Each standard stage
+    // in the eight-stage loop has a fixed pickup, so the arsenal is learnable and repeats with the loop.
     var RAPID_FIRE_COOLDOWN = 0.09;
+    var RAPID_SPRAY_ANGLE = 0.08;
     var SPREAD_ANGLE = 0.22;
     var NOVA_ANGLE = 0.36;
     var PICKUP_LIFETIME = 7;
@@ -1104,6 +1105,23 @@
     }
 
     // --- input -----------------------------------------------------------------
+    var playerVolleySerial = 0;
+
+    function playerVolleysInFlight() {
+        var volleys = Object.create(null);
+        var count = 0;
+        for (var i = 0; i < state.shots.length; i += 1) {
+            // Treat externally supplied or legacy projectiles as separate volleys so they cannot bypass
+            // the ceiling. Projectiles emitted here share the id assigned below.
+            var key = state.shots[i].volleyId == null ? 'shot-' + i : 'volley-' + state.shots[i].volleyId;
+            if (!Object.prototype.hasOwnProperty.call(volleys, key)) {
+                volleys[key] = true;
+                count += 1;
+            }
+        }
+        return count;
+    }
+
     function fireBullet() {
         var reload = state.weapon.rapid > 0 || state.weapon.nova > 0
             ? RAPID_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN;
@@ -1113,7 +1131,7 @@
             state.player.cooldown = reload;
             return;
         }
-        if (state.player.cooldown > 0 || state.shots.length >= PLAYER_SHOT_LIMIT) {
+        if (state.player.cooldown > 0 || playerVolleysInFlight() >= PLAYER_SHOT_LIMIT) {
             return;
         }
         state.player.cooldown = reload;
@@ -1125,8 +1143,8 @@
             ]
             : [{ muzzle: centre, angle: 0 }];
 
-        // Pattern weapons are deliberately ordered from most advanced to least advanced. They still
-        // spend the same global two-shot allowance: width and direction change, capacity does not.
+        // Pattern weapons are deliberately ordered from most advanced to least advanced. A pattern
+        // spends one slot in the global two-volley allowance, regardless of its projectile count.
         if (state.weapon.nova > 0) {
             volley = [
                 { muzzle: centre - 26, angle: -NOVA_ANGLE },
@@ -1139,13 +1157,23 @@
             ];
         } else if (state.weapon.spread > 0) {
             volley = [
-                { muzzle: centre - 14, angle: -SPREAD_ANGLE },
-                { muzzle: centre + 14, angle: SPREAD_ANGLE }
+                { muzzle: centre - 28, angle: -SPREAD_ANGLE },
+                { muzzle: centre - 14, angle: -SPREAD_ANGLE / 2 },
+                { muzzle: centre, angle: 0 },
+                { muzzle: centre + 14, angle: SPREAD_ANGLE / 2 },
+                { muzzle: centre + 28, angle: SPREAD_ANGLE }
+            ];
+        } else if (state.weapon.rapid > 0) {
+            volley = [
+                { muzzle: centre - 8, angle: -RAPID_SPRAY_ANGLE },
+                { muzzle: centre, angle: 0 },
+                { muzzle: centre + 8, angle: RAPID_SPRAY_ANGLE }
             ];
         }
 
         var shotsBefore = state.shots.length;
-        for (var i = 0; i < volley.length && state.shots.length < PLAYER_SHOT_LIMIT; i += 1) {
+        var volleyId = ++playerVolleySerial;
+        for (var i = 0; i < volley.length; i += 1) {
             var speed = bulletSpeed();
             state.bullets.push({
                 x: state.player.x + volley[i].muzzle - 2,
@@ -1153,6 +1181,7 @@
                 width: 4,
                 height: 14,
                 role: 'ally',
+                volleyId: volleyId,
                 speed: speed,
                 vx: Math.sin(volley[i].angle) * speed,
                 verticalSpeed: Math.cos(volley[i].angle) * speed,
