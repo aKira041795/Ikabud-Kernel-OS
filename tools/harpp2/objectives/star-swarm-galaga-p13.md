@@ -100,16 +100,19 @@ once-per-batch block below so it stops being re-run four times for no added evid
 
 ## Final gate — the chair runs this once per batch, and it is binding
 
-```
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=1
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=4
-$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p4"
-$ npx playwright test tests/browser/star-swarm-audio.spec.ts
-$ npx playwright test tests/browser/star-swarm.spec.ts
-$ php tests/star_swarm_visual_test.php
-$ php tests/star_swarm_concept_test.php
-$ php tests/star_swarm_galaga_gate_test.php
-$ composer test
+**Not `$ `-prefixed, and in a `text` fence, on purpose** — see the note in `star-swarm-galaga-p12.md`:
+`acceptanceCommands()` collects every `$ ` line in every fenced block, whatever the heading says.
+
+```text
+php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=1
+php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=4
+npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p4"
+npx playwright test tests/browser/star-swarm-audio.spec.ts
+npx playwright test tests/browser/star-swarm.spec.ts
+php tests/star_swarm_visual_test.php
+php tests/star_swarm_concept_test.php
+php tests/star_swarm_galaga_gate_test.php
+composer test
 ```
 
 Phase 1 is the nursery role: the moon replaces the planet in place and phase 1 is what asserts that. `@p4`

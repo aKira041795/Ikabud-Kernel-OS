@@ -45,11 +45,19 @@ $containsAll = static function (string $source, array $needles): bool {
 
 echo "=== cosmic theatre ===\n";
 $check($containsAll($js, ['STARFIELD_DEPTHS', "name: 'far'", "name: 'middle'", "name: 'near'", 'twinkle']), 'starfield exposes three named parallax depths and twinkle state');
-$check($containsAll($js, ['drawCosmicTheatre', 'createLinearGradient', 'createRadialGradient']), 'background uses gradient and dust glow rendering');
 $check($containsAll($js, ["'--ss-space-bg'", "'--ss-space-deep'", "'--ss-star-dim'", "'--ss-star-bright'"]), 'canvas uses a dedicated space token family rather than themed chrome surfaces');
-// RETIRED: 'background uses gradient and dust glow rendering' (createLinearGradient/createRadialGradient)
-// and 'a nearby shaded ringed planet is structured and drawn' (ring: true / ctx.ellipse).
-// Successor: V3 'the field is black space with pixel stars' in the chair-owned pixel spec.
+// RETIRED, and now actually removed: 'background uses gradient and dust glow rendering'
+// (createLinearGradient / createRadialGradient) and 'a nearby shaded ringed planet is structured and
+// drawn' (ring: true / ctx.ellipse). Successor: V3 'the field is black space with pixel stars' in the
+// chair-owned pixel spec.
+//
+// The retirement was written here on 2026-09-19 but the $check() call was left in place, so the assertion
+// kept running for a day. It passed only by accident: the PLANET was drawn with a radial gradient, so the
+// needle matched a gradient that had nothing to do with the background. Removing the planet's gradient for
+// the moon (phase 13) removed the last one and the check failed -- which is what a stale assertion looks
+// like from the outside: an unrelated change breaking a test about something else. V3 is verified and
+// chair-owned (field blackShare > 0.9 with pixel stars), so the intent this check encoded is covered, and
+// a gradient background is now a REGRESSION, not a requirement.
 
 echo "\n=== swarm ===\n";
 $check($containsAll($js, ["name: 'undulate'", "name: 'probe'", "name: 'dive'", "name: 'frenzy'", 'applyMood', 'currentMoodRule']), 'all four moods are executable named rules');

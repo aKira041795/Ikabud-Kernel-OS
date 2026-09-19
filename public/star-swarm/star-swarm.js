@@ -44,6 +44,9 @@
             planet: cssVar(root, '--ss-planet', '#568bb0'),
             planetLit: cssVar(root, '--ss-planet-lit', '#c9e7f2'),
             ring: cssVar(root, '--ss-ring', '#f2c879'),
+            moon: cssVar(root, '--ss-moon', '#8a8a8a'),
+            moonLit: cssVar(root, '--ss-moon-lit', '#b4b4b4'),
+            moonCrater: cssVar(root, '--ss-moon-crater', '#5c5c5c'),
             roles: Object.freeze({
                 threat: cssVar(root, '--ss-role-threat', '#f78c6b'),
                 butterfly: cssVar(root, '--ss-role-butterfly', '#ff6464'),
@@ -671,7 +674,22 @@
     }
 
     function createPlanets() {
-        return [{ x: state.nursery.x, y: state.nursery.y, radius: state.nursery.radius, ring: true }];
+        // A cratered moon, not a ringed planet. The craters are fixed offsets so the body is
+        // deterministic -- a probe that measured a randomly shaded moon would be measuring the RNG.
+        // `ring` stays false: phase 4 removed the ring and M2 asserts its absence.
+        return [{
+            x: state.nursery.x,
+            y: state.nursery.y,
+            radius: state.nursery.radius,
+            ring: false,
+            craters: [
+                { x: -22, y: -14, r: 16 },
+                { x: 14, y: -26, r: 11 },
+                { x: 24, y: 16, r: 14 },
+                { x: -12, y: 30, r: 9 },
+                { x: -34, y: 8, r: 7 },
+            ],
+        }];
     }
 
     // The colony hatches at the nursery planet, then fans out into three depth
@@ -853,7 +871,8 @@
         state.bonus.titleRemaining = state.challenging ? BONUS_TITLE_DURATION : 0;
         applyMood((wave - 1) % MOOD_RULES.length);
         state.enemies = createFormation(wave);
-        state.pickups = [];
+        // A live drop follows its own game-time lifetime across a stage change;
+        // starting the next formation must not silently shorten its collection window.
         // Standard waves always expose one deterministic, living lance carrier.
         // Challenging stages keep their fixed arcade roster and bonus rules.
         state.carrier = state.challenging ? null : {
@@ -926,6 +945,7 @@
         state.capturedFighter = null;
         state.bullets = [];
         state.enemyBullets = [];
+        state.pickups = [];
         startWave(1);
         resetPlayer();
         state.running = true;
@@ -1893,8 +1913,7 @@
             return;
         }
         var remaining = state.enemies.some(function (enemy) { return enemy.alive; })
-            || Boolean(state.capturedFighter)
-            || state.pickups.length > 0;
+            || Boolean(state.capturedFighter);
         if (remaining) return;
         if (state.phase !== 'stage-clear') {
             state.phase = 'stage-clear';
@@ -1966,33 +1985,45 @@
             }
         }
 
-        // Keep the established nursery landmark as a stepped, high-contrast
-        // disk. Its small footprint leaves the field overwhelmingly black,
-        // while four-pixel scan rows prevent a smooth anti-aliased edge.
+        // The nursery landmark: a stepped, high-contrast MOON. Its small footprint leaves the field
+        // overwhelmingly black, while four-pixel blocks prevent a smooth anti-aliased edge.
+        //
+        // The radial gradient is gone with the planet. It ran from starBright to planetLit, which made
+        // the body a near-white disc (dominant [232, 248, 248], luminance 245, blue-red gap 16) -- and
+        // a two-stop gradient across a flat disc is not a crater. Every shade is a hard-edged block now,
+        // so the body carries real tonal structure rather than a smooth ramp.
         for (var p = 0; p < state.planets.length; p += 1) {
             var planet = state.planets[p];
-            var sphere = ctx.createRadialGradient(
-                planet.x - planet.radius * 0.4,
-                planet.y - planet.radius * 0.35,
-                4,
-                planet.x,
-                planet.y,
-                planet.radius
-            );
-            sphere.addColorStop(0, theme.starBright);
-            sphere.addColorStop(1, theme.planetLit);
-            ctx.fillStyle = sphere;
             var block = 4;
+            var craters = planet.craters || [];
             for (var offsetY = -planet.radius; offsetY < planet.radius; offsetY += block) {
                 var halfWidth = Math.floor(Math.sqrt(
                     Math.max(0, planet.radius * planet.radius - offsetY * offsetY)
                 ) / block) * block;
-                ctx.fillRect(
-                    Math.round(planet.x - halfWidth),
-                    Math.round(planet.y + offsetY),
-                    halfWidth * 2,
-                    block
-                );
+                for (var offsetX = -halfWidth; offsetX < halfWidth; offsetX += block) {
+                    // Light falls from the upper left, so the lit limb is the upper-left crescent.
+                    var shade = (offsetX + offsetY) < -planet.radius * 0.55 ? theme.moonLit : theme.moon;
+                    for (var c = 0; c < craters.length; c += 1) {
+                        var crater = craters[c];
+                        var dx = offsetX - crater.x;
+                        var dy = offsetY - crater.y;
+                        var distance = dx * dx + dy * dy;
+                        if (distance <= crater.r * crater.r) {
+                            // A rim of lit blocks around a dark floor is what reads as a crater
+                            // rather than as a hole punched in the disc.
+                            var rimSquared = (crater.r - block) * (crater.r - block);
+                            shade = distance > rimSquared ? theme.moonLit : theme.moonCrater;
+                            break;
+                        }
+                    }
+                    ctx.fillStyle = shade;
+                    ctx.fillRect(
+                        Math.round(planet.x + offsetX),
+                        Math.round(planet.y + offsetY),
+                        block,
+                        block
+                    );
+                }
             }
         }
     }

@@ -93,20 +93,26 @@ still blocks; it runs once, at the end of the batch, in the block below.
 
 ## Final gate — the chair runs this once per batch, and it is binding
 
-Nothing is reported complete until all of it is green. It is not in the block above only because it does not
-need to run four times.
+Nothing is reported complete until all of it is green. It is not in the block above because it does not need
+to run four times.
 
-```
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=1
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=3
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=10
-$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p10"
-$ npx playwright test tests/browser/star-swarm-audio.spec.ts
-$ npx playwright test tests/browser/star-swarm.spec.ts
-$ php tests/star_swarm_visual_test.php
-$ php tests/star_swarm_concept_test.php
-$ php tests/star_swarm_galaga_gate_test.php
-$ composer test
+**Not `$ `-prefixed, and in a `text` fence, on purpose.** `acceptanceCommands()` collects every `$ ` line that
+sits in *any* fenced block in this file as per-chunk acceptance — keying off the heading does nothing. My first
+attempt at this staged the battery under a new heading and still `$ `-prefixed it, which did not reduce the
+per-chunk battery at all: it went from 11 commands to 13. The heading is documentation; the `$ ` prefix is the
+mechanism, and the mechanism is what the driver reads.
+
+```text
+php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=1
+php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=3
+php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=10
+npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p10"
+npx playwright test tests/browser/star-swarm-audio.spec.ts
+npx playwright test tests/browser/star-swarm.spec.ts
+php tests/star_swarm_visual_test.php
+php tests/star_swarm_concept_test.php
+php tests/star_swarm_galaga_gate_test.php
+composer test
 ```
 
 `@p10` and the phase-10 gate are the regression check on the lance this item feeds: the charge cap, `S`, the

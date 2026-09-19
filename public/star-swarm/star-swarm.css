@@ -29,7 +29,12 @@
   padding: 0.75rem 1rem;
   border: 1px solid var(--color-border, #2a3357);
   border-radius: var(--radius, 0.5rem);
-  background: var(--color-surface-raised, #141b33);
+  /* The row belongs to the field, not to the page chrome. It took --color-surface-raised, which the
+     page sets to #ffffff, so it rendered as a white bar over black space. It takes the space token
+     now, and the text is switched to the bright ink that a black ground requires -- going dark
+     without that would trade an unreadable-by-style row for an unreadable-by-contrast one. */
+  background: var(--ss-space-bg, #02030b);
+  color: var(--ss-star-bright, #f4f8ff);
 }
 
 .star-swarm__stat {
