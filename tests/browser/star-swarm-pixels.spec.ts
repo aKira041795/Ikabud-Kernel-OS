@@ -1856,4 +1856,65 @@ test.describe('star swarm pixels', () => {
             + JSON.stringify(hud.ink),
         ).toBeGreaterThan(1);
     });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p19 -- the spread is a fan of five, and the rapid is a spray.
+    //
+    // Director, 2026-09-19: "spread shot must be multi angle of 5 spread. rapid shot must be a
+    // spray". Both are currently narrower than that: spread fires a V of two, and rapid fires a
+    // single straight shot with a shorter reload.
+    //
+    // THIS OVERRIDES A CONSTRAINT I HAD BEEN PROTECTING. `PLAYER_SHOT_LIMIT` is 2 and the volley loop
+    // is clamped by it, so a five-element volley is silently truncated to two -- the fan cannot exist
+    // while the cap counts projectiles. The cap is therefore re-read as governing VOLLEYS IN FLIGHT,
+    // not individual projectiles: a player still may not have two volleys in the air (the Galaga
+    // intent -- a second shot is a reward, not spam), but one volley may carry its full fan, which is
+    // the Raiden/Gradius behaviour these weapons were chosen from. Galaga had no spread weapon, so the
+    // two-projectile reading was never a Galaga rule; it was mine.
+    //
+    // Direction is read from `vx`, which is how the game already represents an angled shot.
+    // ---------------------------------------------------------------------------------------------
+    test('spread is a fan of five and rapid is a spray @p19', async ({ page }) => {
+        await boot(page);
+
+        const guns = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            const kinds: string[] = Object.keys(game.state.weapon ?? {});
+
+            // One volley from a clean state, with only the named weapon in hand. Returns the muzzle
+            // velocity of every allied projectile that shot produced -- its direction, in other words.
+            const fire = (kind: string | null) => {
+                for (const other of kinds) {
+                    game.state.weapon[other] = 0;
+                }
+                if (kind) {
+                    game.state.weapon[kind] = 999;
+                }
+                game.state.bullets = [];
+                game.state.shots = [];
+                game.state.player.cooldown = 0;
+                game.fireBullet();
+                return game.state.bullets
+                    .filter((shot: any) => shot.role === 'ally')
+                    .map((shot: any) => Math.round((shot.vx ?? 0) * 1000) / 1000);
+            };
+
+            return { bare: fire(null), spread: fire('spread'), rapid: fire('rapid') };
+        });
+
+        // A fan of five, at five different angles, fanned around the centre line.
+        expect(guns.spread.length, `spread must fire five projectiles, got ${JSON.stringify(guns.spread)}`)
+            .toBe(5);
+        expect(new Set(guns.spread).size, 'and each of the five must go a different way')
+            .toBe(5);
+        expect(Math.min(...guns.spread), 'the fan opens to one side').toBeLessThan(0);
+        expect(Math.max(...guns.spread), 'and to the other').toBeGreaterThan(0);
+
+        // A spray: more than one projectile, travelling in more than one direction. The bare shot is
+        // the control -- it must stay a single straight shot, or "spray" would mean nothing.
+        expect(guns.bare.length, 'an unarmed shot is still a single projectile').toBe(1);
+        expect(guns.rapid.length, 'rapid must fire more than one projectile, got ' + guns.rapid.length)
+            .toBeGreaterThan(1);
+        expect(new Set(guns.rapid).size, 'and spray them in more than one direction').toBeGreaterThan(1);
+    });
 });
