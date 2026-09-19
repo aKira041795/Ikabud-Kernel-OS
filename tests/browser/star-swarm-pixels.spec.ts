@@ -1917,4 +1917,56 @@ test.describe('star swarm pixels', () => {
             .toBeGreaterThan(1);
         expect(new Set(guns.rapid).size, 'and spray them in more than one direction').toBeGreaterThan(1);
     });
+
+    // ---------------------------------------------------------------------------------------------
+    // @p20 -- every character the game puts on screen must have a glyph.
+    //
+    // The pixel renderer SILENTLY SKIPS characters it has no glyph for. That has already produced
+    // "P ASMA ANCE" for "PLASMA LANCE" on this project, and `A/D` on the instructions page still
+    // renders as `A D` -- measured: the game's own text contains A/D and there is no '/' glyph.
+    //
+    // The measurement is a differential, and the frame is held still with render() rather than
+    // stepped, because anything that moves between the two readings would swamp the difference. Same
+    // technique that caught the HUD naming nothing.
+    // ---------------------------------------------------------------------------------------------
+    test('every character the game displays has a glyph @p20', async ({ page }) => {
+        await boot(page);
+
+        const missing = await page.evaluate(() => {
+            const game = (window as any).StarSwarm;
+            const px = (window as any).__px;
+            const canvas = game.lane.canvas;
+            const band = { x: 0, y: canvas.height * 0.3, w: canvas.width, h: canvas.height * 0.4 };
+
+            game.test.spawnWave(1);
+            game.test.step(120);
+
+            // Ink for a given rendered string, on a held frame.
+            const ink = (text: string) => {
+                game.state.stageClear = { life: 9, text, tally: 0, destroyed: 0 };
+                game.render();
+                return px.stats(band.x, band.y, band.w, band.h).bright;
+            };
+
+            // Characters the game actually displays and which have been suspected of having no glyph.
+            // Each is compared against the same string with the character removed: if the renderer
+            // draws it, the ink must differ. If it silently skips it, both readings are identical.
+            const suspects = '/#%&*+=<>?@[]{}~^|';
+            const absent: string[] = [];
+            for (const ch of suspects) {
+                if (ink('A' + ch + 'A') === ink('AA')) {
+                    absent.push(ch);
+                }
+            }
+
+            return { absent, tested: suspects.length };
+        });
+
+        expect(missing.tested, 'the probe tested some characters').toBeGreaterThan(0);
+        expect(
+            missing.absent,
+            'these characters are drawn by the game but the renderer silently skips them, so they vanish from the screen: '
+                + JSON.stringify(missing.absent),
+        ).toEqual([]);
+    });
 });
