@@ -334,14 +334,37 @@ function withRunLock(array $options, callable $body): int
         'mode' => $options['mode'] ?? '',
     ]);
 
+    // A `fail()` inside the body EXITS the process instead of throwing, so the finish records below are
+    // skipped and the ledger keeps an open run that commit-check reports as ABANDONED. That is the wrong
+    // word for it: abandoned is the state of a process that was killed, which is the one case this
+    // handler cannot see because PHP never runs it. Measured 2026-09-19: `advance --kind=nonsense` -- and
+    // now a refused lane -- exits 2 having dispatched nothing and written no attempt, and used to look
+    // like a dead run in the only record that decides whether a commit is eligible. The handler is the
+    // honest complement to the code below: the exits that skip it are still recorded as finished runs,
+    // and a KILLED process is still reported as abandoned because nothing here ran at all.
+    $closed = false;
+    register_shutdown_function(static function () use ($run, &$closed): void {
+        if ($closed) {
+            return;
+        }
+        ledgerAppend([
+            'phase' => 'finish',
+            'run' => $run,
+            'exit' => 2,
+            'error' => 'the process exited without closing the run: a refusal before any work was dispatched',
+        ]);
+    });
+
     try {
         $exit = $body($run);
     } catch (Throwable $error) {
+        $closed = true;
         ledgerAppend(['phase' => 'finish', 'run' => $run, 'exit' => 2, 'error' => $error->getMessage()]);
         lockRelease($handle);
         throw $error;
     }
 
+    $closed = true;
     ledgerAppend(['phase' => 'finish', 'run' => $run, 'exit' => $exit]);
     lockRelease($handle);
 
@@ -683,6 +706,57 @@ function runProbe(string $command, int $timeout = 900): array
     $tail = implode("\n", array_slice($lines, -12));
 
     return ['command' => $command, 'exit' => $exit, 'output' => $tail];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// When the probe cannot run, that is nobody's failure but the harness's.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// A probe that could NOT run must never be read as a probe that ran and failed. Measured on this
+// project: a rate-limited login made the browser suite fail in a way that reads exactly like an
+// authorisation regression, and the failure was reported as a product defect while the product was
+// healthy (see .github/instructions/verification-harness.instructions.md, "Authentication"). The same
+// instructions record a driver that spent hours on it. `advance` had no way to tell the two apart: any
+// red probe promoted to a more capable lane, so an outage would have been paid for twice more and
+// recorded as a model failure.
+//
+// Every pattern below is quoted from something OBSERVED in this repository, and each names its source:
+//
+//   * the kernel login limiter, whose own words are `Too many login attempts` with `retry_after`
+//     beside them (bootstrap.php: kernelEmitLoginRateLimitJson, asserted in
+//     tests/module_login_rate_limit_test.php) -- and quoted verbatim in the harness instructions;
+//   * `TENANT_USER/TENANT_PASS are not set.` -- how the browser suite says it has no session at all
+//     (tests/browser/auth.setup.ts), after which no spec can run and every verdict is noise;
+//   * `No tests found.` -- Playwright refusing a filter that matched nothing (its own string, in
+//     node_modules/playwright/lib), which is the "the probe failed without a test ever executing" case.
+//
+// EXPECTED TO GROW, and only with an observed output behind it. A guessed pattern either misses the real
+// fault, or -- far worse -- calls a genuine product failure a harness fault and stops the ladder from
+// ever repairing anything, which is why --self-test asserts that direction explicitly.
+
+/** Probe-output signatures that mean the harness broke, not the product. Pattern => why it is a fault. */
+const CHAIR_PROBE_FAULTS = [
+    '/Too many login attempts|"retry_after"\s*:/i' => 'the kernel login rate limiter refused the login (429). Nothing the probe did afterwards was authenticated, so a red verdict is rate limiting rather than an authorisation regression.',
+    '/TENANT_USER\/TENANT_PASS are not set/i' => 'the browser suite has no credentials and therefore no session: it never logged in, so it never tested the product.',
+    '/No tests found|No tests executed|No tests ran/i' => 'the probe ran but no test executed -- the command, the filter or the setup is wrong, so the verdict says nothing about the product.',
+];
+
+/**
+ * Why this probe output is a harness fault, or null when it is a real verdict.
+ *
+ * Only consulted for a probe that FAILED: there is nothing to diagnose about one that passed. The caller
+ * uses it to decide whether the ladder may climb, because no stronger model can fix an instrument -- a
+ * harness fault is not evidence about any lane.
+ */
+function probeFault(string $output): ?string
+{
+    foreach (CHAIR_PROBE_FAULTS as $pattern => $reason) {
+        if (preg_match($pattern, $output) === 1) {
+            return $reason;
+        }
+    }
+
+    return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1264,6 +1338,110 @@ function registryLadder(): array
 }
 
 /**
+ * A lane as its two parts: the model, and the thinking budget it is given.
+ *
+ * One parser, because two get written otherwise -- dispatchLane() needs the parts to build the pi
+ * command, and the ledger needs them to say what was spent. The default is `low` rather than none: a lane
+ * named as a bare model is a lane whose thinking budget pi would have chosen, and `low` is the only
+ * budget this file ever leaves implicit.
+ *
+ * @return array{model:string, thinking:string}
+ */
+function laneParts(string $lane): array
+{
+    [$model, $thinking] = array_pad(explode(':', $lane, 2), 2, 'low');
+
+    return ['model' => $model, 'thinking' => $thinking];
+}
+
+/**
+ * Null when the registry knows this lane, else why it will not be dispatched.
+ *
+ * MEASURED PROBLEM: `--lane` accepted anything. An unusable model was handed to pi, pi failed or
+ * silently did nothing, and that spent attempt still counted against `--max` -- a typo paid for with a
+ * rung of the ladder. The registry already knows the valid lanes (`lanes` prints exactly this list), so
+ * it is asked BEFORE anything is dispatched and the answer names them.
+ *
+ * The check is deliberately NOT inside advancePlan(): that function is the pure plan builder, and
+ * --self-test asserts it keeps a lane an operator named rather than silently upgrading it. Rejection
+ * belongs where the cost is paid, which is here.
+ */
+function laneRefusal(string $lane): ?string
+{
+    if (in_array($lane, registryLadder(), true)) {
+        return null;
+    }
+
+    return 'the registry does not know the lane `' . $lane . '`. Valid lanes: '
+        . implode(', ', registryLadder())
+        . '. A lane is <model>:<thinking>; add a new one to CHAIR_LANES in this file rather than naming a '
+        . 'model no lane on this machine can serve. Refused BEFORE dispatch, so it costs no attempt.';
+}
+
+/**
+ * Null when every lane in this plan may be dispatched, else the first refusal.
+ *
+ * The WHOLE plan is checked before the first attempt rather than one lane before its turn: an operator
+ * whose command names a lane that cannot run has a wrong command, and learning that after two attempts
+ * have been spent is the waste this exists to remove.
+ *
+ * @param list<string> $plan
+ */
+function planLaneRefusal(array $plan): ?string
+{
+    foreach ($plan as $lane) {
+        $refusal = laneRefusal($lane);
+        if ($refusal !== null) {
+            return $refusal;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * What KIND of failure that was -- because only one of the three may climb the ladder.
+ *
+ * MEASURED PROBLEM: `advance` treated EVERY failed probe as "try a better model", which is wrong in two
+ * of the three cases. Promoting a harness fault spends the remaining rungs on a problem no model can
+ * solve and records the outage as a model failure; promoting a lane that produced nothing blames a
+ * stronger model for work it was never given.
+ *
+ *   work      the probe failed and the tree changed -- the work is wrong, which is what the ladder is
+ *             for. Climb.
+ *   no-change the lane exited having written nothing (see the LANE record's `changed=none`) -- there is
+ *             nothing to repair yet. Climb, but with the real cause recorded: the model produced nothing.
+ *   harness   the probe could not run -- see CHAIR_PROBE_FAULTS. STOP. Another lane cannot fix an
+ *             instrument, and the attempts that were NOT spent are the point.
+ *
+ * Harness is checked FIRST: a probe that could not run can neither acquit nor convict the lane, whatever
+ * the tree happens to look like.
+ *
+ * @param list<string> $changed paths the attempt changed
+ * @return array{kind:string, reason:string}
+ */
+function failureKind(int $exit, array $changed, string $output): array
+{
+    $fault = probeFault($output);
+    if ($fault !== null) {
+        return ['kind' => 'harness', 'reason' => $fault];
+    }
+
+    if ($changed === []) {
+        return [
+            'kind' => 'no-change',
+            'reason' => 'the lane exited ' . $exit . ' having changed nothing in the working tree: the model '
+                . 'produced no work to repair, which is a failure of the lane rather than of the code',
+        ];
+    }
+
+    return [
+        'kind' => 'work',
+        'reason' => 'the probe failed after the lane changed ' . count($changed) . ' path(s)',
+    ];
+}
+
+/**
  * How many attempts an advance is allowed.
  *
  * Bounded, because the bound is what makes exhaustion a RECORDED decision instead of a mood: `--max`
@@ -1522,6 +1700,8 @@ function commandLanes(): int
     say('  A kind is chosen per task with --kind=<kind>. The probe judges every lane identically,');
     say('  so a wrong guess costs one cycle, not a bad merge -- which is what makes routing by');
     say('  strength of work safe rather than merely cheap.');
+    say('  This list IS the registry `run` and `advance` validate against: an unknown lane is refused');
+    say('  before anything is dispatched, so a typo costs no attempt. Add lanes here, not in a command.');
     say('  `advance` reads THIS order as its ladder: attempt 1 on the task\'s kind, each failure one');
     say('  rung further down the list, and a recorded blocked decision when --max is reached.');
 
@@ -1656,6 +1836,16 @@ function laneSelection(array $options): array
  */
 function attemptLoop(string $taskId, array $options, array $flags, array $plan, string $run, string $mode): int
 {
+    // D1. A lane nobody can run is not an attempt. Checked for the WHOLE plan before anything is spent
+    // -- before the task is loaded, before the baseline probe, before a lane is dispatched -- so a typo
+    // fails closed naming the valid lanes instead of consuming a rung of the ladder. (A `fail()` inside a
+    // run leaves the run's ledger entry open, exactly as the unknown --kind refusal already did: the
+    // refusal is a wrong command, not a dead run, and it is reported as one.)
+    $planRefusal = planLaneRefusal($plan);
+    if ($planRefusal !== null) {
+        fail($planRefusal);
+    }
+
     $repo = repository();
     $task = $repo->getTask($taskId);
     $contract = taskContract($repo, $task);
@@ -1725,13 +1915,27 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
         }
 
         $exit = dispatchLane($lane, $brief, $attempt);
-        record('LANE', ['n' => (string) $attempt, 'exit' => (string) $exit]);
+
+        // D2. What the lane actually changed, measured BEFORE the probe runs and recorded on the lane's
+        // own line. Two reasons for the order: a probe writes artefacts of its own (test-results/), and
+        // "the lane produced nothing" is a claim about the LANE, not about what the probe left behind;
+        // and the attempt record must say `changed=none` while the run is still live, rather than only
+        // in a post-mortem. A lane that exits 0 having written no file used to be indistinguishable
+        // from one that did the work.
+        $changed = array_values(array_diff(changedPaths(), $before));
+        record('LANE', [
+            'n' => (string) $attempt,
+            'exit' => (string) $exit,
+            'changed' => $changed === [] ? 'none' : (string) count($changed),
+        ]);
+        if ($changed === []) {
+            say('  The lane returned without touching the tree (exit=' . $exit . ', changed=none).');
+        }
 
         $after = runProbe($probe);
         record('PROBE', ['exit' => (string) $after['exit'], 'verdict' => $after['exit'] === 0 ? 'PASS' : 'FAIL']);
         say($after['output']);
 
-        $changed = array_values(array_diff(changedPaths(), $before));
         if ($changed !== []) {
             record('CHANGED', ['paths' => (string) count($changed), 'files' => implode(',', array_slice($changed, 0, 6))]);
         }
@@ -1745,6 +1949,7 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
                 foreach (array_slice($drift, 0, 6) as $finding) {
                     say('  ' . $finding);
                 }
+                attemptLedger($run, $taskId, $attempt, $lane, 'WEAKENED');
                 commandDecide([
                     'task' => $taskId,
                     'decision' => 'pass refused: the run weakened its own tests',
@@ -1769,6 +1974,7 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
                 $dependenceRefusal = probeDependenceRefusal($falsified['exit']);
                 if ($dependenceRefusal !== null) {
                     say('  ' . $dependenceRefusal);
+                    attemptLedger($run, $taskId, $attempt, $lane, 'PROBE-INDEPENDENT');
                     commandDecide([
                         'task' => $taskId,
                         'decision' => 'probe refused: it does not depend on the change',
@@ -1796,6 +2002,9 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
                 ]);
             }
 
+            // D5. What this attempt spent and returned, written down where the ledger can be asked.
+            attemptLedger($run, $taskId, $attempt, $lane, $attempt > 1 ? 'FLAKY-PASS' : 'PASS');
+
             // Which lane got there, and after how many attempts: a pass on the third attempt from the top
             // rung is a different fact about the task than a pass on the first, and the record says which.
             record('VERIFIED', [
@@ -1819,10 +2028,64 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
             return 0;
         }
 
+        // D3. Classify BEFORE promoting, because only one of the three failures belongs on the ladder.
+        // D4. A probe that could not run is a harness fault, not a product failure, and not a model
+        // failure either: stopping here is what keeps the remaining rungs from being spent on an
+        // instrument that no model can fix -- and from reporting the outage as a lane's fault.
+        $failure = failureKind((int) $after['exit'], $changed, (string) $after['output']);
+
+        if ($failure['kind'] === 'harness') {
+            record('HARNESS', ['task' => $taskId, 'attempt' => (string) $attempt, 'lane' => $lane]);
+            attemptLedger($run, $taskId, $attempt, $lane, 'HARNESS-FAULT');
+            say('  The probe could not run, so this is the instrument and not the model:');
+            say('  ' . $failure['reason']);
+            say('  No further attempt will be made. Another lane cannot fix a harness fault, and');
+            say('  spending the remaining rungs on one would report the outage as a model failure.');
+            commandDecide([
+                'task' => $taskId,
+                'decision' => 'stopped after ' . $attempt . ' attempt(s): the probe could not run (harness fault)',
+                'rationale' => $failure['reason'] . ' Next actions, in the order the chair would take them: '
+                    . '(a) fix the instrument -- the session, the credentials, the login-limiter window, the '
+                    . 'test filter -- and re-run the SAME probe, because the task is unchanged; (b) if the '
+                    . 'probe genuinely cannot run in this environment, change the probe and say so, rather '
+                    . 'than the product. The attempts that were not spent are the point: a harness fault is '
+                    . 'evidence about no lane at all.',
+            ]);
+            ledgerAppend([
+                'phase' => 'harness',
+                'run' => $run,
+                'task' => $taskId,
+                'attempt' => $attempt,
+                'lane' => $lane,
+                'fault' => $failure['reason'],
+            ]);
+            record('BLOCKED', [
+                'task' => $taskId,
+                'attempts' => (string) $attempt,
+                'stop_reason' => 'HARNESS_FAULT',
+                'lanes' => implode(' > ', $plan),
+            ]);
+
+            return 3;
+        }
+
         $previous = $after['output'];
+        attemptLedger(
+            $run,
+            $taskId,
+            $attempt,
+            $lane,
+            $failure['kind'] === 'no-change' ? 'NO-CHANGE' : 'PROBE-FAILED'
+        );
+
         if ($attempt < $attempts) {
+            // The reason is the classified one: "probe failed" covered a lane that produced nothing as
+            // well as work that is wrong, and those two ask for different next moves.
+            if ($failure['kind'] === 'no-change') {
+                say('  ' . $failure['reason']);
+            }
             record('PROMOTE', [
-                'reason' => 'probe failed',
+                'reason' => $failure['reason'],
                 'from' => $lane,
                 'next' => $plan[$attempt],
             ]);
@@ -1832,6 +2095,33 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
     // RULE 3. Exhaustion is a recorded decision, not a question for the director -- and not one more
     // attempt. The ladder ended; what follows is a REASON, in the ledger and in the task's decisions.
     return commandExhausted($taskId, $plan, $run);
+}
+
+/**
+ * The ledger line for one attempt: which model was tried, at what thinking budget, and what came of it.
+ *
+ * MEASURED PROBLEM: the ledger recorded `phase=start` with task/lane/kind, and `lane` was EMPTY -- the
+ * lane is resolved inside the attempt loop, long after the start record is written. So the ledger could
+ * not answer "which model was tried, with what thinking budget, and what came of it", which is the one
+ * question that makes routing improvable, even though every attempt had produced the answer.
+ *
+ * The run is carried, so an attempt is attributable to the run that made it; the model and the thinking
+ * budget are split out beside the lane, so `grep '"thinking":"high"'` answers "did raising the level
+ * ever help?" without parsing a colon-separated string.
+ */
+function attemptLedger(string $run, string $taskId, int $attempt, string $lane, string $outcome): void
+{
+    $parts = laneParts($lane);
+    ledgerAppend([
+        'phase' => 'attempt',
+        'run' => $run,
+        'task' => $taskId,
+        'n' => $attempt,
+        'lane' => $lane,
+        'model' => $parts['model'],
+        'thinking' => $parts['thinking'],
+        'outcome' => $outcome,
+    ]);
 }
 
 /**
@@ -1896,7 +2186,7 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
         return 127;
     }
 
-    [$model, $thinking] = array_pad(explode(':', $lane, 2), 2, 'low');
+    $laneParts = laneParts($lane);
     $prompt = 'Read the brief at ' . $brief . ' and implement it exactly. '
         . 'The probe in that brief decides the task: run it and report its real output. '
         . 'Work only inside the declared scope. Do not weaken the probe or any test.';
@@ -1909,8 +2199,8 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
     $command = sprintf(
         '%s --print --approve --model %s --thinking %s %s > %s 2>&1',
         escapeshellarg($pi),
-        escapeshellarg($model),
-        escapeshellarg($thinking),
+        escapeshellarg($laneParts['model']),
+        escapeshellarg($laneParts['thinking']),
         escapeshellarg($prompt),
         escapeshellarg($logFile)
     );
@@ -2330,6 +2620,118 @@ function selfTest(): int
     $check('--max is honoured', advanceAttempts('1') === 1);
     $check('--max is bounded, so exhaustion is bounded too', advanceAttempts('99') === 5);
     $check('an unreadable --max falls back to the default, not to one attempt', advanceAttempts('abc') === 3);
+
+    // The lane gate, both directions. `--lane` used to accept anything: the model went to pi, pi failed or
+    // did nothing, and the spent attempt still counted against --max. A guard that refused every lane, or
+    // none, is caught right here rather than in a run -- and the second direction is the behaviour being
+    // replaced, so it is asserted rather than assumed.
+    say('the lane gate: an unusable lane is refused before it is paid for:');
+    $unknownLanes = [];
+    foreach (registryLadder() as $knownLane) {
+        if (laneRefusal($knownLane) !== null) {
+            $unknownLanes[] = $knownLane;
+        }
+    }
+    $check('every lane the registry knows is accepted', $unknownLanes === []);
+    $unknownRefusal = laneRefusal('some/model:low');
+    $check('a lane the registry does not know is refused', $unknownRefusal !== null);
+    $check(
+        'the refusal names the valid lanes, so the fix is in the message',
+        str_contains((string) $unknownRefusal, CHAIR_LANES['visual']['lane'])
+    );
+    $check(
+        'one unusable rung refuses the whole plan, before the first attempt',
+        planLaneRefusal([CHAIR_LANES['mechanical']['lane'], 'some/model:low']) !== null
+    );
+    $check(
+        'a plan of registry lanes passes the gate',
+        planLaneRefusal([CHAIR_LANES['mechanical']['lane'], CHAIR_LANES['reasoning']['lane']]) === null
+    );
+    // The gate and the plan builder must not drift apart: the plan keeps an operator's lane as named
+    // (asserted above for advancePlan), and the REJECTION happens at dispatch, where the cost is paid.
+    $check(
+        'the gate does not rewrite the plan: advancePlan still names an unknown lane as given',
+        advancePlan('some/model:low', '', 1) === ['some/model:low'] && laneRefusal('some/model:low') !== null
+    );
+
+    // D2 + D3. What KIND of failure was that. A real red probe must climb the ladder, a lane that
+    // produced nothing must be named as such, and a probe that could not run must stop it -- because
+    // promoting a harness fault spends the remaining rungs on a problem no model can solve.
+    say('what kind of failure that was -- only work a stronger model can fix climbs the ladder:');
+    $redProbe = "  1) star-swarm-pixels.spec.ts:120:5 › the HUD names the held weapon\n"
+        . "    Error: expect(received).toBeGreaterThan(expected)\n\n  1 failed, 8 passed (31.4s)";
+    $changedByLane = ['public/star-swarm/game.js'];
+    $check(
+        'a red probe with changed files is WORK, which is what the ladder is for',
+        failureKind(1, $changedByLane, $redProbe)['kind'] === 'work'
+    );
+    $check(
+        'and the work failure says how much the lane changed',
+        str_contains(failureKind(1, $changedByLane, $redProbe)['reason'], '1 path')
+    );
+    $check(
+        'a lane that exited having changed NOTHING is no-change, not a success',
+        failureKind(1, [], $redProbe)['kind'] === 'no-change'
+    );
+    $check(
+        'and its reason names the real cause rather than blaming the code',
+        str_contains(failureKind(1, [], $redProbe)['reason'], 'the model produced no work to repair')
+    );
+    // The signatures, each from an output this repository is known to produce.
+    $check(
+        'the login limiter in the output is a HARNESS fault, not an authorisation regression',
+        failureKind(1, $changedByLane, '{"ok":false,"error":"Too many login attempts","retry_after":300}')['kind'] === 'harness'
+    );
+    $check(
+        'a suite with no session at all is a HARNESS fault',
+        failureKind(1, [], 'Error: TENANT_USER/TENANT_PASS are not set. playwright.config.js loads them '
+            . 'from the git-ignored .env')['kind'] === 'harness'
+    );
+    $check(
+        'a probe in which no test ever executed is a HARNESS fault',
+        failureKind(1, [], 'Error: No tests found.')['kind'] === 'harness'
+    );
+    $check(
+        'a harness fault stays a fault even when the lane did change files',
+        failureKind(1, $changedByLane, 'Too many login attempts')['kind'] === 'harness'
+    );
+    // The direction that matters. A classifier that called everything a harness fault would stop the
+    // ladder from ever repairing anything -- which is worse than no classifier, because it is trusted.
+    $check('a genuine failing assertion is NOT excused as a harness fault', probeFault($redProbe) === null);
+    $check('a passing suite is not a fault either', probeFault('  9 passed (14.2s)') === null);
+
+    // D5. The ledger must be able to answer "which model was tried, with what thinking budget, and what
+    // came of it". It could not: `lane` was empty in the start record, because the lane is resolved
+    // inside the attempt loop, after that record is already written.
+    say('the ledger records what each attempt spent:');
+    $spentTask = 'selftest-spend-' . bin2hex(random_bytes(3));
+    attemptLedger('selftest-run', $spentTask, 2, CHAIR_LANES['visual']['lane'], 'PROBE-FAILED');
+    $spent = null;
+    foreach (ledgerRead() as $ledgerLine) {
+        if (($ledgerLine['task'] ?? '') === $spentTask && ($ledgerLine['phase'] ?? '') === 'attempt') {
+            $spent = $ledgerLine;
+        }
+    }
+    $visualLane = laneParts(CHAIR_LANES['visual']['lane']);
+    $check('an attempt is recorded in the ledger', is_array($spent));
+    $check(
+        'with the lane, the model, the thinking budget, the attempt number, the run and the outcome',
+        is_array($spent)
+        && ($spent['lane'] ?? '') === CHAIR_LANES['visual']['lane']
+        && ($spent['model'] ?? '') === $visualLane['model']
+        && ($spent['thinking'] ?? '') === $visualLane['thinking']
+        && ($spent['n'] ?? 0) === 2
+        && ($spent['run'] ?? '') === 'selftest-run'
+        && ($spent['outcome'] ?? '') === 'PROBE-FAILED'
+    );
+    $check(
+        'a lane named as a bare model gets the thinking budget pi would have used',
+        laneParts('some/model') === ['model' => 'some/model', 'thinking' => 'low']
+    );
+    $check(
+        'an attempt record is not read as a live run by commit-check',
+        commandCommitCheck([]) === 0
+    );
 
     say('exhaustion is a recorded blocked decision, and never one more attempt:');
     $blockedTask = 'selftest-blocked-' . bin2hex(random_bytes(3));
