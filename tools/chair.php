@@ -27,14 +27,15 @@ declare(strict_types=1);
  *
  * THE FIVE RULES, AND WHAT EACH ONE IS FOR
  *
- * 1. THE PROBE IS THE ACCEPTANCE. A task declares one command that decides it. There is no gate
- *    map, no phase list, no second opinion. If the probe is wrong the task is wrong, and the fix
- *    is to fix the probe.
+ * 1. THE REQUIRED TESTS ARE THE ACCEPTANCE. A task declares every command that decides it. There
+ *    is no gate map, no phase list, no second opinion. If the verification is wrong the task is
+ *    wrong, and the fix is to fix the declared tests. Every command runs; one green command cannot
+ *    hide another command that was never executed.
  *
- * 2. THE BASELINE IS TAKEN BEFORE ANY WORK. `run` executes the probe first. A probe that passes
- *    before the work is done is measuring the wrong property -- that is how a moon threshold
- *    scored a pale-cyan planet as "grey" on 2026-09-19. Here that case is not a judgement call:
- *    the run stops and says the task is already satisfied.
+ * 2. THE BASELINE IS TAKEN BEFORE ANY WORK. `run` executes all required tests first. A full set
+ *    that passes before the work is done is measuring the wrong property -- that is how a moon
+ *    threshold scored a pale-cyan planet as "grey" on 2026-09-19. Here that case is not a judgement
+ *    call: the run stops and says the task is already satisfied.
  *
  * 3. THE CHAIR DECIDES. Failure promotes the reasoning level and retries; exhaustion records a
  *    BLOCKED decision with the options that were considered. Nothing is referred to the director.
@@ -553,7 +554,7 @@ function deliverDecision(string $decisionKey, string $title, string $body, strin
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// The probe: the one command that decides a task.
+// Required tests: every declared command decides the task.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -633,7 +634,7 @@ function taskScope(array $contract): array
 }
 
 /**
- * Command-shaped lines in a block of text. The one place a probe is recognised.
+ * Command-shaped lines in a block of text. The one place a required test is recognised.
  *
  * @return list<string>
  */
@@ -648,7 +649,7 @@ function probeLines(string $text): array
         $probes[] = $candidate;
     }
 
-    return array_values(array_unique($probes));
+    return $probes;
 }
 
 /**
@@ -684,20 +685,18 @@ function markdownSection(string $markdown, string $heading): string
 }
 
 /**
- * Read the probe out of a contract's `## Required tests` section in markdown.
+ * Read every verification command out of a contract's `## Required tests` section in markdown.
  *
  * The kernel's contract format is the interface -- it is parsed, validated and stored by
- * DevelopmentTaskContract, so the probe rides in a section that already exists rather than in a
- * new file format. The first command-shaped line wins: a task that needs two commands to decide
- * it has not decided what it is asking for.
+ * DevelopmentTaskContract, so the commands ride in a section that already exists rather than in a
+ * new file format. Their order and multiplicity are part of the declaration: every command is run,
+ * even when an earlier one fails.
  *
  * @return list<string>
  */
 function contractProbes(string $markdown): array
 {
-    $probes = probeLines(markdownSection($markdown, 'Required tests'));
-
-    return array_values(array_unique($probes));
+    return probeLines(markdownSection($markdown, 'Required tests'));
 }
 
 /**
@@ -736,8 +735,41 @@ function runProbe(string $command, int $timeout = 900): array
     return ['command' => $command, 'exit' => $exit, 'output' => $tail];
 }
 
+/**
+ * Run the contract's full verification, without short-circuiting after a failure.
+ *
+ * A Required tests section is a list, not a menu. Keeping each invocation separate preserves the
+ * command's shell semantics while allowing later commands to run after an earlier non-zero exit.
+ * The first failure supplies the aggregate exit, and every command's own exit and output remain in
+ * the evidence.
+ *
+ * @param list<string> $commands
+ * @return array{commands:list<string>, exit:int, output:string}
+ */
+function runRequiredTests(array $commands, int $timeout = 900): array
+{
+    $exit = 0;
+    $evidence = [];
+    $count = count($commands);
+
+    foreach ($commands as $index => $command) {
+        $result = runProbe($command, $timeout);
+        if ($exit === 0 && $result['exit'] !== 0) {
+            $exit = $result['exit'];
+        }
+
+        $evidence[] = sprintf('[REQUIRED TEST %d/%d] %s', $index + 1, $count, $command);
+        if ($result['output'] !== '') {
+            $evidence[] = $result['output'];
+        }
+        $evidence[] = '[EXIT] ' . $result['exit'];
+    }
+
+    return ['commands' => $commands, 'exit' => $exit, 'output' => implode("\n", $evidence)];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// When the probe cannot run, that is nobody's failure but the harness's.
+// When the required tests cannot run, that is nobody's failure but the harness's.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // A probe that could NOT run must never be read as a probe that ran and failed. Measured on this
@@ -965,8 +997,11 @@ function briefPath(string $taskId): string
     return $dir . '/' . $taskId . '-' . gmdate('Ymd-His') . '.md';
 }
 
-/** @param array<string,mixed> $task */
-function writeBrief(array $task, string $objective, array $context, string $probe, string $previous): string
+/**
+ * @param array<string,mixed> $task
+ * @param list<string> $requiredTests
+ */
+function writeBrief(array $task, string $objective, array $context, array $requiredTests, string $previous): string
 {
     $lines = [];
     $lines[] = '# BRIEF — ' . $task['task_id'];
@@ -974,13 +1009,15 @@ function writeBrief(array $task, string $objective, array $context, string $prob
     $lines[] = '## Objective';
     $lines[] = $objective;
     $lines[] = '';
-    $lines[] = '## The probe: the only thing that decides this task';
-    $lines[] = 'Run it before you finish. It must pass, and it must have failed before you started.';
+    $lines[] = '## Required tests: all of them decide this task';
+    $lines[] = 'Run every command before you finish. They must all pass, and the full set must have failed before you started.';
     $lines[] = '';
-    $lines[] = '```';
-    $lines[] = $probe;
-    $lines[] = '```';
-    $lines[] = '';
+    foreach ($requiredTests as $requiredTest) {
+        $lines[] = '```';
+        $lines[] = $requiredTest;
+        $lines[] = '```';
+        $lines[] = '';
+    }
     if ($context !== []) {
         $lines[] = '## Retrieved context (ranked for this objective — read these, not the repository)';
         foreach ($context as $entry) {
@@ -1263,13 +1300,14 @@ function falsifyInFlight(array|false|null $arm = null): ?array
 }
 
 /**
- * Revert, re-run the probe expecting RED, restore, and verify the restore.
+ * Revert, re-run every required test expecting an aggregate RED, restore, and verify the restore.
  *
+ * @param list<string> $requiredTests
  * @param list<string> $runChanged paths this run changed
  * @param list<string> $baseline   paths already uncommitted before the run started
  * @return array{verdict:string, exit:int, output:string}
  */
-function falsifyProbe(string $probe, array $runChanged, array $baseline): array
+function falsifyProbe(array $requiredTests, array $runChanged, array $baseline): array
 {
     $refusal = falsifyRefusal($runChanged, $baseline);
     if ($refusal !== null) {
@@ -1283,7 +1321,7 @@ function falsifyProbe(string $probe, array $runChanged, array $baseline): array
     try {
         falsifyRevert($backup);
         record('FALSIFY', ['phase' => 'reverted', 'files' => (string) count($runChanged)]);
-        $after = runProbe($probe);
+        $after = runRequiredTests($requiredTests);
     } finally {
         $restore = falsifyRestore($backup);
         falsifyInFlight(false);
@@ -1561,7 +1599,7 @@ function commandPlan(array $options): int
 
     $probes = contractProbes($markdown);
     if ($probes === []) {
-        fail('the contract declares no probe: put the deciding command in `## Required tests`');
+        fail('the contract declares no required test: put each deciding command in `## Required tests`');
     }
     foreach ($probes as $probe) {
         $refusal = commandRefusal($probe);
@@ -1594,9 +1632,8 @@ function commandPlan(array $options): int
         'created' => !empty($result['created']) ? 'yes' : 'no',
         'state' => $repo->getTask($taskId)['state'] ?? DevelopmentLifecycle::REQUESTED,
     ]);
-    say('  probe: ' . $probes[0]);
-    if (count($probes) > 1) {
-        say('  note: ' . count($probes) . ' command-shaped lines found in Required tests; the first is the probe.');
+    foreach ($probes as $index => $probe) {
+        say('  required test ' . ($index + 1) . ': ' . $probe);
     }
 
     // The question the chair forgot to ask, asked by the tool instead.
@@ -1747,12 +1784,13 @@ function commandProbe(array $options): int
     $contract = taskContract($repo, $task);
     $probes = taskProbes($contract);
     if ($probes === []) {
-        fail("task {$taskId} declares no probe");
+        fail("task {$taskId} declares no required test");
     }
 
-    $result = runProbe($probes[0]);
+    $result = runRequiredTests($probes);
     record('PROBE', [
         'task' => $taskId,
+        'tests' => (string) count($probes),
         'exit' => (string) $result['exit'],
         'verdict' => $result['exit'] === 0 ? 'PASS' : 'FAIL',
     ]);
@@ -1880,9 +1918,8 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
     $objective = trim((string) ($task['objective'] ?? '')) ?: trim(sectionText($contract['objective'] ?? ''));
     $probes = taskProbes($contract);
     if ($probes === []) {
-        fail("task {$taskId} declares no probe; put the deciding command in `## Required tests`");
+        fail("task {$taskId} declares no required test; put each deciding command in `## Required tests`");
     }
-    $probe = $probes[0];
     $scope = taskScope($contract);
     $attempts = count($plan);
     if ($attempts === 0) {
@@ -1911,17 +1948,21 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
     }
 
     // RULE 2. The baseline, before anything is implemented.
-    $baseline = runProbe($probe);
-    record('BASELINE', ['exit' => (string) $baseline['exit'], 'verdict' => $baseline['exit'] === 0 ? 'ALREADY-PASSES' : 'RED']);
+    $baseline = runRequiredTests($probes);
+    record('BASELINE', [
+        'tests' => (string) count($probes),
+        'exit' => (string) $baseline['exit'],
+        'verdict' => $baseline['exit'] === 0 ? 'ALREADY-PASSES' : 'RED',
+    ]);
     if ($baseline['exit'] === 0) {
-        say('  The probe passes before any work. Either the task is already satisfied, or the');
-        say('  probe is measuring the wrong property. Both are findings; neither needs a lane.');
+        say('  All required tests pass before any work. Either the task is already satisfied, or');
+        say('  the verification is measuring the wrong property. Both are findings; neither needs a lane.');
         commandDecide([
             'task' => $taskId,
-            'decision' => 'no work dispatched: the probe already passes',
-            'rationale' => 'A probe that passes before the work is done is measuring the wrong '
+            'decision' => 'no work dispatched: all required tests already pass',
+            'rationale' => 'Verification that passes before the work is done is measuring the wrong '
                 . 'property (2026-09-19: a moon threshold scored a pale-cyan planet as grey). '
-                . 'Verify the probe against the unfixed product before dispatching.',
+                . 'Verify the required tests against the unfixed product before dispatching.',
         ]);
         return 0;
     }
@@ -1930,7 +1971,7 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
     for ($attempt = 1; $attempt <= $attempts; $attempt++) {
         $lane = $plan[$attempt - 1];
         $context = currentContext($objective, $scope);
-        $brief = writeBrief($task, $objective, $context, $probe, $previous);
+        $brief = writeBrief($task, $objective, $context, $probes, $previous);
         record('ATTEMPT', ['n' => (string) $attempt, 'lane' => $lane, 'brief' => $brief]);
 
         $before = changedPaths();
@@ -1960,8 +2001,12 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
             say('  The lane returned without touching the tree (exit=' . $exit . ', changed=none).');
         }
 
-        $after = runProbe($probe);
-        record('PROBE', ['exit' => (string) $after['exit'], 'verdict' => $after['exit'] === 0 ? 'PASS' : 'FAIL']);
+        $after = runRequiredTests($probes);
+        record('PROBE', [
+            'tests' => (string) count($probes),
+            'exit' => (string) $after['exit'],
+            'verdict' => $after['exit'] === 0 ? 'PASS' : 'FAIL',
+        ]);
         say($after['output']);
 
         if ($changed !== []) {
@@ -1995,7 +2040,7 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
             // mean something, and it is precisely the step that is easy to skip by hand.
             if (in_array('falsify', $flags, true)) {
                 $falsified = falsifyProbe(
-                    $probe,
+                    $probes,
                     array_values(array_diff(changedPaths(), $runBaseline)),
                     $runBaseline
                 );
@@ -2039,7 +2084,7 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
                 'task' => $taskId,
                 'attempt' => (string) $attempt,
                 'lane' => $lane,
-                'probe' => $probe,
+                'tests' => (string) count($probes),
             ]);
 
             // Tell the index which files actually served this task. That is the one signal lexical
@@ -2514,6 +2559,28 @@ function selfTest(): int
     $check('a backticked command is found', ($probes[0] ?? '') === 'php tests/thing_test.php');
     $check('prose in the same section is not mistaken for a probe', count($probes) === 1);
     $check('a contract with no command-shaped line yields no probe', contractProbes("# CONTRACT\n## Required tests\n- none\n") === []);
+    $repeated = contractProbes("# CONTRACT\n## Required tests\n- `php -v`\n- `php -v`\n");
+    $check('repeated declarations are preserved because each declaration must run', $repeated === ['php -v', 'php -v']);
+
+    say('every required test is executed:');
+    $lateFailure = runRequiredTests([
+        "bash -c 'echo passing-first'",
+        "bash -c 'echo failing-second; exit 9'",
+    ]);
+    $check(
+        'a failure in the second declared command fails the full verification',
+        $lateFailure['exit'] === 9
+        && str_contains($lateFailure['output'], 'passing-first')
+        && str_contains($lateFailure['output'], 'failing-second')
+    );
+    $continued = runRequiredTests([
+        "bash -c 'echo failing-first; exit 7'",
+        "bash -c 'echo still-ran-second'",
+    ]);
+    $check(
+        'a failure does not prevent later declared commands from running',
+        $continued['exit'] === 7 && str_contains($continued['output'], 'still-ran-second')
+    );
 
     // The STORED shape, which is not the markdown: DevelopmentTaskContract normalizes a section into a
     // list of bullet values with no heading of its own. This case exists because the first version of
