@@ -82,13 +82,27 @@ colonies hatch from.
 - `modules/star-swarm/`
 - `tests/browser/star-swarm.spec.ts`
 
-## Acceptance — all of them, and the driver gates them
+## Acceptance — the driver gates these per chunk, so they are the FAST ones
 
 ```
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=13
+$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p13"
+```
+
+Measured red baseline, 2026-09-19: `@p13` is **2 failed / 1 passed** — H1 (`darkShare 0.0005`) and M1
+(`blue-red gap 16`) fail, and the M2/M3 guards already hold. The gate `--phase=13` is green because the gate
+is the vacuity guard: it proves each requirement has a probe in the chair-owned spec, not that the probe
+passes. Both must be green.
+
+**Why only two commands.** The driver gates acceptance PER CHUNK, so everything here is re-run on every
+chunk. See the note in `star-swarm-galaga-p12.md`: the broad battery is not weakened, it is moved to the
+once-per-batch block below so it stops being re-run four times for no added evidence.
+
+## Final gate — the chair runs this once per batch, and it is binding
+
+```
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=1
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=4
-$ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p13"
 $ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p4"
 $ npx playwright test tests/browser/star-swarm-audio.spec.ts
 $ npx playwright test tests/browser/star-swarm.spec.ts
@@ -98,13 +112,9 @@ $ php tests/star_swarm_galaga_gate_test.php
 $ composer test
 ```
 
-Measured red baseline, 2026-09-19: `@p13` is **2 failed / 1 passed** — H1 (`darkShare 0.0005`) and M1
-(`blue-red gap 16`) fail, and the M2/M3 guards already hold. The gate `--phase=13` is green because the gate
-is the vacuity guard: it proves each requirement has a probe in the chair-owned spec, not that the probe
-passes. Both must be green.
-
-Phase 1 is included because the moon is the nursery and phase 1 is what asserts that; `@p4` because the field's
-black-share, the pixel idiom and the sprite work are all phase 4's verified behaviour.
+Phase 1 is the nursery role: the moon replaces the planet in place and phase 1 is what asserts that. `@p4`
+is the field's black-share, the pixel idiom and the sprite work — all phase 4's verified behaviour, and the
+things a large pale body is most likely to break.
 
 ## Boundaries
 

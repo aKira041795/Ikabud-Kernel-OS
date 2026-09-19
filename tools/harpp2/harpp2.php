@@ -199,9 +199,24 @@ function declaredScope(array $objective): array
 
 function commandAllowed(string $command): ?string
 {
+    // The destructive-statement pattern is SHARED with the file-delta check, so the two cannot drift.
+    //
+    // REPAIR 2026-09-19 -- lesson L8, in the second copy. This list matched a bare `\bDROP\b` against the
+    // WHOLE command string, so `npx playwright test ... --grep "the drop is legible as it expires"` was
+    // refused as "destroy data". The item's own requirement is about a weapon that DROPS, so the lane could
+    // not run the test for the thing it was building: two runs, 46 minutes, both escalated, and the item
+    // queued behind them never started. It equally refused the read-only `grep -rn "DROP" migrations/`.
+    //
+    // A guard that cries wolf is worse than none (CD-78); a guard that has been silenced is worse still. So
+    // the DROP family is now the shared, precise pattern -- DROP TABLE/DATABASE, TRUNCATE TABLE, ALTER TABLE
+    // ... DROP -- and every one of those is still refused (measured).
+    require_once __DIR__ . '/destructive-introduction.php';
     $unsafe = [
-        '/\b(?:DROP|TRUNCATE)\b/i' => 'destroy data',
-        '/\bALTER\s+TABLE\b.*\bDROP\b/i' => 'destroy data',
+        HARPP2_DESTRUCTIVE_PATTERN => 'destroy data',
+        // MySQL accepts `TRUNCATE tbl` with TABLE omitted, so the bare identifier form must stay refused --
+        // but only where it can actually execute, i.e. alongside a SQL client or an interpreter. Requiring
+        // that context is what excludes a test title without excluding any real invocation.
+        HARPP2_DESTRUCTIVE_CONTEXT_PATTERN => 'destroy data',
         '/(?:^|[;&|]\s*)rm\s+-[^\n]*r/i' => 'destroy data',
         '/\bgit\s+(?:push|clean|reset\s+--hard)\b/i' => 'publish, push, or release',
         '/\b(?:npm\s+publish|composer\s+publish)\b/i' => 'publish, push, or release',

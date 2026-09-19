@@ -31,6 +31,16 @@ declare(strict_types=1);
 const HARPP2_DESTRUCTIVE_PATTERN = '/\b(?:DROP\s+(?:TABLE|DATABASE)|TRUNCATE\s+TABLE|ALTER\s+TABLE\b[^;]*\bDROP\b)/i';
 
 /**
+ * Destructive statements that only count when the command could actually EXECUTE them.
+ *
+ * MySQL accepts `TRUNCATE tbl` with TABLE omitted, so it must stay refused -- but a bare `TRUNCATE` matched
+ * anywhere also refuses a test title. Requiring a SQL client or an interpreter in the same command is what
+ * separates the two. ADDED 2026-09-19 with the command-policy repair (lesson L8), single-sourced here so the
+ * command guard and its controls cannot drift.
+ */
+const HARPP2_DESTRUCTIVE_CONTEXT_PATTERN = '/\b(?:mysql|mariadb|psql|sqlite3|mysqladmin|php|python3?|node|perl|ruby)\b[^\n]*\bTRUNCATE\b/i';
+
+/**
  * Returns the violation message when $new ADDS a destructive statement relative to $old, else null.
  *
  * @param string|null $old Baseline content (empty string for a file that did not exist before the run).

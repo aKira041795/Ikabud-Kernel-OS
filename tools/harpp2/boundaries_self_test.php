@@ -107,5 +107,37 @@ check(
     destructiveIntroduction($aPath, null, null)
 );
 
+// ── The command policy's destructive patterns, both directions ────────────────────────────────────────
+// REPAIR 2026-09-19 (lesson L8, the second copy). `commandAllowed()` matched a bare `\bDROP\b` against the
+// whole command string, so the Star Swarm p12 lane could not run the test for its own requirement --
+// `--grep "the drop is legible as it expires"` was refused as "destroy data" and the item escalated twice
+// for 46 minutes. A guard that cries wolf is worse than none; a guard that has been silenced is worse still.
+// So BOTH directions are asserted: the false positives are gone AND every real destructive statement stays
+// refused. Driven through the shared patterns, which are what `commandAllowed()` now consumes.
+printf("\ncommand policy -- the false positives that were confirmed dead:\n");
+$sqlVerdict = static fn (string $cmd): ?string =>
+    preg_match(HARPP2_DESTRUCTIVE_PATTERN, $cmd) === 1 || preg_match(HARPP2_DESTRUCTIVE_CONTEXT_PATTERN, $cmd) === 1
+        ? 'destroy data'
+        : null;
+
+check(
+    'a test title containing "the drop is legible as it expires" is NOT destructive',
+    null,
+    $sqlVerdict('npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "the drop is legible as it expires @p12"')
+);
+check(
+    'a read-only search for DROP is NOT destructive',
+    null,
+    $sqlVerdict('grep -rn "DROP" migrations/')
+);
+
+printf("command policy -- still refused, because these really do destroy data:\n");
+check('DROP TABLE is still refused', 'destroy data', $sqlVerdict('mysql -e "DROP TABLE users"'));
+check('DROP DATABASE is still refused', 'destroy data', $sqlVerdict('mysql -e "DROP DATABASE app"'));
+check('TRUNCATE TABLE is still refused', 'destroy data', $sqlVerdict('mysql -e "TRUNCATE TABLE x"'));
+check('ALTER TABLE ... DROP COLUMN is still refused', 'destroy data', $sqlVerdict('mysql -e "ALTER TABLE t DROP COLUMN c"'));
+check('mysql TRUNCATE with TABLE omitted is still refused', 'destroy data', $sqlVerdict('mysql -e "TRUNCATE users"'));
+check('an interpreter running TRUNCATE is still refused', 'destroy data', $sqlVerdict('php -r "$db->exec(\'TRUNCATE users\');"'));
+
 printf("\n  => %d passed, %d failed\n", $pass, $fail);
 exit($fail === 0 ? 0 : 1);

@@ -75,13 +75,31 @@ old one. Do not weaken it to make room.
 - `modules/star-swarm/`
 - `tests/browser/star-swarm.spec.ts`
 
-## Acceptance — all of them, and the driver gates them
+## Acceptance — the driver gates these per chunk, so they are the FAST ones
 
 ```
 $ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=12
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=10
-$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=3
 $ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p12"
+```
+
+Measured red baseline, 2026-09-19: `@p12` is **5 failed / 1 passed** — D1 to D5 fail, each naming itself,
+and D6 passes. The gate `--phase=12` is green because the gate is the vacuity guard: it proves each
+requirement has a probe in the chair-owned spec, not that the probe passes. Both must be green.
+
+**Why only two commands.** The driver gates acceptance PER CHUNK, so anything in this block is re-run on
+every chunk. An eleven-command block including `composer test` and three Playwright specs meant minutes of
+pure gate time per chunk — the wall clock was the ceremony, not the work. The broad battery still runs and
+still blocks; it runs once, at the end of the batch, in the block below.
+
+## Final gate — the chair runs this once per batch, and it is binding
+
+Nothing is reported complete until all of it is green. It is not in the block above only because it does not
+need to run four times.
+
+```
+$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=1
+$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=3
+$ php tools/harpp2/gates/star_swarm_galaga_gate.php --phase=10
 $ npx playwright test tests/browser/star-swarm-pixels.spec.ts --grep "@p10"
 $ npx playwright test tests/browser/star-swarm-audio.spec.ts
 $ npx playwright test tests/browser/star-swarm.spec.ts
@@ -91,12 +109,8 @@ $ php tests/star_swarm_galaga_gate_test.php
 $ composer test
 ```
 
-Measured red baseline, 2026-09-19: `@p12` is **5 failed / 1 passed** — D1 to D5 fail, each naming itself,
-and D6 passes. The gate `--phase=12` is green because the gate is the vacuity guard: it proves each
-requirement has a probe in the chair-owned spec, not that the probe passes. Both must be green.
-
-`@p10` is included because this item must not damage the lance it feeds: the charge cap, `S`, the window and
-the threshold guard are all phase 10's verified behaviour. **Gate phase 3** and the state spec cover the
+`@p10` and the phase-10 gate are the regression check on the lance this item feeds: the charge cap, `S`, the
+window and the threshold guard are all phase 10's verified behaviour. Phase 3 and the state spec cover the
 destruction path the drop depends on.
 
 ## Boundaries
