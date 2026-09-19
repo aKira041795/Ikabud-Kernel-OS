@@ -198,12 +198,64 @@ function chairStateDir(): string
     return $dir;
 }
 
+/** The ledger file the harness records into, or the redirect a self-test has put in its place. */
+function ledgerPath(): string
+{
+    return ledgerOverride() ?? chairStateDir() . '/ledger.jsonl';
+}
+
+/**
+ * Read where the ledger points, or move it. `null` means the normal path.
+ *
+ * The flag distinguishes a read from a redirect because `null` is a MEANINGFUL redirect target -- back to
+ * the production ledger -- so "set it to null" cannot be told from "just read it" without it. A redirect
+ * returns the previous value, so a caller can restore exactly what it found from a `finally`: that is what
+ * keeps the move from outliving the code that asked for it, including when a check throws.
+ *
+ * The path is overridable because --self-test wrote its own records into the production ledger (see the
+ * note on ledgerRedirectedSelfTest()). One value the helpers read is a smaller change than teaching every
+ * call site to skip itself during a test, and it keeps the redirection visible in one place.
+ *
+ * @param string|null $path     the path to redirect to, or null for the normal ledger
+ * @param bool        $redirect whether this call IS the redirect, rather than a read
+ * @return string|null the previous redirect when redirecting, otherwise the current one
+ */
+function ledgerOverride(?string $path = null, bool $redirect = false): ?string
+{
+    static $current = null;
+    if (!$redirect) {
+        return $current;
+    }
+    $previous = $current;
+    $current = $path;
+
+    return $previous;
+}
+
+/**
+ * Remove every line containing $needle from a file, leaving the rest byte-identical.
+ *
+ * Used by the self-test and nowhere else: it proves the ledger helpers still write the production ledger
+ * by writing one marker record there and taking it straight back out. A self-test that left a record
+ * behind while asserting it left none would be the defect, not the fix.
+ */
+function ledgerStripLine(string $path, string $needle): void
+{
+    $kept = [];
+    foreach (preg_split('/\R/', (string) file_get_contents($path)) ?: [] as $line) {
+        if (!str_contains((string) $line, $needle)) {
+            $kept[] = (string) $line;
+        }
+    }
+    file_put_contents($path, implode("\n", $kept), LOCK_EX);
+}
+
 /** @param array<string,mixed> $entry */
 function ledgerAppend(array $entry): void
 {
     $entry['at'] = $entry['at'] ?? gmdate(DATE_ATOM);
     file_put_contents(
-        chairStateDir() . '/ledger.jsonl',
+        ledgerPath(),
         json_encode($entry, JSON_UNESCAPED_SLASHES) . "\n",
         FILE_APPEND | LOCK_EX
     );
@@ -212,7 +264,7 @@ function ledgerAppend(array $entry): void
 /** @return list<array<string,mixed>> */
 function ledgerRead(): array
 {
-    $path = chairStateDir() . '/ledger.jsonl';
+    $path = ledgerPath();
     if (!is_file($path)) {
         return [];
     }
@@ -549,21 +601,23 @@ function probeLines(string $text): array
 }
 
 /**
- * Read the probe out of a contract's `## Required tests` section in markdown.
+ * One markdown section: what lies between a heading and the next heading.
  *
- * The kernel's contract format is the interface -- it is parsed, validated and stored by
- * DevelopmentTaskContract, so the probe rides in a section that already exists rather than in a
- * new file format. The first command-shaped line wins: a task that needs two commands to decide
- * it has not decided what it is asking for.
- *
- * @return list<string>
+ * Both readers here need the same scan -- the probe lives in `## Required tests`, the acceptance criteria
+ * in `## Acceptance criteria` -- and the acceptance criteria come from the MARKDOWN rather than from the
+ * stored revision. That is not a preference: DevelopmentTaskContract::bulletLines() strips the `- `
+ * marker, so a wrapped bullet is STORED as two entries with nothing left to say the second is a
+ * continuation. Measured 2026-09-19: the revision of star-swarm-arsenal holds
+ * `'... (checked by hand; no'` and `'probe covers it, ... forgotten).'` as separate criteria, and only the
+ * markdown still knows they are one bullet.
  */
-function contractProbes(string $markdown): array
+function markdownSection(string $markdown, string $heading): string
 {
+    $starts = '/^#{1,3}\s+' . preg_quote($heading, '/') . '\s*$/i';
     $section = '';
     $inSection = false;
     foreach (preg_split('/\R/', $markdown) ?: [] as $line) {
-        if (preg_match('/^#{1,3}\s+Required tests\s*$/i', (string) $line) === 1) {
+        if (preg_match($starts, (string) $line) === 1) {
             $inSection = true;
             continue;
         }
@@ -575,7 +629,22 @@ function contractProbes(string $markdown): array
         }
     }
 
-    $probes = probeLines($section);
+    return $section;
+}
+
+/**
+ * Read the probe out of a contract's `## Required tests` section in markdown.
+ *
+ * The kernel's contract format is the interface -- it is parsed, validated and stored by
+ * DevelopmentTaskContract, so the probe rides in a section that already exists rather than in a
+ * new file format. The first command-shaped line wins: a task that needs two commands to decide
+ * it has not decided what it is asking for.
+ *
+ * @return list<string>
+ */
+function contractProbes(string $markdown): array
+{
+    $probes = probeLines(markdownSection($markdown, 'Required tests'));
 
     return array_values(array_unique($probes));
 }
@@ -1326,7 +1395,9 @@ function commandPlan(array $options): int
 
     // The question the chair forgot to ask, asked by the tool instead.
     try {
-        $coverage = acceptanceCoverage(taskContract($repo, $repo->getTask($taskId)));
+        // From the markdown, not from the stored revision: the revision has lost the bullets, so a
+        // wrapped criterion cannot be told from two separate ones there. See markdownSection().
+        $coverage = acceptanceCoverage(markdownSection($markdown, 'Acceptance criteria'));
         record('ACCEPTANCE', [
             'measured' => (string) count($coverage['measured']),
             'unprobed' => (string) count($coverage['unprobed']),
@@ -1357,16 +1428,76 @@ function commandPlan(array $options): int
  * @param array<string,mixed> $contract
  * @return array{measured:list<string>, unprobed:list<string>}
  */
-function acceptanceCoverage(array $contract): array
+/**
+ * The acceptance criteria of a contract -- one entry per CRITERION, not per line.
+ *
+ * The unit is the bullet, and getting it wrong was a defect measured on 2026-09-19 in this very
+ * function: a contract with SIX criteria wrapped two of them across lines, `preg_split('/\R/')` treated
+ * every physical line as a criterion, and `plan` reported `measured=4 unprobed=5` -- four of those five
+ * "unprobed" items were fragments of the two real criteria. A report that flags fragments is a report
+ * that gets ignored, and this one exists to be acted on.
+ *
+ * A continuation line is one that does not itself start a new bullet: `-`, `*`, or a number followed by
+ * `.`. The join applies ONLY to a criterion a bullet introduced, so text that is not a bulleted list at
+ * all keeps its one-criterion-per-line reading: joining there would swallow genuinely separate criteria,
+ * which is the direction that catches an over-eager fix.
+ *
+ * @return list<string>
+ */
+function acceptanceCriteria(string $text): array
+{
+    $criteria = [];
+    // Whether the criterion being built is a BULLET, and so whether a non-bullet line continues it.
+    $wrapped = false;
+
+    foreach (preg_split('/\R/', $text) ?: [] as $line) {
+        $line = (string) $line;
+        if (trim($line) === '') {
+            continue;
+        }
+        if (preg_match('/^\s*(?:[-*\x{2022}]|\d+\.)\s+/u', $line) === 1) {
+            $criterion = trim($line, " \t-*\u{2022}");
+            if ($criterion === '') {
+                $wrapped = false;
+                continue;
+            }
+            $criteria[] = $criterion;
+            $wrapped = true;
+            continue;
+        }
+        if ($wrapped) {
+            $criteria[count($criteria) - 1] .= ' ' . trim($line);
+            continue;
+        }
+        $criteria[] = trim($line);
+    }
+
+    return $criteria;
+}
+
+/**
+ * Which acceptance criteria say how they are checked.
+ *
+ * The most expensive lesson of 2026-09-19, and it happened twice. A contract required weapons to
+ * persist, and the HUD to name the held weapon. Both were written as prose, no probe measured either,
+ * and so the lane -- correctly -- satisfied the thing that decided the task and left the rest. The run
+ * reported PASS while two acceptance criteria were unmet. Nothing was wrong with the lane.
+ *
+ * This deliberately does NOT block. A guard that refuses on a heuristic would cry wolf, and a guard that
+ * cries wolf is worse than none -- and the first version of this function did exactly that: it split
+ * wrapped bullets and reported the fragments as unprobed. It reports, on every plan, the criteria that do
+ * not name the thing that measures them, which is the question the chair should have asked before
+ * spending a lane. The unit it counts in is the criterion; see acceptanceCriteria().
+ *
+ * @param string $acceptanceSection the `## Acceptance criteria` section, as markdown
+ * @return array{measured:list<string>, unprobed:list<string>}
+ */
+function acceptanceCoverage(string $acceptanceSection): array
 {
     $measured = [];
     $unprobed = [];
 
-    foreach (preg_split('/\R/', sectionText($contract['acceptance'] ?? '')) ?: [] as $line) {
-        $criterion = trim($line, " \t-*\u{2022}");
-        if ($criterion === '') {
-            continue;
-        }
+    foreach (acceptanceCriteria($acceptanceSection) as $criterion) {
         // Measured means the criterion NAMES its instrument: a probe tag, or a runnable command.
         if (preg_match('/@p\d+/', $criterion) === 1
             || preg_match('/`(?:npx|php|composer|vendor\/bin)\b[^`]*`/', $criterion) === 1) {
@@ -1976,6 +2107,36 @@ function commandStatus(array $options): int
 // pattern lived in two files, was repaired in one, and the survivor refused a Playwright grep over
 // the word "drop" -- 46 minutes lost. So this asserts what MUST be refused AND what must not.
 
+/**
+ * `--self-test` with the ledger moved to a scratch file for its duration.
+ *
+ * DEFECT, measured 2026-09-19: the self-test wrote its records into the PRODUCTION ledger. Of the 23
+ * entries in storage/private/chair/ledger.jsonl, 19 were self-test noise -- `self-test-<hex>` runs, plus
+ * two fabricated runs (an `abandoned` start and several `blocked` stops) -- and `commit-check` reads that
+ * file to decide whether a run is live. The authoritative record of what the harness actually did was
+ * mostly test output, which is a defect in the instrument rather than in anything it measured. (The
+ * production ledger was cleaned once, with a comment recording what was removed; every REAL run record
+ * was left alone, because those are evidence.)
+ *
+ * `try/finally` rather than a tidy-up line at the end of the test: the real path must come back even when
+ * a check throws. The self-test measures both directions itself -- its records land in the scratch file,
+ * a lifted redirect still writes the production ledger, and the production ledger is byte-identical
+ * afterwards -- because "the self-test stopped writing noise" bought by breaking ledger writing
+ * everywhere would be a worse defect than the one being repaired.
+ */
+function ledgerRedirectedSelfTest(): int
+{
+    $scratch = chairStateDir() . '/selftest-ledger-' . bin2hex(random_bytes(4)) . '.jsonl';
+    $previous = ledgerOverride($scratch, true);
+
+    try {
+        return selfTest();
+    } finally {
+        ledgerOverride($previous, true);
+        @unlink($scratch);
+    }
+}
+
 function selfTest(): int
 {
     $pass = 0;
@@ -1989,6 +2150,13 @@ function selfTest(): int
         $fail++;
         say('  [FAIL] ' . $label);
     };
+
+    // The production ledger, held as raw bytes so the checks at the end of this test can prove it comes
+    // out of a whole self-test unchanged. Read by path rather than through ledgerPath(): this is the file
+    // under test, and a check that compared the redirect against itself would prove nothing.
+    $productionLedger = chairStateDir() . '/ledger.jsonl';
+    $productionBefore = is_file($productionLedger) ? (string) file_get_contents($productionLedger) : '';
+    $scratchLedger = ledgerPath();
 
     say('refused — these really are destructive:');
     foreach ([
@@ -2260,11 +2428,11 @@ function selfTest(): int
     // Acceptance coverage. Both directions, because a coverage report that flags everything is as
     // useless as one that flags nothing -- it would be ignored, and it exists to be acted on.
     say('acceptance coverage:');
-    $covered = acceptanceCoverage([
-        'acceptance' => "A drop reaches the player's row (probe @p15).\n"
-            . "The suite passes: `npx playwright test tests/browser/x.spec.ts`\n"
-            . 'The HUD names the weapon currently held.',
-    ]);
+    $covered = acceptanceCoverage(
+        "A drop reaches the player's row (probe @p15).\n"
+        . "The suite passes: `npx playwright test tests/browser/x.spec.ts`\n"
+        . 'The HUD names the weapon currently held.'
+    );
     $check('a criterion naming a probe tag counts as measured', in_array(
         "A drop reaches the player's row (probe @p15).",
         $covered['measured'],
@@ -2282,8 +2450,55 @@ function selfTest(): int
         true
     ));
     $check('the two counts partition the criteria', count($covered['measured']) === 2 && count($covered['unprobed']) === 1);
-    $empty = acceptanceCoverage(['acceptance' => '']);
+    $empty = acceptanceCoverage('');
     $check('an empty acceptance section reports nothing rather than inventing a criterion', $empty['measured'] === [] && $empty['unprobed'] === []);
+
+    // DEFECT, measured 2026-09-19: the unit is the BULLET, not the line. A contract with SIX criteria
+    // reported `measured=4 unprobed=5`, because two wrapped bullets were counted as five criteria and four
+    // of the five "unprobed" items were fragments. A coverage report that flags fragments gets ignored,
+    // which is the opposite of what it is for -- so the wrapped case is asserted, and so is the direction
+    // that catches an over-eager fix.
+    $wrappedBullet = acceptanceCoverage(
+        "- The HUD names the weapon currently held, and it changes when a new pickup\n"
+        . "  is taken. **No probe covers this; the chair verifies it with a screenshot.**\n"
+        . "  It is left in the contract deliberately unprobed.\n"
+        . "- A drop reaches the player's row (probe @p15).\n"
+    );
+    $check(
+        'a bullet wrapped over three lines is ONE criterion, not three',
+        $wrappedBullet['unprobed'] === [
+            'The HUD names the weapon currently held, and it changes when a new pickup is taken. '
+            . '**No probe covers this; the chair verifies it with a screenshot.** '
+            . 'It is left in the contract deliberately unprobed.',
+        ]
+        && count($wrappedBullet['measured']) === 1
+    );
+    // The other direction. "Join everything" would pass the check above and swallow real structure.
+    $separateBullets = acceptanceCoverage(
+        "- A drop reaches the player's row (probe @p15).\n"
+        . "- A weapon persists for the rest of the run (probe @p17).\n"
+        . "- The HUD names the weapon held.\n"
+    );
+    $check(
+        'separate bullets are still separate criteria -- the join does not swallow real structure',
+        count($separateBullets['measured']) === 2
+        && $separateBullets['unprobed'] === ['The HUD names the weapon held.']
+    );
+    // The path `plan` actually takes: the section out of the markdown, bullets intact. The stored
+    // revision cannot carry this check, which is exactly why the reader was changed.
+    $fromMarkdown = acceptanceCoverage(markdownSection(
+        "# CONTRACT — fixture\n## Acceptance criteria\n"
+        . "- A drop reaches the player's row (probe @p15).\n"
+        . "  ...and it is still legible at the end of its life.\n"
+        . "- The HUD names the weapon held.\n"
+        . "## Required tests\n- `php tests/thing_test.php`\n",
+        'Acceptance criteria'
+    ));
+    $check(
+        'the markdown section reader hands the criteria over with their bullets intact',
+        count($fromMarkdown['measured']) === 1
+        && $fromMarkdown['unprobed'] === ['The HUD names the weapon held.']
+    );
 
     // The lock and the ledger, which are what make "never commit during a live run" askable.
     say('the lock and the ledger:');
@@ -2308,9 +2523,41 @@ function selfTest(): int
         }
     }
     $check('a run is recorded in the ledger', $written);
+    // Direction 1 of the redirect: the record this test just wrote went to the SCRATCH ledger. Without
+    // this, the check below could pass by the test writing nothing anywhere at all.
+    $check(
+        'the self-test ledger record landed in the scratch ledger, not the production one',
+        $scratchLedger !== $productionLedger
+        && str_contains((string) @file_get_contents($scratchLedger), $ledgerProbe)
+        && !str_contains((string) @file_get_contents($productionLedger), $ledgerProbe)
+    );
     $check('an unfinished run reads as abandoned while the lock is free', commandCommitCheck([]) === 0);
     $check('and --strict makes that abandoned run block a commit', commandCommitCheck(['strict']) === 3);
     ledgerAppend(['phase' => 'finish', 'run' => $ledgerProbe, 'exit' => 0]);
+
+    // Direction 2, and the reason the redirect MOVES the path instead of disabling the helpers: with the
+    // redirect lifted they must write the real ledger again. Proved by writing one marker record there,
+    // confirming it landed, and removing exactly that line -- then asserting the file is byte-identical to
+    // what it was, so the proof leaves no noise of its own.
+    $marker = 'selftest-ledger-probe-' . bin2hex(random_bytes(4));
+    ledgerOverride(null, true);
+    ledgerAppend(['phase' => 'start', 'run' => $marker]);
+    $landed = str_contains((string) @file_get_contents($productionLedger), $marker);
+    ledgerStripLine($productionLedger, $marker);
+    ledgerOverride($scratchLedger, true);
+    $check('with the redirect lifted, the ledger helpers write the production ledger again', $landed);
+    $check(
+        'and that marker line is removed again, byte-for-byte',
+        (is_file($productionLedger) ? (string) file_get_contents($productionLedger) : '') === $productionBefore
+    );
+
+    // The repair itself, measured against the file rather than against the intent: a whole self-test ran,
+    // and the production ledger -- the record `commit-check` reads to decide whether a run is live -- is
+    // exactly what it was before the test started.
+    $check(
+        'running the self-test does not change the production ledger',
+        (is_file($productionLedger) ? (string) file_get_contents($productionLedger) : '') === $productionBefore
+    );
 
     say('');
     say(sprintf('  => %d passed, %d failed', $pass, $fail));
@@ -2336,7 +2583,9 @@ $cli = cli($argv);
 $cli['options']['_flags'] = implode(',', $cli['flags']);
 
 if (in_array('self-test', $cli['flags'], true)) {
-    exit(selfTest());
+    // WRAPPED, not called bare: the self-test records runs of its own, and those records belong in a
+    // scratch ledger rather than in the production one that commit-check reads to decide if a run is live.
+    exit(ledgerRedirectedSelfTest());
 }
 
 if ($cli['command'] === '') {
