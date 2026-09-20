@@ -54,7 +54,12 @@ declare(strict_types=1);
 
 $class = 'Ikabud\\Kernel\\Workbench\\Governance\\AuthorityCensus';
 $file = dirname(__DIR__) . '/kernel/Workbench/Governance/AuthorityCensus.php';
-require_once $file;
+// Guarded on purpose: an absent class must be a CLEAN red baseline, not a fatal. `require_once` on a
+// missing file crashes the probe, and a crashing probe is classified as a HARNESS fault -- which would
+// refuse the run rather than fail it, hiding "the behaviour is absent" behind "the instrument broke".
+if (is_file($file)) {
+    require_once $file;
+}
 
 $passed = 0;
 $failed = 0;
