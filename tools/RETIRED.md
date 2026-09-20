@@ -16,7 +16,30 @@ repository's own control plane) and `kernel/Workbench/Retrieval/` (the retrieval
 | `tools/ai-project.php` | 40 KB | `tools/chair.php` and the kernel contract format |
 
 This table is the single authoritative list of what is retired. A directory path covers everything
-beneath it. The retrieval index mirrors these four entries in `RETIRED_PREFIXES` in
+beneath it.
+
+**EXECUTED 2026-09-20 — the three files above are deleted, not merely listed.** 4,811 lines removed.
+Their seven tests were retired by this repository's own convention (renamed `*.php.retired` under
+`tests/_retired/`, so the `*_test.php` runner does not discover them). Suite afterwards: `201 files —
+148 passed, 53 skipped, 0 failed` — exactly the previous run less the seven tests, and nothing else
+changed. `RETIRED_PREFIXES` in `kernel/Workbench/Retrieval/RetrievalIndex.php` still names these three
+paths; they are now vestigial and deliberately left alone, because excluding absent files is harmless
+and touching the retrieval index buys nothing.
+
+**Five further tools were retired in the same commit, with the evidence recorded here:** they each
+`require` a file deleted above, so they could not load at all.
+
+| Tool | Requires | Now |
+|---|---|---|
+| `tools/ai-loop.php` | `ai-project.php` | deleted |
+| `tools/ai-watch.php` | `ai-run.php` | deleted |
+| `tools/ai-contract-lint.php` | `ai-autonomy.php` | deleted |
+| `tools/ai-authority-preflight.php` | `ai-run.php` | deleted |
+| `tools/ai-task` | `ai-autonomy.php` | deleted |
+
+Their two tests went with them. **A tool that cannot load is not a tool**: leaving them would have been
+dead code wearing a live name, which is the same defect this repository spent 2026-09-20 removing from
+the instruction layer — an agent told to use a path that no longer resolves. The retrieval index mirrors these four entries in `RETIRED_PREFIXES` in
 `kernel/Workbench/Retrieval/RetrievalIndex.php`, so a lane is never briefed from any retired path;
 `--include-retired` is the one way to search it deliberately. Retiring the three drivers retires the
 *drivers*, not the L0–L4 authority vocabulary they carried, which policy documents still cite.
