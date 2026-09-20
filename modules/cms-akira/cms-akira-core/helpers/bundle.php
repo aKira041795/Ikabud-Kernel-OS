@@ -123,7 +123,7 @@ function cacBundlePlan(array $bundle, array $current): array
             $plan['add'][] = $key;
             continue;
         }
-        if ((string) ($entry['hash'] ?? '') !== (string) ($existing['hash'] ?? '')) {
+        if (cacBundleEntryHash($entry) !== (string) ($existing['hash'] ?? '')) {
             $plan['update'][] = $key;
             continue;
         }
@@ -206,6 +206,24 @@ function cacBundlePostHash(array $row): string
 }
 
 /**
+ * The identity hash of a bundle entry. An entry that carries the `payload` it
+ * was hashed from is identified by that payload, recomputed here through the
+ * same projection as the tenant side; a payload cannot be overridden by a
+ * stale or absent transported `hash`. An entry that carries no payload keeps
+ * the transported `hash` as its identity.
+ *
+ * @param array<string,mixed> $entry
+ */
+function cacBundleEntryHash(array $entry): string
+{
+    if (array_key_exists('payload', $entry) && is_array($entry['payload'])) {
+        return cacBundlePostHash($entry['payload']);
+    }
+
+    return (string) ($entry['hash'] ?? '');
+}
+
+/**
  * Build the export-side entries from real tenant Post rows.
  *
  * @param list<array<string,mixed>> $rows
@@ -215,9 +233,6 @@ function cacBundleEntriesFromPosts(array $rows): array
 {
     $entries = [];
     foreach ($rows as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
         $slug = trim((string) ($row['slug'] ?? ''));
         if ($slug === '' || strlen($slug) > 191) {
             continue;
@@ -246,9 +261,6 @@ function cacBundleCurrentFromPosts(array $rows): array
 {
     $entries = [];
     foreach ($rows as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
         $slug = trim((string) ($row['slug'] ?? ''));
         if ($slug === '' || strlen($slug) > 191) {
             continue;
@@ -267,6 +279,7 @@ function cacBundleCurrentFromPosts(array $rows): array
  * Build a complete, honest bundle from the tenant through the existing export
  * collection. This is the only export implementation; recovery reuses it.
  *
+ * @param array<string,mixed> $actor
  * @return array<string,mixed>
  */
 function cacBundleFromTenant(array $actor): array
@@ -282,7 +295,10 @@ function cacBundleFromTenant(array $actor): array
     ];
 }
 
-/** @param array<string,mixed> $actor */
+/**
+ * @param array<string,mixed> $actor
+ * @return array<string,mixed>
+ */
 function cacBundleAuditContext(array $actor): array
 {
     return ['caller' => ['module' => CAC_BACKUP_MODULE_ID, 'user' => $actor], 'mode' => 'first'];
@@ -393,7 +409,7 @@ function cac_cap_akira_bundle_apply_1(mixed $payload, string $capabilityId = 'ak
                 'tenant_id' => cacPostTenantId(),
                 'refused' => true,
                 'reason' => $refusal,
-                'remove' => array_values($plan['remove']),
+                'remove' => $plan['remove'],
                 'performed_by_role' => (string) ($actor['role'] ?? ''),
             ],
         ], cacBundleAuditContext($actor));
