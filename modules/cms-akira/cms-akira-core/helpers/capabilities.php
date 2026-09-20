@@ -30,6 +30,8 @@ function cms_akira_core_capability_handlers(): array
         'akira.backup.list@1' => 'cac_cap_akira_backup_list_1',
         'akira.backup.create@1' => 'cac_cap_akira_backup_create_1',
         'akira.export.create@1' => 'cac_cap_akira_export_create_1',
+        'akira.bundle.diff@1' => 'cac_cap_akira_bundle_diff_1',
+        'akira.bundle.apply@1' => 'cac_cap_akira_bundle_apply_1',
         'akira.extension.widgets@1' => 'cac_cap_akira_extension_widgets_1',
         'akira.post.get@1' => 'cac_cap_akira_post_get_1',
         'akira.post.list@1' => 'cac_cap_akira_post_list_1',

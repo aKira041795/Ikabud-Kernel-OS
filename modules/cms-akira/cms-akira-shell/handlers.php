@@ -1118,6 +1118,105 @@ function akiraShellExportCreate(array $params = []): void
 }
 
 /**
+ * Parse a pasted recovery bundle. A wrapper ({"entries":[...]}) is canonical;
+ * a bare entry list is accepted so the console is forgiving of a trimmed file.
+ *
+ * @param array<string,mixed> $input
+ * @return array<string,mixed>
+ */
+function akiraShellBundleInput(array $input): array
+{
+    $raw = (string) ($input['bundle'] ?? '');
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    if (is_array($decoded['entries'] ?? null)) {
+        return $decoded;
+    }
+    return ['entries' => array_values(array_filter($decoded, 'is_array'))];
+}
+
+/**
+ * Dry-run recovery diff. Explicit POST, administrator-gated and CSRF-enforced;
+ * dispatches the akira.bundle.diff@1 read capability and renders the plan and
+ * any refusal. It never applies anything.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellBundleDiff(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $bundle = akiraShellBundleInput($input);
+    $result = null;
+    $error = '';
+    try {
+        $result = akiraShellCall('akira.bundle.diff@1', ['bundle' => $bundle]);
+        if (is_array($result)) {
+            $result['bundle'] = $bundle;
+        }
+    } catch (Throwable $exception) {
+        $error = akiraShellRootErrorMessage($exception);
+        http_response_code(str_contains($error, 'authorization denied') ? 403 : 422);
+    }
+    $console = akiraShellBackupData();
+    echo akiraShellPage('Backup & recovery', akiraShellBackupHtml($console, '', null, is_array($result) ? $result : null, $error), ['active' => 'backups']);
+}
+
+/**
+ * Apply a recovery bundle additively. Explicit, audited POST; dispatches the
+ * akira.bundle.apply@1 v2 mutation with the posted idempotency key so a
+ * repeated submission replays. A plan containing removals is refused and
+ * surfaced with its named entries; nothing is deleted.
+ *
+ * @param array<string,mixed> $params
+ */
+function akiraShellBundleApply(array $params = []): void
+{
+    if (!akiraShellAuthorizeAdmin()) {
+        return;
+    }
+    app()->csrfEnforce();
+    $input = akiraShellInput();
+    $bundle = akiraShellBundleInput($input);
+    $key = trim((string) ($input['idempotency_key'] ?? ''));
+    if ($key === '') {
+        $key = 'akira-bundle-' . bin2hex(random_bytes(12));
+    }
+    $result = null;
+    $error = '';
+    try {
+        $result = akiraShellCall('akira.bundle.apply@1', [
+            'bundle' => $bundle,
+            'idempotency_key' => $key,
+        ]);
+        if (is_array($result)) {
+            $result['bundle'] = $bundle;
+        }
+    } catch (Throwable $exception) {
+        $error = akiraShellRootErrorMessage($exception);
+        http_response_code(str_contains($error, 'authorization denied') ? 403 : 409);
+        if (stripos($error, 'refused') !== false) {
+            $result = [
+                'ok' => false,
+                'operation' => 'apply',
+                'refusal' => $error,
+                'additive' => false,
+                'counts' => ['add' => 0, 'update' => 0, 'skip' => 0, 'remove' => 0],
+                'bundle' => $bundle,
+            ];
+            $error = '';
+        }
+    }
+    $console = akiraShellBackupData();
+    echo akiraShellPage('Backup & recovery', akiraShellBackupHtml($console, '', null, is_array($result) ? $result : null, $error), ['active' => 'backups']);
+}
+
+/**
  * Redirect console. Lists the real tenant redirect rows through the owning
  * akira.redirect.list@1 capability only; the shell owns no table and no SQL.
  *

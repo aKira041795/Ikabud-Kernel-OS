@@ -1219,7 +1219,7 @@ function akiraShellExportPanelHtml(array $export): string
  * @param array<string,mixed> $console
  * @param array<string,mixed>|null $export
  */
-function akiraShellBackupHtml(array $console, string $error = '', ?array $export = null): string
+function akiraShellBackupHtml(array $console, string $error = '', ?array $export = null, ?array $bundle = null, string $bundleError = ''): string
 {
     $ok = ($console['ok'] ?? false) === true;
     $backups = is_array($console['backups'] ?? null) ? array_values(array_filter($console['backups'], 'is_array')) : [];
@@ -1276,8 +1276,76 @@ function akiraShellBackupHtml(array $console, string $error = '', ?array $export
 
     $exportPanel = is_array($export) ? akiraShellExportPanelHtml($export) : '';
 
-    return $notice . $errorHtml . $population . $table . $exportPanel . $createForm . $exportForm
-        . '<p class="mt-4 text-xs text-slate-400">Backups are listed and created only through <code>akira.backup.list@1</code> and <code>akira.backup.create@1</code>; exports only through <code>akira.export.create@1</code>. This console never touches the filesystem, a table, or the destructive reset service.</p>';
+    return $notice . $errorHtml . $population . $table . $exportPanel . $createForm . $exportForm . akiraShellBundlePanelHtml($bundle, $bundleError)
+        . '<p class="mt-4 text-xs text-slate-400">Backups are listed and created only through <code>akira.backup.list@1</code> and <code>akira.backup.create@1</code>; exports only through <code>akira.export.create@1</code>; bundles only through <code>akira.bundle.diff@1</code> and <code>akira.bundle.apply@1</code>. This console never touches the filesystem, a table, or the destructive reset service.</p>';
+}
+
+/**
+ * Render the recovery half of the console: a dry-run diff and an explicit,
+ * additive apply. Refusals are surfaced with their named entries; nothing is
+ * silently skipped. The panel never deletes and never claims a write it did
+ * not make.
+ *
+ * @param array<string,mixed>|null $bundle
+ */
+function akiraShellBundlePanelHtml(?array $bundle, string $error = ''): string
+{
+    $errorHtml = $error === '' ? '' : '<div data-akira-bundle-error role="alert" class="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Bundle operation failed.</strong> ' . akiraShellEscape($error) . '</div>';
+
+    $result = '';
+    $bundleJson = '';
+    $additive = false;
+    if (is_array($bundle)) {
+        $bundleJson = is_array($bundle['bundle'] ?? null)
+            ? (string) json_encode($bundle['bundle'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            : '';
+        $plan = is_array($bundle['plan'] ?? null) ? $bundle['plan'] : [];
+        $counts = is_array($bundle['counts'] ?? null) ? $bundle['counts'] : [];
+        $refusal = trim((string) ($bundle['refusal'] ?? ''));
+        $operation = (string) ($bundle['operation'] ?? 'diff');
+
+        if ($refusal !== '') {
+            $result = '<div data-akira-bundle-refused role="alert" class="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Refused — nothing was written.</strong> ' . akiraShellEscape($refusal) . '</div>';
+        } elseif ($operation === 'apply' && ($bundle['replayed'] ?? false) === true) {
+            $result = '<div data-akira-bundle-replayed class="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"><strong>Replay detected.</strong> This idempotency key already applied this bundle; no row changed.</div>';
+        } elseif ($operation === 'apply') {
+            $applied = is_array($bundle['applied'] ?? null) ? $bundle['applied'] : [];
+            $result = '<div data-akira-bundle-applied class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><strong>Applied additively and audited.</strong> '
+                . count(is_array($applied['add'] ?? null) ? $applied['add'] : []) . ' added, '
+                . count(is_array($applied['update'] ?? null) ? $applied['update'] : []) . ' updated, '
+                . (int) ($counts['skip'] ?? 0) . ' skipped, 0 removed.</div>';
+        } else {
+            $additive = ($bundle['additive'] ?? false) === true;
+            $result = '<div data-akira-bundle-diff class="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"><strong>Dry run — no row changed.</strong> '
+                . (int) ($counts['add'] ?? 0) . ' to add, ' . (int) ($counts['update'] ?? 0) . ' to update, '
+                . (int) ($counts['skip'] ?? 0) . ' skipped, ' . (int) ($counts['remove'] ?? 0) . ' to remove.</div>';
+        }
+
+        foreach (['add', 'update', 'skip', 'remove'] as $bucket) {
+            $entries = is_array($plan[$bucket] ?? null) ? $plan[$bucket] : [];
+            if ($entries === []) {
+                continue;
+            }
+            $result .= '<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">' . akiraShellEscape($bucket) . '</p>'
+                . '<p data-akira-bundle-' . akiraShellEscape($bucket) . ' class="mb-4 break-all font-mono text-xs text-slate-600">' . akiraShellEscape(implode(', ', array_map('strval', $entries))) . '</p>';
+        }
+    }
+
+    $form = '<form data-akira-bundle-diff-form method="post" action="/cms-akira-shell/bundles/diff" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+        . '<h2 class="font-bold text-slate-950">Recovery bundle diff (dry run)</h2><p class="mt-1 text-sm text-slate-500">Paste an exported JSON bundle. The diff is computed by payload hash against this tenant and writes nothing. A plan that would remove a tenant entry is refused and applied by nothing.</p>'
+        . '<textarea name="bundle" rows="8" spellcheck="false" class="mt-4 w-full rounded-xl border border-slate-300 px-4 py-3 font-mono text-xs" placeholder="{&quot;entries&quot;:[{&quot;kind&quot;:&quot;post&quot;,&quot;key&quot;:&quot;example&quot;,&quot;hash&quot;:&quot;…&quot;,&quot;payload&quot;:{…}}]}">' . akiraShellEscape($bundleJson) . '</textarea>'
+        . '<button type="submit" class="mt-4 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">Compute dry-run diff</button></form>';
+
+    $applyForm = '';
+    if ($additive && is_array($bundle) && (($bundle['counts']['add'] ?? 0) > 0 || ($bundle['counts']['update'] ?? 0) > 0)) {
+        $applyForm = '<form data-akira-bundle-apply-form method="post" action="/cms-akira-shell/bundles/apply" class="mb-5 rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">' . akiraShellCsrfField()
+            . '<h2 class="font-bold text-slate-950">Apply additively</h2><p class="mt-1 text-sm text-slate-500">Adds and updates only, through the governed Post capabilities, audited. The idempotency key below is reused so a repeated submission replays instead of duplicating.</p>'
+            . '<textarea name="bundle" hidden>' . akiraShellEscape($bundleJson) . '</textarea>'
+            . '<input type="hidden" name="idempotency_key" value="akira-bundle-' . bin2hex(random_bytes(12)) . '">'
+            . '<button type="submit" class="mt-4 rounded-2xl bg-akira-600 px-5 py-3 text-sm font-semibold text-white hover:bg-akira-700">Apply additively</button></form>';
+    }
+
+    return $errorHtml . $result . $form . $applyForm;
 }
 
 /** @return array<string,mixed> */

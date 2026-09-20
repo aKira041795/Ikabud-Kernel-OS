@@ -55,6 +55,8 @@ return [
         '/cms-akira-shell/workflow/{entity_key}/transition' => 'cms-akira-shell:akiraShellWorkflowConsoleTransition',
         '/cms-akira-shell/search/rebuild' => 'cms-akira-shell:akiraShellSearchRebuild',
         '/cms-akira-shell/backups' => 'cms-akira-shell:akiraShellBackupCreate',
+        '/cms-akira-shell/bundles/diff' => 'cms-akira-shell:akiraShellBundleDiff',
+        '/cms-akira-shell/bundles/apply' => 'cms-akira-shell:akiraShellBundleApply',
         '/cms-akira-shell/redirects' => 'cms-akira-shell:akiraShellRedirectCreate',
         '/cms-akira-shell/exports' => 'cms-akira-shell:akiraShellExportCreate',
         '/cms-akira-shell/settings' => 'cms-akira-shell:akiraShellSettingsUpdate',

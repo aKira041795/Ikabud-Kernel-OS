@@ -192,6 +192,29 @@
                 "description": "Administrator-governed audited post export through KernelExport"
             },
             {
+                "id": "akira.bundle.diff@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "description": "Administrator-governed dry-run diff of a recovery bundle against the tenant, by payload hash, claiming no invalidation"
+            },
+            {
+                "id": "akira.bundle.apply@1",
+                "priority": 50,
+                "modes": [
+                    "first"
+                ],
+                "requires_protocol": "v2",
+                "effects": {
+                    "invalidates": [
+                        "entity.list.post",
+                        "entity.detail.post"
+                    ]
+                },
+                "description": "Administrator-governed idempotent additive recovery apply; refuses any plan that would remove an entry"
+            },
+            {
                 "id": "akira.redirect.list@1",
                 "priority": 50,
                 "modes": [

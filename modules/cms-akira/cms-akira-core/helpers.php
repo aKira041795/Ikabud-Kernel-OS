@@ -14,6 +14,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/helpers/backup.php';
+require_once __DIR__ . '/helpers/bundle.php';
 require_once __DIR__ . '/helpers/capabilities.php';
 require_once __DIR__ . '/helpers/entity-views.php';
 require_once __DIR__ . '/helpers/governance.php';
@@ -418,6 +419,42 @@ function cacSeedGovernancePolicies(): void
 
 if (cacRequestMayMutate()) {
     cacSeedGovernancePolicies();
+}
+
+/**
+ * Seed the P6 recovery policy. `akira.bundle.diff@1` is a read and
+ * `akira.bundle.apply@1` is a v2 mutation; both are administrator-tier and
+ * caller-scoped to the core provider and its shell. A new, narrower row is the
+ * only sanctioned direction here — no existing row is widened.
+ */
+function cacSeedBundleRecoveryPolicies(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+    $policyVersion = cacActivePolicyVersion();
+    $rows = [];
+    foreach ([
+        'akira.bundle.diff@1' => 'v1',
+        'akira.bundle.apply@1' => 'v2',
+    ] as $capabilityId => $protocol) {
+        $rows[] = [
+            'policy_version' => $policyVersion,
+            'capability_id' => $capabilityId,
+            'capability_version' => '1',
+            'provider' => 'cms-akira-core',
+            'caller_module' => 'cms-akira-core,cms-akira-shell',
+            'allowed_roles' => 'admin,administrator,superadmin',
+            'provider_activation_required' => true,
+            'requires_protocol' => $protocol,
+            'is_active' => true,
+        ];
+    }
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+}
+
+if (cacRequestMayMutate()) {
+    cacSeedBundleRecoveryPolicies();
 }
 
 // ── Scoped Context Helpers ───────────────────────────────────────
