@@ -215,7 +215,7 @@ function ledgerPath(): string
  * keeps the move from outliving the code that asked for it, including when a check throws.
  *
  * The path is overridable because --self-test wrote its own records into the production ledger (see the
- * note on ledgerRedirectedSelfTest()). One value the helpers read is a smaller change than teaching every
+ * note on ledgerOverride()). One value the helpers read is a smaller change than teaching every
  * call site to skip itself during a test, and it keeps the redirection visible in one place.
  *
  * @param string|null $path     the path to redirect to, or null for the normal ledger
@@ -282,11 +282,49 @@ function ledgerRead(): array
 }
 
 /**
+ * The lock file the harness takes, or the redirect a self-test has put in its place.
+ *
+ * The lock is overridable for the same reason the ledger is, and the failure that proved it was measured
+ * on 2026-09-20: a required test that invokes `chair.php --self-test` runs INSIDE `advance`, while the run
+ * holds LOCK_EX on the production lock, so the self-test's own lock and commit-check controls could never
+ * pass -- 5 failures that said nothing about the self-test and everything about who was running it. A probe
+ * must not depend on, or disturb, production state; the self-test now points this at a scratch file and
+ * tests the same logic against it.
+ */
+function lockPath(): string
+{
+    return lockOverride() ?? chairStateDir() . '/.run.lock';
+}
+
+/**
+ * Read where the lock points, or move it. `null` means the normal path.
+ *
+ * Same shape, and the same reason, as ledgerOverride(): `null` is a MEANINGFUL redirect target -- back to
+ * the production lock -- so "set it to null" cannot be told from "just read it" without the flag. A
+ * redirect returns the previous value so a caller can restore exactly what it found from a `finally`.
+ *
+ * @param string|null $path     the path to redirect to, or null for the normal lock
+ * @param bool        $redirect whether this call IS the redirect, rather than a read
+ * @return string|null the previous redirect when redirecting, otherwise the current one
+ */
+function lockOverride(?string $path = null, bool $redirect = false): ?string
+{
+    static $current = null;
+    if (!$redirect) {
+        return $current;
+    }
+    $previous = $current;
+    $current = $path;
+
+    return $previous;
+}
+
+/**
  * @return resource|null null when the lock is already held and $blocking is false
  */
 function lockAcquire(bool $blocking)
 {
-    $path = chairStateDir() . '/.run.lock';
+    $path = lockPath();
     $handle = fopen($path, 'c');
     if ($handle === false) {
         fail("cannot open {$path}");
@@ -334,7 +372,7 @@ function isProcessAlive(int $pid): bool
  */
 function lockOwner(): array
 {
-    $decoded = json_decode((string) @file_get_contents(chairStateDir() . '/.run.lock'), true);
+    $decoded = json_decode((string) @file_get_contents(lockPath()), true);
     if (!is_array($decoded) || !isset($decoded['pid'])) {
         return ['pid' => 0, 'at' => '', 'alive' => false];
     }
@@ -377,7 +415,7 @@ function withRunLock(array $options, callable $body): int
             say('  The lock file names pid ' . $owner['pid'] . ', and that process is not running.');
             say('  A lane outlives the chair that dispatched it, so this is the expected shape after a');
             say('  killed run. It clears when the lane reaches its own budget (' . CHAIR_LANE_SECONDS . 's);');
-            say('  to see who holds it now:  fuser -v ' . chairStateDir() . '/.run.lock');
+            say('  to see who holds it now:  fuser -v ' . lockPath());
         }
 
         return 3;
@@ -3041,17 +3079,27 @@ function commandStatus(array $options): int
  * a lifted redirect still writes the production ledger, and the production ledger is byte-identical
  * afterwards -- because "the self-test stopped writing noise" bought by breaking ledger writing
  * everywhere would be a worse defect than the one being repaired.
+ *
+ * The LOCK is redirected here for the same reason, and the failure that proved it was measured on
+ * 2026-09-20: `tests/retrieval_index_test.php` invokes `chair.php --self-test`, and `advance` runs the
+ * required tests while it holds the production lock -- so the self-test's lock controls failed inside every
+ * run, reporting 5 failures that were about who was running it rather than about the controls. A probe must
+ * not depend on, or disturb, production state.
  */
-function ledgerRedirectedSelfTest(): int
+function isolatedSelfTest(): int
 {
-    $scratch = chairStateDir() . '/selftest-ledger-' . bin2hex(random_bytes(4)) . '.jsonl';
-    $previous = ledgerOverride($scratch, true);
+    $scratchLedger = chairStateDir() . '/selftest-ledger-' . bin2hex(random_bytes(4)) . '.jsonl';
+    $scratchLock = chairStateDir() . '/selftest-lock-' . bin2hex(random_bytes(4)) . '.lock';
+    $previousLedger = ledgerOverride($scratchLedger, true);
+    $previousLock = lockOverride($scratchLock, true);
 
     try {
         return selfTest();
     } finally {
-        ledgerOverride($previous, true);
-        @unlink($scratch);
+        lockOverride($previousLock, true);
+        ledgerOverride($previousLedger, true);
+        @unlink($scratchLedger);
+        @unlink($scratchLock);
     }
 }
 
@@ -3645,6 +3693,13 @@ function selfTest(): int
 
     // The lock and the ledger, which are what make "never commit during a live run" askable.
     say('the lock and the ledger:');
+    // Both directions of the isolation, because a scratch path that silently did not take effect would
+    // look exactly like a passing suite: this asserts the redirect is IN PLACE, and the checks below then
+    // assert the logic still works through it.
+    $check(
+        'the self-test runs against its own lock, not the production one',
+        lockPath() !== chairStateDir() . '/.run.lock'
+    );
     $held = lockAcquire(false);
     $check('the first holder gets the lock', $held !== null);
     $check('a second run is refused while one holds the lock', lockAcquire(false) === null);
@@ -3728,7 +3783,7 @@ $cli['options']['_flags'] = implode(',', $cli['flags']);
 if (in_array('self-test', $cli['flags'], true)) {
     // WRAPPED, not called bare: the self-test records runs of its own, and those records belong in a
     // scratch ledger rather than in the production one that commit-check reads to decide if a run is live.
-    exit(ledgerRedirectedSelfTest());
+    exit(isolatedSelfTest());
 }
 
 if ($cli['command'] === '') {
