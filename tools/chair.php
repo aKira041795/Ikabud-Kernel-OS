@@ -160,7 +160,9 @@ function record(string $kind, array $fields): void
     say(sprintf('[%s] %s', $kind, implode(' ', $parts)));
 
     // Durable from here on: `record()` is the name every caller already trusted.
-    ledgerAppend(['kind' => $kind, 'at' => gmdate('c')] + $fields);
+    // The key is `record`, NOT `kind`: run-start entries already use `kind` for the lane kind
+    // (mechanical/visual/reasoning), and two meanings for one key is how a ledger starts lying.
+    ledgerAppend(['record' => $kind, 'at' => gmdate('c')] + $fields);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -303,6 +305,88 @@ function ledgerRead(): array
     }
 
     return $entries;
+}
+
+/**
+ * Tasks the ledger records as VERIFIED. The durable answer to "is this task finished?".
+ *
+ * Before 2026-09-20 `record('VERIFIED', …)` printed and wrote nothing, so this question had no answer at
+ * all: every task read READY_FOR_IMPLEMENTATION for ever, and a stalled task was indistinguishable from a
+ * finished one.
+ *
+ * @return array<string,true>
+ */
+function verifiedTasks(): array
+{
+    $done = [];
+    foreach (ledgerRead() as $entry) {
+        if ((string) ($entry['record'] ?? '') !== 'VERIFIED') {
+            continue;
+        }
+        $task = (string) ($entry['task'] ?? '');
+        if ($task !== '') {
+            $done[$task] = true;
+        }
+    }
+
+    return $done;
+}
+
+/**
+ * Tasks that were DISPATCHED and never verified: work left in flight.
+ *
+ * This is the stall signature, and the reason `continue-check` can now refuse to idle. A task that was
+ * planned but never dispatched is NOT stranded -- that is backlog, which is reported rather than fatal,
+ * because a guard that is permanently red is a guard nobody reads.
+ *
+ * @return array<string,true>
+ */
+function strandedTasks(): array
+{
+    $started = [];
+    foreach (ledgerRead() as $entry) {
+        $task = (string) ($entry['task'] ?? '');
+        if ($task === '') {
+            continue;
+        }
+        if (in_array((string) ($entry['phase'] ?? ''), ['start', 'attempt'], true)) {
+            $started[$task] = true;
+        }
+    }
+
+    return array_diff_key($started, verifiedTasks());
+}
+
+/**
+ * Runs that were started and never finished: a process that died in flight.
+ *
+ * Deliberately separate from `strandedTasks()`. `strandedTasks()` asks "is there a VERIFIED record?", and
+ * before 2026-09-20 the answer was no for EVERY task ever run, because `record('VERIFIED', …)` never
+ * persisted. So the stranded COUNT is only meaningful for runs that post-date the fix, and using it as a
+ * fatal condition would make the invariant permanently red -- a guard nobody reads. A run with `start`
+ * and no `finish` needs no such caveat: it is unambiguously unfinished.
+ *
+ * @return array<string,true>
+ */
+function openRuns(): array
+{
+    $open = [];
+    foreach (ledgerRead() as $entry) {
+        $run = (string) ($entry['run'] ?? '');
+        if ($run === '') {
+            continue;
+        }
+        $phase = (string) ($entry['phase'] ?? '');
+        if ($phase === 'start') {
+            $open[$run] = ($entry['task'] ?? '') === '' ? $run : (string) $entry['task'];
+            continue;
+        }
+        if ($phase === 'finish' || $phase === 'blocked') {
+            unset($open[$run]);
+        }
+    }
+
+    return $open;
 }
 
 /**
@@ -1739,6 +1823,13 @@ function falsifyProbe(array $requiredTests, array $runChanged, array $baseline):
 const CHAIR_LANE_SECONDS = 1800;
 
 /**
+ * The date durable harness records began. Before it, `record()` printed and persisted nothing, so a
+ * missing VERIFIED entry is NOT evidence that a task was never verified -- it is evidence about the
+ * instrument. Anything derived from VERIFIED records is scoped to this date, and says so.
+ */
+const CHAIR_DURABLE_RECORD_DATE = '2026-09-20';
+
+/**
  * The contract-level stop reasons. Any OTHER reason means obligations remain, and the harness may not idle.
  *
  * Quoted from the normative policy (`ai-autonomy-escalation.instructions.md`, "Stop invariant"):
@@ -3111,8 +3202,14 @@ function commandStatus(array $options): int
             return 0;
         }
         record('TASKS', ['n' => (string) count($tasks)]);
+        $verified = verifiedTasks();
         foreach ($tasks as $task) {
-            say(sprintf('  %-34s %-16s %s', (string) ($task['task_id'] ?? '?'), (string) ($task['state'] ?? '?'), (string) ($task['title'] ?? '')));
+            // `state` is the stored lifecycle state and never advances on its own, so a finished task
+            // used to read exactly like one that was never started. Report the ledger's verdict where the
+            // ledger has one, and say UNVERIFIED where it has none rather than implying readiness.
+            $id = (string) ($task['task_id'] ?? '?');
+            $state = isset($verified[$id]) ? 'COMPLETED' : 'UNVERIFIED';
+            say(sprintf('  %-34s %-16s %s', $id, $state, (string) ($task['title'] ?? '')));
         }
 
         return 0;
@@ -3592,10 +3689,37 @@ function selfTest(): int
     $check(
         'record() PERSISTS what it announces instead of only printing it',
         count($ledgerAfter) === $ledgerBefore + 1
-        && ($probeEntry['kind'] ?? '') === 'SELFTEST_PROBE'
+        && ($probeEntry['record'] ?? '') === 'SELFTEST_PROBE'
         && ($probeEntry['note'] ?? '') === 'record-persists',
-        'ledger grew by ' . (count($ledgerAfter) - $ledgerBefore) . ' lines, last kind='
-        . (string) ($probeEntry['kind'] ?? '(none)')
+        'ledger grew by ' . (count($ledgerAfter) - $ledgerBefore) . ' lines, last record='
+        . (string) ($probeEntry['record'] ?? '(none)')
+    );
+
+    // Stall detection, on a fabricated ledger: a task that was DISPATCHED and never verified is work left
+    // in flight. Its absence is why the harness could report "idling is correct" with two slices
+    // unstarted -- nothing durable recorded which tasks had finished.
+    ledgerAppend(['phase' => 'start', 'run' => 'probe-done', 'task' => 'task-probe-done']);
+    ledgerAppend(['phase' => 'attempt', 'run' => 'probe-done', 'task' => 'task-probe-done', 'n' => 1, 'lane' => 'mechanical']);
+    ledgerAppend(['record' => 'VERIFIED', 'task' => 'task-probe-done', 'attempt' => '1', 'lane' => 'mechanical']);
+    ledgerAppend(['phase' => 'start', 'run' => 'probe-stalled', 'task' => 'task-probe-stalled']);
+    ledgerAppend(['phase' => 'attempt', 'run' => 'probe-stalled', 'task' => 'task-probe-stalled', 'n' => 1, 'lane' => 'mechanical']);
+    ledgerAppend(['record' => 'TASKS', 'task' => 'task-probe-backlog', 'n' => '1']);
+    $check(
+        'a task the ledger records as VERIFIED counts as finished',
+        isset(verifiedTasks()['task-probe-done'])
+    );
+    $strandedNow = strandedTasks();
+    $check(
+        'a dispatched task with no VERIFIED record is stranded',
+        isset($strandedNow['task-probe-stalled'])
+    );
+    $check(
+        'a VERIFIED task is not stranded',
+        !isset($strandedNow['task-probe-done'])
+    );
+    $check(
+        'a task that was never dispatched is backlog, not a stall',
+        !isset($strandedNow['task-probe-backlog'])
     );
     // The other direction, and the reason the phase is `blocked` and not `start`: a stop is a FINISHED
     // decision, so it must not read as a live or abandoned run and block a commit.
@@ -4021,6 +4145,26 @@ function commandContinueCheck(array $options): int
     }
     foreach (array_slice($obligations['director'], 0, 6) as $item) {
         say('    DIRECTOR ' . $item);
+    }
+
+    // A dispatched run that was never verified is work left in flight. This is the check whose absence
+    // let the harness report "idling is correct" while two slices sat unstarted: nothing durable said
+    // which tasks had finished, so nothing could say that work remained.
+    $stranded = strandedTasks();
+    if ($stranded !== []) {
+        say('  tasks with no VERIFIED record: ' . count($stranded) . ' (durable records began ' . CHAIR_DURABLE_RECORD_DATE . ')');
+    }
+    $open = openRuns();
+    if ($open !== []) {
+        say('  runs started and never finished: ' . count($open));
+        foreach (array_slice($open, 0, 5) as $task) {
+            say('    OPEN ' . $task);
+        }
+        if (!$blocker) {
+            say('  A run is unfinished. Refusing to idle.');
+
+            return 3;
+        }
     }
 
     if ($obligations['chair'] === []) {
