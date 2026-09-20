@@ -129,7 +129,28 @@ function fail(string $message): never
     exit(2);
 }
 
-/** @param array<string,string> $fields */
+/**
+ * Announce a harness fact — and persist it.
+ *
+ * This used to `say()` and nothing else, so EVERY `record('VERIFIED', …)` / `record('TASKS', …)` /
+ * `record('CONTINUE', …)` in the harness was console output only. Measured 2026-09-20: the ledger held
+ * 121 lines and **zero** verification records, despite two runs having printed `[VERIFIED]` that
+ * afternoon. With no durable fact that a task ever finished:
+ *
+ *   * every task read `READY_FOR_IMPLEMENTATION` for ever — completed and never-started were
+ *     byte-identical in `status`, so finished work and stalled work looked the same;
+ *   * `continue-check` had nothing truthful to read and fell back to the plan's prose table, which
+ *     reported "Nothing chair-actionable remains … idling is correct" while work was outstanding;
+ *   * a stall was therefore undetectable **by construction**, not by oversight.
+ *
+ * A function named `record()` that does not record is the same defect this repository has been fixing
+ * all day: state that does not hold what it claims to hold. It announces now, and it records now.
+ *
+ * `ledgerAppend()` already honours `ledgerOverride()`, so the self-test's scratch-ledger isolation keeps
+ * the production ledger clean without any extra care here.
+ *
+ * @param array<string,string> $fields
+ */
 function record(string $kind, array $fields): void
 {
     $parts = [];
@@ -137,6 +158,9 @@ function record(string $kind, array $fields): void
         $parts[] = $key . '=' . (str_contains($value, ' ') ? '"' . $value . '"' : $value);
     }
     say(sprintf('[%s] %s', $kind, implode(' ', $parts)));
+
+    // Durable from here on: `record()` is the name every caller already trusted.
+    ledgerAppend(['kind' => $kind, 'at' => gmdate('c')] + $fields);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3535,8 +3559,13 @@ function selfTest(): int
         commandExhausted($blockedTask, ['a:low', 'b:high'], 'selftest-run') === 3
     );
     $blocked = null;
+    // Repair, 2026-09-20: `record()` now also PERSISTS a `kind`-tagged entry, so the ledger can hold
+    // more than one record for a task. This scan used to take the LAST entry for the task and assert its
+    // phase -- which only held while the blocked entry happened to be last. Select the record the check
+    // MEANS instead. The assertion below is unchanged: the blocked record must still exist and must
+    // still name the stop reason, the attempts made, and the run.
     foreach (ledgerRead() as $entry) {
-        if (($entry['task'] ?? '') === $blockedTask) {
+        if (($entry['task'] ?? '') === $blockedTask && ($entry['phase'] ?? '') === 'blocked') {
             $blocked = $entry;
         }
     }
@@ -3550,6 +3579,23 @@ function selfTest(): int
         && ($blocked['stop_reason'] ?? '') === 'ATTEMPTS_EXHAUSTED'
         && ($blocked['attempts'] ?? 0) === 2
         && ($blocked['run'] ?? '') === 'selftest-run'
+    );
+
+    // The oracle for the 2026-09-20 change: `record()` must PERSIST what it announces. Every
+    // `record('VERIFIED', …)` used to be console output only, so no durable fact said a task had
+    // finished -- every task read READY_FOR_IMPLEMENTATION for ever and a stall was undetectable by
+    // construction. Without this check the change is unguarded and could regress to `say()` alone.
+    $ledgerBefore = count(ledgerRead());
+    record('SELFTEST_PROBE', ['note' => 'record-persists']);
+    $ledgerAfter = ledgerRead();
+    $probeEntry = $ledgerAfter[count($ledgerAfter) - 1] ?? [];
+    $check(
+        'record() PERSISTS what it announces instead of only printing it',
+        count($ledgerAfter) === $ledgerBefore + 1
+        && ($probeEntry['kind'] ?? '') === 'SELFTEST_PROBE'
+        && ($probeEntry['note'] ?? '') === 'record-persists',
+        'ledger grew by ' . (count($ledgerAfter) - $ledgerBefore) . ' lines, last kind='
+        . (string) ($probeEntry['kind'] ?? '(none)')
     );
     // The other direction, and the reason the phase is `blocked` and not `start`: a stop is a FINISHED
     // decision, so it must not read as a live or abandoned run and block a commit.
