@@ -297,7 +297,15 @@ function retrievalSelfTest(): int
     // Identical text on purpose: only the PATH can decide which of the two is briefed, so a check that
     // passed because the words were absent would be caught rather than trusted.
     $swarmProse = "the carrier drop reaches stage 2 and the weapon drops a pickup\n";
-    file_put_contents($retiredSandbox . '/tools/harpp2/objectives/galaga-p12.md', $swarmProse);
+    $retiredPaths = [
+        'tools/harpp2/objectives/galaga-p12.md',
+        'tools/ai-run.php',
+        'tools/ai-project.php',
+        'tools/ai-autonomy.php',
+    ];
+    foreach ($retiredPaths as $retiredPath) {
+        file_put_contents($retiredSandbox . '/' . $retiredPath, $swarmProse);
+    }
     file_put_contents($retiredSandbox . '/public/star-swarm/star-swarm.js', $swarmProse);
     $retiredIndex = new RetrievalIndex($retiredSandbox . '/.index', $retiredSandbox);
     $retiredIndex->index([$retiredSandbox . '/tools', $retiredSandbox . '/public']);
@@ -305,8 +313,8 @@ function retrievalSelfTest(): int
     $briefed = $retiredIndex->search('carrier drop pickup weapon stage', 8);
     $briefedPaths = array_column($briefed['hits'], 'path');
     $check(
-        'a retired document does NOT come back for a query that previously returned it',
-        !in_array('tools/harpp2/objectives/galaga-p12.md', $briefedPaths, true),
+        'every retired path is held out of a query that would otherwise return it',
+        array_intersect($retiredPaths, $briefedPaths) === [],
         implode(', ', $briefedPaths)
     );
     $check(
@@ -315,29 +323,30 @@ function retrievalSelfTest(): int
         implode(', ', $briefedPaths)
     );
     $check(
-        'the retired document is still INDEXED and only kept out of the brief',
-        $retiredIndex->stats()['documents'] === 2 && $retiredIndex->stats()['retired'] === 1
+        'the retired documents are still INDEXED and only kept out of the brief',
+        $retiredIndex->stats()['documents'] === 5 && $retiredIndex->stats()['retired'] === 4
     );
     $check(
         'stats reports the retired count, so the exclusion is visible rather than silent',
-        $retiredIndex->stats()['retired'] === 1
+        $retiredIndex->stats()['retired'] === 4
     );
     $check(
         'and a search says how many documents it held back',
-        $briefed['retired'] === 1
+        $briefed['retired'] === 4
     );
     $asked = $retiredIndex->search('carrier drop pickup weapon stage', 8, [], true);
     $check(
-        'with the explicit opt-in the retired document CAN still be retrieved, so the material is not lost',
-        in_array('tools/harpp2/objectives/galaga-p12.md', array_column($asked['hits'], 'path'), true)
+        'with the explicit opt-in every retired path CAN still be retrieved, so the material is not lost',
+        array_diff($retiredPaths, array_column($asked['hits'], 'path')) === []
     );
     $check(
-        'the retired rule is declared once and answers both ways',
-        RetrievalIndex::isRetired('tools/harpp2/objectives/galaga-p12.md')
+        'the retired rule covers the authoritative list and answers both ways',
+        count(array_filter($retiredPaths, [RetrievalIndex::class, 'isRetired'])) === count($retiredPaths)
             && !RetrievalIndex::isRetired('tools/chair.php')
-            // A substring rule would retire these two, and neither is the retired harness's material.
+            // A substring rule would retire these, while a loose file prefix would retire the backup.
             && !RetrievalIndex::isRetired('tools/harpp2.md')
             && !RetrievalIndex::isRetired('docs/reviews/harpp2-postmortem.md')
+            && !RetrievalIndex::isRetired('tools/ai-run.php.bak')
     );
 
     // The director's instruction was to RETIRE the harness, not delete it. The cheapest way to make the
@@ -349,7 +358,7 @@ function retrievalSelfTest(): int
         $retiredKept !== [] && is_file(dirname(__DIR__, 3) . '/tools/RETIRED.md')
     );
 
-    foreach (['/tools/harpp2/objectives/galaga-p12.md', '/public/star-swarm/star-swarm.js', '/.index/index.json', '/.index/index.lock'] as $file) {
+    foreach (['/tools/harpp2/objectives/galaga-p12.md', '/tools/ai-run.php', '/tools/ai-project.php', '/tools/ai-autonomy.php', '/public/star-swarm/star-swarm.js', '/.index/index.json', '/.index/index.lock'] as $file) {
         @unlink($retiredSandbox . $file);
     }
     foreach (['/tools/harpp2/objectives', '/tools/harpp2', '/tools', '/public/star-swarm', '/public', '/.index', ''] as $dir) {

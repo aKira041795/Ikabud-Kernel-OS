@@ -10,13 +10,16 @@ repository's own control plane) and `kernel/Workbench/Retrieval/` (the retrieval
 
 | Path | Size | Superseded by |
 |---|---|---|
-| `tools/harpp2/harpp2.php` | 33 KB | `tools/chair.php run` |
-| `tools/harpp2/chain.sh`, `dispatch.sh`, `dispatch-dsh.sh`, `e2e.sh` | — | `chair.php plan` → `run` |
-| `tools/harpp2/objectives/`, `gates/`, `projects/` | — | the probe in a contract's `## Required tests` |
-| `tools/harpp2/escalations/` | — | a recorded chair decision |
-| `tools/ai-autonomy.php` | 88 KB | rule 3: the chair decides |
-| `tools/ai-run.php` | 111 KB | `kernel/Workbench/Development` task records |
-| `tools/ai-project.php` | 40 KB | the kernel contract format |
+| `tools/harpp2/` | — | `tools/chair.php plan` / `run` and contract probes |
+| `tools/ai-autonomy.php` | 88 KB | `tools/chair.php` |
+| `tools/ai-run.php` | 111 KB | `tools/chair.php` and `kernel/Workbench/Development` task records |
+| `tools/ai-project.php` | 40 KB | `tools/chair.php` and the kernel contract format |
+
+This table is the single authoritative list of what is retired. A directory path covers everything
+beneath it. The retrieval index mirrors these four entries in `RETIRED_PREFIXES` in
+`kernel/Workbench/Retrieval/RetrievalIndex.php`, so a lane is never briefed from any retired path;
+`--include-retired` is the one way to search it deliberately. Retiring the three drivers retires the
+*drivers*, not the L0–L4 authority vocabulary they carried, which policy documents still cite.
 
 ## Why it was retired — the measurements, not the impression
 

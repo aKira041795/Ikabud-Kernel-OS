@@ -82,10 +82,23 @@ final class RetrievalIndex
      * Paths whose material is RETIRED -- the harness this repository no longer runs.
      *
      * PREFIXES, not paths: what was retired is the harness's whole directory, and listing 242 files
-     * would be a snapshot that the next file added to it silently escapes. The rule is stated once, here,
-     * so a reader can argue with it -- see isRetired() for why it is declared rather than derived.
+     * would be a snapshot that the next file added to it silently escapes. The authoritative list is in
+     * tools/RETIRED.md; its retrieval enforcement is centralised here rather than repeated at call sites.
+     *
+     * A prefix ending in `/` retires a DIRECTORY and everything under it. A prefix that names a file
+     * retires exactly that file: `tools/ai-run.php` must not swallow `tools/ai-run.php.bak`, which is a
+     * different artifact. That distinction is enforced in isRetired(), not assumed here.
+     *
+     * The three drivers were retired by decision `retired-tool-authority-20260919-153252` (option c),
+     * which is applied in tools/RETIRED.md; the L0-L4 vocabulary they used is still cited by policy and
+     * is not retired with the driver.
      */
-    private const RETIRED_PREFIXES = ['tools/harpp2/'];
+    private const RETIRED_PREFIXES = [
+        'tools/harpp2/',
+        'tools/ai-run.php',
+        'tools/ai-project.php',
+        'tools/ai-autonomy.php',
+    ];
 
     private const VERSION = 1;
 
@@ -175,17 +188,16 @@ final class RetrievalIndex
      * and hash, and a retired file never changes, so it is PERMANENTLY current. That gate measures
      * CHANGED; this one measures STILL TRUE, and no amount of re-indexing turns one into the other.
      *
-     * DECLARED, ONCE, HERE. The alternative that was reached for first is a `str_contains($path, 'harpp2')`
-     * at each call site. That reads as a coincidence rather than a policy, cannot be argued with by a
-     * reader, and answers TRUE for a path that merely has the word in its name -- `tools/harpp2.md`, or a
-     * file that documents the harness. A prefix list says what is meant: the retired harness's own material.
+     * ENFORCED IN ONE PLACE. The alternative that was reached for first is a
+     * `str_contains($path, 'harpp2')` at each call site. That reads as a coincidence rather than a policy,
+     * cannot be argued with by a reader, and answers TRUE for a path that merely has the word in its name --
+     * `tools/harpp2.md`, or a file that documents the harness. A prefix list says what is meant: the retired
+     * harness's own material.
      *
-     * NOT READ FROM tools/RETIRED.md, deliberately, though that file is the record of WHY. It is prose
-     * with a "superseded by" table, and it names `tools/ai-autonomy.php`, `tools/ai-run.php` and
-     * `tools/ai-project.php`, which this repository's own instructions still document as current drivers.
-     * A predicate parsed from a narrative would retire live tools on the day someone edited a sentence, and
-     * the index would then be wrong in a way no reader could see. Retirement is a policy, so it lives in
-     * code where it can be reviewed and changed on purpose; RETIRED.md stays its explanation.
+     * NOT PARSED FROM tools/RETIRED.md, deliberately. That file is the single authoritative human record,
+     * while this constant mirrors its four paths as executable policy. Parsing a Markdown table into a
+     * runtime predicate would make a prose-format edit change retrieval behaviour invisibly. Keeping the
+     * small mirror explicit makes drift reviewable, and the self-test below exercises every listed path.
      *
      * Evaluated at QUERY time, not stored at index time, and that is the point. A `retired: true` flag in
      * index.json is another attribute that never changes -- the exact failure this method exists to repair.
@@ -197,7 +209,17 @@ final class RetrievalIndex
     {
         $normalised = ltrim(str_replace('\\', '/', $path), '/');
         foreach (self::RETIRED_PREFIXES as $prefix) {
-            if (str_starts_with($normalised, $prefix)) {
+            // A directory prefix (trailing slash) retires everything under it; a file prefix retires
+            // exactly that file. The second case is EXACT on purpose: `str_starts_with` would also retire
+            // `tools/ai-run.php.bak`, which is a different artifact, and this list is a policy a reader
+            // has to be able to predict.
+            if (str_ends_with($prefix, '/')) {
+                if (str_starts_with($normalised, $prefix)) {
+                    return true;
+                }
+                continue;
+            }
+            if ($normalised === $prefix) {
                 return true;
             }
         }
@@ -347,12 +369,18 @@ final class RetrievalIndex
      *      "adding", "stage", "path", "table" and "render" -- terms that say nothing about the question.
      *   2. PATH BEATS BODY. A term in the path scores PATH_TERM_BONUS, a term in the body at most
      *      BODY_TERM_CAP: `star-swarm.js` is about the swarm in a way a file mentioning it is not.
-     *   3. BODY FREQUENCY SATURATES at BODY_TERM_CAP, so repeating one word cannot outrank covering
+     *   3. LENGTH NORMALISATION. Summed term counts grow with document size, so the score is divided by
+     *      `1 + log(lines / average_lines)`, with a floor of 1 so a short document is not inflated. A
+     *      file longer than the corpus average must be more, not merely longer, to outrank a focused one.
+     *      Measured 2026-09-20: without it a 1773-line review brief that repeated `error` three extra
+     *      times outranked the 140-line note the query was about, and drove the file that defines the
+     *      index out of its own rank.
+     *   4. BODY FREQUENCY SATURATES at BODY_TERM_CAP, so repeating one word cannot outrank covering
      *      the query, and the total is scaled by COVERAGE -- the share of the query's terms the document
      *      matched. Measured 2026-09-19 without it: a 11250-line handler that happened to contain six of
      *      the query's common words ranked above the 177-line file that contains the subject.
-     *   4. USE BOOST, bounded and decaying -- see useBoost() for the bound and why it must decay.
-     *   5. SPREAD. At most SPREAD_QUOTA hits per top-level area, with the displaced hits backfilled in
+     *   5. USE BOOST, bounded and decaying -- see useBoost() for the bound and why it must decay.
+     *   6. SPREAD. At most SPREAD_QUOTA hits per top-level area, with the displaced hits backfilled in
      *      score order: a lane handed eight near-copies of one directory has been given one answer.
      *      The rule can only reshuffle what the scores already ranked, never invent a hit.
      *
@@ -402,13 +430,17 @@ final class RetrievalIndex
         // Document frequency, for the query's terms only: one pass over the term maps, no extra reads.
         // Over the CANDIDATES, so a retired document cannot make a live term look common.
         $df = array_fill_keys($terms, 0);
+        $totalLines = 0;
         foreach ($candidates as $entry) {
+            $totalLines += (int) $entry['lines'];
             foreach ($terms as $term) {
                 if (isset($entry['terms'][$term])) {
                     $df[$term]++;
                 }
             }
         }
+        // Average length of the searchable corpus, the pivot for the length normalisation below.
+        $averageLines = $searchable > 0 ? max(1.0, $totalLines / $searchable) : 1.0;
 
         $now = time();
         $hits = [];
@@ -430,6 +462,16 @@ final class RetrievalIndex
                     * self::idf($searchable, $df[$term]);
                 $missing = array_values(array_diff($missing, [$term]));
             }
+            // LENGTH NORMALISATION. Summed term counts grow with document size, so without a length
+            // term a 1773-line review brief that merely repeats a query's common words outranks a
+            // 140-line note that is about the subject. A document longer than the corpus average is
+            // damped; a shorter one is left alone rather than inflated, so a one-line stub cannot win on
+            // length alone. Measured 2026-09-20: with the flat rule, `docs/testing/harness-lessons.md`
+            // (140 lines) lost to `docs/reviews/harness-independent-evaluation-brief.md` (1773 lines) on
+            // three extra occurrences of `error`, and `RetrievalIndex.php` lost its own vocabulary to
+            // files that repeated it more. See the ranking rule above.
+            $lengthFactor = max(1.0, 1.0 + log(max(1.0, (int) $entry['lines']) / $averageLines));
+            $score /= $lengthFactor;
             if ($score > 0) {
                 // Coverage: a document that matches five of eleven query terms is a weaker answer than
                 // one that matches eleven, and without this a long file wins on raw repetition of the
