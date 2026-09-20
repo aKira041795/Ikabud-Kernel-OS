@@ -890,9 +890,13 @@ def main():
 
     st = sub.add_parser("status")
     st.add_argument("--message", required=True)
-    st.add_argument("--status", default="")
+    # The server REQUIRES a status and a harness_session_id, but both defaulted to "" -- so the
+    # invocation this CLI documents (`harpp status --message M`) could never deliver: it failed 422
+    # "Valid status and harness_session_id are required" behind a bare exit 1, which reads as a broken
+    # endpoint rather than a missing field. Defaults that work, both overridable.
+    st.add_argument("--status", default="running")
     st.add_argument("--workbench-state", default="")
-    st.add_argument("--harness-session-id", default="")
+    st.add_argument("--harness-session-id", default=os.environ.get("HARPP_HARNESS_SESSION_ID") or "harpp-cli")
 
     wt = sub.add_parser("watch", help="actively monitor + auto-process owner messages + decided decisions")
     wt.add_argument("--once", action="store_true", help="single check, then exit")

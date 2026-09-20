@@ -68,30 +68,45 @@ else
   STATUS="blocked"
 fi
 
-# The push channel. `harpp status` CANNOT deliver: the server requires a conversation_id and the CLI
-# exposes no option for one, so every payload fails with a bare exit 1 and no explanation — measured
-# 2026-09-20 across every --status value. `harpp msg send` exposes --conversation-id and its errors are
-# legible: "conversation_id is required; only the owner can start new conversations"
-# (422, conversation_required).
+# THE PUSH
 #
-# Only the owner can create a conversation, so the id is CONFIGURATION. This script must not invent one
-# — and must not claim delivery without it.
-CONVERSATION="${CHAIR_DUTY_CONVERSATION:-}"
+# An alarm is a NOTIFICATION, not a conversation. Measured 2026-09-20: post_status with a status and a
+# harness_session_id returns {"ok":true, "notification_id":1780} with conversation_id null and
+# channel "push". No conversation is involved, and the session id is the harness's own to mint.
+#
+# The `harpp status` CLI cannot deliver: its --status and --harness-session-id both default to "" while
+# the server requires both, so the documented invocation fails 422 behind a bare exit 1. This calls the
+# client function directly instead -- and it is OUR bridge, in-tree, which is where CD-16 wants the
+# client developed. Nothing here needs the owner to configure anything.
+BRIDGE="$ROOT/tools/harpp-bridge"
+SESSION="${HARPP_HARNESS_SESSION_ID:-chair-duty-$HOSTNAME-$$}"
 
-if [ -z "$CONVERSATION" ]; then
-  echo "DELIVERY: local-only — director NOT notified"
-  echo "  reason: no conversation configured, and only the owner can create one."
-  echo "  once the owner names a conversation: CHAIR_DUTY_CONVERSATION=<id> bash tools/chair-duty.sh --force"
-  exit 4
+push() {
+  python3 - "$BRIDGE" "$MESSAGE" "$1" "$SESSION" <<'PY' 2>&1
+import sys, json
+sys.path.insert(0, sys.argv[1])
+try:
+    from harpp_client import post_status
+    print(json.dumps(post_status(message=sys.argv[2], status=sys.argv[3], harness_session_id=sys.argv[4])))
+except Exception as exc:  # a failed push must never look like a delivered one
+    print(json.dumps({"ok": False, "error": str(exc)}))
+PY
+}
+
+RESULT="$(push "$STATUS")"
+if ! printf '%s' "$RESULT" | grep -q '"ok": true'; then
+  # The status vocabulary is the server's to define; fall back to a value already proven to be accepted
+  # rather than failing the duty over a word.
+  RESULT="$(push running)"
 fi
 
-if harpp msg send --conversation-id "$CONVERSATION" --body "$MESSAGE" > /dev/null 2>&1; then
+if printf '%s' "$RESULT" | grep -q '"ok": true'; then
   printf '%s' "$SIGNATURE" > "$VERDICT_FILE"
   echo "chair-duty: pushed to the director ($STATUS)."
   exit 0
 fi
 
-# No silent non-delivery: a failed push is a failed duty, and it says so out loud with the retry.
+# No silent non-delivery: a failed push is a failed duty, and it says so out loud.
 echo "DELIVERY: local-only — director NOT notified"
-echo "retry: harpp msg send --conversation-id $CONVERSATION --body \"$MESSAGE\""
+echo "  bridge said: $RESULT"
 exit 4
