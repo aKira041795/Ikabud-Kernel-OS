@@ -298,7 +298,49 @@ function lockAcquire(bool $blocking)
         return null;
     }
 
+    // The lock file records its owner as INFORMATION; flock() above is still what excludes. It is written
+    // because a refusal that names nobody cannot be acted on -- measured 2026-09-20, when a stalled lane
+    // held the lock and `commit-check` could only report that "a run" held it. A pid costs nothing and
+    // turns that into a fact someone can check.
+    ftruncate($handle, 0);
+    rewind($handle);
+    fwrite($handle, (string) json_encode(['pid' => getmypid(), 'at' => gmdate(DATE_ATOM)]));
+    fflush($handle);
+
     return $handle;
+}
+
+/** Whether a pid is running. Used to say whether a recorded lock owner is still there. */
+function isProcessAlive(int $pid): bool
+{
+    if ($pid <= 0 || $pid === getmypid()) {
+        return false;
+    }
+
+    if (function_exists('posix_kill')) {
+        return posix_kill($pid, 0);
+    }
+
+    return is_dir('/proc/' . $pid);
+}
+
+/**
+ * Who the lock file says holds the lock, and whether they are still there.
+ *
+ * Read-only report, never the mechanism: the answer can be stale by the time it is printed, and it is
+ * printed to be checked rather than trusted.
+ *
+ * @return array{pid:int, at:string, alive:bool}
+ */
+function lockOwner(): array
+{
+    $decoded = json_decode((string) @file_get_contents(chairStateDir() . '/.run.lock'), true);
+    if (!is_array($decoded) || !isset($decoded['pid'])) {
+        return ['pid' => 0, 'at' => '', 'alive' => false];
+    }
+    $pid = (int) $decoded['pid'];
+
+    return ['pid' => $pid, 'at' => (string) ($decoded['at'] ?? ''), 'alive' => isProcessAlive($pid)];
 }
 
 /** @param resource $handle */
@@ -321,7 +363,22 @@ function withRunLock(array $options, callable $body): int
 {
     $handle = lockAcquire(false);
     if ($handle === null) {
-        record('LOCKED', ['reason' => 'another run holds the lock']);
+        $owner = lockOwner();
+        record('LOCKED', [
+            'reason' => 'another run holds the lock',
+            'owner' => $owner['pid'] > 0 ? (string) $owner['pid'] : 'unnamed',
+            'owner_alive' => $owner['alive'] ? 'yes' : 'no',
+        ]);
+        if ($owner['pid'] > 0 && !$owner['alive']) {
+            // The expected shape after a killed run: a lane inherits the lock descriptor and outlives the
+            // chair, so the lock can be held by a process the run no longer owns. Saying so, and saying
+            // that the lane's own budget will clear it, is the difference between a stall that looks like
+            // a hang and a stall that looks like bookkeeping.
+            say('  The lock file names pid ' . $owner['pid'] . ', and that process is not running.');
+            say('  A lane outlives the chair that dispatched it, so this is the expected shape after a');
+            say('  killed run. It clears when the lane reaches its own budget (' . CHAIR_LANE_SECONDS . 's);');
+            say('  to see who holds it now:  fuser -v ' . chairStateDir() . '/.run.lock');
+        }
 
         return 3;
     }
@@ -2601,27 +2658,18 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
     }
     $logFile = laneLogPath($brief, $attempt);
 
-    // The lane gives up the run-lock descriptor before pi starts, and nothing else. flock() belongs to
-    // the OPEN FILE DESCRIPTION, not to the process, so a lane that inherits the lock handle keeps the
-    // run locked after the chair is gone: killing the chair releases nothing, and `commit-check` then
-    // refuses to commit for as long as the orphan lives. Measured 2026-09-20 -- a lane hung inside a
-    // deadlocked probe, the chair was killed, and the lock stayed held by the lane; four runs in this
-    // repository are recorded abandoned in exactly that shape.
+    // The lane is NOT given a modified file-descriptor table. Two attempts were made to make it give
+    // back the run-lock descriptor, and both broke pi, because pi is node and needs the table intact:
+    // closing every descriptor above stderr failed with `Error: EBADF: bad file descriptor, read` on
+    // all three rungs, and closing only the descriptor whose target is the lock file failed the same
+    // way. A lane that cannot start is worth less than a lock that is released a little late.
     //
-    // Scope matters more than the trick. Closing every descriptor above stderr also breaks the lane:
-    // `pi` is node, it reads through an inherited descriptor, and it dies with
-    // `Error: EBADF: bad file descriptor, read` before doing any work -- measured on all three attempts
-    // of run 20260920-020430 (every lane, every rung, exit 1, changed=none). So the loop below closes
-    // the ONE descriptor whose target is the lock file, found by reading the link rather than assuming
-    // a number, and leaves every other inherited descriptor exactly as it was.
-    $lockPath = chairStateDir() . '/.run.lock';
-    $detach = 'for fd in /proc/self/fd/*; do n=${fd##*/}; [ "$n" -gt 2 ] && [ "$(readlink -f "$fd" 2>/dev/null)" = '
-        . escapeshellarg($lockPath) . ' ] && eval "exec $n>&-"; done 2>/dev/null; ';
-
-    // ...and the lane is bounded, because a lane only becomes evidence when it returns. With no budget a
-    // single hung probe holds the tree, the lock and the hub indefinitely, which is precisely what
-    // happened here: dispatched 01:14:34, still "live" at 09:56.
-    $command = $detach . sprintf(
+    // The leak is therefore bounded rather than eliminated, which is the proportionate answer: flock()
+    // belongs to the open file description, so a lane that inherits the lock keeps the run locked after
+    // the chair is killed -- but the timeout below now ends that lane, and the lock with it. Before the
+    // budget existed the leak was unbounded, which is what produced a 42-minute stall that killing the
+    // chair could not clear. The lock file also records its owner, so a refusal names somebody.
+    $command = sprintf(
         'timeout --signal=TERM --kill-after=60 %d %s --print --approve --model %s --thinking %s %s > %s 2>&1',
         CHAIR_LANE_SECONDS,
         escapeshellarg($pi),
