@@ -1714,6 +1714,25 @@ function falsifyProbe(array $requiredTests, array $runChanged, array $baseline):
  */
 const CHAIR_LANE_SECONDS = 1800;
 
+/**
+ * The contract-level stop reasons. Any OTHER reason means obligations remain, and the harness may not idle.
+ *
+ * Quoted from the normative policy (`ai-autonomy-escalation.instructions.md`, "Stop invariant"):
+ * `PROJECT_COMPLETE` and an unnamed uncertainty are explicitly NOT contract blockers -- the policy says so
+ * because "stopped even though approved work obviously remains" is a system defect, not normal behaviour.
+ *
+ * Declared here, at the top with the other policy constants, and NOT beside the command that reads it:
+ * PHP hoists function declarations but not constants, so a `const` at the bottom of this file is undefined
+ * while the self-test runs. Measured 2026-09-20 -- the guard crashed its own suite with
+ * `Undefined constant "CHAIR_STOP_REASONS"` from `selfTest()`, and the fixture checks below could not run.
+ */
+const CHAIR_STOP_REASONS = [
+    'CONTRACT_BLOCKED',
+    'RESOURCE_EXHAUSTED',
+    'EXTERNAL_DEPENDENCY_BLOCKED',
+    'SAFETY_BLOCKED',
+];
+
 const CHAIR_LANES = [
     'mechanical' => [
         'lane' => 'deepseek/deepseek-v4-flash:low',
@@ -3798,6 +3817,37 @@ function selfTest(): int
         (is_file($productionLedger) ? (string) file_get_contents($productionLedger) : '') === $productionBefore
     );
 
+    // The stop invariant, checked against a FIXTURE rather than the real plan: the plan is edited
+    // constantly, so a check that read the live file would fail every time a slice shipped -- which is the
+    // definition of a guard that cries wolf. Both directions are asserted, because a guard that called
+    // every row chair-actionable would forbid a legitimate stop for ever.
+    //
+    // `commandContinueCheck()` itself is deliberately NOT called here: it reads the real plan, so its exit
+    // code would depend on the state of the programme and the suite would stop being a test of the tool.
+    $scratchPlan = chairStateDir() . '/selftest-plan-' . bin2hex(random_bytes(4)) . '.md';
+    file_put_contents(
+        $scratchPlan,
+        "# plan\n\n## Remaining obligations\n\n"
+        . "| # | Obligation | Blocked by |\n|---|---|---|\n"
+        . "| ~~1~~ | ~~shipped thing~~ | ✅ **COMPLETE** |\n"
+        . "| 2 | real chair work | — unblocked |\n"
+        . "| 3 | needs the owner | **director**: trust basis |\n"
+        . "\n## Next section\n\n| 9 | not an obligation | — |\n"
+    );
+    $scoped = planObligations($scratchPlan);
+    $check(
+        'a struck-through obligation counts as satisfied, not as work',
+        $scoped['open'] === ['real chair work', 'needs the owner']
+    );
+    $check('an unblocked obligation is chair-actionable', $scoped['chair'] === ['real chair work']);
+    $check('an obligation naming the director is NOT chair-actionable', $scoped['director'] === ['needs the owner']);
+    $check('and the parse stops at the next section', !in_array('not an obligation', $scoped['open'], true));
+    @unlink($scratchPlan);
+    $check('the plan fixture is removed again', !is_file($scratchPlan));
+    // The policy's semantics, asserted rather than assumed: a "we are finished" reason is NOT a blocker.
+    $check('PROJECT_COMPLETE is not a contract-level blocker', !in_array('PROJECT_COMPLETE', CHAIR_STOP_REASONS, true));
+    $check('CONTRACT_BLOCKED is', in_array('CONTRACT_BLOCKED', CHAIR_STOP_REASONS, true));
+
     say('');
     say(sprintf('  => %d passed, %d failed', $pass, $fail));
 
@@ -3835,11 +3885,113 @@ if ($cli['command'] === '') {
     say('       php tools/chair.php decide --escalate --task=<id> --title=<t>');
     say('            --options="id|label|effect|cost|blast_radius|reversibility; ..." --recommend=<id>');
     say('       php tools/chair.php --self-test');
+    say('       php tools/chair.php continue-check [--stop-reason=<TYPE>]');
     exit(0);
+}
+
+/**
+ * The plan's remaining obligations, split by who can clear them.
+ *
+ * The stop invariant is only checkable if the obligation count comes from somewhere a reader can see, and
+ * the source is the plan's own "Remaining obligations" table -- the table the policy calls
+ * `unsatisfied_obligations`. This is the replacement for `ai-autonomy.php stop-report`, which the director
+ * retired with option c and which nothing replaced: continuation therefore rested on the chair's memory
+ * rather than on a tool, which is exactly how a chair ends up asking permission to continue.
+ *
+ * PARSE CONVENTION, and it is the table's own: a row is SATISFIED when its number is struck through
+ * (`~~1~~`) or its "Blocked by" cell carries `✅ COMPLETE`. A row is DIRECTOR-blocked when that cell names
+ * the director. Everything else is chair-actionable, which is the only count that can forbid a stop -- a
+ * director-blocked row is a legitimate reason to stop, so counting it would make the guard cry wolf.
+ *
+ * @return array{open:list<string>, chair:list<string>, director:list<string>}
+ */
+function planObligations(?string $path = null): array
+{
+    $path ??= CHAIR_ROOT . '/.ai/akira-master-plan.md';
+    $open = [];
+    $chair = [];
+    $director = [];
+    $inTable = false;
+
+    foreach (preg_split('/\R/', (string) @file_get_contents($path)) ?: [] as $line) {
+        $line = (string) $line;
+        if (str_starts_with($line, '## ')) {
+            $inTable = str_contains($line, 'Remaining obligations');
+            continue;
+        }
+        if (!$inTable || !str_starts_with(trim($line), '|')) {
+            continue;
+        }
+        $cells = array_map('trim', explode('|', trim($line, " \t|")));
+        if (count($cells) < 3 || !ctype_digit($cells[0])) {
+            continue;
+        }
+        if (str_contains($cells[1], '~~') || str_contains($cells[2], '✅')) {
+            continue;
+        }
+        $label = trim((string) preg_replace('/\*\*|~~/', '', $cells[1]));
+        $open[] = $label;
+        if (stripos($cells[2], 'director') !== false) {
+            $director[] = $label;
+        } else {
+            $chair[] = $label;
+        }
+    }
+
+    return ['open' => $open, 'chair' => $chair, 'director' => $director];
+}
+
+/**
+ * May the harness idle? Exits 3 when it may not.
+ *
+ * The answer is mechanical, which is the point: this exists so that "may I stop?" is a command's verdict
+ * rather than the chair's mood. It exits 3 -- the escalation code -- when a chair-actionable obligation
+ * remains and no contract-level blocker is named, and names the obligation to start on.
+ */
+function commandContinueCheck(array $options): int
+{
+    $reason = strtoupper(trim((string) ($options['stop-reason'] ?? '')));
+    $blocker = in_array($reason, CHAIR_STOP_REASONS, true);
+    $obligations = planObligations();
+
+    record('CONTINUE', [
+        'open' => (string) count($obligations['open']),
+        'chair' => (string) count($obligations['chair']),
+        'director' => (string) count($obligations['director']),
+        'stop_reason' => $reason === '' ? 'none' : $reason,
+    ]);
+
+    say('  plan obligations: ' . count($obligations['open']) . ' open -- '
+        . count($obligations['chair']) . ' chair-actionable, '
+        . count($obligations['director']) . ' director-blocked');
+    foreach (array_slice($obligations['chair'], 0, 6) as $item) {
+        say('    CHAIR    ' . $item);
+    }
+    foreach (array_slice($obligations['director'], 0, 6) as $item) {
+        say('    DIRECTOR ' . $item);
+    }
+
+    if ($obligations['chair'] === []) {
+        say('  Nothing chair-actionable remains: the remainder needs the director, so idling is correct.');
+
+        return 0;
+    }
+    if ($blocker) {
+        say('  Obligations remain, and ' . $reason . ' is a contract-level blocker: stopping is permitted.');
+
+        return 0;
+    }
+
+    say('  Obligations remain and no contract-level blocker is named, so the harness must NOT idle.');
+    say('  A stop here is a system defect, not diligence. Start on the first CHAIR row above, or name one of:');
+    say('  ' . implode(', ', CHAIR_STOP_REASONS) . '.');
+
+    return 3;
 }
 
 exit(match ($cli['command']) {
     'plan' => commandPlan($cli['options']),
+    'continue-check' => commandContinueCheck($cli['options']),
     // Wrapped, not inlined: a run holds the lock for its whole life and leaves a record of it. The
     // ledger decides commit eligibility, not the state of the tree.
     'run' => withRunLock(

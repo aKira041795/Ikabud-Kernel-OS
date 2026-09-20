@@ -34,12 +34,12 @@ THEN state != IDLE
 | **P2.2a** | Post-path redirects | `.ai/p2.2a-post-redirects.contract.md` | ✅ **COMPLETE** | `/cms-akira-shell/redirects` **200**; open-redirect guard chair-verified live (3 targets → **422**, 0 rows written); targeted tests 31/0 + 24/0; 404 path unchanged; migration applied via governed CLI |
 | **P2.3** | SEO editing surface | `.ai/p2.3-seo-surface.contract.md` | ✅ **COMPLETE** | nav 11→12, `/cms-akira-seo` 200, idempotent, audit actor=1 |
 | **P2.4** | Search operations console | `.ai/p2.4-search-console.contract.md` | ✅ **COMPLETE** | `/cms-akira-shell/search` **200**; index rebuilt 0→3 docs; `q=Akira` returns a real row while a control term returns no-results; shell 116/0; **found `akira.search.query@1` had NO policy row (fail-open)** and governed it |
-| **P3.1** | Settings surface | — | ⬜ queued | — |
-| **P3.2** | Approval Inbox | — | ⬜ queued | — |
-| **P3.3** | Users / session revocation | — | ⬜ queued | — |
+| **P3.1** | Settings surface | — | ✅ **SUPERSEDED** | see the later P3.1 row below — Settings surface as scoped here was replaced by Akira site settings (COMPLETE (thin) + P3.1b). Marked 2026-09-20: a top-to-bottom read of this board reported it as `queued` work that had already shipped. |
+| **P3.2** | Approval Inbox | — | ✅ **SUPERSEDED** | see the later P3.2 row below — shipped as the workflow / approvals console, COMPLETE |
+| **P3.3** | Users / session revocation | — | ✅ **SUPERSEDED** | see the later P3.3 row below — COMPLETE, CD-53 and CD-54 |
 | **P4.0** | Theme customizer actually controls the theme | `.ai/p4.0-theme-customizer.contract.md` | ✅ **COMPLETE** | controls 2→23, live `--color-primary` changed `#005c55`→`#d4145a` and restored, shell contract 116/0 |
 | **P4.1** | Theme package admission | — | ⛔ **BLOCKED** | needs trust/signature model (L4) |
-| **P4.2** | Module lifecycle hardening | — | ⛔ **BLOCKED** | depends on P1.3 resolution |
+| **P4.2** | Module lifecycle hardening | — | ⬜ **QUEUED — unblocked** | **Corrected 2026-09-20.** The recorded blocker was "depends on P1.3 resolution", and **P1.3 is ✅ COMPLETE** (see above). The row was stale, which made an unblocked, unclaimed obligation invisible to a top-to-bottom read. Found by `php tools/chair.php continue-check`, which read this table and named it. |
 | **P4.3** | Extension trust / capability diff | — | ⬜ queued | — |
 | **P5.1** | Authority / reconciliation console | `.ai/p5.1-authority-surface.contract.md` | ✅ **COMPLETE** | nav 12→13, `/cms-akira-shell/authority` 200, found 2 real gaps |
 | **P5.1a** | Declare the 2 routes P5.1 found undeclared | — | ✅ **COMPLETE** | undeclared POSTs theme 0 / shell 0 |
@@ -68,7 +68,7 @@ THEN state != IDLE
 | # | Obligation | Blocked by |
 |---|---|---|
 | ~~1~~ | ~~P3.3 users / session revocation~~ | ✅ **COMPLETE** 2026-09-15 — CD-53 (verified) and CD-54 (the capability it shipped **403'd every operator**; found by opening a browser, fixed, verified) |
-| 2 | **P6 recovery / export, production floor** | — unblocked |
+| ~~2~~ | ~~**P6 recovery / export, production floor**~~ | ✅ **COMPLETE** 2026-09-20 — commit `aae747c`. Chair-authored probe went red-baseline (0/9) → 16/0, falsified (revert → RED, restore byte-identical). Verified live on tenant 54: a dry run leaves posts **38 → 38** with the only bundle audit written being `akira.bundle.diff`; a replayed apply writes nothing (**38 → 38**) twice with the same idempotency key; a removal plan is refused **409** with the entries named; both capabilities governed admin-tier; `error.log` **0 bytes**. Criterion 8 (unauthorized role) NOT exercised — stated, not implied. |
 | ~~3~~ | ~~Rewrite `tests/browser/akira-builder-admin.spec.ts`~~ | ✅ **COMPLETE** — rewritten 2026-09-14 against the real UI; the journey passed inside the CD-59 full-suite run (**17 tests / 7 files, 17 passed / 0 failed / 0 skipped**) |
 | 4 | P4.2b module install lifecycle | **PARTLY DELIVERED** — install/enable/disable view shipped (P4.2a-r2). Remaining: the install state machine itself is the kernel service's, already exercised by the CLI. No owner decision needed unless packaging/trust is added. |
 | 5 | P4.3 extension trust / capability diff | partially P4.1 |
