@@ -60,14 +60,19 @@ interactive TUI. Configure providers/credentials with `pi auth` and `pi config`.
 **Autonomy and decision deferral**
 
 The normative policy is `.github/instructions/ai-autonomy-escalation.instructions.md`;
-`tools/ai-autonomy.php` enforces its contract-bounded scope. HARPP is the external
+`tools/chair.php` is the live harness — it holds the lock, records authoritative run state under
+`storage/private/chair/`, and decides commit eligibility. HARPP is the external
 director channel, found on `PATH` (or exposed through its MCP tools in VS Code).
 The repository-wide ladder is L0–L4: L0/L1 proceed, L2 (default)/L3 record, and
 only L4 stops for human approval.
-- `php tools/ai-autonomy.php plan --emit-manifest=/tmp/wf.json --contract=.ai/current-task.md`
-- `php tools/ai-autonomy.php check "edit files" --level=L2 --path=tools/example.php --contract=.ai/current-task.md`
-- `php tools/ai-autonomy.php defer --task=task-id --question="..." --why="..." --option="a|Label|Effect|Cost|Radius|reversible" --option="b|Label|Effect|Cost|Radius|reversible" --recommend=a`
-- `php tools/ai-autonomy.php notify --type=PROGRESS --body="Implementation started"`
+- `php tools/chair.php plan --contract=.ai/current-task.md` — import a contract and mint its task
+- The L-level of an action is a judgement recorded in the contract. **There is no classifier command**
+  (the retired `ai-autonomy.php check --level=…` was never replaced). Commit eligibility is gated
+  deterministically by `php tools/chair.php commit-check`.
+- `harpp decision submit` — file an L4, or `harpp_submit_decision` when inside VS Code with the MCP server attached
+- `harpp post_status --status=<running|done|blocked> --message="…"` — notify without needing a conversation
+  (`harpp status` cannot deliver: its `--status` and `--harness-session-id` default to empty while the
+  server requires both — fixed in-tree, but the live CLI is a symlink into another repository)
 
 ## Agent Roster
 
