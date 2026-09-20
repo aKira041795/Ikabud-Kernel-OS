@@ -3721,6 +3721,29 @@ function selfTest(): int
         'a task that was never dispatched is backlog, not a stall',
         !isset($strandedNow['task-probe-backlog'])
     );
+
+    // Notes: the obstacle-time reference point (2026-09-21). An open [actionable] note is work; a note
+    // without that marker is reference material and must NEVER turn the invariant red, because notes
+    // accumulate and a guard that is always red is a guard nobody reads.
+    $notesFixture = sys_get_temp_dir() . '/chair-notes-selftest.md';
+    @file_put_contents(
+        $notesFixture,
+        "- **2026-09-21** a plain reference note\n"
+        . "- **2026-09-21** [actionable] committed work\n"
+        . "- **2026-09-21** [actionable] [addressed] already done\n"
+    );
+    $fixture = noteEntries($notesFixture);
+    @unlink($notesFixture);
+    $check('a notes file parses into entries', count($fixture) === 3, (string) count($fixture));
+    $check(
+        'only [actionable]+unaddressed counts as open work; a plain note never does',
+        ($fixture[0]['actionable'] ?? true) === false
+        && ($fixture[0]['addressed'] ?? true) === false
+        && ($fixture[1]['actionable'] ?? false) === true
+        && ($fixture[1]['addressed'] ?? true) === false
+        && ($fixture[2]['addressed'] ?? false) === true,
+        json_encode($fixture)
+    );
     // The other direction, and the reason the phase is `blocked` and not `start`: a stop is a FINISHED
     // decision, so it must not read as a live or abandoned run and block a commit.
     $check('a blocked record does NOT make commit-check see a live run', commandCommitCheck([]) === 0);
@@ -4062,6 +4085,8 @@ if ($cli['command'] === '') {
     say('            --options="id|label|effect|cost|blast_radius|reversibility; ..." --recommend=<id>');
     say('       php tools/chair.php --self-test');
     say('       php tools/chair.php continue-check [--stop-reason=<TYPE>]');
+    say('       php tools/chair.php note --text="..." [--actionable=1]');
+    say('       php tools/chair.php notes');
     exit(0);
 }
 
@@ -4193,6 +4218,96 @@ function commandAbandon(array $options): int
 }
 
 /**
+ * Notes — the director's intent, written down as it is expressed.
+ *
+ * WHY THIS EXISTS. The plan is the CHAIR's artifact and it lags: measured 2026-09-20, the harness reported
+ * `chair=0 ... idling is correct` while two slices were outstanding, because those slices existed only in
+ * the chair's head. A plan written by the party that forgets inherits that party's blind spot.
+ *
+ * Notes invert the direction. They are written at the moment intent is expressed, by whoever holds it,
+ * and they are READ AT OBSTACLES — when the plan has nothing chair-actionable, the open notes are what to
+ * continue with. That is the reference point, and it is the director's rather than the chair's.
+ *
+ * Two markers, and the distinction matters:
+ *   [actionable]  an open one makes the harness refuse to idle — it is committed work.
+ *   [addressed]   closed. Struck through by editing the file; notes are human-authored by design.
+ *
+ * A note WITHOUT [actionable] is reference material and never turns the invariant red. That is deliberate:
+ * notes accumulate, and a guard that is always red is a guard nobody reads.
+ */
+function notesPath(): string
+{
+    return CHAIR_ROOT . '/.ai/notes.md';
+}
+
+/**
+ * @return list<array{n:int,text:string,actionable:bool,addressed:bool}>
+ */
+function noteEntries(?string $path = null): array
+{
+    $path = $path ?? notesPath();
+    if (!is_file($path)) {
+        return [];
+    }
+    $entries = [];
+    $n = 0;
+    foreach (preg_split('/\R/', (string) file_get_contents($path)) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '' || !str_starts_with($line, '-')) {
+            continue;
+        }
+        $n++;
+        $text = trim((string) preg_replace('/^-\s*(\*\*[^*]*\*\*\s*)?/', '', $line));
+        $entries[] = [
+            'n' => $n,
+            'text' => $text,
+            'actionable' => str_contains($line, '[actionable]'),
+            'addressed' => str_contains($line, '[addressed]') || str_contains($line, '~~'),
+        ];
+    }
+
+    return $entries;
+}
+
+/** Append a note. The file is human-owned; this exists so a note can be added without an editor. */
+function commandNote(array $options): int
+{
+    $text = trim((string) ($options['text'] ?? ''));
+    if ($text === '') {
+        fail('note requires --text="..."  (add --actionable=1 if it is committed work)');
+    }
+    $path = notesPath();
+    if (!is_file($path)) {
+        @file_put_contents(
+            $path,
+            "# Notes\n\nIntent and obligations, written down as they are expressed. This file is the\n"
+            . "director's; edit it by hand freely. The harness reads it at obstacles.\n\n"
+            . "An open `[actionable]` note makes the harness refuse to idle. A note without it is\n"
+            . "reference material and never does. Mark one done by adding `[addressed]`.\n\n"
+        );
+    }
+    $tag = trim((string) ($options['actionable'] ?? '')) !== '' ? ' [actionable]' : '';
+    @file_put_contents($path, '- **' . gmdate('Y-m-d H:i') . '**' . $tag . ' ' . $text . "\n", FILE_APPEND);
+    record('NOTE', ['actionable' => $tag === '' ? 'no' : 'yes', 'text' => $text]);
+
+    return 0;
+}
+
+function commandNotes(): int
+{
+    $entries = noteEntries();
+    $open = array_values(array_filter($entries, static fn (array $e): bool => $e['actionable'] && !$e['addressed']));
+    record('NOTES', ['n' => (string) count($entries), 'open_actionable' => (string) count($open)]);
+    say('  notes: ' . count($entries) . ' -- ' . count($open) . ' actionable and open');
+    foreach ($entries as $e) {
+        $flags = ($e['actionable'] ? 'A' : '-') . ($e['addressed'] ? 'D' : '-');
+        say(sprintf('    [%s] %s', $flags, $e['text']));
+    }
+
+    return 0;
+}
+
+/**
  * May the harness idle? Exits 3 when it may not.
  *
  * The answer is mechanical, which is the point: this exists so that "may I stop?" is a command's verdict
@@ -4242,6 +4357,23 @@ function commandContinueCheck(array $options): int
         }
     }
 
+    // Notes are read AT THE OBSTACLE. If the plan has nothing chair-actionable, an open [actionable]
+    // note is what to continue with -- this is the exact case that produced "idling is correct" while
+    // work existed only in someone's head.
+    $notes = noteEntries();
+    $openNotes = array_values(array_filter($notes, static fn (array $e): bool => $e['actionable'] && !$e['addressed']));
+    if ($notes !== []) {
+        say('  notes on file: ' . count($notes) . ' (' . count($openNotes) . ' actionable and open)');
+        foreach (array_slice($openNotes, 0, 5) as $note) {
+            say('    NOTE ' . $note['text']);
+        }
+    }
+    if ($openNotes !== [] && !$blocker) {
+        say('  An actionable note is open. Refusing to idle.');
+
+        return 3;
+    }
+
     if ($obligations['chair'] === []) {
         say('  Nothing chair-actionable remains: the remainder needs the director, so idling is correct.');
 
@@ -4263,6 +4395,9 @@ function commandContinueCheck(array $options): int
 exit(match ($cli['command']) {
     'plan' => commandPlan($cli['options']),
     'continue-check' => commandContinueCheck($cli['options']),
+    // Notes: the director's intent written down, read at obstacles.
+    'note' => commandNote($cli['options']),
+    'notes' => commandNotes(),
     // Abandoning is an honest terminal state for a run whose process died: not `finish`, which would
     // fabricate a completion, and not silence, which leaves the duty permanently red.
     'abandon' => commandAbandon($cli['options']),
