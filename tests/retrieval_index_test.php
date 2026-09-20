@@ -31,18 +31,30 @@ $check = static function (string $label, bool $ok, string $detail = '') use (&$p
 };
 
 /** Run a command from the repository root and return its exit code and output. */
+// ONE pipe, drained to EOF, and a wall-clock bound.
+//
+// This used to open two pipes and drain them in sequence -- stdout to EOF, then stderr. That is a
+// deadlock, not a style question: a pipe holds 64 KiB, so a command that writes more than that to the
+// SECOND stream fills it, blocks in write(), and the parent blocks in read() on a stream that will
+// never close. Measured 2026-09-20: `run.php recall` emitted 1576 PHP warnings, blew past the buffer,
+// and this file hung forever -- the harness killed it at its 900 s budget, recorded that as a RED
+// baseline, and dispatched a lane which then hung in the same probe for 42 minutes. Merging stderr into
+// stdout (`2>&1`) leaves exactly one pipe to drain, so the deadlock cannot form; `timeout` means a
+// command that hangs here reports a verdict (124) instead of stopping the suite that is measuring it.
 $run = static function (string $command) use ($root): array {
-    $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-    $process = proc_open(['bash', '-lc', $command], $descriptors, $pipes, $root);
+    $process = proc_open(
+        ['timeout', '--signal=TERM', '300', 'bash', '-lc', $command . ' 2>&1'],
+        [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $pipes,
+        $root
+    );
     if (!is_resource($process)) {
         return ['exit' => 127, 'output' => 'could not start'];
     }
-    $stdout = (string) stream_get_contents($pipes[1]);
-    $stderr = (string) stream_get_contents($pipes[2]);
+    $output = (string) stream_get_contents($pipes[1]);
     fclose($pipes[1]);
-    fclose($pipes[2]);
 
-    return ['exit' => proc_close($process), 'output' => trim($stdout . $stderr)];
+    return ['exit' => proc_close($process), 'output' => trim($output)];
 };
 
 echo "=== the retrieval index's own controls ===\n";

@@ -55,6 +55,7 @@ declare(strict_types=1);
  *   php tools/chair.php run     --task=<id> [--attempts=2] [--lane=<model>:<thinking>,...] [--falsify] [--dry]
  *   php tools/chair.php advance --task=<id> [--max=3] [--kind=<kind>] [--lane=<model>:<thinking>] [--falsify]
  *   php tools/chair.php probe   --task=<id>
+ *   php tools/chair.php resume  --task=<id>
  *   php tools/chair.php decide  --task=<id> --decision=<text> [--rationale=<text>]
  *   php tools/chair.php status  [--task=<id>]
  *   php tools/chair.php --self-test
@@ -553,6 +554,185 @@ function deliverDecision(string $decisionKey, string $title, string $body, strin
     ];
 }
 
+/**
+ * Decision rows from either HARPP list envelope, or null when the response is not a decision list.
+ *
+ * @return list<array<string,mixed>>|null
+ */
+function harppDecisionRows(string $output, int $exit): ?array
+{
+    if ($exit !== 0) {
+        return null;
+    }
+    $decoded = json_decode(trim($output), true);
+    if (!is_array($decoded) || ($decoded['suppressed'] ?? false) === true) {
+        return null;
+    }
+    $rows = $decoded['decisions'] ?? ($decoded['data']['decisions'] ?? null);
+    if (!is_array($rows)) {
+        return null;
+    }
+
+    return array_values(array_filter($rows, 'is_array'));
+}
+
+/**
+ * Filed L4 artifacts for a task, newest first. These are the authoritative originating requests;
+ * a remote row which merely shares the task name is deliberately not enough to bind an answer.
+ *
+ * @return list<array<string,mixed>>
+ */
+function filedDirectorDecisions(string $taskId): array
+{
+    $dir = chairStateDir() . '/decisions';
+    $filed = [];
+    foreach (glob($dir . '/' . $taskId . '-*.json') ?: [] as $path) {
+        $artifact = json_decode((string) file_get_contents($path), true);
+        if (!is_array($artifact)
+            || ($artifact['task'] ?? null) !== $taskId
+            || trim((string) ($artifact['decision_key'] ?? '')) === '') {
+            continue;
+        }
+        $artifact['_path'] = $path;
+        $filed[] = $artifact;
+    }
+    usort($filed, static function (array $left, array $right): int {
+        return strcmp((string) ($right['filed_at'] ?? ''), (string) ($left['filed_at'] ?? ''));
+    });
+
+    return $filed;
+}
+
+/** An exact decision_key join. A task/title/body similarity is never authority. */
+function bindDirectorDecision(array $filed, array $remote): ?array
+{
+    $key = (string) ($filed['decision_key'] ?? '');
+    if ($key === '' || (string) ($remote['decision_key'] ?? '') !== $key) {
+        return null;
+    }
+
+    return ['filed' => $filed, 'remote' => $remote];
+}
+
+function directorDecisionState(array $remote): string
+{
+    return strtoupper(trim((string) ($remote['lifecycle_state'] ?? $remote['state'] ?? '')));
+}
+
+function directorDecisionAnswer(array $remote): string
+{
+    return trim((string) ($remote['decision'] ?? $remote['answer'] ?? ''));
+}
+
+function directorDecisionIsAnswered(array $remote): bool
+{
+    return in_array(directorDecisionState($remote), ['DECIDED', 'ACKNOWLEDGED', 'APPLIED', 'CLOSED'], true)
+        && directorDecisionAnswer($remote) !== '';
+}
+
+/**
+ * The selected filed option, or null when the answer does not unambiguously name one.
+ *
+ * @return array<string,mixed>|null
+ */
+function selectedDirectorOption(array $filed, string $answer): ?array
+{
+    $answer = trim($answer);
+    if ($answer === '') {
+        return null;
+    }
+    $matches = [];
+    foreach ((array) ($filed['options'] ?? []) as $option) {
+        if (!is_array($option)) {
+            continue;
+        }
+        $id = trim((string) ($option['id'] ?? ''));
+        $label = trim((string) ($option['label'] ?? ''));
+        if ($id === '') {
+            continue;
+        }
+        $namesId = preg_match(
+            '/^\s*(?:(?:option|choice)\s+)?' . preg_quote($id, '/') . '(?:\s*[:.\-)\]]|\s*$)/i',
+            $answer
+        ) === 1;
+        if ($namesId || ($label !== '' && strcasecmp($answer, $label) === 0)) {
+            $matches[$id] = $option;
+        }
+    }
+
+    return count($matches) === 1 ? array_values($matches)[0] : null;
+}
+
+/**
+ * Materialise the causal plan change. `stop` is the filed default, and the selected option's effect is
+ * what replaces it; recording only the answer without these two plans would not prove causation.
+ *
+ * @return array<string,mixed>
+ */
+function directorPlanChange(string $taskId, array $filed, array $remote, array $option): array
+{
+    return [
+        'phase' => 'decision-plan-changed',
+        'task' => $taskId,
+        'decision_id' => (string) ($remote['id'] ?? ''),
+        'decision_key' => (string) ($filed['decision_key'] ?? ''),
+        'answer' => directorDecisionAnswer($remote),
+        'selected_option' => (string) ($option['id'] ?? ''),
+        'previous_plan' => (string) ($filed['default_if_no_response'] ?? 'stop'),
+        'changed_plan' => (string) ($option['effect'] ?? $option['label'] ?? ''),
+        'resume' => (string) ($filed['resume'] ?? ''),
+    ];
+}
+
+/** The latest director plan which controls this task's next brief. */
+function directorPlanForTask(string $taskId): array
+{
+    foreach (array_reverse(ledgerRead()) as $entry) {
+        if (($entry['phase'] ?? '') === 'decision-plan-changed' && ($entry['task'] ?? '') === $taskId) {
+            return $entry;
+        }
+    }
+
+    return [];
+}
+
+/** Has this exact decision already caused execution to resume? */
+function directorDecisionWasResumed(string $decisionKey): bool
+{
+    foreach (array_reverse(ledgerRead()) as $entry) {
+        if (($entry['phase'] ?? '') === 'decision-resumed' && ($entry['decision_key'] ?? '') === $decisionKey) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/** @return array{output:string,exit:int} */
+function runHarppCommand(array $arguments): array
+{
+    $harpp = trim((string) shell_exec('command -v harpp 2>/dev/null'));
+    if ($harpp === '') {
+        return ['output' => 'harpp is not on PATH', 'exit' => 127];
+    }
+    $command = implode(' ', array_map('escapeshellarg', array_merge([$harpp], $arguments))) . ' 2>&1';
+    $lines = [];
+    $exit = 0;
+    exec($command, $lines, $exit);
+
+    return ['output' => implode("\n", $lines), 'exit' => $exit];
+}
+
+function harppMutationSucceeded(array $result): bool
+{
+    if (($result['exit'] ?? 1) !== 0) {
+        return false;
+    }
+    $decoded = json_decode(trim((string) ($result['output'] ?? '')), true);
+
+    return is_array($decoded) && ($decoded['ok'] ?? false) === true && ($decoded['suppressed'] ?? false) !== true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // Required tests: every declared command decides the task.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1009,6 +1189,22 @@ function writeBrief(array $task, string $objective, array $context, array $requi
     $lines[] = '## Objective';
     $lines[] = $objective;
     $lines[] = '';
+    $director = directorPlanForTask((string) $task['task_id']);
+    if ($director !== []) {
+        $lines[] = '## Binding director decision — this changes the plan';
+        $lines[] = sprintf(
+            'HARPP decision #%s (`%s`) selected option `%s`: %s',
+            (string) ($director['decision_id'] ?? '?'),
+            (string) ($director['decision_key'] ?? '?'),
+            (string) ($director['selected_option'] ?? '?'),
+            (string) ($director['answer'] ?? '')
+        );
+        $lines[] = '';
+        $lines[] = 'The prior plan was `' . (string) ($director['previous_plan'] ?? 'stop') . '`. '
+            . 'It is replaced by: **' . (string) ($director['changed_plan'] ?? '') . '**';
+        $lines[] = 'Implement that selected effect. The unselected options are not authorised.';
+        $lines[] = '';
+    }
     $lines[] = '## Required tests: all of them decide this task';
     $lines[] = 'Run every command before you finish. They must all pass, and the full set must have failed before you started.';
     $lines[] = '';
@@ -1362,6 +1558,17 @@ function falsifyProbe(array $requiredTests, array $runChanged, array $baseline):
 // that starting on flash "would spend an attempt to learn nothing". The reason string is the durable part;
 // the model name is just today's best answer to it, and rots as models are retired.
 
+/**
+ * How long a lane may run before it is killed.
+ *
+ * A lane only becomes evidence when it RETURNS, so this budget is what turns a dispatch into evidence
+ * rather than a permanent occupant of the tree and the run lock. Measured 2026-09-20: a lane was
+ * dispatched at 01:14:34 and its log was still empty at 09:56, 42 minutes into a probe that had
+ * deadlocked -- and because it held the lock, commit-check refused for the whole of that time. Thirty
+ * minutes is deliberately generous: a real implementation task on this repository finishes in minutes.
+ */
+const CHAIR_LANE_SECONDS = 1800;
+
 const CHAIR_LANES = [
     'mechanical' => [
         'lane' => 'deepseek/deepseek-v4-flash:low',
@@ -1488,6 +1695,20 @@ function planLaneRefusal(array $plan): ?string
  */
 function failureKind(int $exit, array $changed, string $output): array
 {
+    // A probe that ran out of time says NOTHING about the product, and its output is merely whatever it
+    // had managed to print when the clock ran out -- which is why the exit code, not the text, decides
+    // this one. Measured 2026-09-20: `retrieval_index_test.php` deadlocked on a full pipe, the
+    // required-tests runner killed it at 900 s, and the ladder would have read that as a product
+    // failure. A probe that cannot return has no verdict to report.
+    if ($exit === 124) {
+        return [
+            'kind' => 'harness',
+            'reason' => 'the probe exceeded its wall-clock budget and was killed (exit 124): a probe that '
+                . 'cannot return produces no verdict about the product, so this is the instrument rather '
+                . 'than the lane',
+        ];
+    }
+
     $fault = probeFault($output);
     if ($fault !== null) {
         return ['kind' => 'harness', 'reason' => $fault];
@@ -1954,6 +2175,27 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
         'exit' => (string) $baseline['exit'],
         'verdict' => $baseline['exit'] === 0 ? 'ALREADY-PASSES' : 'RED',
     ]);
+    // A baseline that could not RUN is not evidence that the feature is missing, and dispatching a lane
+    // against it spends the whole budget chasing a red that never meant anything. Measured 2026-09-20:
+    // this exact path recorded `tests=2 exit=124 verdict=RED` at 01:14 and dispatched a lane which hung
+    // in the same probe until it was killed by hand at 09:56 -- 42 minutes of a run that the harness
+    // already knew was unmeasurable. The probe is repaired first; no lane can fix an instrument.
+    if ($baseline['exit'] === 124) {
+        record('HARNESS', ['task' => $taskId, 'stage' => 'baseline', 'exit' => (string) $baseline['exit']]);
+        say('  The baseline could not run: a required test exceeded its budget and was killed.');
+        say($baseline['output']);
+        say('  Nothing was dispatched. A probe that cannot return is the instrument, not the product.');
+        commandDecide([
+            'task' => $taskId,
+            'decision' => 'no work dispatched: the baseline probe exceeded its budget',
+            'rationale' => 'The required tests could not run to completion, so the baseline is not evidence '
+                . 'that the feature is missing. Repair the probe, re-run it by hand to see it return, and '
+                . 'only then dispatch. Dispatching against an unmeasurable baseline spends a lane on a red '
+                . 'that proves nothing -- measured 2026-09-20 at a cost of 42 minutes.',
+        ]);
+        return 3;
+    }
+
     if ($baseline['exit'] === 0) {
         say('  All required tests pass before any work. Either the task is already satisfied, or');
         say('  the verification is measuring the wrong property. Both are findings; neither needs a lane.');
@@ -1999,6 +2241,25 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
         ]);
         if ($changed === []) {
             say('  The lane returned without touching the tree (exit=' . $exit . ', changed=none).');
+        }
+
+        // A lane killed at its budget is a stalled run, not a weak lane: promoting it spends a second
+        // budget on the same hang and reports the stall as the model's fault. The probe is not run
+        // either -- measuring a tree its author never finished writing produces a red that means nothing.
+        if ($exit === 124) {
+            record('LANE-TIMEOUT', ['n' => (string) $attempt, 'lane' => $lane]);
+            attemptLedger($run, $taskId, $attempt, $lane, 'LANE-TIMEOUT');
+            say('  The lane exceeded its ' . CHAIR_LANE_SECONDS . 's budget and was killed.');
+            say('  The probe was NOT run: a stalled run is not a lane failure, so it is not promoted.');
+            commandDecide([
+                'task' => $taskId,
+                'decision' => 'stopped after ' . $attempt . ' attempt(s): the lane exceeded its budget',
+                'rationale' => 'The lane did not return within ' . CHAIR_LANE_SECONDS . ' seconds and was '
+                    . 'killed, so nothing it produced can be read as a verdict. Promote only if the stall '
+                    . 'is the workload; if the lane stalled inside a probe, the probe is the defect and '
+                    . 'no stronger lane will change that.',
+            ]);
+            return 3;
         }
 
         $after = runRequiredTests($probes);
@@ -2269,8 +2530,22 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
         fail("cannot create {$log}");
     }
     $logFile = $log . '/' . basename($brief, '.md') . '-attempt' . $attempt . '.log';
-    $command = sprintf(
-        '%s --print --approve --model %s --thinking %s %s > %s 2>&1',
+
+    // The lane drops every inherited descriptor above stderr before pi starts. flock() belongs to the
+    // OPEN FILE DESCRIPTION, not to the process, so a lane that inherits the run-lock handle keeps the
+    // run locked after the chair is gone: killing the chair does not release it, and `commit-check` then
+    // refuses to commit for as long as the orphan lives. Measured 2026-09-20 -- a lane hung inside a
+    // deadlocked probe, the chair was killed, and the lock stayed held by the lane; four runs in this
+    // repository are recorded abandoned in exactly that shape. Closing the descriptors is what makes the
+    // lock mean "one live run" instead of "one live process tree".
+    $detach = 'for fd in /proc/self/fd/*; do n=${fd##*/}; [ "$n" -gt 2 ] && eval "exec $n>&-"; done 2>/dev/null; ';
+
+    // ...and the lane is bounded, because a lane only becomes evidence when it returns. With no budget a
+    // single hung probe holds the tree, the lock and the hub indefinitely, which is precisely what
+    // happened here: dispatched 01:14:34, still "live" at 09:56.
+    $command = $detach . sprintf(
+        'timeout --signal=TERM --kill-after=60 %d %s --print --approve --model %s --thinking %s %s > %s 2>&1',
+        CHAIR_LANE_SECONDS,
         escapeshellarg($pi),
         escapeshellarg($laneParts['model']),
         escapeshellarg($laneParts['thinking']),
@@ -2414,6 +2689,160 @@ function commandDecide(array $options, array $flags = []): int
     ledgerAppend(['phase' => 'decision', 'key' => $decisionKey, 'task' => $taskId, 'delivered' => false]);
 
     return 4;
+}
+
+/**
+ * Retrieve one filed L4 answer, bind it by decision_key, alter the plan, and resume that branch.
+ * One invocation performs one HARPP read. An unanswered request is a clean parked state: the filed
+ * default is `stop`, never an action to take after a timeout.
+ */
+function commandResume(array $options): int
+{
+    $taskId = $options['task'] ?? '';
+    if ($taskId === '') {
+        fail('resume needs --task=<id>');
+    }
+
+    $filed = filedDirectorDecisions($taskId);
+    if ($filed === []) {
+        record('RESUME-FAULT', ['task' => $taskId, 'reason' => 'no filed decision']);
+        say('  No originating L4 artifact exists for this task, so no remote answer can be bound safely.');
+
+        return 4;
+    }
+    // The newest filed request is the active authority boundary. Falling back to an older duplicate
+    // because it happened to receive an answer would apply an answer to a superseded plan.
+    $origin = $filed[0];
+    $listed = runHarppCommand([
+        'decision', 'list', '--remote', '--limit', '200',
+        '--workbench-state', 'ARCHITECTURE_DECISION_REQUIRED',
+    ]);
+    $rows = harppDecisionRows($listed['output'], $listed['exit']);
+    if ($rows === null) {
+        record('RESUME-FAULT', ['task' => $taskId, 'reason' => 'HARPP retrieval failed']);
+        say('  HARPP could not return a decision list; the branch remains parked and no answer was applied.');
+        if (trim($listed['output']) !== '') {
+            say('  said: ' . trim($listed['output']));
+        }
+
+        return 4;
+    }
+
+    $bound = null;
+    foreach ($rows as $remote) {
+        $bound = bindDirectorDecision($origin, $remote);
+        if ($bound !== null) {
+            break;
+        }
+    }
+    if ($bound === null) {
+        $key = (string) ($origin['decision_key'] ?? '');
+        record('RESUME-FAULT', ['task' => $taskId, 'key' => $key, 'reason' => 'not in HARPP read-back']);
+        say('  HARPP returned no decision with the originating key `' . $key . '`.');
+        say('  A task/title match is not authority. The branch remains parked and nothing was applied.');
+
+        return 4;
+    }
+
+    $remote = $bound['remote'];
+    $key = (string) $origin['decision_key'];
+    $id = (string) ($remote['id'] ?? '');
+    $state = directorDecisionState($remote);
+    $answer = directorDecisionAnswer($remote);
+    record('RETRIEVED', ['task' => $taskId, 'key' => $key, 'id' => $id !== '' ? $id : '?', 'state' => $state !== '' ? $state : '?']);
+
+    if (!directorDecisionIsAnswered($remote)) {
+        record('PARKED', ['task' => $taskId, 'key' => $key, 'state' => $state !== '' ? $state : '?', 'default' => 'stop']);
+        say('  Director answer: not yet provided.');
+        say('  Plan unchanged: stop only this affected branch; no default was applied.');
+
+        return 0;
+    }
+
+    $selected = selectedDirectorOption($origin, $answer);
+    if ($selected === null) {
+        record('RESUME-FAULT', ['task' => $taskId, 'key' => $key, 'reason' => 'answer names no unique filed option']);
+        say('  Director answer: ' . $answer);
+        say('  The answer does not name exactly one option filed under this decision key.');
+        say('  The branch remains parked rather than guessing what the director meant.');
+
+        return 4;
+    }
+
+    $change = directorPlanChange($taskId, $origin, $remote, $selected);
+    record('ANSWER', ['key' => $key, 'id' => $id, 'says' => $answer]);
+    record('PLAN-CHANGED', [
+        'from' => (string) $change['previous_plan'],
+        'to' => (string) $change['changed_plan'],
+        'because' => 'HARPP decision #' . $id . ' (' . $key . ')',
+    ]);
+    say('  Selected option ' . $change['selected_option'] . ': ' . (string) ($selected['label'] ?? ''));
+
+    if (directorDecisionWasResumed($key)) {
+        record('RESUME', ['task' => $taskId, 'key' => $key, 'status' => 'already-resumed']);
+        say('  This exact decision already resumed execution; it will not be dispatched twice.');
+
+        return 0;
+    }
+
+    // Move HARPP through its lifecycle only after the exact local/remote binding and option selection
+    // have succeeded. APPLIED/CLOSED are idempotent observations, not reasons to call the endpoint again.
+    if ($state === 'DECIDED') {
+        $ack = runHarppCommand(['decision', 'ack', $id, '--rationale', 'Chair bound the answer to ' . $key . ' and changed the plan.']);
+        if (!harppMutationSucceeded($ack)) {
+            record('RESUME-FAULT', ['task' => $taskId, 'key' => $key, 'reason' => 'HARPP acknowledge failed']);
+            say('  HARPP acknowledge failed; execution remains parked: ' . trim($ack['output']));
+
+            return 4;
+        }
+    }
+    if ($state === 'DECIDED' || $state === 'ACKNOWLEDGED') {
+        $apply = runHarppCommand(['decision', 'apply', $id, '--rationale', 'Chair applied option ' . $change['selected_option'] . ' to task ' . $taskId . '.']);
+        if (!harppMutationSucceeded($apply)) {
+            record('RESUME-FAULT', ['task' => $taskId, 'key' => $key, 'reason' => 'HARPP apply failed']);
+            say('  HARPP apply failed; execution remains parked: ' . trim($apply['output']));
+
+            return 4;
+        }
+    }
+
+    // This is the load-bearing evidence: both plans and the causing decision share one ledger record.
+    ledgerAppend($change);
+
+    $resume = trim((string) $change['resume']);
+    $runCommand = 'php tools/chair.php run --task=' . $taskId;
+    $advanceCommand = 'php tools/chair.php advance --task=' . $taskId;
+    if ($resume !== $runCommand && $resume !== $advanceCommand) {
+        record('RESUME-FAULT', ['task' => $taskId, 'key' => $key, 'reason' => 'unsafe or mismatched resume command']);
+        say('  The filed resume command is not the generated command for this task; it was not executed.');
+
+        return 4;
+    }
+
+    record('RESUME', ['task' => $taskId, 'key' => $key, 'command' => $resume]);
+    $subcommand = $resume === $advanceCommand ? 'advance' : 'run';
+    $process = proc_open(
+        [PHP_BINARY, __FILE__, $subcommand, '--task=' . $taskId],
+        [0 => STDIN, 1 => STDOUT, 2 => STDERR],
+        $pipes,
+        CHAIR_ROOT
+    );
+    if (!is_resource($process)) {
+        record('RESUME-FAULT', ['task' => $taskId, 'key' => $key, 'reason' => 'could not start execution']);
+
+        return 4;
+    }
+    $exit = proc_close($process);
+    ledgerAppend([
+        'phase' => 'decision-resumed',
+        'task' => $taskId,
+        'decision_id' => $id,
+        'decision_key' => $key,
+        'selected_option' => (string) $change['selected_option'],
+        'execution_exit' => $exit,
+    ]);
+
+    return $exit;
 }
 
 function commandStatus(array $options): int
@@ -2912,6 +3341,64 @@ function selfTest(): int
     $check('empty output is not delivery', !deliveryAcknowledged('', 0, 't-1'));
     $check('a failed read-back exit is not delivery even when the key is present', !deliveryAcknowledged($listed, 1, 't-1'));
 
+    say('the director round trip: an answer changes the plan only after an exact binding:');
+    $remoteEnvelope = '{"ok":true,"data":{"decisions":[{"id":42,"decision_key":"round-trip-key",'
+        . '"lifecycle_state":"DECIDED","decision":"Option b: take the narrow route"}]}}';
+    $remoteRows = harppDecisionRows($remoteEnvelope, 0);
+    $check(
+        'the real remote list envelope is parsed',
+        is_array($remoteRows) && ($remoteRows[0]['id'] ?? 0) === 42
+    );
+    $check('a failed HARPP read is not mistaken for an empty list', harppDecisionRows($remoteEnvelope, 1) === null);
+    $roundTripFiled = [
+        'decision_key' => 'round-trip-key',
+        'default_if_no_response' => 'stop',
+        'resume' => 'php tools/chair.php run --task=round-trip-task',
+        'options' => [
+            ['id' => 'a', 'label' => 'Wide', 'effect' => 'change every branch'],
+            ['id' => 'b', 'label' => 'Narrow', 'effect' => 'change only the affected branch'],
+        ],
+    ];
+    $boundRoundTrip = bindDirectorDecision($roundTripFiled, $remoteRows[0]);
+    $check('the remote answer binds to its originating artifact by exact decision_key', $boundRoundTrip !== null);
+    $check(
+        'a task-like but different key is not an answer to this request',
+        bindDirectorDecision($roundTripFiled, array_merge($remoteRows[0], ['decision_key' => 'different-key'])) === null
+    );
+    $pendingRoundTrip = $remoteRows[0];
+    $pendingRoundTrip['lifecycle_state'] = 'PENDING';
+    $check('PENDING is not an answer even if a stray decision field is present', !directorDecisionIsAnswered($pendingRoundTrip));
+    $check('DECIDED with an answer is actionable', directorDecisionIsAnswered($remoteRows[0]));
+    $chosenRoundTrip = selectedDirectorOption($roundTripFiled, (string) $remoteRows[0]['decision']);
+    $check(
+        'the director answer selects exactly the filed option it names',
+        is_array($chosenRoundTrip) && ($chosenRoundTrip['id'] ?? '') === 'b'
+    );
+    $check(
+        'an answer naming no filed option is parked rather than guessed',
+        selectedDirectorOption($roundTripFiled, 'Do whatever seems best') === null
+    );
+    $roundTripChange = directorPlanChange('round-trip-task', $roundTripFiled, $remoteRows[0], $chosenRoundTrip);
+    $check(
+        'the causal record shows the plan changing from stop to the selected effect',
+        $roundTripChange['previous_plan'] === 'stop'
+        && $roundTripChange['changed_plan'] === 'change only the affected branch'
+        && $roundTripChange['selected_option'] === 'b'
+    );
+    $check(
+        'the causal record identifies both the HARPP id and the originating decision key',
+        $roundTripChange['decision_id'] === '42'
+        && $roundTripChange['decision_key'] === 'round-trip-key'
+    );
+    ledgerAppend($roundTripChange);
+    $check(
+        'the changed plan can be retrieved for the next execution brief',
+        directorPlanForTask('round-trip-task')['decision_key'] === 'round-trip-key'
+    );
+    $check('an answer is not called resumed before execution happens', !directorDecisionWasResumed('round-trip-key'));
+    ledgerAppend(['phase' => 'decision-resumed', 'decision_key' => 'round-trip-key', 'task' => 'round-trip-task']);
+    $check('the exact decision is idempotently recognised after execution resumes', directorDecisionWasResumed('round-trip-key'));
+
     say('the deferred-decision artifact:');
     $parsed = decisionOptions('a|A|effect A|cheap|local|reversible; b|B|effect B|dear|wide|no');
     $check('options parse into the six named fields', count($parsed) === 2 && $parsed[1]['id'] === 'b');
@@ -3088,7 +3575,7 @@ if (in_array('self-test', $cli['flags'], true)) {
 }
 
 if ($cli['command'] === '') {
-    say('usage: php tools/chair.php <plan|run|advance|probe|decide|status|lanes|commit-check> [options]');
+    say('usage: php tools/chair.php <plan|run|advance|probe|resume|decide|status|lanes|commit-check> [options]');
     say('       php tools/chair.php run --task=<id> [--attempts=2] [--lane=<model>:<thinking>,...] [--falsify] [--dry]');
     say('       php tools/chair.php advance --task=<id> [--max=3] [--kind=mechanical|visual|reasoning] [--falsify]');
     say('       php tools/chair.php decide --task=<id> --decision=<text>');
@@ -3113,6 +3600,7 @@ exit(match ($cli['command']) {
         static fn (string $run): int => commandAdvance($cli['options'], $cli['flags'], $run)
     ),
     'probe' => commandProbe($cli['options']),
+    'resume' => commandResume($cli['options']),
     'lanes' => commandLanes(),
     'decide' => commandDecide($cli['options'], $cli['flags']),
     'status' => commandStatus($cli['options']),

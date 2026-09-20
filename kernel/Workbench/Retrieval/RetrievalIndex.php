@@ -833,6 +833,26 @@ final class RetrievalIndex
             return ['version' => self::VERSION, 'documents' => []];
         }
 
+        // The index on disk outlives the code that wrote it, so an entry read here can predate a field
+        // this class declares. Measured 2026-09-20: documents indexed before the use-feedback ledger
+        // existed arrived at search() without `last_used_at`, and reading it emitted one warning PER
+        // MATCHING DOCUMENT -- 1576 warnings for one `recall` run. That is not cosmetic: the flood is
+        // what filled the pipe and deadlocked the probe that ran it. Entries are restored to the shape
+        // this class declares, so every consumer can read the key and none of them has to guess.
+        $documents = [];
+        foreach ($decoded['documents'] as $path => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            /** @var array<string,mixed> $entry */
+            $entry += ['uses' => 0, 'last_used_at' => 0, 'lines' => 0, 'terms' => []];
+            $entry['uses'] = (int) $entry['uses'];
+            $entry['last_used_at'] = (int) $entry['last_used_at'];
+            $entry['lines'] = (int) $entry['lines'];
+            $documents[(string) $path] = $entry;
+        }
+        $decoded['documents'] = $documents;
+
         return $decoded;
     }
 
