@@ -241,10 +241,16 @@ $checks = [
         => is_array($akiraRollup)
             && (float) ($akiraRollup['write_ratio'] ?? -1) === 100.0
             // 47 when this gate was written; the authorised P3.3 session-revocation
-            // route (POST /cms-akira-shell/users/{id}/revoke, f63f6bf) is the 48th.
-            // Read work must not move the write figure.
-            && (int) ($akiraRollup['dispatch_enforced'] ?? -1) === 48
-            && (int) ($akiraRollup['total'] ?? -1) === 48,
+            // route (POST /cms-akira-shell/users/{id}/revoke, f63f6bf) is the 48th; and the two
+            // authorised P6 recovery routes (POST /cms-akira-shell/bundles/diff and /bundles/apply,
+            // aae747c) are the 49th and 50th. Read work must not move the write figure, and it has not.
+            //
+            // `undeclared` is asserted HERE, beside the count it qualifies, rather than trusted from
+            // another assertion: a total that grew while `undeclared` stayed 0 is the evidence that the
+            // two new POSTs are declared, and without it a grown count could equally mean two holes.
+            && (int) ($akiraRollup['dispatch_enforced'] ?? -1) === 50
+            && (int) ($akiraRollup['total'] ?? -1) === 50
+            && (int) ($akiraRollup['undeclared'] ?? -1) === 0,
     'census: each of the six GET routes is governed (5 enforced, 1 exempt)'
         => ($themeReads['/api/v1/cms-akira-theme/resolve'] ?? null) === 'enforced'
             && ($themeReads['/api/v1/cms-akira-theme/themes'] ?? null) === 'enforced'

@@ -101,15 +101,17 @@ $checks = [
         => is_array($censusModuleSummary)
             && (int) ($censusModuleSummary['undeclared'] ?? -1) === 0
             && (float) ($censusModuleSummary['write_ratio'] ?? -1) === 100.0,
-    'census: akira rollup reports undeclared 0, write_ratio 100 and dispatch_enforced == total == 48'
+    'census: akira rollup reports undeclared 0, write_ratio 100 and dispatch_enforced == total == 50'
         => is_array($censusAkira)
             && (int) ($censusAkira['undeclared'] ?? -1) === 0
             && (float) ($censusAkira['write_ratio'] ?? -1) === 100.0
             // 47 at the time this gate was written; the authorised P3.3 session-revocation
-            // route (POST /cms-akira-shell/users/{id}/revoke, f63f6bf) is the 48th. The
-            // invariant — every routed write declared and enforced — is unchanged.
-            && (int) ($censusAkira['dispatch_enforced'] ?? -1) === 48
-            && (int) ($censusAkira['total'] ?? -1) === 48,
+            // route (POST /cms-akira-shell/users/{id}/revoke, f63f6bf) is the 48th; the two authorised
+            // P6 recovery routes (POST /cms-akira-shell/bundles/diff and /bundles/apply, aae747c) are the
+            // 49th and 50th. The invariant -- every routed write declared and enforced -- is unchanged,
+            // which is what the `undeclared === 0` above this line is here to keep honest.
+            && (int) ($censusAkira['dispatch_enforced'] ?? -1) === 50
+            && (int) ($censusAkira['total'] ?? -1) === 50,
 ];
 
 $passed = 0;
