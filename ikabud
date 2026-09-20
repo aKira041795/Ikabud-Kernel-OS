@@ -1239,6 +1239,7 @@ switch ($command) {
         out('    ' . green('capability:call') . ' <id> "<json>"  Call a capability');
         out('    ' . green('capability:validate') . '         Validate versions + schemas');
         out('    ' . green('capability:audit') . ' [--json]  Audit declared providers, consumers, policies, and handlers');
+        out('    ' . green('capability:diff') . ' --modules=<id,..>  Report authority a candidate set would add (widening)');
         out('');
         out('  ' . bold('Platform'));
         out('    ' . green('platform:describe') . '           Full platform manifest (JSON)');
@@ -6314,6 +6315,89 @@ MD;
             exit(1);
         }
         break;
+    // ── capability:diff ────────────────────────────────────────────
+    case 'capability:diff':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud capability:diff --modules=<id,id,...>');
+            out('  Report-only diff of a candidate module set against the active install.');
+            out('  Prints added / removed / unchanged / WIDENING. Grants nothing; exits 0.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Governance/CapabilityDiff.php';
+        $selection = getFlagValue('--modules=');
+        if ($selection === null || trim($selection) === '') {
+            out('  Usage: php ikabud capability:diff --modules=<id,id,...>');
+            exit(0);
+        }
+        $requested = [];
+        foreach (explode(',', $selection) as $candidateId) {
+            $candidateId = trim($candidateId);
+            if ($candidateId !== '') {
+                $requested[$candidateId] = true;
+            }
+        }
+        $manifests = discoverModules();
+        $known = [];
+        $unknown = [];
+        foreach (array_keys($requested) as $moduleId) {
+            if (isset($manifests[$moduleId]) && is_array($manifests[$moduleId])) {
+                $known[] = $moduleId;
+            } else {
+                $unknown[] = $moduleId;
+            }
+        }
+        sort($known);
+        sort($unknown);
+
+        $activeManifests = [];
+        foreach ($manifests as $moduleId => $manifest) {
+            if (is_array($manifest) && !empty($manifest['_enabled'])) {
+                $activeManifests[(string) $moduleId] = $manifest;
+            }
+        }
+        $candidateManifests = [];
+        foreach ($known as $moduleId) {
+            $candidateManifests[$moduleId] = $manifests[$moduleId];
+        }
+        $diffClass = \Ikabud\Kernel\Workbench\Governance\CapabilityDiff::class;
+        $active = $diffClass::declarationsFromManifests($activeManifests);
+        $candidate = $diffClass::declarationsFromManifests($candidateManifests);
+
+        // The candidate set is diffed against the active install as given: an id
+        // the active install has and the candidate does not is named in REMOVED,
+        // never dropped.
+        $diff = $diffClass::diff($active, $candidate);
+
+        $printList = static function (string $label, array $ids): void {
+            out('  ' . $label . ' (' . count($ids) . '):');
+            if ($ids === []) {
+                out('    ' . dim('—'));
+                return;
+            }
+            foreach ($ids as $id) {
+                out('    ' . $id);
+            }
+        };
+
+        out('');
+        out('  ' . bold('Capability diff') . ' — report only; this command admits nothing');
+        out('  Active install: ' . count($activeManifests) . ' module(s), ' . count($active) . ' declared capability id(s)');
+        out('  Candidate modules: ' . (count($known) ? cyan(implode(', ', $known)) : dim('(none)')));
+        if ($unknown !== []) {
+            out('  ' . yellow('UNKNOWN MODULE(S): ' . implode(', ', $unknown)) . ' — not in the module registry; the rest are diffed, so the population is incomplete');
+        }
+        out('');
+        $printList('ADDED', $diff['added']);
+        $printList('REMOVED', $diff['removed']);
+        $printList('UNCHANGED', $diff['unchanged']);
+        out('');
+        out('  ' . bold('WIDENING: ' . count($diff['widening'])));
+        foreach ($diff['widening'] as $id) {
+            out('    ' . red($id));
+        }
+        out('');
+        exit(0);
+
     // ── capability:audit ───────────────────────────────────────────
     case 'capability:audit':
         if (hasFlag('--help')) {
