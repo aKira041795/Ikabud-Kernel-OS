@@ -381,7 +381,7 @@ function openRuns(): array
             $open[$run] = ($entry['task'] ?? '') === '' ? $run : (string) $entry['task'];
             continue;
         }
-        if ($phase === 'finish' || $phase === 'blocked') {
+        if ($phase === 'finish' || $phase === 'blocked' || $phase === 'abandoned') {
             unset($open[$run]);
         }
     }
@@ -4118,6 +4118,53 @@ function planObligations(?string $path = null): array
 }
 
 /**
+ * Record that a run was ABANDONED: the process died and no completion will ever arrive.
+ *
+ * This is the honest terminal state for a killed run, and the reason it exists as its own word. Writing
+ * `finish` would fabricate a completion that never happened; writing nothing leaves the run open for
+ * ever, which makes the duty permanently red and therefore worthless -- a guard nobody reads. Abandoning
+ * names what actually occurred, with a reason and a time, so the record stays true.
+ *
+ * Measured 2026-09-20: four runs died in flight and sat open for 16-23 hours.
+ */
+function commandAbandon(array $options): int
+{
+    $run = trim((string) ($options['run'] ?? ''));
+    if ($run === '') {
+        fail('abandon requires --run=<id>; `php tools/chair.php status` names the open runs.');
+    }
+    $reason = trim((string) ($options['reason'] ?? '')) !== ''
+        ? trim((string) $options['reason'])
+        : 'the process died in flight and no completion was recorded';
+
+    $task = '';
+    $known = false;
+    foreach (ledgerRead() as $entry) {
+        if ((string) ($entry['run'] ?? '') !== $run) {
+            continue;
+        }
+        $known = true;
+        if ((string) ($entry['phase'] ?? '') === 'start') {
+            $task = (string) ($entry['task'] ?? '');
+        }
+    }
+    if (!$known) {
+        fail('no such run in the ledger: ' . $run);
+    }
+
+    ledgerAppend([
+        'phase' => 'abandoned',
+        'run' => $run,
+        'task' => $task,
+        'reason' => $reason,
+        'at' => gmdate('c'),
+    ]);
+    record('ABANDONED', ['run' => $run, 'task' => $task, 'reason' => $reason]);
+
+    return 0;
+}
+
+/**
  * May the harness idle? Exits 3 when it may not.
  *
  * The answer is mechanical, which is the point: this exists so that "may I stop?" is a command's verdict
@@ -4188,6 +4235,9 @@ function commandContinueCheck(array $options): int
 exit(match ($cli['command']) {
     'plan' => commandPlan($cli['options']),
     'continue-check' => commandContinueCheck($cli['options']),
+    // Abandoning is an honest terminal state for a run whose process died: not `finish`, which would
+    // fabricate a completion, and not silence, which leaves the duty permanently red.
+    'abandon' => commandAbandon($cli['options']),
     // Wrapped, not inlined: a run holds the lock for its whole life and leaves a record of it. The
     // ledger decides commit eligibility, not the state of the tree.
     'run' => withRunLock(
