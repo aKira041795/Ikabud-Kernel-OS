@@ -2139,14 +2139,55 @@ function commandLanes(): int
     return 0;
 }
 
+/**
+ * The task record, or a refusal that names the problem and the ids that DO exist.
+ *
+ * `getTask()` throws on an unknown id, and an uncaught throw in this position is a stack trace rather
+ * than a refusal. Measured 2026-09-20: `advance --task=<a name it had never heard of>` died with
+ * `RuntimeException: Task not found` from inside withRunLock, and the ledger had to explain what the
+ * console did not. The mistake is an EXPECTED one, which is why this refusal lists the ids:
+ *
+ *   a task id is minted when its contract is FIRST IMPORTED, and it is not the contract's filename.
+ *
+ * Two stray records in this repository (`task-20260919115737-3a4b14`, `task-20260920025359-c76ff8`) are
+ * the fossil evidence that the mistake has been made before, and a guard that only said "not found"
+ * would have left the second one to be discovered the same way. `plan --contract=<file>` prints the id
+ * it will use, and `--task=<id>` on that first import chooses it.
+ */
+function requireTask(string $taskId): array
+{
+    if ($taskId === '') {
+        fail('this command needs --task=<id>');
+    }
+
+    try {
+        return repository()->getTask($taskId);
+    } catch (Throwable $error) {
+        say('  No task record called "' . $taskId . '" (' . $error->getMessage() . ').');
+        say('  A task id is minted when its contract is first imported, and it is NOT the contract filename,');
+        say('  so a guessed --task lands here instead of dispatching. Most recent task ids first:');
+        $dir = dirname(chairStateDir()) . '/workbench/development';
+        $known = [];
+        foreach (array_diff(scandir($dir) ?: [], ['.', '..', 'index.json', 'index.lock']) as $id) {
+            $known[] = ['id' => (string) $id, 'at' => (int) @filemtime($dir . '/' . (string) $id)];
+        }
+        // Newest first, not alphabetical: the id a caller needs is almost always the one just imported,
+        // and an alphabetical list of twelve truncated exactly the id that mattered when this was first
+        // written (measured 2026-09-20 -- `task-2026…` sorts last).
+        usort($known, static fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+        foreach (array_slice($known, 0, 12) as $entry) {
+            say('    ' . $entry['id']);
+        }
+        say('  Start a slice with `plan --contract=<file>`; pass `--task=<id>` on that first import to name it.');
+        exit(2);
+    }
+}
+
 function commandProbe(array $options): int
 {
     $taskId = $options['task'] ?? '';
-    if ($taskId === '') {
-        fail('probe needs --task=<id>');
-    }
     $repo = repository();
-    $task = $repo->getTask($taskId);
+    $task = requireTask($taskId);
     $contract = taskContract($repo, $task);
     $probes = taskProbes($contract);
     if ($probes === []) {
@@ -2279,7 +2320,7 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
     }
 
     $repo = repository();
-    $task = $repo->getTask($taskId);
+    $task = requireTask($taskId);
     $contract = taskContract($repo, $task);
     $objective = trim((string) ($task['objective'] ?? '')) ?: trim(sectionText($contract['objective'] ?? ''));
     $probes = taskProbes($contract);
