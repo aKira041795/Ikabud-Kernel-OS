@@ -1693,7 +1693,7 @@ instrument with an unproven process behind it, and should falsify C16–C23 rath
 
 ```bash
 cd /var/www/html/ikabudsix
-php tools/chair.php --self-test                                # expect 141/141, both directions
+php tools/chair.php --self-test                                # expect 153/153, both directions
 php tools/chair.php lanes                                      # expect mechanical / visual / reasoning
 php tools/chair.php commit-check                               # expect eligible when the lock is free, and abandoned runs named
 php kernel/Workbench/Retrieval/run.php --self-test             # expect 64/64
@@ -1742,11 +1742,13 @@ the plumbing.
 php kernel/Workbench/Retrieval/run.php search "autonomy driver run ledger commit-check" --limit=30
 #   0 legacy drivers -- the exclusion holds beyond the top 8, not just inside it
 php kernel/Workbench/Retrieval/run.php search "autonomy driver run ledger commit-check" --limit=30 --include-retired
-#   ai-autonomy.php and ai-run.php return, marked RETIRED -- kept, not lost
+#   ai-autonomy.php and ai-run.php were DELETED on 2026-09-20 -- this line used to read 'kept, not lost'
+#   and that is no longer true. `--include-retired` returns nothing for them because there is nothing left
+#   to return. See §10.5; the index prefix is vestigial and deliberately retained.
 php kernel/Workbench/Retrieval/run.php recall            # 3 of 3 within rank   (was 1 of 3)
 php kernel/Workbench/Retrieval/run.php recall --control  # 3 of 3 correctly MISSED, so a green gate is not vacuous
 php tests/retrieval_index_test.php                       # 10 passed, 0 failed
-php tools/chair.php --self-test                          # 141 passed, 0 failed
+php tools/chair.php --self-test                          # 153 passed, 0 failed
 ```
 
 **What reaching step 7 cost, and what it exposed.** Six instrument defects stood between the answer and the
@@ -1764,6 +1766,147 @@ director's instruction — not because `harpp watch` received it through the own
 therefore carries the answer, the causation is checkable, and the queue was cleared of four pending items —
 but the **receipt** path, an answer arriving that the chair did not write, remains unexercised. C22's limit
 is unchanged by this section.
+
+---
+
+## 10. Revision 2026-09-21 — the harness can now see its own unfinished work
+
+Everything in §1–§9 stands unless contradicted below. This section exists because the harness was found
+to have been **announcing facts it never recorded**, which invalidated several of those sections'
+measurements without changing a single line of the code they describe.
+
+### 10.1 The defect that made the other measurements suspect
+
+`record()` built a log line and called `say()`. It wrote nothing. So every
+`record('VERIFIED', …)`, `record('TASKS', …)` and `record('CONTINUE', …)` in the harness was console output
+only. Measured: the ledger held **121 lines and ZERO verification records**, after two runs had printed
+`[VERIFIED]` that afternoon.
+
+Consequences, all observed rather than deduced:
+
+- **every task read `READY_FOR_IMPLEMENTATION` for ever**, so a finished task and a never-started task were
+  byte-identical in `status`. Finished work and stalled work were indistinguishable.
+- `continue-check` had nothing truthful to read and fell back to the plan's prose table, reporting
+  *"Nothing chair-actionable remains … idling is correct"* while work was outstanding.
+- **a stall was therefore undetectable by construction.** It happened, and it was found by the director
+  asking rather than by the harness. Four runs had died in flight 16–23 hours earlier and were invisible.
+
+A function named `record()` that does not record is the same defect class as everything in §9.6: state that
+does not hold what it claims to hold.
+
+### 10.2 What replaced it — the stop invariant, and honesty about cutovers
+
+| Component | What it answers |
+|---|---|
+| durable `record()` | persists every announced fact to `storage/private/chair/ledger.jsonl`; pinned by a self-test check |
+| `verifiedTasks()` | *is this task finished?* — the ledger's answer, not the stored state's |
+| `strandedTasks()` | dispatched and never verified — **informational, deliberately not fatal** |
+| `openRuns()` | started with no finish: a process that died in flight — **fatal** |
+| `php tools/chair.php continue-check` | may the harness idle? exits 3 when it may not |
+| `php tools/chair.php abandon --run=<id> --reason=` | honest terminal state for a killed run |
+
+Two design decisions a reviewer should attack:
+
+1. **`strandedTasks()` is not fatal**, because before `CHAIR_DURABLE_RECORD_DATE` (`2026-09-20`) the answer
+to *"is there a VERIFIED record?"* was **no for every task ever run**. A missing record from before the
+cutover is evidence about the **instrument**, not the task. A guard that is permanently red is a guard
+nobody reads — that was the defect fixed in §10.5's first slice.
+2. **`abandon` exists rather than a fabricated `finish`.** Writing `finish` would falsify provenance;
+writing nothing leaves the run open for ever. Four such runs were reconciled this way, each with its reason
+recorded.
+
+### 10.3 The duty — and its honest limit
+
+`tools/chair-duty.sh` evaluates the invariant, compares it with the last recorded verdict, and **pushes to
+the director only when the verdict CHANGES** (a repeat alarm for an unchanged condition trains its reader
+to ignore it). It is bound to invocation via `chairDuty()` after `advance`, so nothing has to be installed
+by anyone. Verified: no conversation configured → refuses with exit 4; with one → delivered; repeat → silent.
+
+**Limit, stated rather than hidden:** the chair has no continuity and cannot be the observer. Anything
+invocation-bound cannot see *"nothing invoked the harness at all"* — and in that case nothing is running
+on either side to notice. Staleness is visible to whoever looks next, not pushed.
+
+### 10.4 The instruction layer: one normative file per subject
+
+Two files, both `applyTo: **/*`, loaded on every request and **contradicting each other**:
+
+```
+ai-autonomy-escalation:43   php tools/ai-autonomy.php stop-report --remaining=<n>     <- RETIRED tool
+copilot-instructions:64     ai-run.php … is historical; it is not the current ledger
+```
+
+Resolved by decision (director-delegated): **`ai-autonomy-escalation.instructions.md` is normative for
+authority**; `ai-development-execution-handoff.instructions.md` is workflow-only and defers to it;
+`copilot-instructions.md` owns tooling reality. Ten retired-tool citations across three files were replaced
+with the live commands; where a command had **no successor** (`check --level=`) the absence is stated rather
+than filled with something that resembles it.
+
+**Why this mattered beyond tidiness:** the policy cited `ai-autonomy.php stop-report` for the stop invariant
+— a tool a prior decision had already retired. So the check looked absent and was *rebuilt* as
+`continue-check`. A policy pointing at deleted tooling does not merely mislead; it hides what exists.
+
+### 10.5 The retirement, executed — 6,554 lines
+
+`RETIRED.md` listed the trio as retired and the files were never deleted, so the retirement existed only as
+documentation. Executed 2026-09-20:
+
+- **4,811 lines** — `ai-run.php`, `ai-project.php`, `ai-autonomy.php`: exactly what the decision retires.
+- **1,743 lines** — `ai-loop`, `ai-watch`, `ai-contract-lint`, `ai-authority-preflight`, `ai-task`: each
+  `require`s a file deleted above, so none could load. *A tool that cannot load is not a tool.*
+- **7 tests** retired by this repository's own convention (`*.php.retired` under `tests/_retired/`).
+- `tools/harpp2/` was **classified and deliberately kept** — retired from use, retained as a worked example,
+  and holding **226 audit records that must not be deleted**. It had been mis-classified three times in one
+  session; it now states what it is (`tools/harpp2/README.md`).
+
+**Evidence:** suite `201 files — 148 passed, 53 skipped, 0 failed`, which reconciles **exactly** against the
+previous `208 / 155` — the seven retired tests and nothing else.
+
+### 10.6 Two censuses: authority, and extension points
+
+- **`php ikabud capability:census`** compares *declaration* against the *active store* and names each
+divergence with its direction. On tenant 54: 69 declarations against 69 rows, 31 matching, and
+`[divergent/widening fields=caller_module] akira.shell.admin_page@1 declared=v30 active=v30` — **it
+reproduces decision 115 by machine**, which had been found by hand from log noise among nine identical
+warnings. Widening and narrowing are separate findings and are never merged; a superseded declaration is
+classed `superseded`, not divergent.
+- **`php ikabud extension:census`** reports declared extension points with no consumer: 19 manifests read,
+**5 declared, 0 consumed, 0 orphans**. It removes nothing — deleting published contract surface is the
+director's call.
+
+### 10.7 Corrections to this brief's own record
+
+- §9.10's surviving claim that `ai-autonomy.php`/`ai-run.php` *"return, marked RETIRED — kept, not lost"*
+is **no longer true**; they are deleted. Corrected in place above.
+- Self-test counts `141/141` → **`153/153`** (two places).
+- A retracted claim: a complexity review asserted `copilot-instructions.md` declared a false skills registry
+  ("19 files" where 3 exist). **The registry was accurate** — 22 entries, 19 `.md` with valid frontmatter.
+  The instrument (`ls -d */`) counted only directories. The deletion was reverted rather than quietly
+  patched, and the retraction is recorded in the review.
+
+### 10.8 What an independent reviewer should falsify next (2026-09-21)
+
+1. **`record()` now persists — prove it cannot silently stop again.** Kill a run mid-flight and check that
+   the next `continue-check` reports it.
+2. **`abandon` cannot be used to hide a failure.** Prove that abandoning a run that *did* finish is
+   detectable, and that `commit-check` still refuses while a run is open.
+3. **The censuses report but force nothing.** A divergence can now be plainly visible and still unfixed —
+   the same shape as a warning nobody reads, one level up.
+4. **Route mapping is not yet covered.** The census compares sources 3 vs 4; **sources 1 vs 2**
+   (`capabilities.exposes` ↔ `capabilities.routes`) were measured separately and found **1 true orphan** in
+   75 routes: `GET /cms-akira-shell/provenance -> kernel.provenance.list@1`, which no manifest declares —
+   while the policy store holds a row for it. A first pass reported **46** orphans; the check resolved
+   "declared" per-manifest, so legitimate cross-module routing looked orphaned. **46 → 1 is a 46×
+   instrument error**, and it is the failure mode this section exists to document.
+5. **Delivery is not proven.** Decisions 115 and 116 show `notified_at: null` and `decided_at: null` despite
+   notification rows existing. Per this brief's own rule, a filed decision is not a delivered one.
+
+### 10.9 The honest position of this revision
+
+§9's claim that the measurement apparatus is the weak part still holds, with a fourth example: I wrote two
+documents about trusted-broken-instruments and then produced a 46× false positive, a wrong "records not
+code" classification, and a deletion of a **true** index — all within a day. What changed is not my
+reliability but the record: every one of those is committed, retracted in place, and mechanised where
+possible. The harness still cannot make a judgement; it can now make a judgement *checkable*.
 
 ---
 
