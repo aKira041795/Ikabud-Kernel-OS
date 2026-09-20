@@ -516,7 +516,7 @@ edit
 
 loops.
 
-- File every L4 condition with `tools/ai-autonomy.php defer`; it delivers the request to the director through HARPP.
+- File every L4 condition with `harpp decision submit`, or `harpp_submit_decision` when an agent is inside VS Code with the MCP server attached; both deliver the request to the director through HARPP. (Authority is normative in `.github/instructions/ai-autonomy-escalation.instructions.md`; this section describes the workflow around it.)
 - A decision that HARPP cannot deliver is a failed run, not a filed decision; a second failed repair attempt on the same failure is an L4 stop.
 
 Stop and escalate when:

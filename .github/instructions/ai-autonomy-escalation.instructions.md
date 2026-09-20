@@ -40,7 +40,7 @@ THEN harness_state != IDLE
 
 "Stopped even though approved work obviously remains" is a **system defect**, not normal behaviour.
 
-The invariant is mechanical: `php tools/ai-autonomy.php stop-report --remaining=<n> --stop-reason=<TYPE>`
+The invariant is mechanical: `php tools/chair.php continue-check [--stop-reason=<TYPE>]`
 exits `0` only when no obligation remains or a contract-level blocker is named (`CONTRACT_BLOCKED`,
 `RESOURCE_EXHAUSTED`, `EXTERNAL_DEPENDENCY_BLOCKED`, `SAFETY_BLOCKED`), and exits `3` when obligations
 remain under a non-contract reason such as `PROJECT_COMPLETE` or an uncertainty. It makes the invariant
@@ -229,7 +229,7 @@ did the tests pass · did lint/static analysis pass · did the change exceed `al
 capability have an active policy row · is the shell still table-free · which contract revision is
 current · did the release gate pass · what is in the logs or cache.
 
-Inspect the current list with `php tools/ai-autonomy.php models`.
+Inspect the current list with `php tools/chair.php lanes`.
 
 ### Intelligence-cost tiers (T), distinct from authority levels (L)
 
@@ -394,7 +394,7 @@ The chair must add this entry under `servers` in `~/.config/Code/User/mcp.json`,
 
 This registration is additive and VS Code must be reloaded afterward. Repository agents must not edit the chair-owned user configuration.
 
-With the server attached, an L4 submitted by the harness is visible through `harpp_list_decisions`; a CLI answer from `harpp decision decide <id> --decision D` is consumed by `tools/ai-autonomy.php resume --from-harpp`, which performs ack then apply on the same `decision_key`.
+With the server attached, an L4 submitted by the harness is visible through `harpp_list_decisions`; a CLI answer from `harpp decision decide <id> --decision D` is consumed by `php tools/chair.php resume`, which performs ack then apply on the same `decision_key`.
 
 ### No silent non-delivery
 
@@ -428,9 +428,9 @@ The director answers with one option id. The harness resumes at the recorded che
 - No silent scope expansion or silent HARPP non-delivery.
 - No "asking a question" without options and a recommendation.
 - No treating an unreported run as evidence: a silent success (exit 0, no report) is as blind as a
-  failure. Record run state with `tools/ai-run.php`; never infer it from log size or `pgrep`.
+  failure. Record run state with `tools/chair.php`; never infer it from log size or `pgrep`.
 - No committing during a live or unstable run: committing while any run is not `completed` is a process
-  defect. Commit eligibility is decided by the ledger (`php tools/ai-run.php commit-check`), not by how
+  defect. Commit eligibility is decided by the ledger (`php tools/chair.php commit-check`), not by how
   the tree looks — a tree can look coherent while a run is still writing to it.
 - Live decisions are the point, not a hazard. **Owner directive 2026-09-14:** *"i'm fine with live decisions as
   this is the crux of having a chair. the harness is a tool, remember that always. live decision making makes
