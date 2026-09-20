@@ -1241,6 +1241,7 @@ switch ($command) {
         out('    ' . green('capability:audit') . ' [--json]  Audit declared providers, consumers, policies, and handlers');
         out('    ' . green('capability:diff') . ' --modules=<id,..>  Report authority a candidate set would add (widening)');
         out('    ' . green('capability:census') . ' [--tenant=..]  Report declared policy rows vs the active policy store');
+        out('    ' . green('extension:census') . '            Report declared extension points vs manifest contributions');
         out('');
         out('  ' . bold('Platform'));
         out('    ' . green('platform:describe') . '           Full platform manifest (JSON)');
@@ -6498,6 +6499,114 @@ MD;
             } else {
                 out($censusLine);
             }
+        }
+        out('');
+        exit(0);
+
+    // ── extension:census ───────────────────────────────────────────
+    case 'extension:census':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud extension:census [--json]');
+            out('  Report-only census of declared extension points against module manifest contributions.');
+            out('  Reads module.json files only: grants nothing, writes nothing, loads no module code.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Governance/ExtensionPointCensus.php';
+
+        // Read every module.json on disk, not the discovered/enabled set: a
+        // census of the published surface must not go silently empty because
+        // discovery skipped a manifest. The count of files read is printed so
+        // an empty surface is visible as a reading of zero files.
+        $censusManifestFiles = [];
+        $censusModuleRoot = __DIR__ . '/modules';
+        if (is_dir($censusModuleRoot)) {
+            $censusIterator = new RecursiveIteratorIterator(
+                new RecursiveCallbackFilterIterator(
+                    new RecursiveDirectoryIterator($censusModuleRoot, FilesystemIterator::SKIP_DOTS),
+                    static function (SplFileInfo $current): bool {
+                        return !preg_match('/\.bak_\d{8}_\d{6}$/', $current->getFilename());
+                    }
+                ),
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+            foreach ($censusIterator as $censusFile) {
+                if ($censusFile instanceof SplFileInfo && $censusFile->isFile() && $censusFile->getFilename() === 'module.json') {
+                    $censusManifestFiles[] = $censusFile->getPathname();
+                }
+            }
+        }
+        sort($censusManifestFiles, SORT_STRING);
+
+        $censusDeclared = [];
+        $censusContributions = [];
+        foreach ($censusManifestFiles as $censusManifestFile) {
+            $censusRaw = @file_get_contents($censusManifestFile);
+            if ($censusRaw === false) {
+                continue;
+            }
+            $censusManifest = json_decode($censusRaw, true);
+            if (!is_array($censusManifest)) {
+                continue;
+            }
+            $censusModuleId = trim((string)($censusManifest['id'] ?? ''));
+            if ($censusModuleId === '') {
+                $censusModuleId = basename(dirname($censusManifestFile));
+            }
+            foreach ((array)($censusManifest['extension_points'] ?? []) as $censusPoint) {
+                if (is_string($censusPoint) && trim($censusPoint) !== '') {
+                    $censusDeclared[] = ['point' => trim($censusPoint), 'module' => $censusModuleId];
+                }
+            }
+            foreach ((array)($censusManifest['contributes'] ?? []) as $censusContribution) {
+                if (!is_array($censusContribution)) {
+                    continue;
+                }
+                $censusPoint = trim((string)($censusContribution['extension_point'] ?? ''));
+                if ($censusPoint === '') {
+                    continue;
+                }
+                $censusContributions[] = ['point' => $censusPoint, 'module' => $censusModuleId];
+            }
+        }
+
+        $censusReport = \Ikabud\Kernel\Workbench\Governance\ExtensionPointCensus::report($censusDeclared, $censusContributions);
+
+        if (hasFlag('--json')) {
+            out(json_encode([
+                'ok' => true,
+                'manifests_read' => count($censusManifestFiles),
+                'declared_points' => count($censusDeclared),
+                'contributions' => count($censusContributions),
+                'counts' => $censusReport['counts'],
+                'unconsumed' => $censusReport['unconsumed'],
+                'orphans' => $censusReport['orphans'],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+
+        out('');
+        out('  ' . bold('Extension point census') . ' — declared points vs manifest contributions');
+        out('  Manifests read: ' . cyan((string)count($censusManifestFiles)));
+        out('  Declared points: ' . count($censusDeclared) . dim('; contributions: ' . count($censusContributions)));
+        out('');
+        foreach ($censusReport['counts'] as $censusClass => $censusCount) {
+            out('    ' . str_pad($censusClass, 16) . $censusCount);
+        }
+        out('');
+        out('  ' . bold('UNCONSUMED') . dim(' (reported, not fatal)'));
+        if ($censusReport['unconsumed'] === []) {
+            out('    ' . dim('—'));
+        }
+        foreach ($censusReport['unconsumed'] as $censusPoint) {
+            out('    ' . yellow($censusPoint['point']) . dim(' declared by ' . $censusPoint['declared_by']));
+        }
+        out('');
+        out('  ' . bold('ORPHANS') . dim(' (contributed to a point no manifest declares)'));
+        if ($censusReport['orphans'] === []) {
+            out('    ' . dim('—'));
+        }
+        foreach ($censusReport['orphans'] as $censusOrphan) {
+            out('    ' . red($censusOrphan['point']) . dim(' contributed by ' . $censusOrphan['contributed_by']));
         }
         out('');
         exit(0);
