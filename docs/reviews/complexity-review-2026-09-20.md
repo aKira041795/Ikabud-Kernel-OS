@@ -70,12 +70,36 @@ The autonomy doctrine is stated in **three or more** files and HARPP in **eight*
 as the product's four authority sources — *N places that must agree, and nothing reconciling them* — and
 here it already produced a contradiction.
 
-### A declaration that is simply false
+### RETRACTED — the skills registry was accurate, and I deleted it by mistake
 
-`copilot-instructions.md` declares a **"Skills registry (19 files in `.github/skills/`)"** with a
-two-table breakdown. `.github/skills/` contains **3 directories**. 16 of the declared skills do not exist.
-This mirrors a skills listing that references `approval-workflow`, `attendance-wage-payroll`,
-`financial-immutability`, `inventory-costing` — modules the repository does not contain.
+I claimed `copilot-instructions.md` declared a false "19 files in `.github/skills/`". **That was wrong, and I
+reverted the change** (`0b42eb8` reverted in `5727069`). Measured truth:
+
+```
+.github/skills/  -> 22 entries: 19 .md files + 3 directories
+.md files with valid frontmatter (name/description/applyTo): 19
+registry entries with no file: NONE
+```
+
+The "19 files" sentence was **precisely true**. My instrument was `ls -d .github/skills/*/`, which counts
+only DIRECTORIES, and I deleted a correct index on the strength of it — then committed a *new* falsehood
+in its place, asserting the repository does not contain `attendance-wage`, `inventory-costing`,
+`financial-immutability`, `approval-workflow` or `report-generation`. All five exist.
+
+**The lesson is the one this review is about.** I trusted an unverified instrument and reported its
+reading as a finding, twice in one commit — while writing a document about exactly that failure. A count
+produced by a glob is not a fact until the glob is checked against the thing it claims to count.
+
+### The real finding, stated as a question rather than a deletion
+
+`.github/skills/` holds **19 flat `.md` skills** with valid frontmatter and **3 directories** containing
+`SKILL.md`. Only the directory form is offered to an agent at runtime. So the open question is:
+
+> Are the 19 flat `.md` skills actually loaded, or are they inert — present, valid, and never read?
+
+That is worth determining before anything is removed. If they are inert, the removal is real (~19 files
+of guidance that reads as coverage and enforces nothing); if they load, nothing is wrong at all. **This
+is not a licence to delete them**, and it is not a basis for another claim until it is measured.
 
 ### One more contradiction, in the Python layer
 
@@ -89,13 +113,13 @@ execute a second, and the instructions describe the first.
 |---|---|---|---|---|
 | 1 | **Complete the retirement**: delete the trio, retire its 7 tests, clean the 2 kernel references, and make ONE instruction file authoritative | ~4,811 + tests | medium — kernel and tests are entangled | It removes the contradiction *and* the largest surface. Nothing else is trustworthy until the reader can tell which harness is real. |
 | 2 | **De-duplicate the instruction layer** to one normative file per subject, others pointing at it | ~1,000 | medium — normative content must survive verbatim | `HARPP` in 8 files guarantees the next contradiction. |
-| 3 | **Delete the false skills registry** and the claims about modules that do not exist | ~40 | none | A declaration that is false is worse than an absent one. |
+| 3 | ~~Delete the false skills registry~~ **RETRACTED** — it was accurate. Open question: are the 19 flat `.md` skills loaded, or inert? Measure before removing | ~0 | — | See the retraction below. I deleted a true index on a broken instrument. |
 | 4 | **Split `harpp_wake.py`** (5,113 lines) | 0 | medium | Review first — do not split a monolith I have not read. |
 | 5 | **Resolve the bridge-copy contradiction** | 0 | low | Decide in-tree or `applicationostest`, then delete the other. |
 
 ## What I decide now, and what needs the director
 
-**Decided — mine, first action:** item 3, immediately (it is a false statement, not a design choice), and
+**Decided — mine, first action:** ~~item 3, immediately~~ **item 3 retracted** (the registry was accurate; see below), and
 the *execution plan* for item 1 in dependency order: kernel references → tests → tools → instruction
 file. Order matters: deleting tools first breaks the suite and the retrieval index, and a red suite hides
 the real regression.
