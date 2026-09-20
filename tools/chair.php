@@ -4118,6 +4118,34 @@ function planObligations(?string $path = null): array
 }
 
 /**
+ * Run the standing duty, if it is present. Never fatal: a monitor must not break what it monitors.
+ *
+ * Bound to INVOCATION rather than to a timer. The harness is invoked constantly during real work, so the
+ * alarm fires whenever anything touches it, and nothing has to be installed by anyone. `chair-duty.sh`
+ * pushes only when the verdict CHANGES, so a repeated invocation for an unchanged condition stays silent.
+ *
+ * What this cannot see is "nothing invoked the harness at all" -- and in that case there is nothing
+ * running on either side to notice, which is a limit of the world rather than of this wiring. The stale
+ * heartbeat that would reveal it is visible to whoever looks next.
+ */
+function chairDuty(): void
+{
+    $script = CHAIR_ROOT . '/tools/chair-duty.sh';
+    if (!is_file($script)) {
+        return;
+    }
+    $output = [];
+    $code = 0;
+    exec('bash ' . escapeshellarg($script) . ' 2>&1', $output, $code);
+    foreach (array_slice($output, -2) as $line) {
+        say('  [DUTY] ' . $line);
+    }
+    if ($code === 4) {
+        say('  [DUTY] the alarm was NOT delivered — see the output above.');
+    }
+}
+
+/**
  * Record that a run was ABANDONED: the process died and no completion will ever arrive.
  *
  * This is the honest terminal state for a killed run, and the reason it exists as its own word. Writing
@@ -4248,7 +4276,14 @@ exit(match ($cli['command']) {
     // the same lock: two writers on one tree is what the lock exists to prevent, whatever the command is.
     'advance' => withRunLock(
         $cli['options'] + ['mode' => 'advance'],
-        static fn (string $run): int => commandAdvance($cli['options'], $cli['flags'], $run)
+        // The duty runs after the work, INSIDE no timer: the alarm is bound to the invocation that just
+        // happened, which is the moment the ledger knows something about the state of the world.
+        static function (string $run) use ($cli): int {
+            $exit = commandAdvance($cli['options'], $cli['flags'], $run);
+            chairDuty();
+
+            return $exit;
+        }
     ),
     'probe' => commandProbe($cli['options']),
     'resume' => commandResume($cli['options']),
