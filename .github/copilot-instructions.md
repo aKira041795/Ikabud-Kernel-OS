@@ -98,39 +98,22 @@ Custom agents with model assignments live in `.github/agents/`. The full registr
 
 Delegate specialized tasks to the appropriate agent. For complex multi-step work, use Explore first for context, then delegate implementation as needed.
 
-## Skills registry (19 files in `.github/skills/`)
-All skills are loaded automatically by their `applyTo` patterns or `description` trigger phrases — treat them as rules, not suggestions.
+## Skills
 
-### Mandatory (always active — apply to all or broad file patterns)
+Skills live in `.github/skills/` — one directory per skill, each containing a `SKILL.md` — and load by
+their `applyTo` patterns or `description` trigger phrases. Treat them as rules, not suggestions.
 
-| Skill | Applies to | What it enforces |
-|---|---|---|
-| `iterative-task-execution` | `**/*` | Todo-driven loop: break down → implement one item → verify → mark done → repeat. Scope discipline, no feature creep. |
-| `debug-workflow` | `**/*.php`, `**/*.disyl`, `**/*.sql` | Check both `app.log` + `error.log` on every issue. Systematic debugging for module DB errors, DiSyL warnings, request tracing. |
-| `code-review-checklist` | `**/*.php`, `**/*.disyl`, `**/*.sql` | SQL query patterns, migration idempotency, route ordering, entity view registration, form handler completeness, template safety. |
-| `testing-strategy` | `**/tests/**` | Four-tier testing: unit → integration → security → acceptance. Required before marking features done. |
-| `module-boundaries` | `**/*.php` | Kernel boundary discipline, tenant scoping, capability-based access, route ownership. No bypassing kernel contracts. |
-| `service-layer-patterns` | `**/services/**` | Domain service structure (`ServiceResult`), transaction discipline, event emission, audit logging. |
-| `module-creation` | `**/module.json` | Module scaffold checklist, manifest essentials, capability handler naming, migration patterns, auth-owned module conventions. |
-| `new-module-checklist` | `**/*.php`, `**/*.disyl`, `**/module.json` | Complete new module checklist: user seeding, DiSyL syntax, capability handler placement, JWT auth, role access matrix, forgot password, log permissions, debugging guide. |
+**This section used to enumerate "19 files in `.github/skills/`" in two tables. Three exist.** The other
+sixteen named modules this repository does not contain (`attendance-wage`, `inventory-costing`,
+`financial-immutability`, `approval-workflow`, `report-generation`, …), so they were rules about software
+that is not here — and a rule that cannot apply is worse than an absent one, because it reads as coverage.
 
-### Domain-specific (loaded when file pattern or topic matches)
+The enumeration was itself the defect: it drifted from the directory and nothing reconciled the two. Do
+not re-list skills here. The directory is the authority:
 
-| Skill | Applies to | What it enforces |
-|---|---|---|
-| `approval-workflow` | `**/*.php` | Multi-state approval state machine: submit, review, reject, return, escalate. |
-| `attendance-wage-payroll` | `**/attendance-wage/**` | Payroll computation, benefits deductions, tax, 13th month, module DB query rules. |
-| `auth-module-setup` | `**/handlers/05-auth.php` | Auth-owned modules: API routes, JSON input/output, CSRF avoidance for shared login templates. |
-| `disyl-engine-first-fix` | `**/*.disyl` | Fix DiSyL at the engine level (`kernel/DiSyL/`) rather than template bandaids. |
-| `docs-update-triggers` | *(description-triggered)* | When and what documentation to update after code changes. |
-| `domain-events` | `**/services/**` | Emitting and handling domain events through the kernel event bus. |
-| `entity-view-system` | `**/entity-views.php` | Entity view pipeline: resolver, renderers, cell types, action wiring, inline editing. |
-| `financial-immutability` | `**/services/**` | Reversal, void, adjustment patterns — never overwrite approved financial records. |
-| `inventory-costing` | `**/services/**` | Movement-first inventory with weighted average costing, cost snapshots. |
-| `migration-workflow` | *(description-triggered)* | Schema changes: file naming, `module.json` registration, CLI apply, safe ALTER TABLE. |
-| `report-generation` | `**/reports/**` | PDF and Excel report patterns: A4 format, headers, filters, streaming, audit. |
-| `ark-architecture-audit` | *(description-triggered)* | System codebase audit: Kernel OS, DiSyL, ARK theme architecture, convention compliance. |
-| `bluehost-mysql-compatibility` | `**/*.php`, `**/*.sql` | Bluehost MySQL 5.7 constraints: no window functions, no CTEs, InnoDB required, FK type matching, pre-deployment audit checklist. |
+```
+ls .github/skills/
+```
 
 ## Service boundaries and data flow
 - Follow module boundaries: kernel provides routing/auth/hooks/capabilities; modules provide business features.
