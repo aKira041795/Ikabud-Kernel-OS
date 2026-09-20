@@ -999,6 +999,56 @@ function probeFault(string $output): ?string
     return null;
 }
 
+/**
+ * Where a lane's own output is written.
+ *
+ * Kept in one place because the path is read twice: once to write the lane's output during the
+ * dispatch, and once to read it back when asking whether the lane ever started.
+ */
+function laneLogPath(string $brief, int $attempt): string
+{
+    return CHAIR_ROOT . '/storage/private/chair/runs/' . basename($brief, '.md') . '-attempt' . $attempt . '.log';
+}
+
+/**
+ * Lane-log signatures that mean the lane never RAN, as opposed to running and producing nothing.
+ *
+ * The distinction is the same one CHAIR_PROBE_FAULTS makes for probes, and it cost three attempts to
+ * learn here. Measured 2026-09-20: the dispatch was changed to close every inherited descriptor above
+ * stderr, and because `pi` is node and reads through one of them, all three lanes -- flash, sol at
+ * medium and sol at high -- died with `Error: EBADF: bad file descriptor, read` before reading the
+ * brief. Every one of them was recorded as `exit 1, changed=none` and classified `no-change`, whose own
+ * words are "a failure of the lane rather than of the code". That is backwards: the models never got to
+ * be wrong. Promoting on it spends the remaining rungs and, worse, writes a verdict about the model that
+ * the evidence does not support.
+ *
+ * A lane that could not start is not a lane that failed, so this is checked BEFORE the probe is run:
+ * measuring a tree nobody touched says nothing, and no stronger lane can fix the environment it is
+ * started in.
+ */
+const CHAIR_LANE_FAULTS = [
+    '/\bEBADF\b|bad file descriptor/i' => 'the lane died on a bad file descriptor before it could do any work: the harness handed it a process environment it cannot run in.',
+    '/command not found|\bENOENT\b/i' => 'the lane binary or one of its tools could not be found, so nothing was ever started.',
+];
+
+/** Why the lane never started, or null when its log shows no start failure. */
+function laneStartFailure(string $brief, int $attempt): ?string
+{
+    $log = laneLogPath($brief, $attempt);
+    if (!is_file($log)) {
+        return null;
+    }
+
+    $output = (string) @file_get_contents($log);
+    foreach (CHAIR_LANE_FAULTS as $pattern => $reason) {
+        if (preg_match($pattern, $output) === 1) {
+            return $reason;
+        }
+    }
+
+    return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // Context: the persisted retrieval index, not a walk per call.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -2262,6 +2312,26 @@ function attemptLoop(string $taskId, array $options, array $flags, array $plan, 
             return 3;
         }
 
+        // Did the lane run at all? Checked before the probe, because a tree nobody touched produces no
+        // verdict about anything -- and because a start failure recorded as `no-change` blames the model
+        // for the harness's environment.
+        $startFailure = laneStartFailure($brief, $attempt);
+        if ($changed === [] && $startFailure !== null) {
+            record('LANE-FAULT', ['n' => (string) $attempt, 'lane' => $lane]);
+            attemptLedger($run, $taskId, $attempt, $lane, 'LANE-FAULT');
+            say('  The lane never started, so this is the harness and not the model:');
+            say('  ' . $startFailure);
+            say('  No further attempt will be made. A stronger lane cannot fix the environment it is');
+            say('  started in, and climbing would report the fault as a model failure.');
+            commandDecide([
+                'task' => $taskId,
+                'decision' => 'stopped after ' . $attempt . ' attempt(s): the lane never started (harness fault)',
+                'rationale' => $startFailure . ' Fix the dispatch and re-run the SAME task -- the task is '
+                    . 'unchanged, and the attempts that were not spent are the point.',
+            ]);
+            return 3;
+        }
+
         $after = runRequiredTests($probes);
         record('PROBE', [
             'tests' => (string) count($probes),
@@ -2529,16 +2599,24 @@ function dispatchLane(string $lane, string $brief, int $attempt): int
     if (!is_dir($log) && !mkdir($log, 0775, true) && !is_dir($log)) {
         fail("cannot create {$log}");
     }
-    $logFile = $log . '/' . basename($brief, '.md') . '-attempt' . $attempt . '.log';
+    $logFile = laneLogPath($brief, $attempt);
 
-    // The lane drops every inherited descriptor above stderr before pi starts. flock() belongs to the
-    // OPEN FILE DESCRIPTION, not to the process, so a lane that inherits the run-lock handle keeps the
-    // run locked after the chair is gone: killing the chair does not release it, and `commit-check` then
+    // The lane gives up the run-lock descriptor before pi starts, and nothing else. flock() belongs to
+    // the OPEN FILE DESCRIPTION, not to the process, so a lane that inherits the lock handle keeps the
+    // run locked after the chair is gone: killing the chair releases nothing, and `commit-check` then
     // refuses to commit for as long as the orphan lives. Measured 2026-09-20 -- a lane hung inside a
     // deadlocked probe, the chair was killed, and the lock stayed held by the lane; four runs in this
-    // repository are recorded abandoned in exactly that shape. Closing the descriptors is what makes the
-    // lock mean "one live run" instead of "one live process tree".
-    $detach = 'for fd in /proc/self/fd/*; do n=${fd##*/}; [ "$n" -gt 2 ] && eval "exec $n>&-"; done 2>/dev/null; ';
+    // repository are recorded abandoned in exactly that shape.
+    //
+    // Scope matters more than the trick. Closing every descriptor above stderr also breaks the lane:
+    // `pi` is node, it reads through an inherited descriptor, and it dies with
+    // `Error: EBADF: bad file descriptor, read` before doing any work -- measured on all three attempts
+    // of run 20260920-020430 (every lane, every rung, exit 1, changed=none). So the loop below closes
+    // the ONE descriptor whose target is the lock file, found by reading the link rather than assuming
+    // a number, and leaves every other inherited descriptor exactly as it was.
+    $lockPath = chairStateDir() . '/.run.lock';
+    $detach = 'for fd in /proc/self/fd/*; do n=${fd##*/}; [ "$n" -gt 2 ] && [ "$(readlink -f "$fd" 2>/dev/null)" = '
+        . escapeshellarg($lockPath) . ' ] && eval "exec $n>&-"; done 2>/dev/null; ';
 
     // ...and the lane is bounded, because a lane only becomes evidence when it returns. With no budget a
     // single hung probe holds the tree, the lock and the hub indefinitely, which is precisely what
@@ -3223,6 +3301,37 @@ function selfTest(): int
     // ladder from ever repairing anything -- which is worse than no classifier, because it is trusted.
     $check('a genuine failing assertion is NOT excused as a harness fault', probeFault($redProbe) === null);
     $check('a passing suite is not a fault either', probeFault('  9 passed (14.2s)') === null);
+
+    // A probe killed at its budget has no verdict to give, and the exit code is the only honest signal:
+    // its output is whatever it managed to print before the clock ran out. Measured 2026-09-20 -- a
+    // deadlocked probe deadlocked the run behind it, and the deadlock was read as a product failure.
+    $check(
+        'a probe killed at its budget is a HARNESS fault, not a product failure',
+        failureKind(124, $changedByLane, '')['kind'] === 'harness'
+    );
+    $check(
+        'and it still is when the truncated output looks like a real failure',
+        failureKind(124, $changedByLane, '  FAIL tests/some_test.php')['kind'] === 'harness'
+    );
+
+    // The lane's own log decides whether it ever started. Both directions, because a check that only
+    // ever said "harness" would stop the ladder for every genuine failure -- the same reason the probe
+    // classifier above is tested against a red probe as well as a fault.
+    $laneFaultBrief = '/tmp/chair-selftest-lane-fault.md';
+    $laneFaultLog = laneLogPath($laneFaultBrief, 1);
+    @file_put_contents($laneFaultLog, "node:events:497\nError: EBADF: bad file descriptor, read\n");
+    $check(
+        'a lane that died before starting is read as a harness fault, not a model failure',
+        laneStartFailure($laneFaultBrief, 1) !== null
+    );
+    @file_put_contents($laneFaultLog, "Reading the brief.\nImplemented and ran the probe.\n");
+    $check(
+        'and a lane that ran and merely produced nothing is NOT a harness fault',
+        laneStartFailure($laneFaultBrief, 1) === null
+    );
+    $check('a lane with no log at all is not called a start failure', laneStartFailure($laneFaultBrief, 7) === null);
+    @unlink($laneFaultLog);
+    $check('the lane-fault scratch log is removed again', !is_file($laneFaultLog));
 
     // D5. The ledger must be able to answer "which model was tried, with what thinking budget, and what
     // came of it". It could not: `lane` was empty in the start record, because the lane is resolved
