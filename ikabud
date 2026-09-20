@@ -1240,6 +1240,7 @@ switch ($command) {
         out('    ' . green('capability:validate') . '         Validate versions + schemas');
         out('    ' . green('capability:audit') . ' [--json]  Audit declared providers, consumers, policies, and handlers');
         out('    ' . green('capability:diff') . ' --modules=<id,..>  Report authority a candidate set would add (widening)');
+        out('    ' . green('capability:census') . ' [--tenant=..]  Report declared policy rows vs the active policy store');
         out('');
         out('  ' . bold('Platform'));
         out('    ' . green('platform:describe') . '           Full platform manifest (JSON)');
@@ -6394,6 +6395,109 @@ MD;
         out('  ' . bold('WIDENING: ' . count($diff['widening'])));
         foreach ($diff['widening'] as $id) {
             out('    ' . red($id));
+        }
+        out('');
+        exit(0);
+
+    // ── capability:census ──────────────────────────────────────────
+    case 'capability:census':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud capability:census [--tenant=<tenant_id|key|domain>] [--json]');
+            out('  Report-only census of the declared policy rows against the active policy store.');
+            out('  Reads only: grants nothing, writes no policy row, opens no transaction.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Governance/AuthorityCensus.php';
+        require_once __DIR__ . '/kernel/Capabilities/CapabilityAuthorizationRegistry.php';
+
+        $censusClean = paramsWithoutFlags($params);
+        $censusSelector = trim((string)(getFlagValue('--tenant=') ?? ($censusClean[0] ?? '')));
+        $censusTenantId = null;
+        if ($censusSelector !== '') {
+            $censusTenantId = cliResolveTenantId($censusSelector);
+            if ($censusTenantId === null) {
+                out(red("  ✗ Unknown tenant '{$censusSelector}'."));
+                exit(1);
+            }
+        }
+
+        try {
+            if ($censusTenantId !== null) {
+                $censusDb = app()->dbForTenant($censusTenantId);
+                $censusStoreLabel = 'tenant ' . $censusTenantId;
+            } else {
+                $censusDb = app()->db();
+                $censusStoreLabel = 'base database (no tenant selected)';
+            }
+            if (!$censusDb instanceof \PDO) {
+                throw new \RuntimeException('authority store could not be resolved');
+            }
+            // Read the same store the seeder writes to. The registry's own
+            // escalation path is used, so this is the live active policy set.
+            $censusRegistry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry($censusDb);
+            $censusActiveRows = $censusRegistry->activePolicyRows();
+        } catch (\Throwable $e) {
+            out(red('  ✗ Authority census could not read the policy store: ' . $e->getMessage()));
+            exit(1);
+        }
+
+        $censusActiveVersion = 1;
+        foreach ($censusActiveRows as $censusRow) {
+            if (is_array($censusRow)) {
+                $censusActiveVersion = max($censusActiveVersion, (int)($censusRow['policy_version'] ?? 0));
+            }
+        }
+        // The declarations join the active version at runtime, so the capture
+        // runs at the version this store is actually on.
+        $censusDeclarations = \Ikabud\Kernel\Workbench\Governance\AuthorityCensus::captureDeclaredRows(__DIR__, $censusActiveVersion);
+        $censusReport = \Ikabud\Kernel\Workbench\Governance\AuthorityCensus::compare($censusDeclarations, $censusActiveRows);
+
+        if (hasFlag('--json')) {
+            out(json_encode([
+                'ok' => true,
+                'store' => $censusStoreLabel,
+                'active_policy_version' => $censusActiveVersion,
+                'declarations' => count($censusDeclarations),
+                'active_rows' => count($censusActiveRows),
+                'counts' => $censusReport['counts'],
+                'findings' => $censusReport['findings'],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+
+        out('');
+        out('  ' . bold('Authority census') . ' — declarations vs the active policy store');
+        out('  Store: ' . cyan($censusStoreLabel) . dim(' (active policy version ' . $censusActiveVersion . ')'));
+        out('  Declarations captured: ' . count($censusDeclarations) . dim('; active store rows: ' . count($censusActiveRows)));
+        out('');
+        foreach ($censusReport['counts'] as $censusClass => $censusCount) {
+            out('    ' . str_pad($censusClass, 16) . $censusCount);
+        }
+        out('');
+        out('  ' . bold('FINDINGS'));
+        if ($censusReport['findings'] === []) {
+            out('    ' . dim('—'));
+        }
+        foreach ($censusReport['findings'] as $censusFinding) {
+            $censusClass = (string)($censusFinding['class'] ?? '');
+            $censusDirection = $censusFinding['direction'] ?? null;
+            $censusFields = $censusFinding['fields'] ?? [];
+            $censusSuffix = is_string($censusDirection) && $censusDirection !== '' ? '/' . $censusDirection : '';
+            if (is_array($censusFields) && $censusFields !== []) {
+                $censusSuffix .= ' fields=' . implode(',', array_map('strval', $censusFields));
+            }
+            $censusDeclared = $censusFinding['declared_version'] ?? null;
+            $censusActive = $censusFinding['active_version'] ?? null;
+            $censusLine = '    [' . $censusClass . $censusSuffix . '] ' . (string)($censusFinding['capability_id'] ?? '')
+                . ' declared=v' . ($censusDeclared === null ? '?' : (string)$censusDeclared)
+                . ' active=v' . ($censusActive === null ? '?' : (string)$censusActive);
+            if ($censusClass === 'divergent') {
+                out(red($censusLine));
+            } elseif ($censusClass === 'declared_absent' || $censusClass === 'superseded') {
+                out(yellow($censusLine));
+            } else {
+                out($censusLine);
+            }
         }
         out('');
         exit(0);
