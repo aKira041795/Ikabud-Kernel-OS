@@ -1,0 +1,447 @@
+{
+    "id": "view-contract-drift",
+    "contract": ".ai/view-contract-drift.contract.md",
+    "contract_revision": "b61d502732e9004a",
+    "allowed_count": 6,
+    "forbidden_count": 11,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-15T04:01:21+00:00",
+    "pid": 2892032,
+    "log": null,
+    "report": ".ai/runs/view-contract-drift.report.txt",
+    "status": "blocked",
+    "scope_baseline_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/standing-authorization-and-decisions.md",
+        ".ai/view-contract-drift.contract.md",
+        "docs/reviews/akira-view-layout-architecture-review.md"
+    ],
+    "scope_baseline_fingerprints": {
+        ".ai/_p13_closure_probe.php": "file:415b050baeef7e6c72bd888524a9620c4617d960f8c061b738efef77c62a4fa5",
+        ".ai/_p13_phase1_probe.php": "file:6fcfa17592e0273098734d2329f575d4a14b433b169f202723b5f1ad96c2f61b",
+        ".ai/_p13_state_probe.php": "file:a9bdbe11d8c8c82c11e727f1249cad045b9557e87a9711df07f0dff6cbe8dd79",
+        ".ai/plan-review/arch-codexsol.jsonl": "file:081d4fc167e655ddde4cf0539e592586278bf5c1eb9ea01fa8bb396876ac660e",
+        ".ai/plan-review/arch-codexsol.txt": "file:43e1aa1af8bf30587a64c4412177482f9e06f2d01c024ea98cbe393422725eb1",
+        ".ai/plan-review/arch-dsflash.jsonl": "file:15ef4c6aabf8f744f2c057cce9f98f69ed659232540b04292eeb706cab9534f2",
+        ".ai/plan-review/arch-dsflash.txt": "file:284baab5730ddd61c6184f52a6183115652e67881cf810b9028e1e128d9502ec",
+        ".ai/research/akira-cms-completeness.brief.md": "file:43a6e6fc0339052560fe8a421ac9436cfa8a8cd4b69e5710e9fb60901558097b",
+        ".ai/research/akira-cms-completeness.codexsol.md": "file:4255c09d3674d7fc2537c89ef0113a97f24ce6ba329bc85ee573353fec5a6ed7",
+        ".ai/research/akira-cms-completeness.dsflash.md": "file:7e731d879ea90926ee5195fd4687455f0a3f19875e2dc26f1b672d4559223387",
+        ".ai/standing-authorization-and-decisions.md": "file:aa735c89e37f8738b384df9f971bfcc9f40f5a679cbcfe2602a2ce52ca0360d1",
+        ".ai/view-contract-drift.contract.md": "file:7565062f971c05b1ee884d313540b17ba0bea4009482f4f1cfb948221b885eac",
+        "docs/reviews/akira-view-layout-architecture-review.md": "file:3255fb6d1168c86a6385a59959becd80b1db75821a8081884d485b733c666445"
+    },
+    "scope_ignored_paths": [
+        ".ai/runs/view-contract-drift.json",
+        ".ai/runs/view-contract-drift.report.txt"
+    ],
+    "harness_artifacts": [],
+    "predecessor_run_id": null,
+    "repair": null,
+    "runner_session": null,
+    "usage": null,
+    "usage_unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact",
+    "director_authorisation": null,
+    "trust_surface_hash": "37a61d480e99e52e97410fa2a5105c89d872f46675a004945740ba3aa2193c4a",
+    "trust_surface_files": {
+        "kernel/Workbench/Development/DevelopmentTaskContract.php": "25f5e3a462c87f87ede7c31708a088f0aef6eef0886746f0d29aa74ed1ceff18",
+        "tools/ai-autonomy.php": "0cd46680641222b1c5518bfe5481ebd353358024337e1584d4e92591c860ab39",
+        "tools/ai-contract-lint.php": "047d361ab40e4d5eab40507134f7d89f35884192d459d46c47059e2b6b711baa",
+        "tools/ai-loop.php": "69ac0ae84c5f3c93e88cee08b893cef29d2b1859de6cff9558732322ded9ebe4",
+        "tools/ai-project.php": "6de976029b4b21b986d2acaa935b393e62d58f42cd63cc13daa733a027fd3ff6",
+        "tools/ai-run.php": "31d8acd7165ef880bd8e9d220111d381c43940687861003dd91ee5a606d5a046",
+        "tools/harpp-bridge/harpp_wake.py": "1d172470948f112b706abf4aa18070e53ff354abde68a3a27ffda87c25294719"
+    },
+    "finished_at": "2026-09-15T04:04:48+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 5273,
+    "scope_finish_paths": [
+        ".ai/_p13_closure_probe.php",
+        ".ai/_p13_phase1_probe.php",
+        ".ai/_p13_state_probe.php",
+        ".ai/plan-review/arch-codexsol.jsonl",
+        ".ai/plan-review/arch-codexsol.txt",
+        ".ai/plan-review/arch-dsflash.jsonl",
+        ".ai/plan-review/arch-dsflash.txt",
+        ".ai/research/akira-cms-completeness.brief.md",
+        ".ai/research/akira-cms-completeness.codexsol.md",
+        ".ai/research/akira-cms-completeness.dsflash.md",
+        ".ai/runs/view-contract-drift.json",
+        ".ai/runs/view-contract-drift.report.txt",
+        ".ai/standing-authorization-and-decisions.md",
+        ".ai/view-contract-drift.contract.md",
+        "docs/reviews/akira-view-layout-architecture-review.md",
+        "kernel/Services/ThemeViewContractDrift.php",
+        "modules/cms-akira/cms-akira-theme/helpers.php",
+        "modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php",
+        "storage/cms-themes/akira-ark-demo/entity-view-map.json",
+        "storage/cms-themes/akira-ark/entity-view-map.json",
+        "storage/cms-themes/akira-editorial/entity-view-map.json",
+        "tests/akira_theme_view_contract_drift_test.php"
+    ],
+    "scope_delta_paths": [
+        "kernel/Services/ThemeViewContractDrift.php",
+        "modules/cms-akira/cms-akira-theme/helpers.php",
+        "modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php",
+        "storage/cms-themes/akira-ark-demo/entity-view-map.json",
+        "storage/cms-themes/akira-ark/entity-view-map.json",
+        "storage/cms-themes/akira-editorial/entity-view-map.json",
+        "tests/akira_theme_view_contract_drift_test.php"
+    ],
+    "scope_conformance": {
+        "ok": false,
+        "checked": [
+            "kernel/Services/ThemeViewContractDrift.php",
+            "modules/cms-akira/cms-akira-theme/helpers.php",
+            "modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php",
+            "storage/cms-themes/akira-ark-demo/entity-view-map.json",
+            "storage/cms-themes/akira-ark/entity-view-map.json",
+            "storage/cms-themes/akira-editorial/entity-view-map.json",
+            "tests/akira_theme_view_contract_drift_test.php"
+        ],
+        "offending": [
+            {
+                "path": "modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php",
+                "reasons": [
+                    "path 'modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php' is outside the approved scope"
+                ]
+            }
+        ],
+        "declared_harness_artifacts": []
+    },
+    "evidence_fingerprint": "8f37ad8195cf0c03adcaa5110bf0dbb98570478e46a22dc949267d94f6e827ca",
+    "evidence_unavailable_reason": null,
+    "claim_verification": {
+        "verified_at": "2026-09-15T04:05:55+00:00",
+        "contract_revision": "b61d502732e9004a",
+        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-view-contract-drift-1",
+                "run": "view-contract-drift",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/akira_theme_view_contract_drift_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 19,
+                    "text": "$ php tests/akira_theme_view_contract_drift_test.php"
+                },
+                "executor_claim": {
+                    "passed": 26,
+                    "total": 26,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 26,
+                        "total": 26
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-2",
+                "run": "view-contract-drift",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l kernel/Services/ThemeViewContractDrift.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 29,
+                    "text": "$ php -l kernel/Services/ThemeViewContractDrift.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-3",
+                "run": "view-contract-drift",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l modules/cms-akira/cms-akira-theme/helpers.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 35,
+                    "text": "$ php -l modules/cms-akira/cms-akira-theme/helpers.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-4",
+                "run": "view-contract-drift",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 43,
+                    "text": "$ php modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php"
+                },
+                "executor_claim": {
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-5",
+                "run": "view-contract-drift",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tests/akira_theme_view_contract_drift_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 51,
+                    "text": "$ php -l tests/akira_theme_view_contract_drift_test.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-6",
+                "run": "view-contract-drift",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 56,
+                    "text": "$ php -l modules/cms-akira/cms-akira-theme/tests/theme_view_contract_drift_test.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-7",
+                "run": "view-contract-drift",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php modules/cms-akira/cms-akira-core/tests/post_entity_view_contract_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 61,
+                    "text": "$ php modules/cms-akira/cms-akira-core/tests/post_entity_view_contract_test.php"
+                },
+                "executor_claim": {
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0
+                    },
+                    "binding": {
+                        "rev": "bc19dc0c503b4bf4459e128f231757596f737352",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-8",
+                "run": "view-contract-drift",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/akira_theme_safe_fallback_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 66,
+                    "text": "$ php tests/akira_theme_safe_fallback_test.php"
+                },
+                "executor_claim": {
+                    "passed": 27,
+                    "total": 27,
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "command_not_allowlisted",
+                    "detail": "the command is shown but was NOT executed; a human must decide"
+                },
+                "status": "UNVERIFIED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-9",
+                "run": "view-contract-drift",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 71,
+                    "text": "$ php modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php"
+                },
+                "executor_claim": {
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "command_not_allowlisted",
+                    "detail": "the command is shown but was NOT executed; a human must decide"
+                },
+                "status": "UNVERIFIED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-10",
+                "run": "view-contract-drift",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -r '... json_decode the three maps ...'",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 78,
+                    "text": "$ php -r '... json_decode the three maps ...'"
+                },
+                "executor_claim": {
+                    "exit_code": 0
+                },
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "command_not_allowlisted",
+                    "detail": "the command is shown but was NOT executed; a human must decide"
+                },
+                "status": "UNVERIFIED"
+            },
+            {
+                "claim_id": "CLM-view-contract-drift-11",
+                "run": "view-contract-drift",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "vendor/bin/php-cs-fixer fix --dry-run --config=.php-cs-fixer.dist.php --path-mode=intersection <kernel + module files>",
+                    "command_source": "declared",
+                    "source": ".ai/runs/view-contract-drift.report.txt",
+                    "line": 83,
+                    "text": "$ vendor/bin/php-cs-fixer fix --dry-run --config=.php-cs-fixer.dist.php --path-mode=intersection <kernel + module files>"
+                },
+                "executor_claim": [],
+                "verification": {
+                    "method": null,
+                    "verifier": null,
+                    "observed_exit": null,
+                    "observed": null,
+                    "reason": "command_not_allowlisted",
+                    "detail": "the command is shown but was NOT executed; a human must decide"
+                },
+                "status": "UNVERIFIED"
+            }
+        ]
+    }
+}

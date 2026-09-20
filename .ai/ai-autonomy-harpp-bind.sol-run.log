@@ -1,0 +1,132 @@
+## Status: PARTIAL
+
+Repository implementation is complete and all automated acceptance tests pass. One chair-owned item remains: registering HARPP in VS Code’s user-level `mcp.json`. Per contract, I did not edit that file.
+
+## Files changed
+
+- `.github/instructions/ai-autonomy-escalation.instructions.md`
+- `.github/instructions/ai-development-execution-handoff.instructions.md`
+- `.github/AGENTS.md`
+- `kernel/Workbench/Schemas/development-decision-request.v1.schema.json`
+- `tools/ai-autonomy.php`
+- `tools/ai-task`
+- `tests/ai_autonomy_test.php`
+
+No git staging, commit, push, branch change, HARPP vendoring, live HARPP call, or secret-config access occurred.
+
+## Required tests
+
+### 1. Autonomy suite — exit 0
+
+```text
+RESULTS
+23/23 passed
+Assertions: 23
+
+HARPP_STUB_EVIDENCE captured=11 child_PATH=stub:/usr/bin:/bin HARPP_NOTIFY=0 real_binary_excluded=yes
+EXIT_CODE=0
+```
+
+### 2. PHP syntax — exit 0
+
+```text
+No syntax errors detected in tools/ai-autonomy.php
+EXIT_CODE=0
+```
+
+### 3. PHPStan — exit 0
+
+```text
+[OK] No errors
+EXIT_CODE=0
+```
+
+PHPStan also emitted its informational notice that version 2.x is available; no upgrade was performed.
+
+### 4. In-scope L2 check — exit 0
+
+```text
+VERDICT: RECORD
+level: L2
+action: edit the driver
+paths:
+  - tools/ai-autonomy.php
+reasons:
+EXIT_CODE=0
+```
+
+### 5. Forbidden kernel check — exit 3
+
+```text
+VERDICT: ESCALATE
+level: L4
+action: touch the kernel
+paths:
+  - kernel/App.php
+reasons:
+  - path 'kernel/App.php' matches forbidden entry 'kernel/App.php'
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT_CODE=3
+```
+
+### 6. Workflow manifest — exit 0
+
+```text
+harpp workflow start --manifest=/tmp/ai-autonomy-wf.json --conversation=<id> --workspace=$(pwd) --authority-level=L2 --max-repairs=3
+{
+    "title": "Ikabud governed autonomy loop",
+    "stages": [
+        {
+            "name": "architect",
+            "model": "deepseek-v4-flash",
+            "prompt_file": ".ai/ai-autonomy-harness.contract.md",
+            "marker": "ARCHITECT_COMPLETE",
+            "verify": "php tests/ai_autonomy_test.php",
+            "timeout": 1200
+        },
+        {
+            "name": "implement",
+            "model": "deepseek-v4-flash",
+            "prompt_file": ".ai/ai-autonomy-harness.contract.md",
+            "marker": "IMPLEMENT_COMPLETE",
+            "verify": "vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G tools/ai-autonomy.php tests/ai_autonomy_test.php",
+            "timeout": 1200
+        },
+EXIT_CODE=0
+```
+
+Independent stage check:
+
+```text
+architect,implement,review,release-gate
+```
+
+### 7. Malformed deferral — exit 2
+
+```text
+ERROR: offending field --option count: 1 (expected 2-4)
+EXIT_CODE=2
+```
+
+### Additional hygiene
+
+```text
+git diff --check
+EXIT_CODE=0
+```
+
+## Acceptance criteria
+
+- **PASS — Exact HARPP submission payload.** Test 12 asserts `decision submit`, title, requested option, workbench state, and matching decision key.
+- **PASS — Loud non-delivery and retry.** Tests 13, 13b, and 14 verify exit 4, retained artifact, suppression handling, retry, and identical idempotency key.
+- **PASS — L0–L4 tripwire.** Tests 3–10 verify level mapping, scope escalation, and grounded-sensitive degradation to L3.
+- **PASS — Remote status and resume lifecycle.** Tests 18/18b verify matching by `decision_key`, `DECIDED` enforcement, then `ack` followed by `apply`.
+- **PASS — Four-stage workflow manifest.** Test 19 and the JSON stage check verify exactly `architect, implement, review, release-gate`.
+- **PASS — No live HARPP test access.** Evidence: `captured=11`, stub-only child PATH, `HARPP_NOTIFY=0`, sandbox config, and real binary excluded.
+- **PASS — Schema transport binding.** `authority_level: L4`, required `transport`, optional `notification`, and resolution source are represented in the schema.
+- **PASS — No silent non-delivery.** Implemented at `tools/ai-autonomy.php:383-406`.
+- **BLOCKED — VS Code MCP registration.** The exact additive snippet is documented at `.github/instructions/ai-autonomy-escalation.instructions.md:69-76`, but `~/.config/Code/User/mcp.json` is chair-owned and was intentionally not edited.
+
+## Chair action required
+
+Add the documented `harpp` server alongside the existing `lean-ctx` server in VS Code’s user `mcp.json`, validate the JSON, and reload VS Code.

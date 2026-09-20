@@ -1,0 +1,176 @@
+{
+    "schema": "ark.ai-project-state.v1",
+    "project": "gen4-r1",
+    "slices": {
+        "S1": {
+            "state": "done",
+            "run_id": "gen4-r1-s1-20260914161207-dae802",
+            "reason": null,
+            "updated_at": "2026-09-14T16:16:21+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s1-20260914153917-4ff23f",
+                    "reason": null,
+                    "at": "2026-09-14T15:39:17+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s1-20260914153917-4ff23f",
+                    "reason": "claims were not all RE_DERIVED: UNVERIFIED,UNVERIFIED",
+                    "at": "2026-09-14T15:41:49+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s1-20260914153917-4ff23f",
+                    "reason": "S1 blocked because the existing-test prohibition refused the change (CD-43) and because its claims were fenced. Both fixed: the slice now declares a CD-44 exception for the correction, and the claim-placement rule is stated.",
+                    "at": "2026-09-14T16:00:23+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s1-20260914160024-b44be7",
+                    "reason": null,
+                    "at": "2026-09-14T16:00:24+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s1-20260914160024-b44be7",
+                    "reason": "claims were not all RE_DERIVED: RE_DERIVED,RE_DERIVED,UNVERIFIED",
+                    "at": "2026-09-14T16:03:41+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s1-20260914160024-b44be7",
+                    "reason": "work landed and verified (16/16, delta=1, route honoured); blocked only on a command-less prose claim. Contract now states that every claim must carry a COMMAND and that prose belongs in the report body.",
+                    "at": "2026-09-14T16:04:12+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s1-20260914160412-87ff12",
+                    "reason": null,
+                    "at": "2026-09-14T16:04:12+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s1-20260914160412-87ff12",
+                    "reason": "claims were not all RE_DERIVED: RE_DERIVED,RE_DERIVED,UNVERIFIED",
+                    "at": "2026-09-14T16:06:34+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s1-20260914160412-87ff12",
+                    "reason": "blocked twice on non-command claims: the extractor binds report PROSE as claims (parseProseClaim, ai-run.php:1407), so a procedural non-vacuity description became an unbacked claim. Corrected: the criterion now supplies the command that demonstrates non-vacuity, and the report must contain CLAIM/COMMAND/OBSERVED blocks only.",
+                    "at": "2026-09-14T16:07:53+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s1-20260914160753-631a86",
+                    "reason": null,
+                    "at": "2026-09-14T16:07:54+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s1-20260914160753-631a86",
+                    "reason": "claims were not all RE_DERIVED: RE_DERIVED,UNVERIFIED",
+                    "at": "2026-09-14T16:10:46+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s1-20260914160753-631a86",
+                    "reason": "third block diagnosed from the artifact: the phantom claim came from the numbered ### Evidence list via parseProseClaim, and its declared expectation named failed:0 which the suite stdout never prints. Contract now specifies the report shape literally and the rule that only emitted keys may be declared.",
+                    "at": "2026-09-14T16:12:07+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s1-20260914161207-dae802",
+                    "reason": null,
+                    "at": "2026-09-14T16:12:08+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "gen4-r1-s1-20260914161207-dae802",
+                    "reason": null,
+                    "at": "2026-09-14T16:16:21+00:00"
+                }
+            ]
+        },
+        "S2": {
+            "state": "done",
+            "run_id": "gen4-r1-s2-final",
+            "reason": null,
+            "updated_at": "2026-09-15T02:21:07+00:00",
+            "history": [
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s2-20260914162406-58f95c",
+                    "reason": null,
+                    "at": "2026-09-14T16:24:06+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s2-20260914162406-58f95c",
+                    "reason": "scope conformance failed: modules/gui-settings/module.json, modules/gui-settings/tests/gui_settings_route_authority_test.php",
+                    "at": "2026-09-14T16:32:50+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s2-20260914162406-58f95c",
+                    "reason": "scope gate refused on two provably false premises, not on the change: (1) the absolute 'authorisation weakening' prohibition fired on the test FILENAME via the unanchored matcher regex '#...|auth|...#' (ai-autonomy.php:945) because the word 'authority' contains 'auth'; (2) the absolute 'existing test' prohibition fired because isExistingTestPath() tests file_exists() AFTER the run, so the file this run CREATED is judged pre-existing. Work verified independently: census 47/47, policy exactly admin and granted, test 14/14 with negative control.",
+                    "at": "2026-09-14T16:34:39+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s2-20260914163558-380c79",
+                    "reason": null,
+                    "at": "2026-09-14T16:35:58+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "blocked",
+                    "run_id": "gen4-r1-s2-20260914163558-380c79",
+                    "reason": "missing verified report/claims (marker text is not evidence)",
+                    "at": "2026-09-14T16:38:29+00:00"
+                },
+                {
+                    "from": "blocked",
+                    "to": "pending",
+                    "run_id": "gen4-r1-s2-20260914163558-380c79",
+                    "reason": "rerun under the widened evidence surface: the census is now admissible, and CD-48 Repair B allows a run to CREATE a pure root test. The declaration and its policy seed are already committed; this pass supplies admissible evidence for them.",
+                    "at": "2026-09-15T02:06:14+00:00"
+                },
+                {
+                    "from": "pending",
+                    "to": "running",
+                    "run_id": "gen4-r1-s2-final",
+                    "reason": null,
+                    "at": "2026-09-15T02:21:06+00:00"
+                },
+                {
+                    "from": "running",
+                    "to": "done",
+                    "run_id": "gen4-r1-s2-final",
+                    "reason": null,
+                    "at": "2026-09-15T02:21:07+00:00"
+                }
+            ]
+        }
+    }
+}

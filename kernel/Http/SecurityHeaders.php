@@ -36,11 +36,11 @@ final class SecurityHeaders
         'https://fonts.gstatic.com',
     ];
 
-    /** @var string|null Current request URI */
-    private ?string $requestUri;
+    /** @var string Current request URI */
+    private string $requestUri;
 
-    /** @var string|null Current host */
-    private ?string $currentHost;
+    /** @var string Current host */
+    private string $currentHost;
 
     /** @var bool Whether this is a static asset request */
     private bool $isStaticAsset = false;

@@ -1,0 +1,41 @@
+$ php modules/cms-akira/cms-akira-theme/tests/theme_read_authority_test.php
+PASS: manifest declares the read capability akira.theme.read@1 under capabilities.exposes
+PASS: runtime handler map binds akira.theme.read@1 to a defined handler
+PASS: manifest expose order matches the runtime handler map order (theme_contract contract preserved)
+PASS: the read handler dispatches the resolve/registry/blocks/validate projections
+PASS: all five read routes (four JSON + admin page) are declared against akira.theme.read@1
+PASS: health is not silently undeclared: it carries a reasoned exemption
+PASS: the seed pins allowed_roles to exactly the role set catThemeAdmin() admits
+PASS: the seed caller_module is the explicit cms-akira-theme caller, never empty
+PASS: the seed joins the active policy version rather than pinning version 1
+PASS: the seed is wired to the registry seeder and invoked at file scope
+PASS: every read handler reaches the executable capability bus via catThemeReadViaBus
+PASS: the four existing write declarations are untouched (no authority removed)
+PASS: census subprocess exits 0 and emits parseable JSON
+PASS: census: cms-akira-theme reports read_undeclared 0, 5 dispatched, 1 exempt, 6 total
+PASS: census: the account write_ratio is unchanged at 100 (read work moved only the read figure)
+PASS: census: each of the six GET routes is governed (5 enforced, 1 exempt)
+mode: pure-source-inspection+subprocess-census
+census_exit: 0
+census_stderr: 
+read_capability_exposed: yes
+read_handler_mapped: yes
+declared_read_routes: {"GET /api/v1/cms-akira-theme/resolve":"akira.theme.read@1","GET /api/v1/cms-akira-theme/themes":"akira.theme.read@1","GET /api/v1/cms-akira-theme/blocks":"akira.theme.read@1","GET /api/v1/cms-akira-theme/themes/{slug}/validate":"akira.theme.read@1","GET /cms-akira-theme":"akira.theme.read@1"}
+exempt_routes: ["GET /api/v1/cms-akira-theme/health"]
+seed_allowed_roles: admin,editor,administrator,superadmin
+seed_caller_module: cms-akira-theme
+handler_admitted_roles: admin,administrator,editor,superadmin
+seed_joins_active_version: yes
+census_theme_summary: {"module":"cms-akira-theme","dispatch_enforced":4,"bus_reachable":4,"exempt":0,"undeclared":0,"total":4,"ratio":100,"bus_ratio":100,"write_dispatch_enforced":4,"write_total":4,"write_ratio":100,"read_dispatch_enforced":5,"read_exempt":1,"read_undeclared":0,"read_total":6,"read_ratio":83.3}
+census_akira: {"module":"Akira (cms-akira-* + gui-settings)","dispatch_enforced":47,"bus_reachable":45,"exempt":0,"undeclared":0,"total":47,"read_dispatch_enforced":21,"read_exempt":1,"read_undeclared":35,"read_total":57,"ratio":100,"bus_ratio":95.7,"write_ratio":100,"read_ratio":36.8}
+live_policy_row: applied at module load by catSeedThemeReadPolicies(); asserted by source here
+existing_test_or_gate_weakened: no
+passed: 16
+failed: 0
+skipped: 0
+
+$ php -l modules/cms-akira/cms-akira-theme/helpers.php
+No syntax errors detected in modules/cms-akira/cms-akira-theme/helpers.php
+
+$ php -l modules/cms-akira/cms-akira-theme/handlers.php
+No syntax errors detected in modules/cms-akira/cms-akira-theme/handlers.php

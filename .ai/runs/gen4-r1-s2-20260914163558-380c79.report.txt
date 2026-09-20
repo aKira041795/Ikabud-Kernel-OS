@@ -1,0 +1,89 @@
+CLAIM: The active policy backing the declaration exists and grants exactly admin: hasPolicyFor(gui_settings.apply@1) is true, allowed_roles=admin, caller_module=kernel,gui-settings, is_active=1, grant_state=granted.
+COMMAND: php -r 'require "bootstrap.php"; $r=new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->controlDb()); echo "hasPolicyFor=".var_export($r->hasPolicyFor("gui_settings.apply@1","1","gui-settings"),true).PHP_EOL; foreach($r->activePolicyRows() as $row){ if(($row["capability_id"]??"")==="gui_settings.apply@1"){ echo "allowed_roles=".$row["allowed_roles"].PHP_EOL; echo "caller_module=".$row["caller_module"].PHP_EOL; echo "is_active=".$row["is_active"].PHP_EOL; echo "grant_state=".$row["grant_state"].PHP_EOL; } }'; echo "EXIT=$?"
+OBSERVED:
+hasPolicyFor=true
+allowed_roles=admin
+caller_module=kernel,gui-settings
+is_active=1
+grant_state=granted
+EXIT=0
+
+CLAIM: The census closes: gui-settings reports undeclared 0 and write_ratio 100, and the akira rollup reports undeclared 0 and write_ratio 100 over 47 of 47 writes.
+COMMAND: php ikabud workbench:governance --all --json > /tmp/s2-census.json; echo "census_exit=$?"; php -r '$j=json_decode(file_get_contents("/tmp/s2-census.json"),true); foreach($j["summary"] as $m){ if($m["module"]==="gui-settings") echo "gui-settings ".json_encode($m).PHP_EOL; } echo "akira ".json_encode($j["akira"]).PHP_EOL;'
+OBSERVED:
+census_exit=0
+gui-settings {"module":"gui-settings","dispatch_enforced":2,"bus_reachable":0,"exempt":0,"undeclared":0,"total":2,"ratio":100,"bus_ratio":0,"write_dispatch_enforced":2,"write_total":2,"write_ratio":100,"read_dispatch_enforced":0,"read_exempt":0,"read_undeclared":1,"read_total":1,"read_ratio":0}
+akira {"module":"Akira (cms-akira-* + gui-settings)","dispatch_enforced":47,"bus_reachable":45,"exempt":0,"undeclared":0,"total":47,"read_dispatch_enforced":16,"read_exempt":0,"read_undeclared":41,"read_total":57,"ratio":100,"bus_ratio":95.7,"write_ratio":100,"read_ratio":28.1}
+
+CLAIM: The existing route-authority test passes with 14 checks ok, 0 checks bad, 0 skip lines, exit 0, including the negative control where the declared POST route refuses a null actor while the undeclared GET route proceeds for that same actor.
+COMMAND: php modules/gui-settings/tests/gui_settings_route_authority_test.php > /tmp/s2-test.out 2>&1; echo "EXIT=$?"; echo "skip_lines=$(grep -c SKIP /tmp/s2-test.out)"; cat /tmp/s2-test.out
+OBSERVED:
+EXIT=0
+skip_lines=0
+
+=== 1. THE MANIFEST DECLARES BOTH WRITE ROUTES ===
+  ✓ POST /api/v1/admin/gui-settings declares gui_settings.apply@1
+  ✓ POST /api/v1/admin/gui-settings/reset declares gui_settings.apply@1
+  ✓ the GET read route is NOT declared (reads are a separate campaign)
+  ✓ the declared capability is one the module itself exposes
+
+=== 2. THE POLICY BACKS THE DECLARATION ===
+  ✓ hasPolicyFor(gui_settings.apply@1) is true for the active policy version
+  ✓ the active policy row restricts allowed_roles to exactly admin
+  ✓ the policy row permits the route dispatcher as a caller
+  ✓ the policy row is active and granted
+
+=== 3. DISPATCH ENFORCES THE DECLARATION (and admits the admin) ===
+  ✓ an admin actor is ALLOWED on the declared route
+  ✓ an editor actor is refused with role_not_allowed (no widening)
+  ✓ the /reset route is governed by the same active policy
+
+=== 4. NEGATIVE CONTROL — IS THE DECLARATION LOAD-BEARING? ===
+  ✓ the declared route refuses a null actor
+  ✓ the undeclared GET route proceeds for the same null actor
+  ✓ the declaration alone decides the outcome (load-bearing)
+
+=== RESULT ===
+  checks ok: 14
+  checks bad: 0
+
+CLAIM: No authority was widened: both handlers gate $user['role'] !== 'admin' (handlers.php lines 81 and 179) and the active policy grants allowed_roles=admin, so the handler-admitted role set and the policy-granted role set are identical.
+COMMAND: grep -n "!== 'admin'" modules/gui-settings/handlers.php; php -r 'require "bootstrap.php"; $r=new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry(app()->controlDb()); foreach($r->activePolicyRows() as $row){ if(($row["capability_id"]??"")==="gui_settings.apply@1") echo "policy_allowed_roles=".$row["allowed_roles"].PHP_EOL; }'
+OBSERVED:
+81:    if (!$user || ($user['role'] ?? '') !== 'admin') {
+179:    if (!$user || ($user['role'] ?? '') !== 'admin') {
+policy_allowed_roles=admin
+
+CLAIM: This edit weakens no existing test or gate: all module changes are additive with zero deletions, the only touched test path is the module's own test file added new (status A), and the worktree has no change under modules/, kernel/, tools/, scripts/, tests/ or .governance-baseline.json.
+COMMAND: git diff --numstat c51f024^ c51f024 -- modules/; echo "--- name-status ---"; git diff --name-status c51f024^ c51f024 -- modules/; echo "--- worktree changes outside .ai ---"; git status --porcelain -- modules/ kernel/ tools/ scripts/ tests/ .governance-baseline.json; echo "EXIT=$?"
+OBSERVED:
+57	0	modules/gui-settings/helpers.php
+5	0	modules/gui-settings/module.json
+251	0	modules/gui-settings/tests/gui_settings_route_authority_test.php
+--- name-status ---
+M	modules/gui-settings/helpers.php
+M	modules/gui-settings/module.json
+A	modules/gui-settings/tests/gui_settings_route_authority_test.php
+--- worktree changes outside .ai ---
+EXIT=0
+Verification complete. The S2 work was already applied (commit `c51f024`); I established it is correct without changing any code or test.
+
+## Findings
+
+**1. Policy exists and grants exactly `admin`**
+`hasPolicyFor("gui_settings.apply@1")` → `true`; active row: `allowed_roles=admin`, `caller_module=kernel,gui-settings`, `is_active=1`, `grant_state=granted`.
+
+**2. Census closes**
+- `gui-settings`: `undeclared 0`, `write_total 2`, `write_ratio 100`
+- `Akira (cms-akira-* + gui-settings)`: `dispatch_enforced 47`, `undeclared 0`, `write_ratio 100` (47/47), `read_ratio 28.1` untouched.
+
+**3. Declaration is enforced, not decorative**
+Existing test `modules/gui-settings/tests/gui_settings_route_authority_test.php` → **14 checks ok, 0 bad, 0 skip lines, exit 0**, including the negative control: declared POST refuses a null actor while the undeclared GET proceeds for the same actor.
+
+**4. No authority widened**
+Handlers gate `($user['role'] ?? '') !== 'admin'` at `handlers.php:81` and `:179`; policy grants `allowed_roles=admin`. Sets identical.
+
+**5. No test or gate weakened**
+`c51f024` module changes are additive only (`57/0`, `5/0`, `251/0` insertions/deletions); the only test path touched is the module's own new test (`A`). Worktree is clean under `modules/ kernel/ tools/ scripts/ tests/ .governance-baseline.json`. No forbidden path touched; census/baseline not adjusted.
+
+The report was written to the run's canonical path `.ai/runs/gen4-r1-s2-20260914163558-380c79.report.txt` as five `CLAIM:`/`COMMAND:`/`OBSERVED:` blocks only — no prose outside blocks, and no declared key that its command does not print (the earlier draft's unbacked "0 skips" was replaced with a measured `skip_lines=0`).

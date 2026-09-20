@@ -1,0 +1,70 @@
+## S4 — metrics derived from artefacts: delivered
+
+All deliverables implemented, all five suites green, no run record/state touched. Report against the acceptance criteria.
+
+### What was built
+
+- `tools/ai-project.php` — new `metrics` subcommand (`--project`, `--projects-dir`, `--runs-dir`, `--json`, `--write`) plus `deriveMetrics()` / `renderMetricsTable()`. Every number comes from an artefact; anything underivable is `null` in `metrics` with a reason in the sibling `unavailable` map.
+- `tests/ai_project_metrics_test.php` — 16 pure assertions over temp fixtures + a real-project smoke run.
+- `.ai/projects/harpp-gen4/chair-errors.json` — seeds CD-6, CD-11, CD-12.
+- `.ai/projects/harpp-gen4/metrics.json` — tool output.
+- `.ai/ai-autonomy-harness.contract.md` — additive runbook section “Metrics are derived, never self-reported”.
+
+### 1. Table, and the artefact lines behind each number
+
+```
+$ php tools/ai-project.php metrics --project=harpp-gen4
+METRICS harpp-gen4 — derived from artefacts only
+slices dispatched           3 (S2, S3, S4)
+slices completed            2 (S2, S3)
+runs completed              2
+runs running                1
+lanes                       deepseek/deepseek-v4-flash=1, deterministic-release-evidence=1, openai-codex/gpt-5.6-sol=1
+wall-clock S2               694s
+wall-clock S3               694s
+wall-clock S4               null — run harpp-gen4-s4-… has no complete started_at/finished_at pair
+wall-clock total            null — run harpp-gen4-s4-… has no complete started_at/finished_at pair
+claims RE_DERIVED           4   claims CONTRADICTED 0   claims UNVERIFIED 0
+chair decisions             17
+chair decisions incorrect   3 (CD-6, CD-11, CD-12)
+contract violations         null — no changed-path artefact, so a scope diff cannot be derived
+cost (usd) / tokens total   null — no run record carries a usage block
+director minutes            null — director-minutes.json is absent (not zero)
+exit=0
+```
+
+Trace: three runs in `.ai/runs/` whose `contract` matches a slice contract — `s2s3-delivery` (completed), `s2s3-project-and-loop` (`04:17:14 → 04:28:48`, **694s**, 4 × `RE_DERIVED`), `harpp-gen4-s4-…` (running, no `finished_at`, contract `s4-metrics.md`). `chair decisions 17` = `grep -c '^## CD-' .ai/chair-decisions.md`. `incorrect 3` = the three entries in `chair-errors.json`.
+
+### 2. Cost and tokens — established as `unavailable`, with the exposure located
+
+Only `null`. Evidence: no `.ai/runs/*.json` contains a `usage` block. **`pi` does expose usage**: `$PI_SESSION_FILE` (`.jsonl`) carries per-assistant-message `"usage":{…,"totalTokens":N,"cost":{"total":…}}`. But no run record references a session, so usage cannot be attributed to a run — recorded as `null` with that exact reason, never estimated from `log_bytes`. The tool *will* sum a run record's `usage.{total_tokens,cost_usd}` when every matched run carries one (fixture test 10: 3000 tokens / \$0.75), so capture is real when the ledger supplies it.
+
+### 3–4. `null`, never a guess
+
+`contract_violations`, `cost_usd`, `tokens_total`, unfinished wall-clock and absent `director_minutes` are all `null` with reasons (pasted above). Test 6 feeds a fixture with `log_bytes` and no usage → still `null`; test 8 asserts every key in `unavailable` resolves to `null`. `director-minutes.json` is deliberately absent from `harpp-gen4` so the real table demonstrates `null` (not `0`); test 9 asserts `null` and the reason says “not zero”; test 11 asserts present entries sum by category.
+
+### 5. `--write` artefact
+
+`wrote .ai/projects/harpp-gen4/metrics.json` — contains `"tool_written": true`, `"generated_at": "2026-09-14T04:54:43+00:00"`, `"schema": "ark.ai-project-metrics.v1"` and the same `metrics`/`unavailable` payload (full file pasted above in the transcript).
+
+### 6. Suites — all exit 0, zero skips
+
+```
+ai_project_test          exit=0  6/6 passed
+ai_loop_test             exit=0  8/8 passed
+ai_run_test              exit=0  31/31 passed
+ai_autonomy_test         exit=0  46/46 passed
+ai_project_metrics_test  exit=0  16/16 passed
+```
+
+One environmental note stated honestly: this slice runs under `ai-loop.php`, so `AI_LOOP_ACTIVE=1` is inherited by the child and the loop test's own nested-loop guard prints `STOP: nested ai-loop dispatch refused` (0/8). With the guard variable unset — the standalone environment the test is written for — it is **8/8, exit 0**. I did not and cannot modify `tests/ai_loop_test.php`.
+
+### 7. Syntax / PHPStan
+
+`php -l` clean on both changed files. `phpstan analyse -c phpstan.neon tools/ai-project.php` → `[OK] No errors` (exit 0). The test file yields only `class.notFound` for `TestHarness` (26), identical in kind to the untouched `tests/ai_project_test.php` (13) — the config excludes `**/*Test.php` (capital T) and doesn’t autoload the harness, a pre-existing limitation. No new non-`class.notFound` errors.
+
+### Disclosures (harness contract §1)
+
+- Required by D1 but absent from `projectArgs`: `--write` is now accepted as a flag.
+- I added `--chair-decisions=PATH` (default `.ai/chair-decisions.md`) so the pure suite can isolate the chair-decision artefact without writing the real one. Not in the declared signature — reporting it for ratification.
+- `chair_decisions` moved 16 → 17 during the slice because the Chair recorded **CD-17** in `.ai/chair-decisions.md` (external to my edits); the tool correctly re-derived it. No run record, `state.json`, or metric file was hand-edited.

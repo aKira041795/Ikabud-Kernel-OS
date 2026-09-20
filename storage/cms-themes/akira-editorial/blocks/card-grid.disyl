@@ -1,0 +1,15 @@
+{# Block: card-grid — context: props #}
+<section class="content-block" data-ark-block="card-grid">
+  {if props.title}<h2 class="t-headline-md content-block__title">{props.title | esc_html}</h2>{/if}
+  {if props.items}
+  <div class="content-card-grid">
+    {foreach props.items as item}
+    <article class="content-card">
+      {if item.title}<h3 class="t-headline-sm content-card__title">{item.title | esc_html}</h3>{/if}
+      {if item.text}<p class="content-card__text">{item.text | esc_html}</p>{/if}
+      {if item.href}<a class="content-card__link" href="{item.href | esc_url | esc_attr}">Learn more <span aria-hidden="true">→</span></a>{/if}
+    </article>
+    {/foreach}
+  </div>
+  {/if}
+</section>

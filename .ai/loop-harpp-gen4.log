@@ -1,0 +1,7 @@
+PLAN S4 lane=deepseek/deepseek-v4-flash contract=.ai/projects/harpp-gen4/slices/s4-metrics.md
+COMMIT-CHECK before S4: exit=0
+LEDGER start harpp-gen4-s4-20260914045055-cd664e
+LEDGER finish harpp-gen4-s4-20260914045055-cd664e exit=0 status=completed
+CLAIMS harpp-gen4-s4-20260914045055-cd664e extracted=5 (UNVERIFIED)
+VERIFY harpp-gen4-s4-20260914045055-cd664e exit=0 statuses=UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED
+STOP S4: claims were not all RE_DERIVED: UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED,UNVERIFIED; block-record-exit=0

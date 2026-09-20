@@ -1,0 +1,400 @@
+{
+    "id": "harpp-gen4-s6-20260914045910-393241",
+    "contract": ".ai/projects/harpp-gen4/slices/s6-claim-commands.md",
+    "contract_revision": "c0b36da5af8f8f6c",
+    "allowed_count": 6,
+    "forbidden_count": 15,
+    "lane": "deepseek/deepseek-v4-flash",
+    "started_at": "2026-09-14T04:59:10+00:00",
+    "pid": 2162785,
+    "log": null,
+    "report": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+    "status": "completed",
+    "finished_at": "2026-09-14T05:11:10+00:00",
+    "exit_code": 0,
+    "log_bytes": 0,
+    "report_bytes": 11397,
+    "claim_verification": {
+        "verified_at": "2026-09-14T05:12:45+00:00",
+        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+        "dirty": true,
+        "results": [
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-1",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_run_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 106,
+                    "text": "$ php tests/ai_run_test.php"
+                },
+                "executor_claim": {
+                    "passed": 35,
+                    "total": 35
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 35,
+                        "total": 35
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-2",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 177,
+                    "text": "$ php tests/ai_project_test.php"
+                },
+                "executor_claim": {
+                    "passed": 11,
+                    "total": 11
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 11,
+                        "total": 11
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-3",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_loop_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 179,
+                    "text": "$ php tests/ai_loop_test.php"
+                },
+                "executor_claim": {
+                    "passed": 8,
+                    "total": 8
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 8,
+                        "total": 8
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-4",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_run_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 181,
+                    "text": "$ php tests/ai_run_test.php"
+                },
+                "executor_claim": {
+                    "passed": 35,
+                    "total": 35
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 35,
+                        "total": 35
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-5",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 183,
+                    "text": "$ php tests/ai_autonomy_test.php"
+                },
+                "executor_claim": {
+                    "passed": 46,
+                    "total": 46
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 46,
+                        "total": 46
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-6",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_project_metrics_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 185,
+                    "text": "$ php tests/ai_project_metrics_test.php"
+                },
+                "executor_claim": {
+                    "passed": 16,
+                    "total": 16
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 16,
+                        "total": 16
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-7",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_contract_lint_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 187,
+                    "text": "$ php tests/ai_contract_lint_test.php"
+                },
+                "executor_claim": {
+                    "passed": 3,
+                    "total": 3
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 3,
+                        "total": 3
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-8",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "TEST_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php tests/ai_autonomy_glob_scope_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 189,
+                    "text": "$ php tests/ai_autonomy_glob_scope_test.php"
+                },
+                "executor_claim": {
+                    "passed": 5,
+                    "total": 5
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "passed": 5,
+                        "total": 5
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-9",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tools/ai-run.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 196,
+                    "text": "$ php -l tools/ai-run.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-10",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tools/ai-project.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 198,
+                    "text": "$ php -l tools/ai-project.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-11",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tests/ai_run_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 200,
+                    "text": "$ php -l tests/ai_run_test.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            },
+            {
+                "claim_id": "CLM-harpp-gen4-s6-20260914045910-393241-12",
+                "run": "harpp-gen4-s6-20260914045910-393241",
+                "type": "LINT_RESULT",
+                "re_derivable": true,
+                "subject": {
+                    "command": "php -l tests/ai_project_test.php",
+                    "command_source": "declared",
+                    "source": ".ai/runs/harpp-gen4-s6-20260914045910-393241.report.txt",
+                    "line": 202,
+                    "text": "$ php -l tests/ai_project_test.php"
+                },
+                "executor_claim": {
+                    "syntax_ok": true
+                },
+                "verification": {
+                    "method": "independent_execution",
+                    "verifier": "deterministic",
+                    "observed_exit": 0,
+                    "observed": {
+                        "exit_code": 0,
+                        "syntax_ok": true
+                    },
+                    "binding": {
+                        "rev": "7e2492a03ef6421aa2fc4466b9d88eb2c7eb93ae",
+                        "dirty": true
+                    }
+                },
+                "status": "RE_DERIVED"
+            }
+        ]
+    }
+}

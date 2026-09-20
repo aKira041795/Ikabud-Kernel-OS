@@ -1,0 +1,91 @@
+########## PANEL B (SOL) ##########
+## Panel B — Kernel Governance Architecture
+
+### Position
+
+**1. Extensions: build a typed, capability-bound extension registry—not a plugin API.**
+
+The existing Suite Extension Contract v1 and five declared points are sound metadata, but today no runtime registry consumes them except the partial `cms.sidebar` path. That gap should be closed before adding more extension UI.
+
+Each contribution must declare: extension-point ID and contract version; unique contribution ID; provider module/version; typed payload; ordering constraints; required capabilities; compatibility range; tenant enablement; and failure policy. Point-specific schemas should govern:
+
+- `cms.sidebar`: label, route, icon, placement, visibility capability.
+- `cms.settings.sections`: schema-driven fields, read/write capabilities, settings namespace.
+- `cms.content.processors`: accepted entity/content types, phase, priority, deterministic input/output contract.
+- `cms.editor.tools`: supported document types, command/config descriptor, asset integrity metadata.
+- `cms.dashboard.widgets`: data capability, renderer descriptor, dimensions, cache policy.
+
+At module load, validate manifests against the registry’s versioned JSON schemas, dependency graph, route ownership, capability existence, and compatibility ranges. Invalid contributions are quarantined, not partially loaded.
+
+Merging is deterministic: dependency order, explicit priority, then contribution ID. IDs are unique; implicit override is forbidden. Replacement requires an explicit `replaces` declaration, compatible contract major version, policy approval, and audit. Every rendered or invoked contribution is bound to its own least-privilege capability—not the hosting screen’s authority. Processors execute through the capability bus, never arbitrary hooks or foreign SQL.
+
+Borrow Drupal’s dependencies and service discipline, Shopify’s constrained mounting points, and Strapi’s admin contribution ergonomics. Reject WordPress’s ambient `add_action`/`add_filter` model.
+
+**2. Themes: declarative presentation packages, never privileged programs.**
+
+The current theme shape—manifest, customizer schema, safety policy, entity-view map, renderer registry, DiSyL layouts/templates—is the correct boundary. Themes may contain templates, static assets, design tokens, region declarations, and typed block/section definitions. They may not ship PHP, migrations, controllers, capability handlers, SQL, or arbitrary executable JavaScript. Alpine behaviors must come from approved, integrity-pinned primitives; no bespoke CSS, consistent with the Tailwind CDN + Alpine constraint.
+
+A theme’s block definition declares schema, defaults, allowed nesting, slots, renderer/template, accessibility constraints, and contract version. Extensions may contribute blocks through a typed builder point, but themes determine compatible regions and presentation.
+
+Install, validate, activate, switch, and rollback are governed operations. Each runs through capability bus v2 under policy-as-sole-authority, records immutable package version/checksum, validates DiSyL and safety policy, stages render smoke tests, and atomically changes `active_theme_slug` with audit and cache invalidation. Previous versions remain addressable for rollback. If rendering needs new semantics, fix DiSyL at the engine root—never add template escape hatches.
+
+This combines Shopify sections, Drupal’s theme/module separation, and Ghost’s safe template simplicity.
+
+**3. Page Builder: governed structured composition, not saved HTML.**
+
+The documented structured-JSON source of truth should become a versioned composition entity: layout tree, typed block references, validated props, content references, locale, and schema version. Create/update/publish/rollback are capability calls with workflow-authoritative state, optimistic revision checks, idempotency keys, audit, and page-cache invalidation in **one tenant transaction**. Draft preview must not bypass publication policy.
+
+Server rendering resolves the composition through `EntityViewResolver`/`DefaultEntityRenderer`, validates every node against the registry, and renders approved DiSyL templates deterministically. No client-supplied HTML, runtime component discovery, or network access during rendering. The React canvas edits JSON only; browser preview and server output must share fixtures and conformance tests. Borrow Sanity’s structured content, Shopify sections, and Drupal Layout Builder—not Gutenberg’s HTML-comment serialization or Elementor’s proprietary blobs.
+
+### Borrow / Reject
+
+- **WordPress:** borrow discoverable block UX and `theme.json`-style declarative configuration; reject PHP themes, global hooks, ambient authority, and HTML-comment persistence.
+- **Shopify:** borrow constrained extension points, safe templates, scoped authority, and sections as the theme/app shared contract.
+- **Drupal:** borrow dependency graphs, explicit services, theme/module separation, regions/blocks, and structured layout overrides.
+- **Ghost:** borrow simple declarative themes and structured editor cards; reject its limited extensibility ceiling.
+- **Strapi:** borrow typed admin contributions and RBAC integration; reject plugins registering unrestricted controllers/services.
+- **Headless/Sanity:** borrow structured documents and presentation separation; reject pushing all rendering/governance into clients.
+
+### Risks and Governance Answers
+
+- **Supply-chain compromise:** signed/checksummed packages, compatibility validation, no theme code, capability-scoped contributions.
+- **Extension conflicts:** typed contracts, deterministic ordering, explicit replacement only, quarantine on failure.
+- **Schema drift:** versioned contracts, migrations through governed capabilities, retained render compatibility.
+- **Builder XSS/accessibility failures:** schema validation, escaped DiSyL rendering, approved primitives, safety and accessibility checks.
+- **Partial writes/cache inconsistency:** one-tenant transaction containing mutation, workflow projection, idempotency, audit, and invalidation.
+- **Kernel coupling:** modules own features; all cross-module access remains capability-only.
+
+### Recommendation and Sequence
+
+1. Build the typed extension-point registry and contribution contract first.  
+2. Add governed theme packaging, versioning, switching, rollback, and theme-provided section schemas.  
+3. Build the builder document model and deterministic server renderer.  
+4. Add the visual canvas last.
+
+This preserves Ikabud’s identity: extensible like a CMS, but governed by contracts rather than hackable by convention.
+
+########## PANEL C (FLASH CONTRARIAN) ##########
+Verified ground truth (15 suite members incl. shell + 4 profiles; 3 declared extension points with a single consumer — sidebar; one live theme on tenant 54; sibling reference builder is ungoverned). Here is Panel C.
+
+---
+
+## Panel C — Contrarian / Devil's Advocate
+
+**1. Scope: you are planning a three-body build around one user.** Who is the user of themes, extensions, and a builder in a governed kernel? Operators and the owner. The *site visitors* only see `akira-ark` on tenant 54. The nine extensions are thin scaffolds, four are profiles, and five declared extension points have exactly **one** runtime consumer (sidebar). Building all three simultaneously means staffing a theme-packaging pipeline, a typed contribution registry, and a structured-JSON canvas with no proof any of them will be used. Minimum that delivers value **now**: a governed theme lifecycle (install/validate/activate/rollback) — because that's the only feature touching live traffic and it closes a real gap (hardcoded active theme). Explicitly defer: extensions registry generalization and any builder work.
+
+**2. Ordering — Themes first, and it isn't close.** Extensions-before-consumers is building the airport before the plane: the sidebar `admin_contributions` path already proves the pattern; generalize it *when* a real extension ships real dashboard widgets or editor tools, not before. Builder last/never: ADR R7 descoped it pending user direction — direction has not arrived; the sibling repo has a proven builder whose compositions, NodeRenderer, and PHP renderers you'd have to retrofit through capability-bus ceremony. Building a governed clone of a working reference is exactly the "second-system" trap, and it risks recreating WordPress lock-in in a subtler form: pages-as-structured-JSON become the product, and content migration into that format becomes the moat. Don't build what makes adoption costlier.
+
+**3. Integration cost — the ceremony is dead weight exactly where there is no trust boundary.** All nine extensions are first-party modules in one repo already gated by the capability bus and policy rows. Typed contribution schemas, per-contribution capabilities, and versioned contracts for *those* are ceremony with zero payoff. It is essential only at the third-party boundary — and today the only third-party-ish surface is theme artifacts (DiSyL templates executed at runtime). Machinery exists: reuse `ThemeDefinitionLoader`, `theme:validate` (traversal/safety), the per-tenant `active_theme_slug` + `akira.theme.resolve@1` — activation is a new governed capability over an existing column, not new infrastructure. For builder blocks, reuse `EntityViewResolver`/`DefaultEntityRenderer` and the theme `renderer-registry.json` instead of inventing a parallel block registry. Don't build *any* new registry machinery in this cycle.
+
+**4. Risks the synthesis under-weights.**
+- **Third-party themes = WordPress functions.php in DiSyL clothing.** WP is hackable-by-design because separation is conventional, not enforced. Opening theme install/upload now inherits that surface. Mitigation: no marketplace, no unsigned uploads, in cycle 2.
+- **Migration debt:** sibling builder code bypasses governance; porting means re-architecting every renderer into one-transaction idempotent calls. That's a port, not a build.
+- **DiSyL limits are a hidden line item.** Block rendering needs context, loops, conditionals — and the constraint says fix DiSyL at the engine root first. "Builder" therefore secretly budgets engine work. Nobody is pricing that.
+- **Multi-tenant theming:** per-tenant activation exists, but customizer values sit in `tenant_module_settings`, there's no rollback, and every dedicated tenant DB must re-validate artifacts. Child themes and per-route overrides multiply this — defer.
+- **Second-system registry:** the biggest risk is the synthesis writing a beautiful extension-platform ADR for extensions that don't exist yet.
+
+**5. What the ADR should commit to vs refuse.** Commit: themes lifecycle v1 — validated package install, activate/rollback as `akira.theme.*@1` governed capabilities, audit+idempotency in one tenant transaction, page-cache invalidation, one CLI/theme-studio surface. Nothing more. Explicitly refuse: marketplace, child themes, per-route overrides, typed extension registry generalization, and **page builder in the kernel** — keep the scaffold, keep the sibling repo canonical, reopen only on explicit user direction plus a composition content-model ADR plus a documented DiSyL block-engine gap list.
+
+**Borrow/reject quick list:** borrow Shopify's constrained-section discipline (for later theme-provided blocks), Drupal's validation-before-activation, Ghost's one-active-theme simplicity. Reject: WordPress plugin/extension free-for-all, Elementor's proprietary canvas, Strapi's plugin-as-content-type flexibility (permissions sprawl), and Gutenberg's HTML-comment serialization.
+
+**Sequencing:** T1 theme lifecycle (value now). T2 ship one real extension (e.g., a search/SEO dashboard widget) to force the registry to *earn* its design with a live consumer. T3 builder only if user direction arrives and DiSyL gaps are closed. If only one thing ships, it is T1 — the rest are unproven.

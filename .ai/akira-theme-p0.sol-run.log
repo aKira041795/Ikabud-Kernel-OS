@@ -1,0 +1,58 @@
+## Status: BLOCKED
+
+L4 stop triggered after the second failed PHPStan repair attempt. No further edits or tests were performed.
+
+### Acceptance criteria
+
+- **A1 — PASS:** `php tests/akira_theme_safe_fallback_test.php` verified absent, empty, explicit, and malformed `visible_fields`; **27/27 passed**, exit `0`.
+- **A2 — PASS:** `rg` found no `array_keys($rows[0])` or `array_keys($entity)` field discovery in the resolver/renderer; exit `1` means no matches.
+- **A3 — PASS:** Regression tests verified wildcard resolution from explicit metadata or `SAFE_FALLBACK_FIELDS`.
+- **A4 — PASS:** Cross-row test verified a field absent from row 0 rendered for row 1, with identical field lists and escaped output.
+- **A5 — FAILED:** All four changed PHP files passed `php -l`, exit `0`. PHPStan remained red after two attempts; latest run exited `1` with 10 errors.
+- **A6 — PASS:** New regression suite explicitly checked absence of `tenant_id`, `cost`, `notes`, `tokens`, and a synthetic provider field across table, compact, card-grid, and detail behavior; **27/27 passed**.
+- **A7 — PASS:** `SAFE_FALLBACK_FIELDS` membership was not changed. No files under `modules/`, migrations, dependencies, or forbidden runtime surfaces were edited.
+
+### Required tests
+
+| Command | Exit | Passed | Failed | Skipped / never ran |
+|---|---:|---:|---:|---:|
+| `php tests/akira_theme_safe_fallback_test.php` | 0 | 27 | 0 | 0 |
+| `php tests/entity_fallback_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/default_entity_renderer_post_row_action_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/entity_view_resolver_version_fallback_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/entity_list_result_sort_validation_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/entity_cell_renderer_registry_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/entity_view_render_cache_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/architecture_component_integration_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/disyl_v11_verify_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php tests/ai_autonomy_test.php` | N/A | 0 | 0 | **1 never ran** |
+| `php -l` on four changed PHP files | 0 | 4 | 0 | 0 |
+| Required PHPStan command over changed files | 1 | 0 | 37 errors | 0 |
+| Second PHPStan attempt including `TestHarness.php` for symbol discovery | 1 | 0 | 10 errors | 0 |
+
+Nine required existing test commands never ran because the mandatory L4 stop occurred first.
+
+### Changed files
+
+- `kernel/EntityContext/EntityViewResolver.php`
+- `kernel/EntityContext/DefaultEntityRenderer.php`
+- `kernel/DiSyL/Component/ComponentRenderer.php`
+- `tests/akira_theme_safe_fallback_test.php`
+- `.ai/decisions/akira-theme-p0-d1.json`
+- `.ai/decisions/akira-theme-p0-d1.md`
+- `.ai/decisions/akira-theme-p0-d1.stage.json`
+
+Pre-existing untracked file left untouched:
+
+- `.ai/akira-theme-p0.sol-run.log`
+
+### L4 deferral
+
+- **ID:** `akira-theme-p0-d1`
+- **Simulator only:** filed using `.ai/harpp-sim`; no live HARPP delivery claimed.
+- **Recommended option:** `resume`
+- **Reason:** PHPStan remained failing after the second repair attempt, requiring the contract-mandated stop.
+
+### Incomplete work
+
+PHPStan and the nine existing required tests remain incomplete. Completion requires an explicit decision permitting another bounded repair cycle.

@@ -143,6 +143,42 @@ function cabBuilderPositiveId(mixed $value, string $field): int
     return $id;
 }
 
+/**
+ * The administrative tier this module accepts.
+ *
+ * Mirrors cms-akira-core's canonical `CAC_AKIRA_ADMIN_ROLES`. Checking `role === 'admin'`
+ * refused an `administrator`/`superadmin` whom this module's own capability policy admits —
+ * `allowed_roles` below is seeded from `cacAkiraAdminRoleCsv()`, so the guard rejected an
+ * actor the module had already authorised, and the surface rendered an error to a role it
+ * had invited. `cms-akira-core/helpers/governance.php` documents the same inconsistency.
+ *
+ * Resolved defensively because the core helper is not guaranteed to be loaded when a
+ * capability handler runs; `cms-akira-search/helpers.php` uses the same guard shape.
+ *
+ * @return list<string>
+ */
+function cabBuilderAdminRoles(): array
+{
+    if (function_exists('cacAkiraAdminRoleCsv')) {
+        $roles = array_values(array_filter(array_map('trim', explode(',', cacAkiraAdminRoleCsv()))));
+        if ($roles !== []) {
+            return $roles;
+        }
+    }
+    return ['admin', 'administrator', 'superadmin'];
+}
+
+/**
+ * Whether an actor holds an administrative role.
+ *
+ * @param mixed $actor
+ */
+function cabBuilderIsAdminActor(mixed $actor): bool
+{
+    return is_array($actor)
+        && in_array((string) ($actor['role'] ?? ''), cabBuilderAdminRoles(), true);
+}
+
 /** @return array{id:int,role:string,source?:string} */
 function cabBuilderActor(): array
 {
@@ -150,7 +186,7 @@ function cabBuilderActor(): array
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CabBuilderException('Authentication required.', 401);
     }
-    if (($actor['role'] ?? '') !== 'admin') {
+    if (!cabBuilderIsAdminActor($actor)) {
         throw new CabBuilderException('Administrator role required.', 403);
     }
     return $actor;
@@ -937,4 +973,6 @@ function cab_builder_cap_validate_1(mixed $payload, string $capabilityId = 'akir
     } return cabBuilderMutate('validate', $payload);
 }
 
-cabBuilderSeedMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    cabBuilderSeedMutationPolicies();
+}

@@ -332,7 +332,22 @@ final class App
             if ($actorModuleUserId !== null && $actorModuleUserId <= 0) {
                 $actorModuleUserId = null;
             }
-            $actorSource = $source !== '' ? $source : null;
+            // An audit row must never be wholly anonymous. The read path already
+            // renders an unattributed row as "System", so writing NULL for
+            // actor_source concealed the difference between a legitimate
+            // system/CLI write and one that simply never had an actor at all.
+            // Record which case it was, and make the second case visible.
+            $attributed = $actorId !== null || $actorModuleUserId !== null || $source !== '';
+            $actorSource = $source !== ''
+                ? $source
+                : (PHP_SAPI === 'cli' ? 'cli:unattributed' : 'unauthenticated');
+            if (!$attributed) {
+                $this->log('Audit row written without an authenticated actor', 'warning', [
+                    'module' => $module,
+                    'action' => $action,
+                    'actor_source' => $actorSource,
+                ]);
+            }
 
             try {
                 KernelPDO::kernelEscalationEnter();
@@ -504,6 +519,137 @@ final class App
                 'required' => ['rows'],
                 'properties' => [
                     'rows' => ['type' => 'array', 'items' => ['type' => 'object']],
+                ],
+            ],
+        ]]));
+
+        // kernel.provenance.list@1 (first):
+        // Payload: {module?: string, action?: string, page?: int, per_page?: int}
+        // Return: {rows, total, pages, page, modules, actions, unattributed_count}
+        $caps->register('kernel.provenance.list@1', 'kernel', function ($payload): array {
+            $user = $this->user();
+            if (!$user
+                || ($user['source'] ?? null) !== 'kernel'
+                || !in_array(($user['role'] ?? null), ['admin', 'administrator', 'superadmin'], true)) {
+                throw new \RuntimeException('Only kernel administrators can view provenance.');
+            }
+
+            $payload = is_array($payload) ? $payload : [];
+            $module = trim((string)($payload['module'] ?? ''));
+            $action = trim((string)($payload['action'] ?? ''));
+            $page = max(1, (int)($payload['page'] ?? 1));
+            $perPage = max(1, min(100, (int)($payload['per_page'] ?? 50)));
+
+            try {
+                KernelPDO::kernelEscalationEnter();
+                $db = $this->db();
+
+                // Older tenant schemas may predate the three-part actor model.
+                $hasModuleUserId = false;
+                $hasActorSource = false;
+                try {
+                    $column = $db->query("SHOW COLUMNS FROM audit_logs LIKE 'actor_module_user_id'");
+                    $hasModuleUserId = $column && $column->fetchColumn() !== false;
+                    $column = $db->query("SHOW COLUMNS FROM audit_logs LIKE 'actor_source'");
+                    $hasActorSource = $column && $column->fetchColumn() !== false;
+                } catch (\Throwable) {
+                    // The aliases below preserve a stable capability response for legacy schemas.
+                }
+
+                $filters = [];
+                $bindings = [];
+                if ($module !== '') {
+                    $filters[] = 'a.module = :module';
+                    $bindings[':module'] = $module;
+                }
+                if ($action !== '') {
+                    $filters[] = 'a.action = :action';
+                    $bindings[':action'] = $action;
+                }
+                $where = $filters === [] ? '' : ' WHERE ' . implode(' AND ', $filters);
+
+                $count = $db->prepare('SELECT COUNT(*) FROM audit_logs a' . $where);
+                $count->execute($bindings);
+                $total = (int)$count->fetchColumn();
+                $pages = max(1, (int)ceil($total / $perPage));
+                $page = min($page, $pages);
+                $offset = ($page - 1) * $perPage;
+
+                $moduleActorColumn = $hasModuleUserId
+                    ? 'a.actor_module_user_id' : 'NULL AS actor_module_user_id';
+                $actorSourceColumn = $hasActorSource
+                    ? 'a.actor_source' : 'NULL AS actor_source';
+                $sql = 'SELECT a.id, a.module, a.actor_user_id, ' . $moduleActorColumn . ', '
+                    . $actorSourceColumn . ', a.action, a.entity_type, a.entity_id, a.created_at, '
+                    . 'u.username AS username FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_user_id'
+                    . $where . ' ORDER BY a.created_at DESC, a.id DESC LIMIT ' . $perPage . ' OFFSET ' . $offset;
+                $statement = $db->prepare($sql);
+                $statement->execute($bindings);
+                $rows = array_values(array_filter($statement->fetchAll(\PDO::FETCH_ASSOC) ?: [], 'is_array'));
+
+                foreach ($rows as &$row) {
+                    $kernelActorId = (int)($row['actor_user_id'] ?? 0);
+                    $moduleActorId = (int)($row['actor_module_user_id'] ?? 0);
+                    $actorSource = trim((string)($row['actor_source'] ?? ''));
+                    $username = trim((string)($row['username'] ?? ''));
+                    if ($kernelActorId > 0) {
+                        $row['actor'] = $username !== '' ? $username : 'kernel user #' . $kernelActorId;
+                    } elseif ($moduleActorId > 0) {
+                        $row['actor'] = ($actorSource !== '' ? $actorSource : 'module') . ' user #' . $moduleActorId;
+                    } else {
+                        $row['actor'] = 'Unattributed · ' . ($actorSource !== '' ? $actorSource : 'source missing (legacy)');
+                    }
+                    $row['detail'] = trim((string)($row['entity_type'] ?? ''))
+                        . ($row['entity_id'] !== null ? ' #' . (string)$row['entity_id'] : '');
+                }
+                unset($row);
+
+                $unattributedColumn = $hasModuleUserId
+                    ? 'actor_user_id IS NULL AND actor_module_user_id IS NULL'
+                    : 'actor_user_id IS NULL';
+                $unattributedCount = (int)$db->query(
+                    'SELECT COUNT(*) FROM audit_logs WHERE ' . $unattributedColumn
+                )->fetchColumn();
+                $modules = array_map('strval', $db->query(
+                    "SELECT DISTINCT module FROM audit_logs WHERE module IS NOT NULL AND module <> '' ORDER BY module"
+                )->fetchAll(\PDO::FETCH_COLUMN));
+                $actions = array_map('strval', $db->query(
+                    "SELECT DISTINCT action FROM audit_logs WHERE action <> '' ORDER BY action"
+                )->fetchAll(\PDO::FETCH_COLUMN));
+
+                return [
+                    'rows' => $rows,
+                    'total' => $total,
+                    'pages' => $pages,
+                    'page' => $page,
+                    'modules' => $modules,
+                    'actions' => $actions,
+                    'unattributed_count' => $unattributedCount,
+                ];
+            } finally {
+                KernelPDO::kernelEscalationLeave();
+            }
+        }, 1000, ['first'], $kernelCapabilityMeta('kernel.provenance.list@1', ['schema' => [
+            'input' => [
+                'type' => 'object',
+                'properties' => [
+                    'module' => ['type' => 'string'],
+                    'action' => ['type' => 'string'],
+                    'page' => ['type' => 'integer'],
+                    'per_page' => ['type' => 'integer'],
+                ],
+            ],
+            'output' => [
+                'type' => 'object',
+                'required' => ['rows', 'total', 'pages', 'page', 'modules', 'actions', 'unattributed_count'],
+                'properties' => [
+                    'rows' => ['type' => 'array', 'items' => ['type' => 'object']],
+                    'total' => ['type' => 'integer'],
+                    'pages' => ['type' => 'integer'],
+                    'page' => ['type' => 'integer'],
+                    'modules' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    'actions' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    'unattributed_count' => ['type' => 'integer'],
                 ],
             ],
         ]]));
@@ -707,13 +853,32 @@ final class App
                 $hasEmailColumn = function_exists('kernelUsersHasEmailColumn')
                     ? kernelUsersHasEmailColumn($this->db())
                     : false;
+
+                // The sign-in form advertises "Username or Email", so both must
+                // resolve. Username is tried first and alone, then email: two
+                // lookups rather than one OR keeps precedence deterministic if a
+                // username ever equals another user's email, and it means a
+                // username login runs exactly the query it ran before this.
+                $select = $hasEmailColumn
+                    ? 'SELECT id, username, email, password_hash, full_name, role'
+                    : 'SELECT id, username, password_hash, full_name, role';
+
                 $stmt = $this->db()->prepare(
-                    $hasEmailColumn
-                        ? "SELECT id, username, email, password_hash, full_name, role\n                     FROM users\n                     WHERE username = :username AND is_active = 1\n                     LIMIT 1"
-                        : "SELECT id, username, password_hash, full_name, role\n                     FROM users\n                     WHERE username = :username AND is_active = 1\n                     LIMIT 1"
+                    $select . ' FROM users WHERE username = :username AND is_active = 1 LIMIT 1'
                 );
                 $stmt->execute([':username' => $username]);
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                // Email fallback. `email` is utf8mb4_unicode_ci, so this matches
+                // case-insensitively, while `username` above stays utf8mb4_bin.
+                if (!is_array($row) && $hasEmailColumn) {
+                    $stmt = $this->db()->prepare(
+                        $select . ' FROM users WHERE email = :email AND is_active = 1 LIMIT 1'
+                    );
+                    $stmt->execute([':email' => $username]);
+                    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+
                 if (!is_array($row) || trim((string) ($row['role'] ?? '')) === '' || !password_verify($password, (string)$row['password_hash'])) {
                     return null;
                 }

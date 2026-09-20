@@ -1,0 +1,181 @@
+CLAIM: Rule 1 remains fail-closed: plan refuses this director-authorised bootstrap contract because its scope names the verifier trust surface.
+COMMAND: php tools/ai-autonomy.php plan --contract=.ai/guardrail-scope-integrity.contract.md; code=$?; printf 'EXIT_CODE=%s\n' "$code"
+OBSERVED: ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-autonomy.php' reaches 'tools/ai-autonomy.php'; entry 'tools/ai-run.php' reaches 'tools/ai-run.php'; entry 'tools/ai-loop.php' reaches 'tools/ai-loop.php'; entry 'tools/ai-project.php' reaches 'tools/ai-project.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT_CODE=2
+
+CLAIM: D1 refuses all three trust-surface-covering scopes with exit 2 and still accepts docs/ with exit 0.
+COMMAND: set -o pipefail; AI_AUTONOMY_SHOW_SCOPE_PROOFS=1 php tests/ai_autonomy_test.php | awk '/^PLAN_SCOPE_PROOF / || /^ERROR: contract names the verifier trust surface/ || /^PLAN_SCOPE_PROOF_END$/' ; code=${PIPESTATUS[0]}; printf 'SUITE_EXIT_CODE=%s\n' "$code"; exit "$code"
+OBSERVED: PLAN_SCOPE_PROOF tools/ internal_exit=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools' reaches 'tools/ai-run.php'; entry 'tools' reaches 'tools/ai-autonomy.php'; entry 'tools' reaches 'tools/ai-project.php'; entry 'tools' reaches 'tools/ai-loop.php'; entry 'tools' reaches 'tools/ai-contract-lint.php'; entry 'tools' reaches 'tools/harpp-bridge/harpp_wake.py' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+PLAN_SCOPE_PROOF_END
+PLAN_SCOPE_PROOF tools/ai-*.php internal_exit=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-*.php' reaches 'tools/ai-run.php'; entry 'tools/ai-*.php' reaches 'tools/ai-autonomy.php'; entry 'tools/ai-*.php' reaches 'tools/ai-project.php'; entry 'tools/ai-*.php' reaches 'tools/ai-loop.php'; entry 'tools/ai-*.php' reaches 'tools/ai-contract-lint.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+PLAN_SCOPE_PROOF_END
+PLAN_SCOPE_PROOF **/*.php internal_exit=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry '**/*.php' reaches 'tools/ai-run.php'; entry '**/*.php' reaches 'tools/ai-autonomy.php'; entry '**/*.php' reaches 'tools/ai-project.php'; entry '**/*.php' reaches 'tools/ai-loop.php'; entry '**/*.php' reaches 'tools/ai-contract-lint.php'; entry '**/*.php' reaches 'kernel/Workbench/Development/DevelopmentTaskContract.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+PLAN_SCOPE_PROOF_END
+PLAN_SCOPE_PROOF docs/ internal_exit=0
+PLAN_SCOPE_PROOF_END
+SUITE_EXIT_CODE=0
+
+CLAIM: Existing check behavior remains exact: widening the allowlist escalates at L4/exit 3, while a benign in-scope path records at L2/exit 0.
+COMMAND: php tools/ai-autonomy.php check 'widen the command allowlist' --path=tools/ai-run.php --contract=.ai/guardrail-scope-integrity.contract.md; printf 'EXIT_CODE=%s\n' "$?"; php tools/ai-autonomy.php check 'benign in-scope probe' --path=docs/testing/guardrail-note.md --contract=.ai/builder-spec-truth.contract.md; printf 'EXIT_CODE=%s\n' "$?"
+OBSERVED: VERDICT: ESCALATE
+level: L4
+action: widen the command allowlist
+paths:
+  - tools/ai-run.php
+reasons:
+  - path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT_CODE=3
+VERDICT: RECORD
+level: L2
+action: benign in-scope probe
+paths:
+  - docs/testing/guardrail-note.md
+reasons:
+  - path 'docs/testing/guardrail-note.md' matched 'docs/testing' by directory prefix
+EXIT_CODE=0
+
+CLAIM: D2 refuses trust-surface amendment without a recorded director decision and says how to obtain one.
+COMMAND: php tools/ai-autonomy.php trust-surface amend --reason="record final bootstrap under CD-28"; code=$?; printf 'EXIT_CODE=%s\n' "$code"
+OBSERVED: REFUSED: --director-decision must name a recorded decision in .ai/decisions/ or a ## CD-<n> heading in .ai/chair-decisions.md
+Obtain and record the director's decision, then retry trust-surface amend. No trust-surface file was changed.
+EXIT_CODE=3
+
+CLAIM: D2 accepts recorded CD-28, records provenance and a new verifier hash, and explicitly performs no trust-surface file change.
+COMMAND: php tools/ai-autonomy.php trust-surface amend --reason="Close final bootstrap: scope coverage, director ledger provenance, and A-F2 dispatch-baseline gate" --director-decision=CD-28; code=$?; printf 'EXIT_CODE=%s\n' "$code"
+OBSERVED: TRUST-SURFACE AMENDMENT RECORDED TSA-0001
+  decision: CD-28
+  reason:   Close final bootstrap: scope coverage, director ledger provenance, and A-F2 dispatch-baseline gate
+  recorded: 2026-09-14T06:30:54+00:00
+  hash:     2d4ec1a008b630979b2c120d4b56c5103d26b916bccf3fc2e6e5dbe4a0db5764
+  record:   .ai/trust-surface-amendments.json
+NO TRUST-SURFACE FILE WAS CHANGED BY THIS ROUTE; it only validated, recorded and re-hashed.
+EXIT_CODE=0
+
+CLAIM: The final amendment record is visible and carries reason, named decision, timestamp, current hash, and the no-change fact.
+COMMAND: php -r '$d=json_decode(file_get_contents(".ai/trust-surface-amendments.json"),true); $a=end($d["amendments"]); echo json_encode(["id"=>$a["id"],"reason"=>$a["reason"],"director_decision"=>$a["director_decision"],"recorded_at"=>$a["recorded_at"],"trust_surface_hash"=>$a["trust_surface_hash"],"trust_surface_files_changed_by_route"=>$a["trust_surface_files_changed_by_route"]],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n";'; code=$?; printf 'EXIT_CODE=%s\n' "$code"
+OBSERVED: {
+    "id": "TSA-0004",
+    "reason": "Final re-hash after documenting dirty-tree scope-conformance semantics",
+    "director_decision": "CD-28",
+    "recorded_at": "2026-09-14T06:41:19+00:00",
+    "trust_surface_hash": "ac235c5bbab3ea0124dfa9ea1800497c51c44aa5d6f0fef765275d0f003edd9c",
+    "trust_surface_files_changed_by_route": false
+}
+EXIT_CODE=0
+
+CLAIM: Director-authorised verifier work is recordable in the run ledger only with a real decision, and the ledger carries CD-28.
+COMMAND: proof=$(mktemp -d /tmp/director-run-ledger-XXXXXX); php tools/ai-run.php start --contract=.ai/guardrail-scope-integrity.contract.md --lane=openai-codex/gpt-5.6-sol --name=without-director --runs-dir="$proof"; printf 'EXIT_CODE=%s\n' "$?"; php tools/ai-run.php start --contract=.ai/guardrail-scope-integrity.contract.md --lane=openai-codex/gpt-5.6-sol --name=with-director --director-decision=CD-28 --runs-dir="$proof" --json >/dev/null; printf 'EXIT_CODE=%s\n' "$?"; php -r '$r=json_decode(file_get_contents($argv[1]."/with-director.json"),true); echo json_encode($r["director_authorisation"],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n";' "$proof"; printf 'EXIT_CODE=%s\n' "$?"; rm -rf "$proof"
+OBSERVED: REFUSED: this run requires --director-decision naming a decision recorded in .ai/decisions/ or .ai/chair-decisions.md
+EXIT_CODE=3
+EXIT_CODE=0
+{
+    "decision_ref": "CD-28",
+    "recorded_at": "2026-09-14T06:31:34+00:00",
+    "required_for_trust_surface": true
+}
+EXIT_CODE=0
+
+CLAIM: D3 blocks an out-of-scope write, advances an in-scope write, and does not attribute a pre-dispatch modification; the event stream shows all three real internal exit codes.
+COMMAND: set -o pipefail; AI_LOOP_SHOW_SCOPE_PROOFS=1 php tests/ai_loop_test.php | awk '/^SCOPE_PROOF_/,/^SCOPE_PROOF_END$/' ; code=${PIPESTATUS[0]}; printf 'SUITE_EXIT_CODE=%s\n' "$code"; exit "$code"
+OBSERVED: SCOPE_PROOF_OUT_OF_SCOPE internal_exit=3
+PLAN S1 lane=fixture contract=/tmp/ikabud-ai-loop-be3b8147b0eb/projects/fixture/slices/s1.md
+COMMIT-CHECK before S1: exit=0
+LEDGER start fixture-s1-20260914063112-4ad81d
+LEDGER finish fixture-s1-20260914063112-4ad81d exit=0 status=blocked
+SCOPE BLOCKED delta=1 offending=.ai/loop-scope-probe-32b1968689f0.txt
+STOP S1: scope conformance failed: .ai/loop-scope-probe-32b1968689f0.txt; block-record-exit=0
+SCOPE_PROOF_END
+SCOPE_PROOF_IN_SCOPE internal_exit=0
+PLAN S1 lane=fixture contract=/tmp/ikabud-ai-loop-df76bd11229a/projects/fixture/slices/s1.md
+COMMIT-CHECK before S1: exit=0
+LEDGER start fixture-s1-20260914063113-8996fe
+LEDGER finish fixture-s1-20260914063113-8996fe exit=0 status=completed
+SCOPE OK delta=1
+CLAIMS fixture-s1-20260914063113-8996fe extracted=1 (UNVERIFIED)
+VERIFY fixture-s1-20260914063113-8996fe exit=0 statuses=RE_DERIVED
+ADVANCE S1: all claims RE_DERIVED
+PROJECT COMPLETE fixture
+SCOPE_PROOF_END
+SCOPE_PROOF_PRE_EXISTING internal_exit=0
+PLAN S1 lane=fixture contract=/tmp/ikabud-ai-loop-05724b0ae97d/projects/fixture/slices/s1.md
+COMMIT-CHECK before S1: exit=0
+LEDGER start fixture-s1-20260914063114-ccbbfc
+LEDGER finish fixture-s1-20260914063114-ccbbfc exit=0 status=completed
+SCOPE OK delta=0
+CLAIMS fixture-s1-20260914063114-ccbbfc extracted=1 (UNVERIFIED)
+VERIFY fixture-s1-20260914063114-ccbbfc exit=0 statuses=RE_DERIVED
+ADVANCE S1: all claims RE_DERIVED
+PROJECT COMPLETE fixture
+SCOPE_PROOF_END
+SUITE_EXIT_CODE=0
+
+CLAIM: All four required pure suites pass with zero failures and zero skips.
+COMMAND: set -e; for t in tests/ai_autonomy_test.php tests/ai_run_test.php tests/ai_project_test.php tests/ai_contract_lint_test.php; do php "$t" >/tmp/$(basename "$t").final.out; done; php -r 'foreach (["ai-autonomy","ai-run","ai-project","ai-contract-lint"] as $name) { $d=json_decode(file_get_contents("test_results/{$name}.json"),true); echo $name,": ",json_encode($d["summary"], JSON_UNESCAPED_SLASHES),"\n"; }'; printf 'EXIT_CODE=0\n'
+OBSERVED: ai-autonomy: {"passed":59,"failed":0,"skipped":0,"total":59,"assertions":59,"exit_code":0}
+ai-run: {"passed":41,"failed":0,"skipped":0,"total":41,"assertions":41,"exit_code":0}
+ai-project: {"passed":16,"failed":0,"skipped":0,"total":16,"assertions":16,"exit_code":0}
+ai-contract-lint: {"passed":3,"failed":0,"skipped":0,"total":3,"assertions":3,"exit_code":0}
+EXIT_CODE=0
+
+CLAIM: D4 non-vacuity was checked in an isolated clone: reverting D1 directory coverage fails assertion 45; accepting arbitrary D2 decision strings fails assertion 49; bypassing the D3 finish gate fails assertion 9.
+COMMAND: bash <<'SH'
+set -u
+root=/var/www/html/ikabudsix
+work=$(mktemp -d /tmp/guardrail-d4-proof-XXXXXX)
+git clone -q --shared "$root" "$work/repo"
+for f in tools/ai-autonomy.php tools/ai-run.php tools/ai-loop.php tools/ai-project.php tests/ai_autonomy_test.php tests/ai_run_test.php tests/ai_loop_test.php tests/ai_project_test.php tests/ai_contract_lint_test.php .ai/chair-decisions.md; do cp "$root/$f" "$work/repo/$f"; done
+mutate() { python3 - "$1" "$2" "$3" <<'PY'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); old=sys.argv[2]; new=sys.argv[3]; s=p.read_text(); assert s.count(old)==1; p.write_text(s.replace(old,new))
+PY
+}
+old='        if (!is_array($entry)) { continue; }
+        $claim ='
+new='        if (!is_array($entry)) { continue; }
+        if (($entry["kind"] ?? "file") === "directory") { continue; }
+        $claim ='
+mutate "$work/repo/tools/ai-autonomy.php" "$old" "$new"
+(cd "$work/repo" && php tests/ai_autonomy_test.php > "$work/d1.out" 2>&1); d1=$?
+echo "D1_MUTANT_EXIT=$d1"; grep -m1 '❌ 45. directory scope' "$work/d1.out"
+cp "$root/tools/ai-autonomy.php" "$work/repo/tools/ai-autonomy.php"
+old='function directorDecisionExists(string $reference, string $decisionsDir, string $chairDecisions): bool
+{'
+new="$old
+    return true;"
+mutate "$work/repo/tools/ai-autonomy.php" "$old" "$new"
+(cd "$work/repo" && php tests/ai_autonomy_test.php > "$work/d2.out" 2>&1); d2=$?
+echo "D2_MUTANT_EXIT=$d2"; grep -m1 '❌ 49. trust-surface amend' "$work/d2.out"
+cp "$root/tools/ai-autonomy.php" "$work/repo/tools/ai-autonomy.php"
+old="        \$conformance = scopeConformance(
+            (string) (\$record['contract'] ?? ''),
+            (string) (\$record['contract_revision'] ?? ''),
+            \$delta
+        );"
+new="$old
+        \$conformance['ok'] = true; // reverted gate probe"
+mutate "$work/repo/tools/ai-run.php" "$old" "$new"
+(cd "$work/repo" && php tests/ai_loop_test.php > "$work/d3.out" 2>&1); d3=$?
+echo "D3_MUTANT_EXIT=$d3"; grep -m1 '❌ 9. an out-of-scope write' "$work/d3.out"
+rm -rf "$work"
+SH
+code=$?; printf 'EXIT_CODE=%s\n' "$code"
+OBSERVED: D1_MUTANT_EXIT=1
+  ❌ 45. directory scope covering the verifier is refused and names a reached path — command: '/usr/bin/php8.5' '/tmp/guardrail-d4-proof-c1jNtD/repo/tools/ai-autonomy.php' 'plan' '--json' '--contract=/tmp/ikabud-ai-autonomy-20e0707f5d1e/scope-203f933b.md' '--decisions-dir=/tmp/ikabud-ai-autonomy-20e0707f5d1e/decisions' [HARPP_NOTIFY=0; stub PATH]
+D2_MUTANT_EXIT=1
+  ❌ 49. trust-surface amend refuses absent and unknown decisions with exit 3 — command: '/usr/bin/php8.5' '/tmp/guardrail-d4-proof-c1jNtD/repo/tools/ai-autonomy.php' 'trust-surface' 'amend' '--reason=fixture' '--chair-decisions=/tmp/ikabud-ai-autonomy-c890a073d426/chair-decisions.md' '--decisions-dir=/tmp/ikabud-ai-autonomy-c890a073d426/decisions' '--amendments-file=/tmp/ikabud-ai-autonomy-c890a073d426/trust-surface-amendments.json' [HARPP_NOTIFY=0; stub PATH]
+D3_MUTANT_EXIT=1
+  ❌ 9. an out-of-scope write blocks the slice, ledger and event stream — PLAN S1 lane=fixture contract=/tmp/ikabud-ai-loop-6486f360ef76/projects/fixture/slices/s1.md
+EXIT_CODE=0
+
+CLAIM: The four required pure suites also pass under the required PHP 8.3 runtime with zero skips.
+COMMAND: set -e; for t in tests/ai_autonomy_test.php tests/ai_run_test.php tests/ai_project_test.php tests/ai_contract_lint_test.php; do /usr/bin/php8.3 "$t" >/tmp/php83-$(basename "$t").out; done; /usr/bin/php8.3 -r 'foreach (["ai-autonomy","ai-run","ai-project","ai-contract-lint"] as $name) { $d=json_decode(file_get_contents("test_results/{$name}.json"),true); echo $name,": ",json_encode($d["summary"], JSON_UNESCAPED_SLASHES),"\n"; }'; printf 'EXIT_CODE=0\n'
+OBSERVED: ai-autonomy: {"passed":59,"failed":0,"skipped":0,"total":59,"assertions":59,"exit_code":0}
+ai-run: {"passed":41,"failed":0,"skipped":0,"total":41,"assertions":41,"exit_code":0}
+ai-project: {"passed":16,"failed":0,"skipped":0,"total":16,"assertions":16,"exit_code":0}
+ai-contract-lint: {"passed":3,"failed":0,"skipped":0,"total":3,"assertions":3,"exit_code":0}
+EXIT_CODE=0

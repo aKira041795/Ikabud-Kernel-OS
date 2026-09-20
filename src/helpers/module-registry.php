@@ -666,6 +666,123 @@ function moduleIsActive(string $moduleId, ?int $tenantId = null): bool
     return false;
 }
 
+/**
+ * Three-valued activation resolution for capability dispatch
+ * (P1.3 / B1 — activation must govern dispatch, but must fail-safe).
+ *
+ * `moduleIsActive()` is a boolean and therefore cannot tell the difference
+ * between "the tenant is resolved and this module is inactive" and "activation
+ * state could not be resolved". Capability dispatch must refuse the former and
+ * ALLOW the latter: a transient activation-store read failure must never become
+ * a site outage. This function makes that distinction explicit.
+ *
+ * Returns:
+ *   - 'active'     → module is operational for the tenant; dispatch may proceed.
+ *   - 'inactive'   → a tenant was resolved and the module is definitively not
+ *                    active (no explicit `_module_enabled`, not in the entry
+ *                    module's dependency closure). Dispatch must refuse.
+ *   - 'unresolved' → activation state could not be determined (no tenant,
+ *                    activation store unavailable, unknown module, exception).
+ *                    Dispatch must ALLOW and log.
+ *
+ * @return string 'active'|'inactive'|'unresolved'
+ */
+function moduleActivationState(string $moduleId, ?int $tenantId = null): string
+{
+    static $cache = [];
+
+    $moduleId = trim($moduleId);
+    if ($moduleId === '') {
+        return 'unresolved';
+    }
+    if ($moduleId === 'kernel') {
+        return 'active';
+    }
+
+    $state = 'unresolved';
+    try {
+        $multiTenant = moduleTenantSettingsModeEnabled();
+
+        // Resolve the ambient tenant only when the caller did not supply one.
+        if (($tenantId === null || $tenantId <= 0) && $multiTenant) {
+            $tenantId = moduleTenantSettingsTenantId();
+        }
+        if ($tenantId !== null && $tenantId <= 0) {
+            $tenantId = null;
+        }
+
+        // The cache key uses the RESOLVED tenant: caching a pre-resolution
+        // `null` under an ambient tenant would let one request's `inactive`
+        // answer refuse the same module for a different tenant later in the
+        // process — the exact fail-catastrophic inversion this guard exists
+        // to prevent.
+        $generation = (int) ($GLOBALS['_kernel_module_activation_generation'] ?? 0);
+        $cacheKey = $moduleId . '\0' . ($tenantId ?? 'null') . '\0' . $generation;
+        if (array_key_exists($cacheKey, $cache)) {
+            return $cache[$cacheKey];
+        }
+
+        // Multi-tenant mode with no resolvable tenant: activation is unknowable.
+        // Fail-safe — allow rather than refuse on an unresolved lookup.
+        if ($multiTenant && $tenantId === null) {
+            if (function_exists('write_log')) {
+                write_log('module.activation.unresolved', 'warning', [
+                    'module_id' => $moduleId,
+                    'reason' => 'tenant_unresolved',
+                ]);
+            }
+            $cache[$cacheKey] = 'unresolved';
+            return 'unresolved';
+        }
+
+        // A tenant-scoped decision requires a readable activation store. If the
+        // tenant database cannot be resolved, the state is unknown, not
+        // inactive. Fail-safe — allow.
+        if ($tenantId !== null && function_exists('app')) {
+            $tenantDb = app()->dbForTenant($tenantId);
+            if (!$tenantDb instanceof \PDO) {
+                if (function_exists('write_log')) {
+                    write_log('module.activation.unresolved', 'warning', [
+                        'module_id' => $moduleId,
+                        'tenant_id' => $tenantId,
+                        'reason' => 'activation_store_unavailable',
+                    ]);
+                }
+                $cache[$cacheKey] = 'unresolved';
+                return 'unresolved';
+            }
+        }
+
+        // An unknown provider cannot be classified. Fail-safe — allow.
+        $manifests = moduleRegistryRawModuleManifests();
+        if ($manifests !== [] && !isset($manifests[$moduleId])) {
+            if (function_exists('write_log')) {
+                write_log('module.activation.unresolved', 'warning', [
+                    'module_id' => $moduleId,
+                    'tenant_id' => $tenantId,
+                    'reason' => 'module_not_discovered',
+                ]);
+            }
+            $cache[$cacheKey] = 'unresolved';
+            return 'unresolved';
+        }
+
+        $state = moduleIsActive($moduleId, $tenantId) ? 'active' : 'inactive';
+        $cache[$cacheKey] = $state;
+        return $state;
+    } catch (\Throwable $e) {
+        if (function_exists('write_log')) {
+            write_log('module.activation.unresolved', 'warning', [
+                'module_id' => $moduleId,
+                'tenant_id' => $tenantId,
+                'reason' => 'exception',
+                'error' => $e->getMessage(),
+            ]);
+        }
+        return 'unresolved';
+    }
+}
+
 function isModuleEnabled(string $moduleId): bool
 {
     // In multi-tenant mode, check per-tenant override first.

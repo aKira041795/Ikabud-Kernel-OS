@@ -187,7 +187,14 @@ function casSearchActor(): array
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CasSearchException('Authentication required.', 401);
     }
-    if ((string) ($actor['role'] ?? '') !== 'admin') {
+    $role = trim((string) ($actor['role'] ?? ''));
+    // The seeded mutation policy grants the whole administrative tier; a code-level
+    // check for the single `admin` role would refuse `administrator` and `superadmin`
+    // after the policy already admitted them. Match the policy row exactly.
+    $adminTier = function_exists('cacAkiraAdminRoleCsv')
+        ? array_values(array_filter(array_map('trim', explode(',', cacAkiraAdminRoleCsv()))))
+        : ['admin', 'administrator', 'superadmin'];
+    if (!in_array($role, $adminTier, true)) {
         throw new CasSearchException('Administrator role required.', 403);
     }
     return $actor;
@@ -453,16 +460,25 @@ function cas_search_cap_query_1(mixed $payload, string $capabilityId = 'akira.se
             throw new CasSearchException('tenant_id is supplied by Kernel context.');
         }
         $term = is_string($payload['term'] ?? null) ? trim($payload['term']) : '';
-        if ($term === '' || mb_strlen($term) > 200) {
-            throw new CasSearchException('term must be a non-empty string of at most 200 characters.');
+        if (mb_strlen($term) > 200) {
+            throw new CasSearchException('term must be at most 200 characters.');
         }
         $type = array_key_exists('entity_type', $payload) ? casSearchEntityType($payload['entity_type']) : null;
         $page = filter_var($payload['page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
         $limit = filter_var($payload['limit'] ?? 25, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 50]]) ?: 25;
         $offset = ($page - 1) * $limit;
-        $pattern = '%' . str_replace(['=', '%', '_'], ['==', '=%', '=_'], $term) . '%';
-        $where = 'tenant_id = :tenant AND status = \'published\' AND (title LIKE :term_title ESCAPE \'=\' OR body LIKE :term_body ESCAPE \'=\' OR summary LIKE :term_summary ESCAPE \'=\')';
-        $params = [':tenant' => casSearchTenantId(), ':term_title' => $pattern, ':term_body' => $pattern, ':term_summary' => $pattern];
+        // An absent term is the operator population read: it returns the current
+        // tenant's indexed documents so a console can report the real index count
+        // without seeding data or inventing a parallel index model.
+        $where = 'tenant_id = :tenant AND status = \'published\'';
+        $params = [':tenant' => casSearchTenantId()];
+        if ($term !== '') {
+            $pattern = '%' . str_replace(['=', '%', '_'], ['==', '=%', '=_'], $term) . '%';
+            $where .= ' AND (title LIKE :term_title ESCAPE \'=\' OR body LIKE :term_body ESCAPE \'=\' OR summary LIKE :term_summary ESCAPE \'=\')';
+            $params[':term_title'] = $pattern;
+            $params[':term_body'] = $pattern;
+            $params[':term_summary'] = $pattern;
+        }
         if ($type !== null) {
             $where .= ' AND entity_type = :type';
             $params[':type'] = $type;
@@ -554,5 +570,40 @@ function casSearchRegisterLifecycleConsumer(): void
     }, 10, CAS_SEARCH_MODULE_ID);
 }
 
-casSearchSeedMutationPolicies();
+/**
+ * Seed the operator read authority for the search console. The contribution role
+ * set, this policy row, and the shell's local administrator gate all name the
+ * same roles. The active policy version may have been cloned by the permissions
+ * UI, so the declaration joins the currently active version rather than version 1
+ * only.
+ */
+function casSearchSeedQueryPolicy(): void
+{
+    if (!function_exists('app')) {
+        return;
+    }
+
+    $policyVersion = function_exists('cacActivePolicyVersion') ? cacActivePolicyVersion() : 1;
+
+    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope([[
+        'policy_version' => $policyVersion,
+        'capability_id' => 'akira.search.query@1',
+        'capability_version' => '1',
+        'provider' => CAS_SEARCH_MODULE_ID,
+        'caller_module' => CAS_SEARCH_MODULE_ID . ',cms-akira-shell',
+        'allowed_roles' => function_exists('cacAkiraAdminRoleCsv') ? cacAkiraAdminRoleCsv() : 'admin,administrator,superadmin',
+        'provider_activation_required' => true,
+        'requires_protocol' => 'v1',
+        'is_active' => true,
+    ]]);
+}
+
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    casSearchSeedMutationPolicies();
+}
+$casSearchPath = function_exists('cacRequestPath') ? cacRequestPath() : '';
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate() || $casSearchPath === ''
+    || $casSearchPath === '/cms-akira-shell/search') {
+    casSearchSeedQueryPolicy();
+}
 casSearchRegisterLifecycleConsumer();

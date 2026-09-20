@@ -1,0 +1,34 @@
+## BLOCKED — HARPP decision #100 pending
+
+### Diagnosis
+
+- **Load-order hypothesis: false.** `cms-akira-core` loads before `cms-akira-shell`; `cacActivePolicyVersion()` exists when the shell seed runs.
+- **Insert-only hypothesis: false as stated.** `seedPolicy()` updates narrowing changes but deliberately refuses widening with:
+  - `widening_refused`
+  - `operator_regrant_required`
+
+Thus the committed fourth caller cannot replace the existing three-caller row through the public seeding API.
+
+A shell-local reconciliation attempt was rejected by KernelPDO’s module ownership guard. It was fully reverted. Implementing the legal write requires changing forbidden `kernel/Capabilities/CapabilityAuthorizationRegistry.php`, or changing acceptance to require operator re-grant.
+
+### Decision requested
+
+HARPP **#100** recommends a narrowly guarded registry reconciliation API that:
+
+- matches only the exact historical granted declaration;
+- preserves suspended, revoked, or operator-modified rows;
+- updates only to the exact committed successor;
+- leaves generic widening protection unchanged.
+
+### Evidence
+
+- Tenant 54 remains unchanged:
+
+```json
+{"policy_version":30,"caller_module":"cms-akira-shell,cms-akira-seo,cms-akira-navigation","allowed_roles":"admin,administrator,superadmin","provider_activation_required":1,"requires_protocol":"v1","is_active":1,"grant_state":"granted"}
+```
+
+- Targeted browser baseline: **0 passed, 2 failed, 0 skipped**
+- Module test: **16 passed, 0 failed, 1 skipped** because it refuses live-tenant database access.
+- Full browser suite: **not run** because the contract is blocked before a lawful implementation exists.
+- No tracked files remain changed, and the tenant database was not edited.

@@ -1,0 +1,66 @@
+Implemented and committed as `8b92483` on `feat/media-contribute-authority`.
+
+### Root cause
+
+Instrumentation showed there was no pre-existing registration. The test stub was used:
+
+```text
+provider_count: 1
+provider: cms-akira-media
+policy: NULL
+origin.type: runtime_register
+```
+
+CI differs because `.env.ci` sets `APP_MULTI_TENANT_ENABLED=0`, while local sets it to `1`. In single-tenant mode, `CapabilityBus::applyPolicy()` calls implicit `moduleIsActive($pid)`, which requires global activation. The test only provisioned explicit tenant activation.
+
+The captured log entries were:
+
+```text
+[2026-09-12 20:09:31] [warning] Capability provider 'cms-akira-media' skipped — module not active for tenant {"capability_id":"akira.media.upload@1","provider":"cms-akira-media","caller_module":"cms-akira-media","request_id":"3b2081d04375fa5d"}
+[2026-09-12 20:09:31] [warning] capability.denied {"capability_id":"akira.media.upload@1","caller_module":"cms-akira-media","caller_user_id":999501,"reason":"caller_policy","request_id":"3b2081d04375fa5d","correlation_id":null}
+```
+
+The repair temporarily enables `cms-akira-media` globally in single-tenant mode, verifies implicit dispatch-scope activation, and restores `storage/modules.json` exactly afterward.
+
+### Results
+
+CI-mode simulation:
+
+```text
+CMS Akira media: 43 passed, 0 failed
+```
+
+Focused local run:
+
+```text
+CMS Akira media: 43 passed, 0 failed
+```
+
+Exact repository result blocks:
+
+```text
+Total: 136 files — 111 passed, 2 failed, 23 skipped  (62768ms)
+```
+
+```text
+Total: 136 files — 111 passed, 2 failed, 23 skipped  (34959ms)
+```
+
+Both `composer test` and `php scripts/run-tests.php` failed on existing unrelated tests:
+
+- `builder_contract_test.php`
+- `post_mutation_test.php`
+
+`media_contract_test.php` **PASSED and did not skip** in both runners.
+
+All new media assertions ran:
+
+- fixture tenant and dispatch-scope activation
+- canonical drafting mutation roles
+- contributor-facing read roles
+- Permissions media listing
+- SQL `NULL` caller replacement
+- author upload allowed / delete denied
+- seed narrowing and widening refusal
+
+`php -l` and targeted PHPStan passed. The original `www-data:www-data` fragment root was held as `.disyl-fragments-hold` and restored; no hold directory remains.

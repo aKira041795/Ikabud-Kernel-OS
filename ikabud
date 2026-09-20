@@ -216,6 +216,85 @@ function cliResolveTenantId(string $selector): ?int
     }
 }
 
+// ── Akira theme activation (tenant-scoped) ──────────────────────
+// The active theme is a per-tenant module setting that the runtime reads as
+// cms-akira-theme.active_theme_slug. The CLI must write that same setting: it
+// previously wrote a legacy `cms.active_theme` key nothing reads, so it reported
+// success while no theme was ever activated. See .ai/akira-theme-cli-fix.md.
+
+/** Load the Akira theme module so the CLI can reuse its authoritative validator. */
+function cliThemeLoadModuleHelpers(): bool
+{
+    if (function_exists('catThemeValidate')) {
+        return true;
+    }
+    $base = defined('BASE_PATH') ? BASE_PATH : __DIR__;
+    $helpers = $base . '/modules/cms-akira/cms-akira-theme/helpers.php';
+    if (!is_file($helpers)) {
+        return false;
+    }
+    require_once $helpers;
+    return function_exists('catThemeValidate');
+}
+
+/** @return list<array{id: int, tenant_key: string}> */
+function cliThemeTenants(): array
+{
+    try {
+        $rows = app()->controlDb()
+            ->query('SELECT id, tenant_key FROM kernel_tenants ORDER BY id ASC')
+            ->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable) {
+        return [];
+    }
+    $tenants = [];
+    foreach ($rows as $row) {
+        $id = (int)($row['id'] ?? 0);
+        if ($id > 0) {
+            $tenants[] = ['id' => $id, 'tenant_key' => (string)($row['tenant_key'] ?? (string)$id)];
+        }
+    }
+    return $tenants;
+}
+
+/** The active theme slug the given tenant's runtime will actually resolve, or null. */
+function cliThemeActiveSlug(int $tenantId): ?string
+{
+    $base = defined('BASE_PATH') ? BASE_PATH : __DIR__;
+    if (!function_exists('_readTenantModuleSettingsSingle') && is_file($base . '/src/helpers/module-manager.php')) {
+        require_once $base . '/src/helpers/module-manager.php';
+    }
+    if (!function_exists('_readTenantModuleSettingsSingle')) {
+        return null;
+    }
+    try {
+        $db = app()->dbForTenant($tenantId);
+        $settings = _readTenantModuleSettingsSingle('cms-akira-theme', $tenantId, $db);
+    } catch (Throwable) {
+        return null;
+    }
+    $value = $settings['active_theme_slug'] ?? null;
+    return is_string($value) && trim($value) !== '' ? trim($value) : null;
+}
+
+/** Write the active theme slug via the kernel's canonical tenant setting write. */
+function cliThemeWriteActiveSlug(int $tenantId, string $slug): bool
+{
+    $base = defined('BASE_PATH') ? BASE_PATH : __DIR__;
+    if (!function_exists('tenantWriteModuleSetting') && is_file($base . '/src/helpers/module-registry.php')) {
+        require_once $base . '/src/helpers/module-registry.php';
+    }
+    if (!function_exists('tenantWriteModuleSetting')) {
+        return false;
+    }
+    try {
+        $db = app()->dbForTenant($tenantId);
+    } catch (Throwable) {
+        return false;
+    }
+    return tenantWriteModuleSetting($db, $tenantId, 'cms-akira-theme', 'active_theme_slug', $slug);
+}
+
 function cliModuleManifest(string $moduleId): ?array
 {
     $modules = discoverModules();
@@ -764,6 +843,31 @@ function validateSingleTheme(string $slug, string $themesPath): array
         }
     }
 
+    // ── 7. Activation gate (the module's own validator) ───────────
+    // Activation enforces catThemeValidate() and refuses the theme when it fails.
+    // This command used to run only its own checks, so it could report
+    // "All checks passed" for a theme that activation then rejects -- the worst
+    // outcome, because the operator believes the theme is deployable. Run the
+    // same gate here so this command cannot disagree with activation.
+    out('  ' . bold('Activation gate'));
+    if (!cliThemeLoadModuleHelpers()) {
+        out('    ' . yellow('⚠') . ' Akira theme module unavailable — gate not evaluated');
+        $warningCount++;
+    } else {
+        $gate = catThemeValidate($slug);
+        foreach ($gate['errors'] as $gateError) {
+            out('    ' . red('✗') . ' ' . $gateError);
+            $errorCount++;
+        }
+        if ($gate['errors'] === []) {
+            out('    ' . green('✓') . ' Passes the activation gate');
+        }
+        if (!catThemeIsArkVisible($slug)) {
+            out('    ' . red('✗') . ' Not ARK-renderable: entity.list.post and entity.detail.post must both resolve');
+            $errorCount++;
+        }
+    }
+
     // ── Summary ───────────────────────────────────────────────────
     out('');
     if ($errorCount > 0) {
@@ -1135,6 +1239,9 @@ switch ($command) {
         out('    ' . green('capability:call') . ' <id> "<json>"  Call a capability');
         out('    ' . green('capability:validate') . '         Validate versions + schemas');
         out('    ' . green('capability:audit') . ' [--json]  Audit declared providers, consumers, policies, and handlers');
+        out('    ' . green('capability:diff') . ' --modules=<id,..>  Report authority a candidate set would add (widening)');
+        out('    ' . green('capability:census') . ' [--tenant=..]  Report declared policy rows vs the active policy store');
+        out('    ' . green('extension:census') . '            Report declared extension points vs manifest contributions');
         out('');
         out('  ' . bold('Platform'));
         out('    ' . green('platform:describe') . '           Full platform manifest (JSON)');
@@ -2730,12 +2837,36 @@ switch ($command) {
         $json = $clean[1] ?? null;
         if ($capId === '') {
             out(red('  ✗ Capability id required.'));
-            out('  Usage: php ikabud capability:call <capabilityId> "<jsonPayload>" [--mode=pipeline] [--provider=id] [--with-modules]');
+            out('  Usage: php ikabud capability:call <capabilityId> "<jsonPayload>" --tenant=<tenant> --actor=<id> --actor-role=<role> --caller-module=<module> [--mode=pipeline] [--provider=id] [--with-modules]');
             exit(1);
         }
 
         $tenantSelector = trim((string)(getFlagValue('--tenant=') ?? ''));
         $tenantId = $tenantSelector !== '' ? cliResolveTenantId($tenantSelector) : null;
+        $actorSelector = trim((string)(getFlagValue('--actor=') ?? ''));
+        $actorRole = trim((string)(getFlagValue('--actor-role=') ?? ''));
+        $callerModule = trim((string)(getFlagValue('--caller-module=') ?? ''));
+        if (!is_int($tenantId) || $tenantId <= 0 || $actorSelector === '' || !ctype_digit($actorSelector) || (int)$actorSelector <= 0 || $actorRole === '' || $callerModule === '') {
+            out(red('  ✗ Explicit CLI authority is required: --tenant=<tenant>, --actor=<positive-id>, --actor-role=<role>, and --caller-module=<module>.'));
+            out('  ' . dim('No ambient tenant, caller, or implicit actor privilege is used for capability calls.'));
+            exit(1);
+        }
+        if (strlen($actorRole) > 40 || preg_match('/^[A-Za-z0-9_.-]+$/', $actorRole) !== 1) {
+            out(red('  ✗ --actor-role must be 1-40 characters using letters, numbers, dot, underscore, or hyphen.'));
+            exit(1);
+        }
+        if (strlen($callerModule) > 100 || preg_match('/^[A-Za-z0-9_.-]+$/', $callerModule) !== 1) {
+            out(red('  ✗ --caller-module must name a valid module.'));
+            exit(1);
+        }
+        $actor = [
+            'id' => (int)$actorSelector,
+            'role' => $actorRole,
+            // kernel.audit.record persists source and module-user id. Including
+            // the asserted role here makes both explicit assertions durable.
+            'source' => 'cli:' . $actorRole,
+            'tenant_id' => $tenantId,
+        ];
 
         $payload = null;
         if ($json !== null) {
@@ -2759,43 +2890,32 @@ switch ($command) {
         }
         out('');
 
-        $opts = ['mode' => $mode];
+        $opts = [
+            'mode' => $mode,
+            'tenant_id' => $tenantId,
+            'authority_entry_point' => AuthorityScopeResolver::CLI,
+            'caller' => ['module' => $callerModule, 'user' => $actor],
+        ];
         if ($provider !== null && $provider !== '') {
             $opts['provider'] = $provider;
         }
 
         try {
-            $work = static function () use ($capId, $payload, $opts): mixed {
-                if (hasFlag('--with-modules')) {
-                    loadModuleRoutes(['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []]);
-                }
-                return app()->cap()->call($capId, $payload, $opts);
-            };
-            if (is_int($tenantId) && $tenantId > 0) {
-                $scoped = false;
-                try {
-                    $result = AuthorityScopeResolver::withScope(
-                        $tenantId,
-                        AuthorityScopeResolver::CLI,
-                        static function () use (&$scoped, $work): mixed {
-                            $scoped = true;
-                            return $work();
-                        },
-                    );
-                } catch (Throwable $e) {
-                    if ($scoped) {
-                        throw $e;
-                    }
-                    write_log('CLI capability call could not establish an authority scope; calling without one', 'warning', [
-                        'reason' => 'tenant_authority_store_unavailable',
-                        'tenant_id' => $tenantId,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $result = $work();
-                }
-            } else {
-                $result = $work();
-            }
+            // Module handlers and nested audit calls resolve their actor from the
+            // application context, so install exactly the explicitly asserted actor.
+            app()->setUser($actor);
+            $result = AuthorityScopeResolver::withScope(
+                $tenantId,
+                AuthorityScopeResolver::CLI,
+                static function () use ($tenantId, $capId, $payload, $opts): mixed {
+                    return withCliTenantModuleScope($tenantId, static function () use ($capId, $payload, $opts): mixed {
+                        if (hasFlag('--with-modules')) {
+                            loadModuleRoutes(['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []]);
+                        }
+                        return app()->cap()->call($capId, $payload, $opts);
+                    });
+                },
+            );
             out(green('  ✓ ok'));
             out('');
             out(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: 'null');
@@ -6197,6 +6317,300 @@ MD;
             exit(1);
         }
         break;
+    // ── capability:diff ────────────────────────────────────────────
+    case 'capability:diff':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud capability:diff --modules=<id,id,...>');
+            out('  Report-only diff of a candidate module set against the active install.');
+            out('  Prints added / removed / unchanged / WIDENING. Grants nothing; exits 0.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Governance/CapabilityDiff.php';
+        $selection = getFlagValue('--modules=');
+        if ($selection === null || trim($selection) === '') {
+            out('  Usage: php ikabud capability:diff --modules=<id,id,...>');
+            exit(0);
+        }
+        $requested = [];
+        foreach (explode(',', $selection) as $candidateId) {
+            $candidateId = trim($candidateId);
+            if ($candidateId !== '') {
+                $requested[$candidateId] = true;
+            }
+        }
+        $manifests = discoverModules();
+        $known = [];
+        $unknown = [];
+        foreach (array_keys($requested) as $moduleId) {
+            if (isset($manifests[$moduleId]) && is_array($manifests[$moduleId])) {
+                $known[] = $moduleId;
+            } else {
+                $unknown[] = $moduleId;
+            }
+        }
+        sort($known);
+        sort($unknown);
+
+        $activeManifests = [];
+        foreach ($manifests as $moduleId => $manifest) {
+            if (is_array($manifest) && !empty($manifest['_enabled'])) {
+                $activeManifests[(string) $moduleId] = $manifest;
+            }
+        }
+        $candidateManifests = [];
+        foreach ($known as $moduleId) {
+            $candidateManifests[$moduleId] = $manifests[$moduleId];
+        }
+        $diffClass = \Ikabud\Kernel\Workbench\Governance\CapabilityDiff::class;
+        $active = $diffClass::declarationsFromManifests($activeManifests);
+        $candidate = $diffClass::declarationsFromManifests($candidateManifests);
+
+        // The candidate set is diffed against the active install as given: an id
+        // the active install has and the candidate does not is named in REMOVED,
+        // never dropped.
+        $diff = $diffClass::diff($active, $candidate);
+
+        $printList = static function (string $label, array $ids): void {
+            out('  ' . $label . ' (' . count($ids) . '):');
+            if ($ids === []) {
+                out('    ' . dim('—'));
+                return;
+            }
+            foreach ($ids as $id) {
+                out('    ' . $id);
+            }
+        };
+
+        out('');
+        out('  ' . bold('Capability diff') . ' — report only; this command admits nothing');
+        out('  Active install: ' . count($activeManifests) . ' module(s), ' . count($active) . ' declared capability id(s)');
+        out('  Candidate modules: ' . (count($known) ? cyan(implode(', ', $known)) : dim('(none)')));
+        if ($unknown !== []) {
+            out('  ' . yellow('UNKNOWN MODULE(S): ' . implode(', ', $unknown)) . ' — not in the module registry; the rest are diffed, so the population is incomplete');
+        }
+        out('');
+        $printList('ADDED', $diff['added']);
+        $printList('REMOVED', $diff['removed']);
+        $printList('UNCHANGED', $diff['unchanged']);
+        out('');
+        out('  ' . bold('WIDENING: ' . count($diff['widening'])));
+        foreach ($diff['widening'] as $id) {
+            out('    ' . red($id));
+        }
+        out('');
+        exit(0);
+
+    // ── capability:census ──────────────────────────────────────────
+    case 'capability:census':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud capability:census [--tenant=<tenant_id|key|domain>] [--json]');
+            out('  Report-only census of the declared policy rows against the active policy store.');
+            out('  Reads only: grants nothing, writes no policy row, opens no transaction.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Governance/AuthorityCensus.php';
+        require_once __DIR__ . '/kernel/Capabilities/CapabilityAuthorizationRegistry.php';
+
+        $censusClean = paramsWithoutFlags($params);
+        $censusSelector = trim((string)(getFlagValue('--tenant=') ?? ($censusClean[0] ?? '')));
+        $censusTenantId = null;
+        if ($censusSelector !== '') {
+            $censusTenantId = cliResolveTenantId($censusSelector);
+            if ($censusTenantId === null) {
+                out(red("  ✗ Unknown tenant '{$censusSelector}'."));
+                exit(1);
+            }
+        }
+
+        try {
+            if ($censusTenantId !== null) {
+                $censusDb = app()->dbForTenant($censusTenantId);
+                $censusStoreLabel = 'tenant ' . $censusTenantId;
+            } else {
+                $censusDb = app()->db();
+                $censusStoreLabel = 'base database (no tenant selected)';
+            }
+            if (!$censusDb instanceof \PDO) {
+                throw new \RuntimeException('authority store could not be resolved');
+            }
+            // Read the same store the seeder writes to. The registry's own
+            // escalation path is used, so this is the live active policy set.
+            $censusRegistry = new \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry($censusDb);
+            $censusActiveRows = $censusRegistry->activePolicyRows();
+        } catch (\Throwable $e) {
+            out(red('  ✗ Authority census could not read the policy store: ' . $e->getMessage()));
+            exit(1);
+        }
+
+        $censusActiveVersion = 1;
+        foreach ($censusActiveRows as $censusRow) {
+            if (is_array($censusRow)) {
+                $censusActiveVersion = max($censusActiveVersion, (int)($censusRow['policy_version'] ?? 0));
+            }
+        }
+        // The declarations join the active version at runtime, so the capture
+        // runs at the version this store is actually on.
+        $censusDeclarations = \Ikabud\Kernel\Workbench\Governance\AuthorityCensus::captureDeclaredRows(__DIR__, $censusActiveVersion);
+        $censusReport = \Ikabud\Kernel\Workbench\Governance\AuthorityCensus::compare($censusDeclarations, $censusActiveRows);
+
+        if (hasFlag('--json')) {
+            out(json_encode([
+                'ok' => true,
+                'store' => $censusStoreLabel,
+                'active_policy_version' => $censusActiveVersion,
+                'declarations' => count($censusDeclarations),
+                'active_rows' => count($censusActiveRows),
+                'counts' => $censusReport['counts'],
+                'findings' => $censusReport['findings'],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+
+        out('');
+        out('  ' . bold('Authority census') . ' — declarations vs the active policy store');
+        out('  Store: ' . cyan($censusStoreLabel) . dim(' (active policy version ' . $censusActiveVersion . ')'));
+        out('  Declarations captured: ' . count($censusDeclarations) . dim('; active store rows: ' . count($censusActiveRows)));
+        out('');
+        foreach ($censusReport['counts'] as $censusClass => $censusCount) {
+            out('    ' . str_pad($censusClass, 16) . $censusCount);
+        }
+        out('');
+        out('  ' . bold('FINDINGS'));
+        if ($censusReport['findings'] === []) {
+            out('    ' . dim('—'));
+        }
+        foreach ($censusReport['findings'] as $censusFinding) {
+            $censusClass = (string)($censusFinding['class'] ?? '');
+            $censusDirection = $censusFinding['direction'] ?? null;
+            $censusFields = $censusFinding['fields'] ?? [];
+            $censusSuffix = is_string($censusDirection) && $censusDirection !== '' ? '/' . $censusDirection : '';
+            if (is_array($censusFields) && $censusFields !== []) {
+                $censusSuffix .= ' fields=' . implode(',', array_map('strval', $censusFields));
+            }
+            $censusDeclared = $censusFinding['declared_version'] ?? null;
+            $censusActive = $censusFinding['active_version'] ?? null;
+            $censusLine = '    [' . $censusClass . $censusSuffix . '] ' . (string)($censusFinding['capability_id'] ?? '')
+                . ' declared=v' . ($censusDeclared === null ? '?' : (string)$censusDeclared)
+                . ' active=v' . ($censusActive === null ? '?' : (string)$censusActive);
+            if ($censusClass === 'divergent') {
+                out(red($censusLine));
+            } elseif ($censusClass === 'declared_absent' || $censusClass === 'superseded') {
+                out(yellow($censusLine));
+            } else {
+                out($censusLine);
+            }
+        }
+        out('');
+        exit(0);
+
+    // ── extension:census ───────────────────────────────────────────
+    case 'extension:census':
+        if (hasFlag('--help')) {
+            out('  Usage: php ikabud extension:census [--json]');
+            out('  Report-only census of declared extension points against module manifest contributions.');
+            out('  Reads module.json files only: grants nothing, writes nothing, loads no module code.');
+            exit(0);
+        }
+        require_once __DIR__ . '/kernel/Workbench/Governance/ExtensionPointCensus.php';
+
+        // Read every module.json on disk, not the discovered/enabled set: a
+        // census of the published surface must not go silently empty because
+        // discovery skipped a manifest. The count of files read is printed so
+        // an empty surface is visible as a reading of zero files.
+        $censusManifestFiles = [];
+        $censusModuleRoot = __DIR__ . '/modules';
+        if (is_dir($censusModuleRoot)) {
+            $censusIterator = new RecursiveIteratorIterator(
+                new RecursiveCallbackFilterIterator(
+                    new RecursiveDirectoryIterator($censusModuleRoot, FilesystemIterator::SKIP_DOTS),
+                    static function (SplFileInfo $current): bool {
+                        return !preg_match('/\.bak_\d{8}_\d{6}$/', $current->getFilename());
+                    }
+                ),
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+            foreach ($censusIterator as $censusFile) {
+                if ($censusFile instanceof SplFileInfo && $censusFile->isFile() && $censusFile->getFilename() === 'module.json') {
+                    $censusManifestFiles[] = $censusFile->getPathname();
+                }
+            }
+        }
+        sort($censusManifestFiles, SORT_STRING);
+
+        $censusDeclared = [];
+        $censusContributions = [];
+        foreach ($censusManifestFiles as $censusManifestFile) {
+            $censusRaw = @file_get_contents($censusManifestFile);
+            if ($censusRaw === false) {
+                continue;
+            }
+            $censusManifest = json_decode($censusRaw, true);
+            if (!is_array($censusManifest)) {
+                continue;
+            }
+            $censusModuleId = trim((string)($censusManifest['id'] ?? ''));
+            if ($censusModuleId === '') {
+                $censusModuleId = basename(dirname($censusManifestFile));
+            }
+            foreach ((array)($censusManifest['extension_points'] ?? []) as $censusPoint) {
+                if (is_string($censusPoint) && trim($censusPoint) !== '') {
+                    $censusDeclared[] = ['point' => trim($censusPoint), 'module' => $censusModuleId];
+                }
+            }
+            foreach ((array)($censusManifest['contributes'] ?? []) as $censusContribution) {
+                if (!is_array($censusContribution)) {
+                    continue;
+                }
+                $censusPoint = trim((string)($censusContribution['extension_point'] ?? ''));
+                if ($censusPoint === '') {
+                    continue;
+                }
+                $censusContributions[] = ['point' => $censusPoint, 'module' => $censusModuleId];
+            }
+        }
+
+        $censusReport = \Ikabud\Kernel\Workbench\Governance\ExtensionPointCensus::report($censusDeclared, $censusContributions);
+
+        if (hasFlag('--json')) {
+            out(json_encode([
+                'ok' => true,
+                'manifests_read' => count($censusManifestFiles),
+                'declared_points' => count($censusDeclared),
+                'contributions' => count($censusContributions),
+                'counts' => $censusReport['counts'],
+                'unconsumed' => $censusReport['unconsumed'],
+                'orphans' => $censusReport['orphans'],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            exit(0);
+        }
+
+        out('');
+        out('  ' . bold('Extension point census') . ' — declared points vs manifest contributions');
+        out('  Manifests read: ' . cyan((string)count($censusManifestFiles)));
+        out('  Declared points: ' . count($censusDeclared) . dim('; contributions: ' . count($censusContributions)));
+        out('');
+        foreach ($censusReport['counts'] as $censusClass => $censusCount) {
+            out('    ' . str_pad($censusClass, 16) . $censusCount);
+        }
+        out('');
+        out('  ' . bold('UNCONSUMED') . dim(' (reported, not fatal)'));
+        if ($censusReport['unconsumed'] === []) {
+            out('    ' . dim('—'));
+        }
+        foreach ($censusReport['unconsumed'] as $censusPoint) {
+            out('    ' . yellow($censusPoint['point']) . dim(' declared by ' . $censusPoint['declared_by']));
+        }
+        out('');
+        out('  ' . bold('ORPHANS') . dim(' (contributed to a point no manifest declares)'));
+        if ($censusReport['orphans'] === []) {
+            out('    ' . dim('—'));
+        }
+        foreach ($censusReport['orphans'] as $censusOrphan) {
+            out('    ' . red($censusOrphan['point']) . dim(' contributed by ' . $censusOrphan['contributed_by']));
+        }
+        out('');
+        exit(0);
+
     // ── capability:audit ───────────────────────────────────────────
     case 'capability:audit':
         if (hasFlag('--help')) {
@@ -6270,10 +6684,12 @@ MD;
         try {
             $census = new \Ikabud\Kernel\Workbench\Governance\GovernanceCensus(__DIR__);
             $result = hasFlag('--all') ? $census->scanAll() : $census->scan(paramsWithoutFlags($params)[0] ?? '');
-            $akira=['module'=>'Akira (cms-akira-* + gui-settings)','dispatch_enforced'=>0,'bus_reachable'=>0,'exempt'=>0,'undeclared'=>0,'total'=>0];
-            foreach ($result['summary'] as $row) if (str_starts_with($row['module'], 'cms-akira-') || $row['module'] === 'gui-settings') foreach (['dispatch_enforced','bus_reachable','exempt','undeclared','total'] as $key) $akira[$key]+=$row[$key];
+            $akira=['module'=>'Akira (cms-akira-* + gui-settings)','dispatch_enforced'=>0,'bus_reachable'=>0,'exempt'=>0,'undeclared'=>0,'total'=>0,'read_dispatch_enforced'=>0,'read_exempt'=>0,'read_undeclared'=>0,'read_total'=>0];
+            foreach ($result['summary'] as $row) if (str_starts_with($row['module'], 'cms-akira-') || $row['module'] === 'gui-settings') foreach (['dispatch_enforced','bus_reachable','exempt','undeclared','total','read_dispatch_enforced','read_exempt','read_undeclared','read_total'] as $key) $akira[$key]+=$row[$key];
             $akira['ratio']=$akira['total'] ? round(100*$akira['dispatch_enforced']/$akira['total'],1) : 0.0;
             $akira['bus_ratio']=$akira['total'] ? round(100*$akira['bus_reachable']/$akira['total'],1) : 0.0;
+            $akira['write_ratio']=$akira['ratio'];
+            $akira['read_ratio']=$akira['read_total'] ? round(100*$akira['read_dispatch_enforced']/$akira['read_total'],1) : 0.0;
             $result['akira']=$akira;
 
             $baselineFile = __DIR__ . '/.governance-baseline.json';
@@ -6358,15 +6774,28 @@ MD;
                     }
                 }
                 out('');
-                out(sprintf('  %-40s %9s %10s %8s %10s %7s %8s', 'Module', 'Enforced', 'Bus-reach', 'Exempt', 'Undeclared', 'Total', 'Ratio'));
+                out('  ' . bold('WRITE authority coverage') . '  (POST/PUT/PATCH/DELETE)');
+                out(sprintf('  %-40s %9s %10s %8s %10s %7s %8s', 'Module', 'Enforced', 'Bus-reach', 'Exempt', 'Undeclared', 'Total', 'Write%'));
                 foreach ($result['summary'] as $s) out(sprintf('  %-40s %9d %10d %8d %10d %7d %7.1f%%', $s['module'], $s['dispatch_enforced'], $s['bus_reachable'], $s['exempt'], $s['undeclared'], $s['total'], $s['ratio']));
                 $a=$result['akira']; out(sprintf('  %-40s %9d %10d %8d %10d %7d %7.1f%%', $a['module'], $a['dispatch_enforced'], $a['bus_reachable'], $a['exempt'], $a['undeclared'], $a['total'], $a['ratio'])); out('');
-                out('  Ratio = dispatch-enforced / routed business operations. Bus-reach is reported');
+                out('  Write% = dispatch-enforced / routed write operations. Bus-reach is reported');
                 out('  separately because a bus call inside a handler is not request authority.'); out('');
-                out('  ' . bold('Non-HTTP authority (separate; never included in routed ratio)'));
-                out(sprintf('  %-40s %9s %10s %10s %7s %8s', 'Module', 'Declared', 'Unscoped', 'Unresolved', 'Total', 'Ratio'));
+
+                // Reads were classified but never summarised, so a read declaration could not
+                // move any published number and the write figure read as total coverage.
+                out('  ' . bold('READ authority coverage') . '  (GET/HEAD/OPTIONS)');
+                out(sprintf('  %-40s %9s %8s %10s %7s %8s', 'Module', 'Enforced', 'Exempt', 'Undeclared', 'Total', 'Read%'));
+                foreach ($result['summary'] as $s) out(sprintf('  %-40s %9d %8d %10d %7d %7.1f%%', $s['module'], $s['read_dispatch_enforced'], $s['read_exempt'], $s['read_undeclared'], $s['read_total'], $s['read_ratio']));
+                out(sprintf('  %-40s %9d %8d %10d %7d %7.1f%%', $a['module'], $a['read_dispatch_enforced'], $a['read_exempt'], $a['read_undeclared'], $a['read_total'], $a['read_ratio'])); out('');
+                out('  Read% = dispatch-enforced / routed read operations, on its own denominator.');
+                out('  Never added to Write%: the two scales are not comparable.'); out('');
+
+                out('  ' . bold('NON-HTTP authority coverage') . '  (separate; never added to either routed measure)');
+                out(sprintf('  %-40s %9s %10s %10s %7s %8s', 'Module', 'Declared', 'Unscoped', 'Unresolved', 'Total', 'Declared%'));
                 foreach ($result['non_http_summary'] as $s) out(sprintf('  %-40s %9d %10d %10d %7d %7.1f%%', $s['module'], $s['declared'], $s['unscoped'], $s['unresolved'], $s['total'], $s['ratio']));
-                out('  Non-HTTP ratio = declared / non-HTTP capability call sites; unresolved is not governed or debt.'); out('');
+                out('  Declared% = declared / non-HTTP capability call sites; unresolved is neither governed nor debt.'); out('');
+                out('  ' . dim('Three measures, three denominators. No merged percentage is published: a single'));
+                out('  ' . dim('figure would read as total authority coverage when it is only one of the three.')); out('');
             }
         } catch (Throwable $e) { out(red('  Governance census failed: ' . $e->getMessage())); exit(2); }
         break;
@@ -8116,36 +8545,74 @@ PHP;
             out('    ' . cyan($slug) . dim(' v' . $version) . '  ' . $label);
         }
         out('');
-        $active = function_exists('cmsActiveTheme') ? cmsActiveTheme() : '(not available — CMS module not loaded)';
-        out('  ' . bold('Active: ') . $active);
+        $activeByTheme = [];
+        foreach (cliThemeTenants() as $tenant) {
+            $activeSlug = cliThemeActiveSlug($tenant['id']);
+            if ($activeSlug !== null) {
+                $activeByTheme[$activeSlug][] = $tenant['tenant_key'];
+            }
+        }
+        out('  ' . bold('Active (per tenant):'));
+        if ($activeByTheme === []) {
+            out('    ' . yellow('no tenant has an active theme configured'));
+        } else {
+            foreach ($activeByTheme as $activeSlug => $tenantKeys) {
+                out('    ' . cyan((string)$activeSlug) . dim(' → ' . implode(', ', $tenantKeys)));
+            }
+        }
         break;
 
     // ── theme:current ──────────────────────────────────────────────
     case 'theme:current':
         banner();
-        try {
-            $settings = function_exists('getModuleSettings') ? getModuleSettings('cms') : [];
-            $active = trim((string)($settings['active_theme'] ?? ''));
-            if ($active !== '') {
-                $manifestFile = (defined('STORAGE_PATH') ? STORAGE_PATH : (defined('BASE_PATH') ? BASE_PATH . '/storage' : __DIR__ . '/storage')) . '/cms-themes/' . $active . '/theme.manifest.json';
-                if (!is_file($manifestFile)) {
-                    $manifestFile = (defined('STORAGE_PATH') ? STORAGE_PATH : (defined('BASE_PATH') ? BASE_PATH . '/storage' : __DIR__ . '/storage')) . '/cms-themes/' . $active . '/theme.json';
-                }
-                $label = $active;
-                $version = '';
-                if (is_file($manifestFile)) {
-                    $decoded = kernelReadJsonFile($manifestFile);
-                    if (is_array($decoded)) {
-                        $label = (string)($decoded['label'] ?? $decoded['name'] ?? $active);
-                        $version = (string)($decoded['version'] ?? '');
-                    }
-                }
-                out('  Active theme: ' . bold(cyan($label)) . dim(' (' . $active . ' v' . $version . ')'));
-            } else {
-                out('  ' . yellow('No active theme configured.'));
+        $clean = paramsWithoutFlags($params);
+        $selector = trim((string)(getFlagValue('--tenant=') ?? ($clean[0] ?? '')));
+        $themesPath = (defined('STORAGE_PATH') ? STORAGE_PATH : (defined('BASE_PATH') ? BASE_PATH . '/storage' : __DIR__ . '/storage')) . '/cms-themes';
+
+        // Describe the theme a tenant's runtime resolves, read from the same
+        // per-tenant setting the runtime uses.
+        $describeTheme = static function (string $active) use ($themesPath): string {
+            $manifestFile = $themesPath . '/' . $active . '/theme.manifest.json';
+            if (!is_file($manifestFile)) {
+                $manifestFile = $themesPath . '/' . $active . '/theme.json';
             }
-        } catch (Throwable $e) {
-            out(yellow('  Could not determine active theme: ' . $e->getMessage()));
+            $label = $active;
+            $version = '';
+            if (is_file($manifestFile)) {
+                $decoded = kernelReadJsonFile($manifestFile);
+                if (is_array($decoded)) {
+                    $label = (string)($decoded['label'] ?? $decoded['name'] ?? $active);
+                    $version = (string)($decoded['version'] ?? '');
+                }
+            }
+            return bold(cyan($label)) . dim(' (' . $active . ' v' . $version . ')');
+        };
+
+        if ($selector !== '') {
+            $tenantId = cliResolveTenantId($selector);
+            if ($tenantId === null) {
+                out(red("  ✗ Unknown tenant '{$selector}'."));
+                exit(1);
+            }
+            $active = cliThemeActiveSlug($tenantId);
+            out('  Tenant: ' . cyan($selector) . dim(' (id ' . $tenantId . ')'));
+            out($active !== null
+                ? '  Active theme: ' . $describeTheme($active)
+                : '  ' . yellow('No active theme configured.'));
+            break;
+        }
+
+        $tenants = cliThemeTenants();
+        if ($tenants === []) {
+            out('  ' . yellow('No tenants found.'));
+            break;
+        }
+        out('  ' . bold('Active theme per tenant:'));
+        out('');
+        foreach ($tenants as $tenant) {
+            $active = cliThemeActiveSlug($tenant['id']);
+            out('    ' . cyan($tenant['tenant_key']) . dim(' (id ' . $tenant['id'] . ')') . '  '
+                . ($active !== null ? $active : yellow('(none)')));
         }
         break;
 
@@ -8153,10 +8620,23 @@ PHP;
     case 'theme:activate':
         banner();
         $clean = paramsWithoutFlags($params);
-        $slug = $clean[0] ?? '';
+        $slug = trim((string)($clean[0] ?? ''));
+        $selector = trim((string)(getFlagValue('--tenant=') ?? ($clean[1] ?? '')));
         if ($slug === '') {
             out(red('  ✗ Theme slug required.'));
-            out('  Usage: php ikabud theme:activate <slug>');
+            out('  Usage: php ikabud theme:activate <slug> --tenant=<tenant_id|key|domain>');
+            exit(1);
+        }
+        if ($selector === '') {
+            out(red('  ✗ A tenant is required.'));
+            out('  Usage: php ikabud theme:activate <slug> --tenant=<tenant_id|key|domain>');
+            out('  ' . dim('The active theme is a per-tenant setting — the theme only goes live for'));
+            out('  ' . dim('the tenant you name here, so the target must be explicit.'));
+            exit(1);
+        }
+        $tenantId = cliResolveTenantId($selector);
+        if ($tenantId === null) {
+            out(red("  ✗ Unknown tenant '{$selector}'."));
             exit(1);
         }
         $themesPath = (defined('STORAGE_PATH') ? STORAGE_PATH : (defined('BASE_PATH') ? BASE_PATH . '/storage' : __DIR__ . '/storage')) . '/cms-themes';
@@ -8164,21 +8644,62 @@ PHP;
             out(red("  ✗ Theme '{$slug}' not found."));
             exit(1);
         }
-        if (!function_exists('saveModuleSettings')) {
-            require_once __DIR__ . '/src/helpers/module-manager.php';
+        // Activating a theme the runtime rejects leaves the site on the fallback
+        // renderer, so enforce the same gate activation enforces before writing.
+        if (!cliThemeLoadModuleHelpers()) {
+            out(red('  ✗ Akira theme module unavailable — cannot validate the theme.'));
+            exit(1);
         }
-        saveModuleSettings('cms', ['active_theme' => $slug]);
-        out(green("  ✓ Theme '{$slug}' activated."));
+        $gate = catThemeValidate($slug);
+        if (!$gate['valid']) {
+            out(red('  ✗ Theme failed activation validation:'));
+            foreach (array_slice($gate['errors'], 0, 5) as $gateError) {
+                out('      ' . red('•') . ' ' . $gateError);
+            }
+            exit(1);
+        }
+        if (!catThemeIsArkVisible($slug)) {
+            out(red('  ✗ Theme is not ARK-renderable; activating it would leave the site unthemed.'));
+            exit(1);
+        }
+        if (!cliThemeWriteActiveSlug($tenantId, $slug)) {
+            out(red('  ✗ Failed to write the active theme setting.'));
+            exit(1);
+        }
+        // Confirm what the runtime will resolve rather than assuming the write landed.
+        $confirmed = cliThemeActiveSlug($tenantId);
+        if ($confirmed !== $slug) {
+            out(red('  ✗ Verification failed: stored value is ' . var_export($confirmed, true) . '.'));
+            exit(1);
+        }
+        out(green("  ✓ Theme '{$slug}' is active for tenant {$selector} (id {$tenantId})."));
+        out('  ' . dim("Audited activation is also available in the Theme Studio at /cms-akira-theme."));
         break;
 
     // ── theme:deactivate ───────────────────────────────────────────
     case 'theme:deactivate':
         banner();
-        if (!function_exists('saveModuleSettings')) {
-            require_once __DIR__ . '/src/helpers/module-manager.php';
+        $clean = paramsWithoutFlags($params);
+        $selector = trim((string)(getFlagValue('--tenant=') ?? ($clean[0] ?? '')));
+        if ($selector === '') {
+            out(red('  ✗ A tenant is required.'));
+            out('  Usage: php ikabud theme:deactivate --tenant=<tenant_id|key|domain>');
+            exit(1);
         }
-        saveModuleSettings('cms', ['active_theme' => 'native-default']);
-        out(yellow('  ✓ Reset to native-default theme.'));
+        $tenantId = cliResolveTenantId($selector);
+        if ($tenantId === null) {
+            out(red("  ✗ Unknown tenant '{$selector}'."));
+            exit(1);
+        }
+        if (!cliThemeWriteActiveSlug($tenantId, '')) {
+            out(red('  ✗ Failed to clear the active theme setting.'));
+            exit(1);
+        }
+        if (cliThemeActiveSlug($tenantId) !== null) {
+            out(red('  ✗ Verification failed: the setting is still set.'));
+            exit(1);
+        }
+        out(yellow("  ✓ No active theme for tenant {$selector} — public pages use the shell fallback."));
         break;
 
     // ── theme:build ──────────────────────────────────────────────

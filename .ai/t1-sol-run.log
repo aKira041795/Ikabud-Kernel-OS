@@ -1,0 +1,31 @@
+status: PARTIAL
+changed:
+  - modules/cms-akira/cms-akira-shell/helpers.php
+  - modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php
+  - modules/cms-akira/cms-akira-theme/helpers.php
+  - modules/cms-akira/cms-akira-theme/handlers.php
+  - modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+implementation_summary:
+  - Added admin-only “Theme Studio” shell navigation.
+  - Added declarative theme file allowlist validation with offending relative paths.
+  - Persisted `previous_theme_slug` only on actual theme changes.
+  - Added idempotent rollback through `akira.theme.activate@1`, with `akira.theme.rollback` audit action and existing cache invalidation.
+  - Added rollback form with CSRF and idempotency key.
+  - Added G1, G2, and G3 contract coverage.
+verification:
+  php_lint: PASS — all five touched PHP files
+  theme_tests:
+    - `php modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php` — BLOCKED after 8 passes: environment reported “No permitted capability providers for: akira.theme.resolve@1”
+    - `php modules/cms-akira/cms-akira-theme/tests/theme_dedicated_tenant_test.php` — BLOCKED: two configured dedicated tenant databases required
+  shell_test: `php modules/cms-akira/cms-akira-shell/tests/shell_contract_test.php` — PASS, 97 passed
+  g1_http: Not run; shell render contract confirms admin sees the link and author does not.
+  g2_http: Not run; no authenticated tenant-54 HTTP session/credentials were available. Contract implementation and assertions were added but could not execute past the environment capability-provider failure.
+  g3_test: Added executable-file/path assertion, but execution was blocked before reaching it by the same capability-provider failure.
+scope:
+  unexpected_files: Pre-existing untracked `.ai/**` files; not modified.
+risks:
+  - HTTP activation/render/audit evidence remains unverified.
+  - Theme contract assertions require rerun in an environment where the theme capability provider is permitted.
+unresolved:
+  - Configure the test runtime’s capability-provider activation and dedicated tenant databases, then rerun both theme tests.
+  - Perform tenant 54 HTTP activation and rollback acceptance with a derived local theme.

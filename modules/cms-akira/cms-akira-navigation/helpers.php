@@ -51,7 +51,9 @@ function canSeedNavigationMutationPolicies(): void
     \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
 }
 
-canSeedNavigationMutationPolicies();
+if (!function_exists('cacRequestMayMutate') || cacRequestMayMutate()) {
+    canSeedNavigationMutationPolicies();
+}
 
 function canCtx(): \Ikabud\Kernel\Contracts\ModuleContext
 {
@@ -392,8 +394,13 @@ function canNavigationActor(): array
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CanNavigationMutationException('Authentication required.', 401);
     }
-    if ((string) ($actor['role'] ?? '') !== 'admin') {
-        throw new CanNavigationMutationException('Administrator role required.', 403);
+    $role = (string) ($actor['role'] ?? '');
+    $allowed = in_array($role, ['admin', 'administrator', 'superadmin'], true);
+    if ($role === 'superadmin' && (string) ($actor['source'] ?? '') !== 'kernel') {
+        $allowed = false;
+    }
+    if (!$allowed) {
+        throw new CanNavigationMutationException('Admin, administrator, or kernel superadmin role required.', 403);
     }
     return $actor;
 }

@@ -1,0 +1,567 @@
+SLICE D — the harness declares the files it writes in the run's name
+===================================================================
+repo: /var/www/html/ikabudsix
+contract: .ai/harness-declared-artifacts.contract.md
+authority: CD-37 (owner decision 2026-09-14, verbatim: "A is approved")
+implementation: tools/ai-run.php, tools/ai-loop.php, tests/ai_run_test.php, tests/ai_loop_test.php
+
+This report is written in the required CLAIM / COMMAND / OBSERVED form. Every OBSERVED block is
+verbatim output pasted from the command that precedes it, including its real exit code.
+
+The design in one line: a declared harness artefact is a PRE-COMMITMENT made at `start`, recorded in
+the run record as `harness_artifacts`, shown in `scope_conformance.declared_harness_artifacts`, and
+removed only from what is ATTRIBUTED to the executor. It is never a blanket exemption: GUARD 1
+refuses a verifier or forbidden_scope declaration, GUARD 2 refuses a finish declaration, and an
+undeclared out-of-scope path still blocks exactly as it did before.
+
+
+================================================================================
+CLAIM 0 — the FIRST claim: rule 1 refuses this contract's own trust-surface scope
+================================================================================
+
+CLAIM: `plan` refuses this contract because it names the verifier trust surface in its scope. The
+       refusal is rule 1 working; nothing here weakens it.
+
+COMMAND:
+  php tools/ai-autonomy.php plan --json --contract=.ai/harness-declared-artifacts.contract.md
+
+OBSERVED:
+  ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-run.php' reaches 'tools/ai-run.php'; entry 'tools/ai-loop.php' reaches 'tools/ai-loop.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+  EXIT=2
+
+(AC5 holds. This is the exact refusal the contract header predicts.)
+
+
+================================================================================
+D1 — declare operational artefacts at `start`
+================================================================================
+
+D1 adds `--harness-artifact=<path>` (repeatable) to `start`. Each value is normalised by
+DevelopmentTaskContract::normalizePath(), refused if it escapes the repository, refused if it reaches
+the trust surface (GUARD 1), refused if it lies in the contract's forbidden_scope (GUARD 1), and
+recorded (deduplicated, sorted) as `harness_artifacts`. `finish` refuses the option (GUARD 2).
+
+--------------------------------------------------------------------------------
+D1.1 GUARD 1a — a declared artefact may NOT be the verifier (exact path)
+--------------------------------------------------------------------------------
+
+CLAIM: `--harness-artifact=tools/ai-run.php` is refused with exit 2 and a message naming the path and
+       the reason. Reverting the trust-surface call in validatedHarnessArtifact makes start exit 0,
+       which fails tests/ai_run_test.php assertion 43.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/contract.md --lane=fixture --name=guard1-trust --harness-artifact=tools/ai-run.php --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  ERROR: harness artefact 'tools/ai-run.php' refused: it reaches the verifier trust surface, which is never contract-authorisable (GUARD 1)
+  EXIT=2
+
+--------------------------------------------------------------------------------
+D1.2 GUARD 1a — a covering glob is refused too (fail-closed coverage, not exact match)
+--------------------------------------------------------------------------------
+
+CLAIM: A glob/coverage capability that could match a trust-surface file is refused, not merely an
+       exact path. This is the failure mode the contract names: "the feature is a universal
+       exemption". Reverting the coverage rule fails test 43.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/contract.md --lane=fixture --name=guard1-glob --harness-artifact='tools/*.php' --runs-dir=/tmp/decl-demo/runs
+  php tools/ai-run.php start --contract=/tmp/decl-demo/contract.md --lane=fixture --name=guard1-broad --harness-artifact='**/*.php' --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  ERROR: harness artefact 'tools/*.php' refused: it reaches the verifier trust surface, which is never contract-authorisable (GUARD 1)
+  EXIT=2
+  ERROR: harness artefact '**/*.php' refused: it reaches the verifier trust surface, which is never contract-authorisable (GUARD 1)
+  EXIT=2
+
+--------------------------------------------------------------------------------
+D1.3 GUARD 1a — a directory capability that covers the verifier is refused
+--------------------------------------------------------------------------------
+
+CLAIM: `--harness-artifact=tools` (a directory that contains every verifier tool) is refused. This is
+       the other half of the coverage rule; test 43 asserts it.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/contract.md --lane=fixture --name=guard1-dir --harness-artifact=tools --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  ERROR: harness artefact 'tools' refused: it reaches the verifier trust surface, which is never contract-authorisable (GUARD 1)
+  EXIT=2
+
+--------------------------------------------------------------------------------
+D1.4 GUARD 1b — a declared artefact may NOT lie inside forbidden_scope
+--------------------------------------------------------------------------------
+
+CLAIM: With a contract whose forbidden_scope is `docs/`, declaring `docs/demo.md` is refused with a
+       message naming both the path and the forbidden entry. Reverting the forbidden_scope loop in
+       validatedHarnessArtifact makes start exit 0, which fails test 44.
+
+COMMAND:
+  grep -A2 'Forbidden changes' /tmp/decl-demo/contract.md
+  php tools/ai-run.php start --contract=/tmp/decl-demo/contract.md --lane=fixture --name=guard1-forbidden --harness-artifact=docs/demo.md --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  ## Forbidden changes
+  - `kernel/`
+  - `docs/`
+  ERROR: harness artefact 'docs/demo.md' refused: it lies inside the contract forbidden_scope entry 'docs' (GUARD 1)
+  EXIT=2
+
+--------------------------------------------------------------------------------
+D1.5 traversal and absolute paths are refused
+--------------------------------------------------------------------------------
+
+CLAIM: `..` and absolute declarations are refused before any record is written. Reverting the
+       normalizePath() call makes both exit 0, which fails test 45.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/benign-contract.md --lane=fixture --name=guard1-traversal --harness-artifact=../etc/passwd --runs-dir=/tmp/decl-demo/runs
+  php tools/ai-run.php start --contract=/tmp/decl-demo/benign-contract.md --lane=fixture --name=guard1-absolute --harness-artifact=/etc/passwd --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  ERROR: harness artefact '../etc/passwd' refused: Invalid traversal scope path: ../etc/passwd
+  EXIT=2
+  ERROR: harness artefact '/etc/passwd' refused: Invalid absolute scope path: /etc/passwd
+  EXIT=2
+
+--------------------------------------------------------------------------------
+D1.6 the declaration is recorded at start and shown in the start output
+--------------------------------------------------------------------------------
+
+CLAIM: A benign declaration is accepted and persisted in the run record as `harness_artifacts`, and
+       named in the human-readable start output.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/benign-contract.md --lane=fixture --name=declared-advances --harness-artifact=.ai/decl-demo-artifact.txt --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  RUN declared-advances started
+    contract:  /tmp/decl-demo/benign-contract.md @ 989668f53088a47a
+    scope:     1 allowed, 1 forbidden
+    lane:      fixture
+    pid:       2339899
+    baseline:  26 changed path(s) at dispatch
+    harness:   .ai/decl-demo-artifact.txt
+    director:  (not required)
+    trust:     a14c6c209accf674bf3e6dd9eca2c2f4332282026acb5b44e4de444b0132ad75
+    log:       (none)
+    record:    /tmp/decl-demo/runs/declared-advances.json
+  start EXIT=0
+
+(the `trust:` value above is the real digest as printed)
+
+
+================================================================================
+D2 — exclude declared artefacts from the attributed delta, VISIBLY
+================================================================================
+
+scope_conformance gains `declared_harness_artifacts`. The delta that is checked and reported excludes
+the declared paths; `checked`, `offending` and `ok` keep their meaning. An undeclared out-of-scope
+path is untouched.
+
+--------------------------------------------------------------------------------
+D2.1 a run writing only its declared artefact ADVANCES and SHOWS the declaration
+--------------------------------------------------------------------------------
+
+CLAIM: Declaring `.ai/decl-demo-artifact.txt`, then writing only that path, yields
+       scope_conformance.ok = true, `checked` = [], `scope_delta_paths` = [], and
+       `declared_harness_artifacts` = [that path]. Reverting the array_diff() that removes declared
+       paths makes the run block, which fails test 47.
+
+COMMAND:
+  printf 'harness wrote this\n' > .ai/decl-demo-artifact.txt
+  php tools/ai-run.php finish --id=declared-advances --exit=0 --runs-dir=/tmp/decl-demo/runs
+  php -r '$r=json_decode(file_get_contents("/tmp/decl-demo/runs/declared-advances.json"),true); echo json_encode(["harness_artifacts"=>$r["harness_artifacts"],"scope_delta_paths"=>$r["scope_delta_paths"],"scope_conformance"=>$r["scope_conformance"]], JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n";'
+
+OBSERVED:
+  RUN declared-advances finished: silent
+    exit:      0
+    log:       0 bytes
+    report:    0 bytes
+    scope:     OK delta=0
+    ...
+  finish EXIT=0
+  {
+      "harness_artifacts": [
+          ".ai/decl-demo-artifact.txt"
+      ],
+      "scope_delta_paths": [],
+      "scope_conformance": {
+          "ok": true,
+          "checked": [],
+          "offending": [],
+          "declared_harness_artifacts": [
+              ".ai/decl-demo-artifact.txt"
+          ]
+      }
+  }
+
+--------------------------------------------------------------------------------
+D2.2 A-F2 is UNWEAKENED — an undeclared out-of-scope path still blocks (exit 3)
+--------------------------------------------------------------------------------
+
+CLAIM: With no declaration, writing `.ai/decl-demo-undeclared.txt` still yields exit 3, status
+       `blocked`, and names the path in `offending`. This is the failure mode the contract is most
+       afraid of; test 48 asserts it. If the fix had been implemented by exempting all out-of-scope
+       paths (rather than a declared allowlist), this assertion would fail.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/benign-contract.md --lane=fixture --name=undeclared-blocks --runs-dir=/tmp/decl-demo/runs
+  printf 'executor wrote this\n' > .ai/decl-demo-undeclared.txt
+  php tools/ai-run.php finish --id=undeclared-blocks --exit=0 --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  RUN undeclared-blocks finished: blocked
+    exit:      0
+    log:       0 bytes
+    report:    0 bytes
+    scope:     BLOCKED delta=1
+    OFFENDING .ai/decl-demo-undeclared.txt: path '.ai/decl-demo-undeclared.txt' is outside the approved scope
+  finish EXIT=3
+
+--------------------------------------------------------------------------------
+D2.3 a declaration narrows ATTRIBUTION only — declared shown, undeclared still blocks
+--------------------------------------------------------------------------------
+
+CLAIM: With one declared path and one undeclared path written, the declared path is removed from the
+       reported delta and shown in `declared_harness_artifacts`, while the undeclared path still
+       appears in `offending`. Test 49 asserts all three properties; it fails if declared filtering
+       removes the whole delta, and fails if A-F2 is narrowed.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/benign-contract.md --lane=fixture --name=mixed-demo --harness-artifact=.ai/decl-demo-mixed-declared.txt --runs-dir=/tmp/decl-demo/runs
+  printf 'harness\n' > .ai/decl-demo-mixed-declared.txt
+  printf 'executor\n' > .ai/decl-demo-mixed-undeclared.txt
+  php tools/ai-run.php finish --id=mixed-demo --exit=0 --runs-dir=/tmp/decl-demo/runs
+  php -r '$r=json_decode(file_get_contents("/tmp/decl-demo/runs/mixed-demo.json"),true); echo json_encode(["scope_delta_paths"=>$r["scope_delta_paths"],"declared_harness_artifacts"=>$r["scope_conformance"]["declared_harness_artifacts"],"offending"=>array_column($r["scope_conformance"]["offending"],"path")],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n";'
+
+OBSERVED:
+  RUN mixed-demo finished: blocked
+    exit:      0
+    log:       0 bytes
+    report:    0 bytes
+    scope:     BLOCKED delta=1
+    OFFENDING .ai/decl-demo-mixed-undeclared.txt: path '.ai/decl-demo-mixed-undeclared.txt' is outside the approved scope
+  finish EXIT=3
+  {
+      "scope_delta_paths": [
+          ".ai/decl-demo-mixed-undeclared.txt"
+      ],
+      "declared_harness_artifacts": [
+          ".ai/decl-demo-mixed-declared.txt"
+      ],
+      "offending": [
+          ".ai/decl-demo-mixed-undeclared.txt"
+      ]
+  }
+
+
+================================================================================
+GUARD 2 — declared at `start`, NEVER at `finish`
+================================================================================
+
+CLAIM: `--harness-artifact` on `finish` is refused with exit 2 and a message naming GUARD 2, and the
+       run is left `running` (no finish record is written). Reverting the guard in commandFinish
+       makes finish proceed (exit 0), which fails test 46.
+
+COMMAND:
+  php tools/ai-run.php start --contract=/tmp/decl-demo/benign-contract.md --lane=fixture --name=guard2-demo --runs-dir=/tmp/decl-demo/runs
+  php tools/ai-run.php finish --id=guard2-demo --exit=0 --harness-artifact=docs/nope.txt --runs-dir=/tmp/decl-demo/runs
+
+OBSERVED:
+  start EXIT=0
+  ERROR: --harness-artifact is only valid on start: a declaration made after the evidence exists is an exemption shaped to fit the run, not a declaration (GUARD 2)
+  EXIT=2
+
+
+================================================================================
+D3 — the loop declares its own writes (located by reading the code)
+================================================================================
+
+Read from tools/ai-loop.php and tools/ai-project.php, not guessed:
+  - tools/ai-project.php:writeProjectJson() is called by `transition`, which the loop invokes with
+    `--state=running`, `--state=done` and `--state=blocked`. It rewrites <projects>/<id>/state.json.
+  - tools/ai-loop.php:loopFileL4() writes <projects>/<id>/repair-decisions.json.
+  - <projects>/<id>/slices/ is authored work: deliberately NOT declared.
+  - the run record and the run's report are written on the run's behalf too, but start already
+    records both in `scope_ignored_paths` (the record path is derived from --name/--runs-dir and
+    the report is passed as --report), so the existing mechanism excludes them from the delta and
+    they are visible there. They are not re-declared, which would claim the same exclusion twice.
+
+ai-loop.php now computes the repository-relative form of those two paths (omitting any
+`--projects-dir` outside the repository, e.g. the /tmp test fixtures) and passes one
+`--harness-artifact=<path>` per file to every ledger `start`, in both loopMain() and loopAttempt().
+
+CLAIM: In a repository-relative projects dir, the loop declares
+       `.ai/<fixture>/projects/fixture/state.json`, that path is excluded from the attributed delta
+       and shown in scope_conformance, no `slices/` path is declared, and the slice ADVANCES.
+       Reverting the `loopHarnessArtifacts()` calls makes the state file land in the delta and the
+       run blocks, which fails tests/ai_loop_test.php assertion 18.
+
+COMMAND:
+  php tests/ai_loop_test.php
+
+OBSERVED (test 18 of the suite):
+  ── the loop declares the project state it writes in the run name ──
+    ✅ 18. the loop declares its state file, excludes it from the attributed delta, and advances
+
+  ══════════════════════════════════════
+    RESULTS
+    18/18 passed
+    Assertions: 18
+
+    Suite: ai-loop
+    Time: 16.41s
+  ══════════════════════════════════════
+  EXIT=0
+
+The assertion itself fails if the reverted loop leaves state.json unattributed:
+    $declaredRecord['scope_conformance']['ok'] === true            (would be false)
+    !in_array($declaredRelative, $declaredRecord['scope_delta_paths'])   (would contain it)
+    in_array($declaredRelative, ...['declared_harness_artifacts'])       (would be absent)
+
+
+================================================================================
+D4 — non-vacuity: what fails if each fix is reverted
+================================================================================
+
+Each row names the exact assertion that catches the reverted fix. All run via the two suites, both
+green above.
+
+  fix under test                     | reverted behaviour                            | failing assertion
+  ----------------------------------- | --------------------------------------------- | --------------------------
+  GUARD 1a trust-surface refusal      | start exits 0 and writes a verifier record    | ai_run_test 43
+  GUARD 1a coverage (dir/glob)        | start exits 0 for tools or tools/*.php        | ai_run_test 43
+  GUARD 1b forbidden_scope refusal    | start exits 0 for docs/demo.md                | ai_run_test 44
+  normalizePath (../ and absolute)    | start exits 0 for ../etc/passwd and /etc/...  | ai_run_test 45
+  GUARD 2 finish refusal              | finish exits 0 and records the run            | ai_run_test 46
+  declared excluded from the delta    | finish blocks on the declared state file      | ai_run_test 47, ai_loop_test 18
+  declaration shown in the record     | scope_conformance lacks the declaration       | ai_run_test 47, ai_loop_test 18
+  A-F2 unweakened (undeclared)        | finish exits 0 for an out-of-scope write      | ai_run_test 48
+  attribution narrowed, detection not | offending loses the undeclared path           | ai_run_test 49
+  loop declares its state write       | state.json lands in scope_delta_paths         | ai_loop_test 18
+
+
+================================================================================
+AC3 — Slice A/B/C behaviours still hold exactly (regression evidence)
+================================================================================
+
+--------------------------------------------------------------------------------
+AC3.1 covering scopes refused (tools/, tools/ai-*.php, **/*.php) with docs/ accepted
+--------------------------------------------------------------------------------
+
+CLAIM: A contract whose allowed_scope is a capability that covers the verifier is refused (exit 2),
+       while a `docs/` capability plans (exit 0).
+
+COMMAND:
+  php tools/ai-autonomy.php plan --json --contract=/tmp/decl-demo/plan-tools_.md        # entry tools/
+  php tools/ai-autonomy.php plan --json --contract=/tmp/decl-demo/plan-tools_ai-__php.md # entry tools/ai-*.php
+  php tools/ai-autonomy.php plan --json --contract=/tmp/decl-demo/plan-_____php.md       # entry **/*.php
+  php tools/ai-autonomy.php plan --json --contract=/tmp/decl-demo/plan-docs_.md          # entry docs/
+
+OBSERVED:
+  ### tools/          EXIT=2  ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools' reaches 'tools/ai-run.php'; ...
+  ### tools/ai-*.php  EXIT=2  ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-*.php' reaches 'tools/ai-run.php'; ...
+  ### **/*.php        EXIT=2  ERROR: contract names the verifier trust surface in its scope and is refused: entry '**/*.php' reaches 'tools/ai-run.php'; ...
+  ### docs/           EXIT=0  {"envelope":{"objective":"Prove coverage semantics.",...,"allowed_scope":[{"path":"docs","kind":"directory"}],...}}
+
+Also pinned by tests/ai_autonomy_test.php assertions 45-48 (all green below).
+
+--------------------------------------------------------------------------------
+AC3.2 check on the verifier ESCALATE/L4/exit 3; a benign in-scope path RECORD/0
+--------------------------------------------------------------------------------
+
+CLAIM (strongest form): even when the contract's allowed_scope NAMES tools/ai-run.php, `check`
+       escalates it as an absolute prohibition (L4/exit 3). A benign in-scope path records (L2/0).
+
+COMMAND:
+  php tools/ai-autonomy.php check "widen the command allowlist" --path=tools/ai-run.php --contract=/tmp/decl-demo/trust-allow-contract.md
+  php tools/ai-autonomy.php check "update the demo docs" --path=docs/demo.md --contract=/tmp/decl-demo/benign-contract.md
+
+OBSERVED:
+  VERDICT: ESCALATE
+  level: L4
+  action: widen the command allowlist
+  paths:
+    - tools/ai-run.php
+  reasons:
+    - path 'tools/ai-run.php' trips an absolute prohibition: modifying the verifier trust surface (no justification can authorise it)
+  next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+  EXIT=3
+  ---
+  VERDICT: RECORD
+  level: L2
+  action: update the demo docs
+  paths:
+    - docs/demo.md
+  reasons:
+  EXIT=0
+
+--------------------------------------------------------------------------------
+AC3.3 a malformed ledger record blocks commit-check
+--------------------------------------------------------------------------------
+
+CLAIM: A malformed run record is NOT ELIGIBLE, commit-check exits 3, and the file is named.
+       Reverting the unreadable-record handling would let commit-check exit 0.
+
+COMMAND:
+  printf '{not valid json' > /tmp/decl-demo/bad-runs/broken.json
+  php tools/ai-run.php commit-check --runs-dir=/tmp/decl-demo/bad-runs
+
+OBSERVED:
+  COMMIT-CHECK — /tmp/decl-demo/bad-runs
+    NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+    BLOCK  broken.json  unreadable  age=0s  pid=0
+  WARN: unreadable run record /tmp/decl-demo/bad-runs/broken.json
+  EXIT=3
+
+--------------------------------------------------------------------------------
+AC3.4 foreign and stale run records are refused by the done transition
+--------------------------------------------------------------------------------
+
+CLAIM: tests/ai_project_test.php assertions 12-16 assert a foreign record (internal id != run id), a
+       stale revision, a dirty-tree verification and a stale contract revision are all refused, and
+       a fully bound record is accepted. All green (18/18 below). No code in this slice touches
+       ai-project.php's binding.
+
+COMMAND:
+  php tests/ai_project_test.php
+
+OBSERVED:
+    ✅ 12. a foreign run record (internal id != run id) is refused
+    ✅ 13. a stale revision is refused
+    ✅ 14. a dirty-tree verification is refused
+    ✅ 15. a stale contract revision is refused
+    ✅ 16. a fully bound record is accepted (positive control)
+    ...
+    18/18 passed
+  EXIT=0
+
+--------------------------------------------------------------------------------
+AC3.5 the ladder's five behaviours (ai_loop_test assertions 12-16)
+--------------------------------------------------------------------------------
+
+CLAIM: L1 linked repair, L2 promotion, L1->L2 exhaustion, L4 stop without amending contract/verifier,
+       and structural refusal of a verifier-path rung all still hold exactly.
+
+COMMAND:
+  php tests/ai_loop_test.php
+
+OBSERVED:
+    ✅ 12. an implementation failure is repaired at L1 and completes as a linked new run
+    ✅ 13. an approach failure visibly promotes directly to L2, never replays L1
+    ✅ 14. exhausted/same failure promotes L1 -> L2 rather than replaying L1
+    ✅ 15. a contract-changing condition files L4 and stops without amending contract/verifier
+    ✅ 16. a rung declaring a verifier path is structurally refused before dispatch
+    ✅ 17. ladder refuses to advance when the failed attempt supplies no new evidence
+    18/18 passed
+  EXIT=0
+
+--------------------------------------------------------------------------------
+AC3.6 the Python evidence shapes still re-derive (ai_run_test assertions 26a-26e)
+--------------------------------------------------------------------------------
+
+CLAIM: The subject's native Python shapes execute and re-derive; `python3 -c` etc. are still refused
+       and not executed; a stray .pyc is still not left in the tree. No code in this slice touches
+       COMMAND_ALLOWLIST or the Python env.
+
+COMMAND:
+  php tests/ai_run_test.php
+
+OBSERVED:
+    ✅ 26a. a real python3 -m py_compile command is executed and re-derives to RE_DERIVED
+    ✅ 26b. a python verification leaves the working tree unchanged (git status and bytecode)
+    ✅ 26c. the bounded unittest shape is allowlisted and executed, not refused
+    ✅ 26d. the file-test shape refuses a missing file through its existence screen
+    ✅ 26e. the file-test shape is declared in the allowlist with its existence screen
+    67/67 passed
+  EXIT=0
+
+
+================================================================================
+Trust-surface recording (constituting change, authorised by CD-37)
+================================================================================
+
+CLAIM: This slice changes two trust-surface files (tools/ai-run.php, tools/ai-loop.php). The
+       resulting digest transition is recorded by the established, director-attributed route, exactly
+       as TSA-0001..TSA-0005 recorded prior changes. Without it, `commit-check` would report
+       `trust_surface_mismatch` against records started before the change. The route only records and
+       re-hashes; it never edits a trust-surface file.
+
+COMMAND:
+  php tools/ai-autonomy.php trust-surface amend --reason="Slice D (CD-37): harness declares its own operational artefacts at start; GUARD 1 refuses verifier/forbidden_scope declarations, GUARD 2 refuses finish declarations; declaration shown in scope_conformance" --director-decision=CD-37
+
+OBSERVED:
+  TRUST-SURFACE AMENDMENT RECORDED TSA-0006
+    decision: CD-37
+    reason:   Slice D (CD-37): harness declares its own operational artefacts at start; GUARD 1 refuses verifier/forbidden_scope declarations, GUARD 2 refuses finish declarations; declaration shown in scope_conformance
+    recorded: 2026-09-14T08:14:10+00:00
+    hash:     a14c6c209accf674bf3e6dd9eca2c2f4332282026acb5b44e4de444b0132ad75
+    record:   .ai/trust-surface-amendments.json
+  NO TRUST-SURFACE FILE WAS CHANGED BY THIS ROUTE; it only validated, recorded and re-hashed.
+  EXIT=0
+
+CLAIM: After the amendment, a record carrying the prior trust-surface hash no longer trips
+       `trust_surface_mismatch`. The only remaining commit-check blocks are the pre-existing stale
+       run records (a `blocked` S5 record and the stale `harness-declared-artifacts` record), which
+       are unrelated to the trust surface.
+
+COMMAND:
+  php tools/ai-run.php commit-check --runs-dir=.ai/runs 2>&1 | grep -i "trust\|mismatch\|BLOCK"
+
+OBSERVED:
+    BLOCK  harpp-gen4-s5-20260914074854-8dd9f1  blocked  age=25m20s  pid=2315848
+    BLOCK  harness-declared-artifacts  running  age=7m56s  pid=2332971
+  (no trust_surface_mismatch line)
+
+
+================================================================================
+AC4 — required suites pass, zero skips
+================================================================================
+
+COMMAND:
+  for t in ai_run_test ai_autonomy_test ai_project_test ai_loop_test ai_contract_lint_test; do php tests/$t.php; done
+
+OBSERVED:
+  ai_run_test: exit=0 |   67/67 passed | skip-lines=[]
+  ai_autonomy_test: exit=0 |   59/59 passed | skip-lines=[]
+  ai_project_test: exit=0 |   18/18 passed | skip-lines=[]
+  ai_loop_test: exit=0 |   18/18 passed | skip-lines=[]
+  ai_contract_lint_test: exit=0 |    3/3 passed | skip-lines=[]
+
+No test was skipped, weakened or deleted. No existing assertion was changed; all additions are new
+tests 43-49 in tests/ai_run_test.php and test 18 in tests/ai_loop_test.php. scripts/run-tests.php,
+composer test and anything that bootstraps the CMS app were NOT run. All dispatch/fixture logs were
+written to /tmp; no dispatch log was written into the repository.
+
+
+================================================================================
+Implementation summary (files changed by this slice)
+================================================================================
+
+  tools/ai-run.php
+    + optionValues()                          repeatable --harness-artifact
+    + isHarnessArtifactTrustSurface()         GUARD 1a coverage mirror
+    + harnessArtifactTrustSurfaceCoverage()   directory/glob/symlink coverage
+    + harnessArtifactMatchesForbidden()       GUARD 1b, mirrors autonomy pathMatches()
+    + harnessArtifactEscapesRepository()      resolves through existing parents
+    + validatedHarnessArtifact()              normalise + refuse, exit 2
+    * commandStart(): validate, record `harness_artifacts`, print it
+    * commandFinish(): GUARD 2 refusal; exclude declared from the attributed delta and set
+      scope_conformance.declared_harness_artifacts
+    * main(): --harness-artifact allowed on start and finish (finish refuses with GUARD 2)
+    * usage(): documents the flag and both guards
+
+  tools/ai-loop.php
+    + loopHarnessArtifacts() / loopRepositoryRelativePath()
+    * loopMain() and loopAttempt() pass --harness-artifact for state.json and
+      repair-decisions.json (never slices/)
+
+  tests/ai_run_test.php    new assertions 43-49
+  tests/ai_loop_test.php   new assertion 18; loopFixture() gains an optional repository-relative root
+  .ai/trust-surface-amendments.json   TSA-0006 (CD-37), digest a14c6c20...ad75
+
+Design note on `declared_harness_artifacts`: it lists the full set of declared artefacts (the
+pre-commitment made at start), so a reader sees the declaration and its authority; `checked` and
+`scope_delta_paths` are the attributed delta with those paths removed. Neither field hides anything:
+the declaration is in both the run record's `harness_artifacts` and in scope_conformance.

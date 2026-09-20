@@ -202,7 +202,8 @@ final class CapabilityAuthorizationRegistry
     public function seedPolicy(array $rows): void
     {
         try {
-            $this->withKernelTableAccess(function () use ($rows): void {
+            $activePolicyVersion = $this->resolvePolicyVersion();
+            $this->withKernelTableAccess(function () use ($rows, $activePolicyVersion): void {
                 $db = $this->db();
                 $select = $db->prepare(
                     'SELECT caller_module, allowed_roles, provider_activation_required, requires_protocol, grant_state '
@@ -239,12 +240,12 @@ final class CapabilityAuthorizationRegistry
 
                     $widenedFields = $this->widenedFields($stored, $declared);
                     if ($widenedFields !== []) {
+                        $severity = self::seedRefusalSeverity((int)$key['policy_version'], (int)($activePolicyVersion ?? 0));
                         self::logSeedDecision('widening_refused', $key + [
                             'fields' => $widenedFields,
-                            'stored' => $stored,
-                            'declared' => $declared,
-                            'actor' => 'system',
+                            'stored' => $stored, 'declared' => $declared, 'actor' => 'system',
                             'reason' => 'operator_regrant_required',
+                            'severity' => $severity,
                         ]);
                         continue;
                     }
@@ -603,11 +604,27 @@ final class CapabilityAuthorizationRegistry
             || (int)($stored['provider_activation_required'] ?? 1) !== (int)$declared['provider_activation_required'];
     }
 
+    /**
+     * Severity of a refused widening, decided purely from the version identities:
+     * refusing to widen the store's ACTIVE version asks for authority the system
+     * does not grant (a human must look -> warning); refusing a SUPERSEDED version
+     * is inert bookkeeping over history the seed must not rewrite -> info.
+     */
+    public static function seedRefusalSeverity(int $storedPolicyVersion, int $activePolicyVersion): string
+    {
+        return $storedPolicyVersion === $activePolicyVersion ? 'warning' : 'info';
+    }
+
     /** @param array<string, mixed> $context */
     private static function logSeedDecision(string $decision, array $context): void
     {
+        $severity = $context['severity'] ?? null;
+        unset($context['severity']);
+        $level = in_array($severity, ['warning', 'info'], true)
+            ? $severity
+            : ($decision === 'widening_refused' ? 'warning' : 'info');
         if (function_exists('write_log')) {
-            write_log('capability.policy.seed.' . $decision, $decision === 'widening_refused' ? 'warning' : 'info', $context);
+            write_log('capability.policy.seed.' . $decision, $level, $context);
         }
     }
 

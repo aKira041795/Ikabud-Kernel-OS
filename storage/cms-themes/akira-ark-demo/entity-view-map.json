@@ -3,11 +3,11 @@
   "entity_views": {
     "post": {
       "list": {
-        "fields": ["title", "subtitle", "metadata", "image", "url"],
+        "fields": ["title", "subtitle", "image", "metadata", "categories", "actions", "url"],
         "actions": ["view"]
       },
       "detail": {
-        "fields": ["title", "subtitle", "body", "metadata", "image", "url", "categories"],
+        "fields": ["title", "subtitle", "image", "body", "metadata", "categories", "actions", "url"],
         "actions": ["view"]
       }
     }

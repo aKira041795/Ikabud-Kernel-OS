@@ -18,6 +18,20 @@ function cms_akira_core_capability_handlers(): array
         'akira.user.list@1' => 'cac_cap_akira_user_list_1',
         'akira.user.update_role@1' => 'cac_cap_akira_user_update_role_1',
         'akira.user.set_active@1' => 'cac_cap_akira_user_set_active_1',
+        'akira.user.revoke_sessions@1' => 'cac_cap_akira_user_revoke_sessions_1',
+        'akira.module.list@1' => 'cac_cap_akira_module_list_1',
+        'akira.module.manage@1' => 'cac_cap_akira_module_manage_1',
+        'akira.site.settings.get@1' => 'cac_cap_akira_site_settings_get_1',
+        'akira.site.settings.public@1' => 'cac_cap_akira_site_settings_public_1',
+        'akira.site.settings.update@1' => 'cac_cap_akira_site_settings_update_1',
+        'akira.redirect.list@1' => 'cac_cap_akira_redirect_list_1',
+        'akira.redirect.create@1' => 'cac_cap_akira_redirect_create_1',
+        'akira.redirect.resolve@1' => 'cac_cap_akira_redirect_resolve_1',
+        'akira.backup.list@1' => 'cac_cap_akira_backup_list_1',
+        'akira.backup.create@1' => 'cac_cap_akira_backup_create_1',
+        'akira.export.create@1' => 'cac_cap_akira_export_create_1',
+        'akira.bundle.diff@1' => 'cac_cap_akira_bundle_diff_1',
+        'akira.bundle.apply@1' => 'cac_cap_akira_bundle_apply_1',
         'akira.extension.widgets@1' => 'cac_cap_akira_extension_widgets_1',
         'akira.post.get@1' => 'cac_cap_akira_post_get_1',
         'akira.post.list@1' => 'cac_cap_akira_post_list_1',
@@ -157,7 +171,8 @@ function cacPostProject(array $post, bool $detail): array
             'title' => $dto['title'],
             'subtitle' => $dto['subtitle'],
             'image' => $dto['image'],
-            'body' => (string)($post['content'] ?? ''),
+            // Defence in depth: rows written before sanitization existed are cleaned here too.
+            'body' => cacPostSanitizeHtml((string)($post['content'] ?? '')),
             'metadata' => $dto['metadata'],
             'categories' => $dto['categories'],
             'actions' => $dto['actions'],
@@ -382,6 +397,11 @@ function cacPostMutationFields(array $payload, ?array $existing = null): array
     $content = array_key_exists('content', $payload)
         ? cacPostMutationString($payload['content'], 'content', 65535, true)
         : (string)($existing['content'] ?? '');
+    $sanitizedContent = cacPostSanitizeHtml($content);
+    if ($sanitizedContent === '' && $content !== '') {
+        throw new CacPostMutationException('content has no renderable text after sanitization.');
+    }
+    $content = $sanitizedContent;
     if ($creating && ($title === '' || $content === '')) {
         throw new CacPostMutationException('title and content are required.');
     }
@@ -416,6 +436,148 @@ function cacPostMutationImage(mixed $value): ?string
         throw new CacPostMutationException('image must be an absolute-path, HTTP, or HTTPS URL.');
     }
     return $safe;
+}
+
+/**
+ * Allowlist-sanitize authored post HTML.
+ *
+ * Post bodies are authored rich text and are rendered as markup (the entity view body
+ * is emitted with |raw), so stored content must be inert before it reaches a browser.
+ * Sanitizing inside the module that owns the post domain keeps every downstream
+ * consumer and renderer safe without each of them re-implementing a policy.
+ */
+function cacPostSanitizeHtml(string $html): string
+{
+    if ($html === '' || !str_contains($html, '<')) {
+        return $html;
+    }
+
+    $allowedTags = [
+        'a', 'b', 'blockquote', 'br', 'caption', 'code', 'dd', 'div', 'dl', 'dt', 'em',
+        'figcaption', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img',
+        'li', 'mark', 'ol', 'p', 'pre', 's', 'small', 'span', 'strong', 'sub', 'sup',
+        'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul',
+    ];
+    $allowedAttributes = [
+        'alt', 'class', 'colspan', 'decoding', 'dir', 'height', 'href', 'id', 'lang',
+        'loading', 'rel', 'reversed', 'role', 'rowspan', 'scope', 'src', 'start',
+        'target', 'title', 'width',
+    ];
+    // Removed together with their content — never unwrapped into the document.
+    $dropWithContent = [
+        'applet', 'audio', 'base', 'button', 'canvas', 'embed', 'form', 'frame',
+        'frameset', 'iframe', 'input', 'link', 'math', 'meta', 'noscript', 'object',
+        'option', 'script', 'select', 'source', 'style', 'svg', 'template', 'textarea',
+        'track', 'video',
+    ];
+
+    $previous = libxml_use_internal_errors(true);
+    $document = new DOMDocument('1.0', 'UTF-8');
+    $loaded = $document->loadHTML(
+        '<?xml encoding="UTF-8"><div id="akira-sanitize-root">' . $html . '</div>',
+        LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | LIBXML_NONET
+    );
+    libxml_clear_errors();
+    libxml_use_internal_errors($previous);
+
+    $root = $loaded === false ? null : $document->getElementById('akira-sanitize-root');
+    if (!$root instanceof DOMElement) {
+        $divs = $loaded === false ? null : $document->getElementsByTagName('div');
+        $root = $divs !== null && $divs->length > 0 ? $divs->item(0) : null;
+    }
+    if (!$root instanceof DOMElement) {
+        // Fail closed: markup that cannot be parsed is emitted as inert text.
+        return htmlspecialchars(strip_tags($html), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    $clean = static function (DOMNode $node) use (&$clean, $allowedTags, $allowedAttributes, $dropWithContent): void {
+        foreach (iterator_to_array($node->childNodes) as $child) {
+            if ($child instanceof DOMComment
+                || $child instanceof DOMProcessingInstruction
+                || $child instanceof DOMDocumentType
+            ) {
+                $node->removeChild($child);
+                continue;
+            }
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            $tag = strtolower($child->tagName);
+            if (in_array($tag, $dropWithContent, true)) {
+                $node->removeChild($child);
+                continue;
+            }
+            if (!in_array($tag, $allowedTags, true)) {
+                // Unknown but harmless element: keep the text, drop the wrapper.
+                while ($child->firstChild !== null) {
+                    $node->insertBefore($child->firstChild, $child);
+                }
+                $node->removeChild($child);
+                continue;
+            }
+
+            // Walk attributes backwards so removals do not shift the remaining indexes.
+            for ($index = $child->attributes->length - 1; $index >= 0; $index--) {
+                $attribute = $child->attributes->item($index);
+                if (!$attribute instanceof DOMAttr) {
+                    continue;
+                }
+                $name = strtolower($attribute->name);
+                if (!in_array($name, $allowedAttributes, true)) {
+                    $child->removeAttribute($attribute->name);
+                    continue;
+                }
+                if ($name === 'href' || $name === 'src') {
+                    $safeUrl = cacPostSanitizeAttributeUrl($attribute->value);
+                    if ($safeUrl === null) {
+                        $child->removeAttribute($attribute->name);
+                        continue;
+                    }
+                    $child->setAttribute($attribute->name, $safeUrl);
+                }
+            }
+
+            if ($tag === 'a' && strtolower($child->getAttribute('target')) === '_blank') {
+                $child->setAttribute('rel', 'noopener noreferrer');
+            }
+
+            $clean($child);
+        }
+    };
+
+    $clean($root);
+
+    $output = '';
+    foreach ($root->childNodes as $child) {
+        $output .= (string) $document->saveHTML($child);
+    }
+
+    return trim($output);
+}
+
+/**
+ * Reject unsafe URL schemes in authored markup.
+ *
+ * Control characters and whitespace are stripped before the scheme check so that
+ * obfuscated payloads such as "java\nscript:" cannot slip through.
+ */
+function cacPostSanitizeAttributeUrl(string $url): ?string
+{
+    $trimmed = trim($url);
+    if ($trimmed === '') {
+        return null;
+    }
+
+    $decoded = html_entity_decode($trimmed, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $probe = strtolower((string) preg_replace('/[\x00-\x20\x7f]+/', '', $decoded));
+    foreach (['javascript:', 'vbscript:', 'data:', 'file:'] as $scheme) {
+        if (str_starts_with($probe, $scheme)) {
+            return null;
+        }
+    }
+
+    return $trimmed;
 }
 
 function cacPostMutationCorrelationId(): string
@@ -624,6 +786,16 @@ function cacPostMutate(string $operation, array $payload): array
         $publicationUncertain = true;
         $db->commit();
         $publicationUncertain = false;
+
+        // Cache invalidation is deliberately post-commit and fail-open: a cache
+        // outage must not turn a durable mutation into a reported failure.
+        if (function_exists('akiraShellInvalidatePublicCache')) {
+            try {
+                akiraShellInvalidatePublicCache($slug);
+            } catch (Throwable) {
+                // The shell and its page cache are optional infrastructure.
+            }
+        }
         return $outcome;
     } catch (Throwable $e) {
         if ($db->inTransaction()) {

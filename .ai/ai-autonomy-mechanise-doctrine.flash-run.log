@@ -1,0 +1,134 @@
+# Completion report — mechanise the doctrine
+
+**Status: DONE.** All deliverables D1–D8 implemented and verified. No existing test was weakened, skipped, deleted or relaxed. No commit/stage/push/branch operation was performed.
+
+---
+
+## What changed (4 authorised files)
+
+| File | Change |
+|---|---|
+| `tools/ai-autonomy.php` | taxonomy single-source, safety floor, `stop-report`, plan warnings |
+| `tests/ai_autonomy_test.php` | +184 lines, 0 deletions, 19 new cases |
+| `.github/instructions/ai-autonomy-escalation.instructions.md` | presumptive authority + stop-report (additive) |
+| `.ai/ai-autonomy-harness.contract.md` | runbook documents `stop-report` (additive) |
+
+Forbidden files verified untouched by this slice: `phpstan-baseline.neon`, `phpstan.neon`, `composer.json`, `package.json`, `.github/workflows/`. (`kernel/` shows dirty from the pre-existing working-tree baseline, **not** from this slice; no kernel file was edited here.)
+
+---
+
+## D1 — one source of truth
+
+`l4Taxonomy()` (`tools/ai-autonomy.php:26`) is now the single list. Every entry is `{reason, class, decidable, matchers}`; judgement-based entries are present with `decidable:false, matchers:[]` so the printed/enforced gap is explicit. `absoluteProhibitions()` / `contractRelativeTriggers()` / `l4Triggers()` are pure projections, and enforcement calls the taxonomy through `sensitiveMatches()` → `sensitiveReasons()`. Counts unchanged: `absolute_prohibitions`=5, `contract_relative_l4`=10.
+
+## D2 — safety floor
+
+Absolute prohibitions are enforced **before** grounding, regardless of `allowed_scope`:
+- existing test files (`tests/**/*_test.php`, `modules/*/tests/**/*.php`) — existence-decidable: a **new** test file is an addition and still proceeds;
+- gate config (`phpstan.neon`, `.github/workflows/**`, plus phpunit/phpcs/playwright/cs-fixer/rector/infection configs);
+- baseline `phpstan-baseline.neon`;
+- authority/security paths.
+
+## D3 — `stop-report`
+
+`php tools/ai-autonomy.php stop-report --remaining=N [--stop-reason=TYPE] [--json]`, exit codes documented in `usage()` and in the standing contract runbook. It prints the invariant, the count, and `LEGITIMATE_STOP`/`ILLEGITIMATE_STOP`.
+
+## D4 — policy
+
+`presumptive authority` now appears at `.github/instructions/ai-autonomy-escalation.instructions.md:51`, and `stop-report` is named as the mechanical expression of the stop invariant (line 43).
+
+## D7/D8 — envelope defects visible, not fatal
+
+`plan` computes `warnings` (also exposed in `--json` as a `warnings` list) for: no `harness:` block referencing the standing contract, forbidden bullets the parser cannot bind to a path (naming each dropped line), and any allowed/forbidden intersection (naming both entries). Exit codes unchanged; `check` remains fail-closed.
+
+> **Honest note on D8's "measured on this very contract":** the contract file on disk now contains **6** `Forbidden changes` bullets, all path-decidable, and `.ai/*.contract.md` appears only in prose (D8 text and Architectural constraints) — so the two original defects are not currently reproducible on it. The mechanic is implemented and tested against fixtures that reproduce the exact original defects.
+
+---
+
+## Required tests — real output
+
+**1. Full suite (exit 0):**
+```
+  RESULTS
+  46/46 passed
+  Assertions: 46
+  Suite: ai-autonomy
+  Time: 4.16s
+  📄 Results: test_results/ai-autonomy.json
+```
+19 new cases present (`22`–`39`, including `24a`); test diff is `184 +++... 0 ---`.
+
+**2. Syntax:**
+```
+$ php -l tools/ai-autonomy.php
+No syntax errors detected in tools/ai-autonomy.php
+exit 0
+```
+
+**3. PHPStan (CI-parity path set):**
+```
+$ /usr/bin/php8.3 vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G tools/ai-autonomy.php
+ [OK] No errors
+exit 0
+```
+
+**4. Weakening probes (contract explicitly allows the paths) + new-test control:**
+```
+PROBE A  tests/entity_fallback_test.php  VERDICT: ESCALATE  level: L4  EXIT=3
+  reason: ... trips an absolute prohibition: disabling, skipping, deleting or weakening
+          an existing test or gate to get a pass (no justification can authorise it)
+PROBE B  phpstan.neon                   VERDICT: ESCALATE  level: L4  EXIT=3
+PROBE C  .github/workflows/ci.yml       VERDICT: ESCALATE  level: L4  EXIT=3
+CONTROL  tests/brand_new_probe_test.php VERDICT: RECORD    level: L2  EXIT=0
+```
+Grounded justification also cannot pass an absolute prohibition (`--justify` matching the acceptance line → `EXIT=3`).
+
+**5. `stop-report` matrix:**
+```
+--remaining=0                              -> EXIT=0  LEGITIMATE_STOP
+--remaining=3 --stop-reason=CONTRACT_BLOCKED -> EXIT=0  LEGITIMATE_STOP
+--remaining=3 --stop-reason=PROJECT_COMPLETE -> EXIT=3  ILLEGITIMATE_STOP
+--remaining=3 --stop-reason=UNCERTAINTY      -> EXIT=3  ILLEGITIMATE_STOP
+--remaining=abc                              -> EXIT=2  ERROR: offending field --remaining
+```
+Real illegitimate output:
+```
+STOP REPORT
+unsatisfied obligations: 3
+stop reason: PROJECT_COMPLETE
+invariant: IF an approved contract has unsatisfied obligations AND no contract blocker THEN the harness is not idle
+basis: 3 obligation(s) remain with non-contract reason 'PROJECT_COMPLETE'; no contract blocker is named, so the stop is illegitimate
+verdict: ILLEGITIMATE_STOP
+system defect: a stop with obligations outstanding is only legitimate under a contract blocker — name one or continue
+EXIT=3
+```
+
+**6. D7/D8 warnings (exit code unchanged, `plan` = 0):**
+```
+safety contract (no harness)   WARN: no harness: block references the standing contract ...
+harness contract               (no harness warning)
+dropped-rule contract          WARN: forbidden bullet is not a path and is not enforced as scope ...: `git add` — never stage anything
+intersection contract          WARN: allowed '.ai/ai-autonomy-harness.contract.md' (file) intersects forbidden '.ai' (directory) ...
+intersection check             VERDICT: ESCALATE (forbidden entry still binding)  EXIT=3
+```
+
+**7. Proof the new cases fail against the pre-change driver.** Replacing the working driver with `HEAD:tools/ai-autonomy.php` and running the same suite gives `exit 1` with **16 failing new cases** (the safety floor, plan projection/taxonomy, stop-report matrix, and D7/D8). The working driver was restored and re-verified green.
+
+---
+
+## Acceptance criteria
+
+- Three gate/test-weakening probes escalate with exit `3` even though the contract allows the path — ✅
+- New test file under an allowed `tests/` path proceeds exit `0` — ✅
+- No path-decidable taxonomy entry missing, one list not two — ✅ (test 28 asserts enforcement ⊆ taxonomy and that printed lists are its projections)
+- `stop-report` returns the documented codes for all five matrix cases and states the invariant — ✅
+- Policy names presumptive authority and points at `stop-report` — ✅
+- `php tests/ai_autonomy_test.php` exits `0`, every new case present, no existing case relaxed — ✅ (46/46; test diff 0 deletions)
+
+---
+
+## Notes / limitations (stated plainly)
+
+- **`stop-report` is checkable, not unfalsifiable.** An agent can pass `--remaining=0` falsely. The honest input is the Chair's own obligation count; this is stated in the runbook, the policy, and the command's own basis output.
+- **`plan --json` now emits 12 keys** (the ten required plus `warnings` and `l4_taxonomy`). The D5.4 test asserts the ten required keys/types; the two additions are the D7/D8/D5.3 surface. No exit code changed.
+- The `check` action text is not used to decide add-vs-weaken; existence is. A new `*_test.php` proceeds; an existing one escalates.

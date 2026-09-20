@@ -1,0 +1,25 @@
+Done. Here's the summary.
+
+## What I found
+
+The Sol lane had already written the Slice B implementation into the working tree before hitting its usage limit (`.ai/runs/guardrail-ladder-cost.json`: `status: failed`, `report_bytes: 0`, log `Codex error: The usage limit has been reached`). The code was present but unverified and unreported.
+
+## What I did
+
+**Read first, then verified** `tools/ai-autonomy.php`, `tools/ai-run.php`, `tools/ai-loop.php`, `tools/ai-project.php` and the contract, and checked every deliverable against the actual code and tests — not just the passing assertions.
+
+**Fixed one real defect I found** in the new D1 test (`tests/ai_loop_test.php` test 12): it ordered the two ledger runs by `started_at`, which has one-second granularity, so two runs created in the same second could sort wrong and fail the predecessor-link assertion spuriously. It now identifies the initial run and successor by the recorded `predecessor_run_id` — the "history is a chain of runs" assertion is now robust. No assertion was weakened, skipped or deleted.
+
+**Ran the isolated non-vacuity checks** (throwaway `git clone --shared`, one mutation per clone). Every one failed the intended assertion: test 12 (linkage), 13 (rung classification), 14 (promote-not-replay), 15 (L4 no amendment), 16 (verifier preflight), 17 (no-new-evidence), 18 (metrics null not placeholder), 35/36 (usage binding / explicit null), 38/39/40/41 (acknowledged block).
+
+**Ran the D3 required real-run proof**: `guardrail-scope-integrity` acknowledged with `--director-decision=CD-29` → `ACKNOWLEDGED BLOCK` + `COMMIT-CHECK … ELIGIBLE` (exit 0); the run record's sha256 is unchanged and still `status=blocked` / `scope_conformance.ok=false`.
+
+## Results
+
+- All five required pure suites pass, **zero failures, zero skips**: ai-loop 17, ai-project 18, ai-run 49, ai-autonomy 59, ai-contract-lint 3 (146 assertions).
+- First claim in the report is the `plan` refusal of this contract, verbatim, `EXIT_CODE=2` — rule 1 untouched.
+- Slice A behaviours re-demonstrated (covering scopes refused, `docs/` accepted, trust-surface amend refusal/record, rule-2 hash gate, A-F2 blocks/advances/ignores).
+
+Report written to `.ai/guardrail-ladder-cost.report.txt` (427 lines, every claim with `CLAIM` / `COMMAND` / `OBSERVED` plus the non-vacuity table).
+
+I did not run `scripts/run-tests.php`, `composer test`, or anything that bootstraps the CMS, and I did not commit, stage or push anything. The only repository change I made beyond the report is the test-flake fix described above; the rest of the working tree is the Sol lane's uncommitted Slice B implementation.

@@ -37,6 +37,20 @@ final class DefaultEntityRenderer implements EntityRendererInterface
      * these fields may be rendered — never arbitrary row keys (tenant_id,
      * cost, notes, tokens, provider metadata, etc.).
      *
+     * This is a floor, never authority: an explicit visible_fields list always
+     * wins, and malformed metadata renders nothing rather than falling back
+     * here. Reviewed member by member (2026-09-16) — a name is not evidence:
+     *
+     *   - id: row identity, already required by the resolver for action URLs;
+     *   - title, name, label: public-facing names;
+     *   - excerpt, description: public editorial copy;
+     *   - url, image: public links and assets;
+     *   - status, published_at, created_at: public lifecycle values;
+     *   - price: public catalog price (internal cost stays excluded);
+     *   - author_name: public byline.
+     *
+     * Adding any member requires the same review, not an assumption.
+     *
      * @var list<string>
      */
     public const SAFE_FALLBACK_FIELDS = [
@@ -116,7 +130,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             return $this->afterRenderList($result, $attrs);
         }
 
-        $fields = $view['fields'] ?? ['*'];
+        $fields = $this->resolveDisplayFields($view);
         $viewMode = $view['view'] ?? ($attrs['view'] ?? 'compact');
         $actions = $view['actions'] ?? [];
         $actionUrls = $view['action_urls'] ?? [];
@@ -125,50 +139,21 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $actionShowIf = $view['action_show_if'] ?? [];
         $actionLabels = $view['action_labels'] ?? [];
         $renderers = $view['renderers'] ?? [];
+        // Declared row-action POST payload projection. Absent or malformed
+        // collapses to the empty list, which emits no row data.
+        $actionPayloadFields = $this->resolveProjectionFields($view['action_payload_fields'] ?? null);
+        // Declared row-data projections for the two URL/context channels:
+        // `template_fields` governs the custom `_children` slot; `url_key_fields`
+        // governs action-URL and row-click interpolation. Absent or malformed
+        // collapses to the empty list, which emits no row data.
+        $templateFields = $this->resolveProjectionFields($view['template_fields'] ?? null);
+        $urlKeyFields = $this->resolveProjectionFields($view['url_key_fields'] ?? null);
 
         // Sortable field declarations: field_name => sort_key (DB column)
         $sortableFields = $view['sortable_fields'] ?? [];
 
         // Field-level contracts (editable, update_capability, allowed_values, etc.)
         $fieldContracts = $view['field_contracts'] ?? [];
-
-        // Visible fields whitelist — declares which fields are safe for public display
-        $visibleFields = $view['visible_fields'] ?? [];
-
-        // Expand '*' safely (fail-closed): never derive display fields from row keys.
-        // When visible_fields is present it is the source of truth (an explicit []
-        // renders no fields). Otherwise '*' resolves only to the centrally governed
-        // safe-fallback allowlist — internal fields (tenant_id, cost, notes, tokens,
-        // provider metadata) are never rendered.
-        if ($fields === ['*'] || $fields === '*') {
-            $allKeys = !empty($rows) ? array_keys($rows[0]) : [];
-            if (array_key_exists('visible_fields', $view)) {
-                $fields = array_values(array_intersect($allKeys, $visibleFields));
-            } else {
-                $fields = array_values(array_intersect($allKeys, self::SAFE_FALLBACK_FIELDS));
-            }
-        }
-
-        // Validate declared fields exist in data
-        $firstRowKeys = !empty($rows) ? array_keys($rows[0]) : [];
-        $validFields = [];
-        foreach ($fields as $field) {
-            if ($field === '*') {
-                continue;
-            }
-            if (in_array($field, $firstRowKeys, true)) {
-                $validFields[] = $field;
-            } elseif (function_exists('write_log')) {
-                \write_log(
-                    "DefaultEntityRenderer: field '{$field}' not found in data for '{$source}'. Available: " . implode(', ', $firstRowKeys),
-                    'warning',
-                    ['source' => $source, 'field' => $field, 'available' => $firstRowKeys]
-                );
-            }
-        }
-        if (!empty($validFields)) {
-            $fields = $validFields;
-        }
 
         $userRole = (string)($attrs['auth-role'] ?? $context['current_user_role'] ?? '');
         $actionRoles = $view['action_roles'] ?? [];
@@ -196,7 +181,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $out = '';
         foreach ($rows as $row) {
             if ($hasCustomSlot) {
-                $out .= $this->renderWithRowContext((string)$attrs['_children'], $row);
+                $out .= $this->renderWithRowContext((string)$attrs['_children'], $row, [], $templateFields);
                 continue;
             }
 
@@ -217,6 +202,8 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                     userRole: $userRole,
                     actionRoles: $actionRoles,
                     roleFields: $roleFields,
+                    actionPayloadFields: $actionPayloadFields,
+                    urlKeyFields: $urlKeyFields,
                 )),
                 'table' => $this->renderTableRow(new RowRenderContext(
                     row: $row,
@@ -236,6 +223,8 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                     hasBulk: $hasBulk,
                     fieldContracts: $fieldContracts,
                     roleFields: $roleFields,
+                    actionPayloadFields: $actionPayloadFields,
+                    urlKeyFields: $urlKeyFields,
                 )),
                 default => $this->renderCompactRow(new RowRenderContext(
                     row: $row,
@@ -253,6 +242,8 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                     userRole: $userRole,
                     actionRoles: $actionRoles,
                     roleFields: $roleFields,
+                    actionPayloadFields: $actionPayloadFields,
+                    urlKeyFields: $urlKeyFields,
                 )),
             };
         }
@@ -327,11 +318,14 @@ final class DefaultEntityRenderer implements EntityRendererInterface
     public function renderDetail(array $entity, array $view, array $attrs, array $context = []): string
     {
         $class = (string)($attrs['class'] ?? '');
-        $rawFields = $attrs['fields'] ?? ($view['fields'] ?? '*');
-        $fields = is_array($rawFields) ? $rawFields : array_map('trim', explode(',', (string)$rawFields));
-        if ($fields === ['*'] || $fields === '*') {
-            $safe = $view['visible_fields'] ?? self::SAFE_FALLBACK_FIELDS;
-            $fields = array_values(array_intersect(array_keys($entity), $safe));
+        $fields = $this->resolveDisplayFields($view);
+        if (array_key_exists('fields', $attrs)) {
+            $requested = $this->normalizeFieldList($attrs['fields']);
+            if ($requested !== null) {
+                $fields = $requested === ['*'] ? $fields : array_values(array_intersect($requested, $fields));
+            } else {
+                $fields = [];
+            }
         }
 
         $rows = '';
@@ -363,6 +357,186 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             {$rows}
         </div>
         HTML;
+    }
+
+    /**
+     * Resolve one metadata-driven field list for every rendered row.
+     *
+     * @param array<string, mixed> $view
+     * @return list<string>
+     */
+    private function resolveDisplayFields(array $view): array
+    {
+        $requested = $this->normalizeFieldList($view['fields'] ?? '*');
+        if ($requested === null) {
+            return [];
+        }
+        $wildcard = $requested === ['*'];
+
+        if (!array_key_exists('visible_fields', $view)) {
+            return $wildcard ? self::SAFE_FALLBACK_FIELDS : $requested;
+        }
+
+        // Explicit visible_fields is authoritative, including []. Malformed
+        // metadata (non-array, or non-string members) renders nothing — it must
+        // never be repaired into the allowlist, which would invent fields the
+        // contract never granted.
+        $visible = $this->normalizeVisibleFields($view['visible_fields']);
+        if ($visible === null) {
+            return [];
+        }
+        if ($visible === ['*']) {
+            $visible = self::SAFE_FALLBACK_FIELDS;
+        }
+
+        return $wildcard ? $visible : array_values(array_intersect($requested, $visible));
+    }
+
+    /**
+     * Normalize an explicit visible_fields declaration.
+     *
+     * Unlike {@see normalizeFieldList()}, a string is malformed here: the
+     * declared-visible seam is defined as a list, and a scalar is exactly the
+     * kind of malformed metadata that must render nothing rather than being
+     * coerced into a field list.
+     *
+     * @return list<string>|null Null means malformed metadata.
+     */
+    private function normalizeVisibleFields(mixed $fields): ?array
+    {
+        if (!is_array($fields)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($fields as $field) {
+            if (!is_string($field)) {
+                return null;
+            }
+            $field = trim($field);
+            if ($field !== '') {
+                $normalized[] = $field;
+            }
+        }
+        return array_values(array_unique($normalized));
+    }
+
+    /**
+     * Normalize field metadata without consulting entity data.
+     *
+     * @return list<string>|null Null means malformed metadata.
+     */
+    private function normalizeFieldList(mixed $fields): ?array
+    {
+        if (is_string($fields)) {
+            if ($fields === '*') {
+                return ['*'];
+            }
+            return null;
+        }
+        if (!is_array($fields)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($fields as $field) {
+            if (!is_string($field)) {
+                return null;
+            }
+            $field = trim($field);
+            if ($field !== '') {
+                $normalized[] = $field;
+            }
+        }
+        return array_values(array_unique($normalized));
+    }
+
+    /**
+     * Resolve a declared row-data projection list for an emission channel.
+     *
+     * The rule is uniform across channels: a valid list (including []) is
+     * authoritative; absent or malformed metadata yields no row data. Absent
+     * and malformed collapse to the same empty projection because neither
+     * grants authority to emit row members, and a malformed value must never
+     * be repaired into "all scalar members".
+     *
+     * @return list<string>
+     */
+    private function resolveProjectionFields(mixed $declared): array
+    {
+        if (!is_array($declared)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($declared as $field) {
+            if (!is_string($field)) {
+                return [];
+            }
+            $field = trim($field);
+            if ($field !== '') {
+                $normalized[] = $field;
+            }
+        }
+        return array_values(array_unique($normalized));
+    }
+
+    /**
+     * Project a row onto a declared field list.
+     *
+     * A field the row does not carry is skipped, never substituted with a
+     * placeholder. Non-scalar values are skipped because they cannot become a
+     * hidden input or JSON context without changing shape.
+     *
+     * @param array<string, mixed> $row
+     * @param list<string>         $fields
+     * @return array<string, scalar>
+     */
+    private function projectRow(array $row, array $fields): array
+    {
+        $projected = [];
+        foreach ($fields as $field) {
+            if (!array_key_exists($field, $row)) {
+                continue;
+            }
+            $value = $row[$field];
+            if (!is_scalar($value)) {
+                continue;
+            }
+            $projected[$field] = $value;
+        }
+        return $projected;
+    }
+
+    /**
+     * Validate a URL for use as an action href or row-click destination.
+     *
+     * Escaping is not validation: htmlspecialchars does not stop a
+     * `javascript:` scheme from executing. Only relative URLs and the explicit
+     * http/https/mailto/tel/ftp schemes are accepted; protocol-relative `//`
+     * targets are rejected because they resolve to a foreign host.
+     *
+     * @return string|null Null when the URL must not be emitted.
+     */
+    private function validateActionUrl(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+        // Browsers ignore control characters (tab/newline/CR) when resolving a
+        // scheme, so "java\tscript:" is still javascript. Detect the scheme on
+        // a whitespace-stripped probe, then validate it against the allowlist.
+        $probe = (string) preg_replace('/[\x00-\x20\x7F]+/', '', $url);
+        if (str_starts_with($probe, '//')) {
+            return null;
+        }
+        if (preg_match('/^([a-zA-Z][a-zA-Z0-9+.\-]*):/', $probe, $m)
+            && !in_array(strtolower($m[1]), ['http', 'https', 'mailto', 'tel', 'ftp'], true)
+        ) {
+            return null;
+        }
+        return $url;
     }
 
     // ── Cell rendering ─────────────────────────────────────────────
@@ -418,6 +592,16 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             return $cellHtml;
         }
 
+        // Inline edit is a row-data emission channel: the embedded context is
+        // governed by the declared `editable_context_fields` list. A per-field
+        // contract takes precedence over the view contract. Absent or malformed
+        // metadata emits no row data; missing fields are skipped, never
+        // substituted.
+        $declaredContext = array_key_exists('editable_context_fields', $fieldContract)
+            ? $fieldContract['editable_context_fields']
+            : ($this->renderContext['_view']['editable_context_fields'] ?? null);
+        $editableContextFields = $this->resolveProjectionFields($declaredContext);
+
         // Build Alpine.js config
         $safeValue = htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
         $config = json_encode([
@@ -429,7 +613,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             'allowedValues' => $allowedValues,
             'version' => $version !== null ? (int)$version : null,
             'renderer' => $renderer,
-            'rowData' => $row,
+            'rowData' => (object) $this->projectRow($row, $editableContextFields),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         $safeConfig = htmlspecialchars($config, ENT_QUOTES, 'UTF-8');
@@ -514,9 +698,11 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         $rowClass = $this->style('row', 'compact', $ctx->use);
         $titleClass = $this->style('title', 'compact', $ctx->use);
         $subClass = $this->style('subtitle', 'compact', $ctx->use);
-        $titleField = $ctx->fields[0] ?? 'id';
+        $titleField = $ctx->fields[0] ?? null;
         $subField = $ctx->fields[1] ?? null;
-        $title = htmlspecialchars((string)($ctx->row[$titleField] ?? $titleField), ENT_QUOTES, 'UTF-8');
+        $title = $titleField !== null
+            ? htmlspecialchars((string)($ctx->row[$titleField] ?? ''), ENT_QUOTES, 'UTF-8')
+            : '';
         $subRaw = $subField ? (string)($ctx->row[$subField] ?? '') : '';
         $viewContract = is_array($this->renderContext['_view'] ?? null) ? $this->renderContext['_view'] : [];
         $excerptLength = (int)($this->renderContext['excerpt-length'] ?? $this->renderContext['excerpt_length'] ?? $viewContract['excerpt_length'] ?? 0);
@@ -527,7 +713,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
         $actionHtml = $this->renderRowActions($ctx);
         $subHtml = $sub !== '' ? "<p class=\"{$subClass}\">{$sub}</p>" : '';
-        $clickAttrs = $this->renderRowClickAttrs($ctx->row, $ctx->rowClick, $ctx->rowClickTarget);
+        $clickAttrs = $this->renderRowClickAttrs($ctx->row, $ctx->rowClick, $ctx->rowClickTarget, $ctx->urlKeyFields);
 
         return <<<HTML
         <div class="{$rowClass}{$clickAttrs['class']}"{$clickAttrs['attrs']}>
@@ -548,10 +734,17 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
         // Use semantic role annotations from view contract if available,
         // fall back to positional fields (index 0 = title, index 1 = subtitle).
-        $titleField = $ctx->roleFields['title'] ?? ($ctx->fields[0] ?? 'name');
-        $subField = $ctx->roleFields['subtitle'] ?? ($ctx->fields[1] ?? null);
-        $imageField = $ctx->roleFields['image'] ?? (in_array('image', $ctx->fields, true) ? 'image' : (in_array('thumbnail', $ctx->fields, true) ? 'thumbnail' : null));
-        $title = htmlspecialchars((string)($ctx->row[$titleField] ?? ''), ENT_QUOTES, 'UTF-8');
+        $roleTitle = $ctx->roleFields['title'] ?? null;
+        $roleSubtitle = $ctx->roleFields['subtitle'] ?? null;
+        $roleImage = $ctx->roleFields['image'] ?? null;
+        $titleField = is_string($roleTitle) && in_array($roleTitle, $ctx->fields, true) ? $roleTitle : ($ctx->fields[0] ?? null);
+        $subField = is_string($roleSubtitle) && in_array($roleSubtitle, $ctx->fields, true) ? $roleSubtitle : ($ctx->fields[1] ?? null);
+        $imageField = is_string($roleImage) && in_array($roleImage, $ctx->fields, true)
+            ? $roleImage
+            : (in_array('image', $ctx->fields, true) ? 'image' : (in_array('thumbnail', $ctx->fields, true) ? 'thumbnail' : null));
+        $title = $titleField !== null
+            ? htmlspecialchars((string)($ctx->row[$titleField] ?? ''), ENT_QUOTES, 'UTF-8')
+            : '';
         $subRaw = $subField ? (string)($ctx->row[$subField] ?? '') : '';
         $viewContract = is_array($this->renderContext['_view'] ?? null) ? $this->renderContext['_view'] : [];
         $excerptLength = (int)($this->renderContext['excerptLength'] ?? $this->renderContext['excerpt-length'] ?? $this->renderContext['excerpt_length'] ?? $viewContract['excerpt_length'] ?? 0);
@@ -581,7 +774,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 . $this->renderCell($ctx->row[$field], is_string($renderer) ? $renderer : null, (string)$field, $ctx->row, 'card_grid')
                 . '</div>';
         }
-        $clickAttrs = $this->renderRowClickAttrs($ctx->row, $ctx->rowClick, $ctx->rowClickTarget);
+        $clickAttrs = $this->renderRowClickAttrs($ctx->row, $ctx->rowClick, $ctx->rowClickTarget, $ctx->urlKeyFields);
 
         return <<<HTML
         <div class="{$cardClass}{$clickAttrs['class']}"{$clickAttrs['attrs']}>
@@ -635,7 +828,7 @@ final class DefaultEntityRenderer implements EntityRendererInterface
     {
         $tdClass = $this->style('td', 'table', $ctx->use);
         $trClass = $this->style('tr', 'table', $ctx->use);
-        $clickAttrs = $this->renderRowClickAttrs($ctx->row, $ctx->rowClick, $ctx->rowClickTarget);
+        $clickAttrs = $this->renderRowClickAttrs($ctx->row, $ctx->rowClick, $ctx->rowClickTarget, $ctx->urlKeyFields);
         $cells = '';
         if ($ctx->hasBulk) {
             $rowId = htmlspecialchars((string)($ctx->row['id'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -666,6 +859,33 @@ final class DefaultEntityRenderer implements EntityRendererInterface
     }
 
     // ── Actions ────────────────────────────────────────────────────
+
+    /**
+     * The CSRF hidden input for renderer-emitted forms, or '' when no token can be obtained.
+     *
+     * Callers MUST treat '' as fail-closed and omit the form. A state-changing control without a
+     * token is either unprotected (if the endpoint does not enforce) or permanently broken with a
+     * 419 (if it does) -- neither is acceptable, so the control is withheld instead.
+     *
+     * The previous implementation guarded on `csrf_token()` and `entity_csrf_token()`. Neither
+     * function exists anywhere in this repository (the real helper is the camelCase `csrfToken()`
+     * on the application), so both guards were always false and the token was never emitted.
+     */
+    private function csrfHiddenInput(): string
+    {
+        if (!function_exists('app')) {
+            return '';
+        }
+        try {
+            $app = app();
+            if ($app === null || !method_exists($app, 'csrfField')) {
+                return '';
+            }
+            return trim((string) $app->csrfField());
+        } catch (\Throwable) {
+            return '';
+        }
+    }
 
     private function renderRowActions(RowRenderContext $ctx): string
     {
@@ -727,9 +947,21 @@ final class DefaultEntityRenderer implements EntityRendererInterface
             $safeLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
             $safeId = htmlspecialchars((string)$id, ENT_QUOTES, 'UTF-8');
 
-            $href = isset($ctx->actionUrls[$action])
-                ? $this->renderWithRowContext($ctx->actionUrls[$action], $ctx->row, $this->renderContext)
+            $rawHref = isset($ctx->actionUrls[$action])
+                ? (string)$ctx->actionUrls[$action]
                 : "?id={$safeId}&amp;action={$action}";
+            // Escaping is not validation: check the declared template (catches a
+            // protocol-relative target before substitution can launder it) and
+            // the substituted result (catches a dangerous row-value scheme).
+            if ($this->validateActionUrl($rawHref) === null) {
+                continue;
+            }
+            $href = isset($ctx->actionUrls[$action])
+                ? $this->renderWithRowContext($ctx->actionUrls[$action], $ctx->row, $this->renderContext, $ctx->urlKeyFields)
+                : $rawHref;
+            if ($this->validateActionUrl($href) === null) {
+                continue;
+            }
 
             $method = strtolower((string)($ctx->actionMethods[$action] ?? 'get'));
 
@@ -738,23 +970,18 @@ final class DefaultEntityRenderer implements EntityRendererInterface
                 $onSubmit = $confirmMsg !== ''
                     ? ' onsubmit="return confirm(' . htmlspecialchars(json_encode($confirmMsg), ENT_QUOTES, 'UTF-8') . ')"'
                     : '';
-                $csrfInput = '';
-                if (function_exists('csrf_token')) {
-                    $csrfValue = htmlspecialchars((string)\csrf_token(), ENT_QUOTES, 'UTF-8');
-                    $csrfInput = '<input type="hidden" name="_token" value="' . $csrfValue . '">';
-                }
-                if (function_exists('entity_csrf_token')) {
-                    $moduleCsrf = htmlspecialchars((string)\entity_csrf_token(), ENT_QUOTES, 'UTF-8');
-                    if ($moduleCsrf !== '') {
-                        $csrfInput = '<input type="hidden" name="_token" value="' . $moduleCsrf . '">';
-                    }
+                $csrfInput = $this->csrfHiddenInput();
+                if ($csrfInput === '') {
+                    // Fail closed: emit no action rather than an unprotected or always-419 form.
+                    continue;
                 }
 
-                $hiddenInputs = '<input type="hidden" name="id" value="' . $safeId . '">';
-                foreach ($ctx->row as $key => $value) {
-                    if ($key === 'id' || !is_scalar($value)) {
-                        continue;
-                    }
+                // Row-data projection: only the declared action_payload_fields
+                // are serialized. Absent, malformed or empty metadata emits no
+                // payload at all. The form action URL still carries the row id,
+                // so the control is not silently misdirected.
+                $hiddenInputs = '';
+                foreach ($this->projectRow($ctx->row, $ctx->actionPayloadFields) as $key => $value) {
                     $safeKey = htmlspecialchars((string)$key, ENT_QUOTES, 'UTF-8');
                     $safeVal = htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
                     $hiddenInputs .= '<input type="hidden" name="' . $safeKey . '" value="' . $safeVal . '">';
@@ -973,15 +1200,25 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
     // ── Utilities ──────────────────────────────────────────────────
 
-    private function renderWithRowContext(string $template, array $row, array $fallbackContext = []): string
+    private function renderWithRowContext(string $template, array $row, array $fallbackContext = [], array $declaredRowFields = []): string
     {
         $result = $template;
         // Collect all placeholders from the template
         preg_match_all('/\{(\w+)\}/', $result, $placeholders);
-        $allValues = array_merge($fallbackContext, $row);
+        // Only the declared row fields may reach the rendered context. A field
+        // absent from the declared list is not row data this channel was granted,
+        // even when the row carries it. The fallback context is render metadata
+        // (base_url, view, etc.), not row data, so it is always available.
+        $projectedRow = $this->projectRow($row, $declaredRowFields);
 
         foreach ($placeholders[1] as $key) {
-            $value = $row[$key] ?? $fallbackContext[$key] ?? null;
+            if (array_key_exists($key, $projectedRow)) {
+                $value = $projectedRow[$key];
+            } elseif (array_key_exists($key, $fallbackContext)) {
+                $value = $fallbackContext[$key];
+            } else {
+                $value = null;
+            }
             if ($value === null || $value === '' || $value === false) {
                 // Placeholder not resolvable — replace with empty string to avoid
                 // rendering literal "{key}" in the output (e.g. {base_url} when
@@ -997,25 +1234,33 @@ final class DefaultEntityRenderer implements EntityRendererInterface
         return $result;
     }
 
-    private function renderRowClickAttrs(array $row, string $rowClick, string $target): array
+    private function renderRowClickAttrs(array $row, string $rowClick, string $target, array $urlKeyFields = []): array
     {
         if ($rowClick === '') {
             return ['attrs' => '', 'class' => ''];
         }
         $url = $rowClick;
-        // First pass: check if all required placeholders have non-empty values
+        // The row data this channel may interpolate is fixed by the declared
+        // url_key_fields list. A placeholder the row cannot supply from that list
+        // leaves the target unresolved, and an unresolved target is withheld
+        // rather than emitted with a hole in it.
+        $projectedRow = $this->projectRow($row, $urlKeyFields);
         preg_match_all('/\{(\w+)\}/', $url, $placeholders);
         foreach ($placeholders[1] as $key) {
-            $value = $row[$key] ?? null;
-            if ($value === null || $value === '' || $value === false) {
+            if (!array_key_exists($key, $projectedRow) || $projectedRow[$key] === '' || $projectedRow[$key] === false) {
                 return ['attrs' => '', 'class' => ''];
             }
         }
-        // Second pass: substitute all values
-        foreach ($row as $key => $value) {
-            if (is_scalar($value) || $value === null) {
-                $url = str_replace('{' . $key . '}', urlencode((string)$value), $url);
-            }
+        // Second pass: substitute only the declared fields
+        foreach ($projectedRow as $key => $value) {
+            $url = str_replace('{' . $key . '}', urlencode((string)$value), $url);
+        }
+        // Validate the substituted URL BEFORE the slash-collapse, so a
+        // protocol-relative target cannot be laundered into a local path and
+        // slip past scheme validation.
+        $url = $this->validateActionUrl($url);
+        if ($url === null) {
+            return ['attrs' => '', 'class' => ''];
         }
         // Collapse any stray double slashes (except protocol://)
         $url = preg_replace('#(?<!:)//+#', '/', $url);
@@ -1057,10 +1302,10 @@ final class DefaultEntityRenderer implements EntityRendererInterface
 
     private function renderEntityBulkBar(array $bulkActions, string $bulkActionUrl, string $listId, string $use): string
     {
-        $csrfInput = '';
-        if (function_exists('csrf_token')) {
-            $csrfValue = htmlspecialchars((string)\csrf_token(), ENT_QUOTES, 'UTF-8');
-            $csrfInput = '<input type="hidden" name="_token" value="' . $csrfValue . '">';
+        $csrfInput = $this->csrfHiddenInput();
+        if ($csrfInput === '') {
+            // Fail closed: no token, so no bulk POST form at all.
+            return '';
         }
         $safeUrl = htmlspecialchars($bulkActionUrl, ENT_QUOTES, 'UTF-8');
         $buttons = '';

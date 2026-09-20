@@ -1,0 +1,623 @@
+$ php tools/ai-contract-lint.php
+COVERAGE .ai/*.contract.md + .ai/projects/**/*.md (project.md and slice contracts)
+ai-autonomy-harness                                  parse=FAIL harness_ref=yes phantoms=0  status=ADOPTED — STANDING REFERENCE (this file is no longer a one-shot slice) class=stale
+ai-autonomy-harpp-binding                            parse=FAIL harness_ref=no  phantoms=5  status=READY_FOR_IMPLEMENTATION                 class=live [seven files listed above., No printing or persisting of `~/.config/harpp/config.json` secret values., No edit to any other server entry, key or value in `~/.config/Code/User/mcp.json`; the change is the, No `git add`/`commit`/`push`; no branch creation or switching., No weakening, skipping or deleting an existing test to reach a pass.]
+ai-autonomy-mechanise-doctrine                       parse=FAIL harness_ref=yes phantoms=0  status=DONE — implemented and verified by the Chair 2026-09-14 (suite 46/46; safety floor probed; PHPStan clean) class=stale
+ai-autonomy-remote-shape-repair                      parse=FAIL harness_ref=no  phantoms=2  status=READY_FOR_IMPLEMENTATION                 class=live [this repair., `git add` — no staging, commit, push, branch creation or switching (a rule, not a path).]
+akira-cli-capability-scope                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-dedicated-test-tenant                          parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-editorial-finish                               parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-entity-view-contracts                          parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION (investigation-gated) class=live
+akira-media-surface                                  parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-mutation-cache-invalidation                    parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-theme-scope                                    parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown
+allowlist-evidence-surface                           parse=FAIL harness_ref=yes phantoms=0  status=DIRECTOR_AUTHORISED (gen4-r1-d1)         class=unknown
+allowlist-native-evidence                            parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-33: *"A is approved"*) class=unknown
+authority-beyond-http                                parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-entrypoints                                parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-route-coverage-akira                       parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-route-coverage-privilege                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-scope                                      parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+bf1-vacuity                                          parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-41)              class=unknown
+brief-refresh-groq                                   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+builder-spec-truth                                   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+c5-governance-census                                 parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+c6-route-authority                                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+contract-corpus-conformance                          parse=FAIL harness_ref=yes phantoms=1  status=DONE — implemented and verified by the Chair 2026-09-14 (lint reproduced independently; p2.1 retrofit corrected under CD-6) class=stale [`git add` — no staging, commit, push, branch creation or switching (a rule, not a path).]
+cycle4-provenance                                    parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+cycle4b-fixture-and-verify                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+disyl-include-root-cache-key                         parse=FAIL harness_ref=no  phantoms=0  status=QUEUED — dispatch after the read-authority-extension lane releases the working tree class=live
+disyl-rawtext-control-tags                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+disyl-style-compiled-fix                             parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+exceptions-route                                     parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-44)              class=unknown
+guardrail-ladder-cost                                parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-28)              class=unknown
+guardrail-scope-integrity                            parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (§see below)        class=unknown
+guardrail-trust-surface                              parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+harness-acceptance-a-simulated-harpp                 parse=ok   harness_ref=no  phantoms=2  status=READY_FOR_IMPLEMENTATION                 class=live [`~/.config/harpp/` — never read, never write., `git add` — no staging, commit, push, branch creation or switching (a rule, not a path).]
+harness-declared-artifacts                           parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-37: *"A is approved"*) class=unknown
+harpp5-claim-rederivation                            parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+media-contribute-authority                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+media-delete-request                                 parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+module-test-visibility-repair                        parse=FAIL harness_ref=no  phantoms=0  status=BLOCKING — PR #135 is RED and must not merge until green class=live
+module-test-visibility                               parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+p1.3-activation-enforcement                          parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2-closure-revocation                                parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+p2.1-navigation-surface                              parse=ok   harness_ref=yes phantoms=0  status=DONE — implementation present on disk; retrofitted for parseability only, do not dispatch class=stale
+p2.2-redirects                                       parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2.2a-post-redirects                                 parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2.3-seo-surface                                     parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2.4-search-console                                  parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p3.1-akira-settings                                  parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p3.1b-more-settings                                  parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p3.2-workflow-console                                parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p4.0-theme-customizer                                parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p4.2a-module-manager-view                            parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p4.2a-r2-module-manager-view                         parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p5.1-authority-surface                               parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p5.2-provenance-surface                              parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p5.2fix-provenance-capability                        parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p6a-backup-export-console                            parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+playwright-rate-limit-cap                            parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown
+policy-seeding-hygiene                               parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+prohibition-leeway                                   parse=FAIL harness_ref=yes phantoms=0  status=DIRECTOR_AUTHORISED (CD-48)              class=unknown
+project.md                                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s1-stale-metrics-expectation.md                      parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s2-gui-settings-route-authority.md                   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+project.md                                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s2-s3-project-and-loop.md                            parse=FAIL harness_ref=yes phantoms=0  status=DELIVERED                                class=stale
+s4-metrics.md                                        parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s5-first-real-run.md                                 parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s6-claim-commands.md                                 parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+r5-read-governance                                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+read-authority-extension                             parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+read-authority-probe                                 parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+repair-disyl-script-interpolation                    parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+review-implementations.sol                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_REVIEW                         class=unknown
+run-ledger-instrumentation                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+scope-path-semantics                                 parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+t1-theme-lifecycle-gap-closure                       parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t2-theme-block-definitions                           parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t3-extension-registry                                parse=FAIL harness_ref=no  phantoms=0  status=changed: implementation_summary: (registry/shell_wiring/theme_contribution/seo_widget) class=unknown
+t4a-builder-canonical-blocks                         parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t4a-verify-repair                                    parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t4b-builder-admin-editor                             parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+t4c-canvas                                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+t4pre-disyl-block-engine                             parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+thesis-measurement                                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_MEASUREMENT                    class=live
+triage-test-gate                                     parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+
+SUMMARY total=85 live=46 stale=5 unknown=34 live_parse_failures=40 live_with_phantoms=3 with_phantoms=4 missing_status=17
+
+$ php tests/ai_autonomy_test.php
+
+══════════════════════════════════════
+  ai-autonomy
+  Started: 2026-09-15 02:27:28
+══════════════════════════════════════
+  🧬 tools/ai-autonomy.php — 8f663a4e5f44...
+  🧬 kernel/Workbench/Schemas/development-decision-request.v1.schema.json — 55fa0f0abf7e...
+
+── Envelope and fail-closed contract parsing ──
+  ✅ 1. plan prints the autonomy envelope
+  ✅ 2. missing Risks fails closed
+
+── Deterministic L0-L4 tripwire ──
+  ✅ 3. L1 allowed file proceeds
+  ✅ 4. forbidden directory escalates with prefix evidence
+  ✅ 5. out-of-scope path escalates
+  ✅ 6. in-scope DDL escalates without justification
+  ✅ 7. contract-grounded DDL resolves to L3 record
+  ✅ 8. ungrounded DDL escalates
+  ✅ 9. explicit L4 escalates
+  ✅ 10. default L2 records
+
+── HARPP-bound decision lifecycle ──
+  ✅ 11. malformed options fail closed before HARPP
+  ✅ 12. successful deferral writes artifacts and exact HARPP payload
+  ✅ 12a. real submit envelope records data.id
+  ✅ 13. failed HARPP exits 4 loudly but retains artifact
+  ✅ 13b. retry redelivers the same idempotency key
+  ✅ 14. HARPP suppression is non-delivery
+  ✅ 15. local status reports pending
+  ✅ 16. local choice validates and resolves once
+  ✅ 17. answered decision cannot be answered twice
+  ✅ 18. DECIDED HARPP answer resolves then ack/apply in order
+  ✅ 18a. real nested decisions envelope resolves lifecycle_state DECIDED
+  ✅ 18c. lifecycle_state NOTIFIED is refused without ack/apply
+  ✅ 18b. remote status merges HARPP lifecycle by decision key
+  ✅ 18d. real nested status envelope reports harpp_state DECIDED
+  ✅ 19. manifest has exactly four governed stages
+  ✅ 20. notify is idempotent and suppression is loud
+  HARPP_STUB_EVIDENCE captured=14 child_PATH=stub:/usr/bin:/bin HARPP_NOTIFY=0 real_binary_excluded=yes
+  ✅ 21. every HARPP call was captured by isolated stub
+
+── Safety floor — absolute prohibitions are unauthorisable ──
+  ✅ 22. an existing test inside allowed scope escalates as an absolute prohibition
+  ✅ 23. phpstan.neon inside allowed scope escalates as an absolute prohibition
+  ✅ 24. .github/workflows inside allowed scope escalates as an absolute prohibition
+  ✅ 24a. phpstan-baseline.neon inside allowed scope escalates even though grounded
+  ✅ 25. adding a new test file under an allowed tests/ path still proceeds
+  ✅ 26. a grounded justification cannot authorise an absolute prohibition
+
+── Taxonomy is single-sourced and the projection is complete ──
+  ✅ 27. plan --json emits the ten-key projection with expected types
+  ✅ 28. every path-decidable taxonomy entry escalates and the printed set is its projection
+
+── CD-48 — authority matches whole tokens and creation is not an edit ──
+  ✅ 60. an authority-named route test no longer reports the authority prohibition
+  ✅ 60a. a test created at an authority-named path records as an addition, flagging neither authority nor existing-test
+  ✅ 61. every enumerated authority token still trips the absolute authority prohibition
+  ✅ 62. authority and authorities are not protected tokens while auth and auth-owned are
+  ✅ 63. a test present at dispatch is still flagged as an absolute existing-test prohibition
+  ✅ 64. the same test absent at dispatch is an addition, not an existing-test prohibition
+  ✅ 65. without the dispatch flag an existing test still flags and an absent one still records
+  ✅ 66. the default authority verdict changes only on the enumerated deliberate token exceptions
+  ✅ 67. a malformed --existed-at-dispatch is refused with exit 2 and the field named
+
+── Stop invariant is checkable ──
+  ✅ 29. stop-report: remaining=0 exits 0
+  ✅ 30. stop-report: remaining=3 CONTRACT_BLOCKED exits 0
+  ✅ 31. stop-report: remaining=3 PROJECT_COMPLETE exits 3
+  ✅ 32. stop-report: remaining=3 UNCERTAINTY exits 3
+  ✅ 33. stop-report: malformed --remaining exits 2
+  ✅ 34. stop-report --json surfaces the invariant and the count
+
+── Envelope defects are visible, not silent ──
+  ✅ 35. plan warns when no harness: block references the standing contract
+  ✅ 36. plan does not warn when the harness block is present
+  ✅ 37. plan names a forbidden bullet it cannot bind to a path
+  ✅ 38. plan warns on an allowed/forbidden intersection naming both entries
+  ✅ 39. check still applies fail-closed precedence to the forbidden entry
+
+── The verifier trust surface is contract-unreachable (CD-21 rule 1) ──
+  ✅ 40. plan refuses a contract that names a trust-surface path, naming it
+  ✅ 40a. plan refuses a contract naming several trust-surface paths
+  ✅ 41. every enumerated trust-surface path escalates even when the contract allows it
+  ✅ 42. action text naming the verifier escalates without a --path
+  ✅ 43. a glob that could match a trust-surface file fails closed
+  ✅ 43a. check escalates directory and broad-glob capabilities that cover the trust surface
+  ✅ 44. an ordinary in-scope path still records (non-vacuity guard)
+  ✅ 45. directory scope covering the verifier is refused and names a reached path
+  ✅ 46. tool glob covering the verifier is refused
+  ✅ 47. broad PHP glob covering the verifier is refused
+  ✅ 48. docs directory remains plannable (positive control)
+  ✅ 49. trust-surface amend refuses absent and unknown decisions with exit 3
+  ✅ 50. trust-surface amend records reason, real decision, context, timestamp and hash without editing the surface
+
+── CD-44 — exceptions: is an authority route, not a judgement ──
+  ✅ 51. a matching pre-declared exception routes an existing-test change to RECORD and names it
+  ✅ 52. without an exception the same probe is ESCALATE / L4 / exit 3 (AC2: with and without)
+  ✅ 53. an exception naming the trust surface is refused by plan and check (direction 3)
+  ✅ 53a. an exception scope covering the verifier (directory) is refused, naming a reached path
+  ✅ 54. an exception whose scope lies inside forbidden_scope is refused, naming the entry
+  ✅ 55. a traversal or absolute exception scope is refused, naming the reason
+  ✅ 56. an entry missing why/scope/decided_when/authority is refused with the field named
+  ✅ 57. an exception dated after dispatch has no effect; dated before dispatch it authorises (direction 4)
+  ✅ 58. an exception cannot route a gate-config change and does not cover paths it does not name (AC4)
+  ✅ 59. additive format: an empty exceptions block leaves the revision unchanged, a declared one moves it
+
+══════════════════════════════════════
+  RESULTS
+  78/78 passed
+  Assertions: 78
+
+  Suite: ai-autonomy
+  Time: 9.28s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-autonomy.json
+
+$ php tests/ai_run_test.php
+
+══════════════════════════════════════
+  ai-run
+  Started: 2026-09-15 02:27:38
+══════════════════════════════════════
+  🧬 tools/ai-run.php — 6ae7b9115635...
+
+── start writes the authoritative record ──
+  ✅ 1. start exits 0 and writes a record
+  ✅ 2. record carries a 16-hex contract revision
+  ✅ 3. record carries the pid, lane and scope counts
+  ✅ 3a. start records the trust-surface anchor (aggregate + seven files)
+  ✅ 3b. start captures the dispatch-time changed-path baseline
+  ✅ 3c. verifier work requires a real director decision and records its reference
+  ✅ 4. status reports the started run as running (live dispatcher pid)
+
+── finish classification matrix ──
+  ✅ 5. exit 1 classifies failed
+  ✅ 6. exit 0 with a 0-byte log classifies silent
+  ✅ 7. exit 0 with content classifies completed
+
+── replay of the observed real cases (non-vacuity anchor) ──
+  ✅ 8. scope-path-semantics (exit 0, 0-byte log) -> silent
+  ✅ 9. a ~7 KB report (exit 0) -> completed
+  ✅ 10. classification is content-sensitive, not exit-code-only (same exit 0, two outcomes)
+
+── pid reconciliation: from the pid, never from log size ──
+  ✅ 11. a live pid stays running
+  ✅ 12. a dead pid reconciles running -> abandoned
+  ✅ 13. reconciliation is persisted, not re-inferred per call
+
+── --gate refuses to advance on an unreported run ──
+  ✅ 14. --gate exits 3 while silent/failed/abandoned runs exist
+  ✅ 15. --gate exits 0 when every run is clean
+
+── claims: structured, extracted unverified, honest re-derivability ──
+  ✅ 16. claims extracts at least three distinct structured claim types
+  ✅ 17. every extracted claim is UNVERIFIED and carries the structured shape
+  ✅ 18. claims state that verify re-derives by execution
+  ✅ 18b. every recognised type declares re_derivable honestly
+  ✅ 19. malformed/absent input exits 2
+
+── commit-check: eligibility decided by the ledger, not the tree ──
+  ✅ 20. commit-check: no runs -> exit 0
+  ✅ 21. commit-check: completed only -> exit 0
+  ✅ 22. commit-check: running -> exit 3, run named with its state
+  ✅ 23. commit-check: silent -> exit 3, run named with its state
+  ✅ 24. commit-check: failed -> exit 3, run named with its state
+  ✅ 25. commit-check: dead pid reconciled to abandoned -> exit 3, run named with its state
+  ✅ 25a. commit-check: a malformed record is NOT ELIGIBLE and names the file (D3)
+  ✅ 25b. commit-check: a trust-surface hash mismatch blocks and names the file (D2)
+  ✅ 25c. commit-check: a legacy record without a trust-surface hash is not blocked
+
+── verify: re-derive by execution and bind evidence to the revision ──
+  ✅ 26. verify re-executes an allowlisted command and records RE_DERIVED
+  ✅ 27. verify records the tree binding, on the output and in the run record
+  ✅ 26a. a real python3 -m py_compile command is executed and re-derives to RE_DERIVED
+  ✅ 26b. a python verification leaves the working tree unchanged (git status and bytecode)
+  ✅ 26c. the bounded unittest shape is allowlisted and executed, not refused
+  ✅ 26d. the file-test shape refuses a missing file through its existence screen
+  ✅ 26e. the file-test shape is declared in the allowlist with its existence screen
+  ✅ 28. a claim the command does not produce is CONTRADICTED, exit 3
+  ✅ 29. a non-allowlisted command is refused, shown, and NOT executed
+  ✅ 29-chained-and. python refusal (chained-and): refused and not executed
+  ✅ 29-traversal. python refusal (traversal): refused and not executed
+  ✅ 29-inline-code. python refusal (inline-code): refused and not executed
+  ✅ 29-module-os. python refusal (module-os): refused and not executed
+  ✅ 29-bare-file. python refusal (bare-file): refused and not executed
+  ✅ 29-chained-pipe. python refusal (chained-pipe): refused and not executed
+
+── the widened allowlist: module tests screened, census bounded ──
+  ✅ 29a. a pure module test is admitted and re-derived by execution (rule exec = PHP_BINARY)
+  ✅ 29b. a module test that bootstraps the app is refused, not executed
+  ✅ 29c. a nonexistent module test is refused by the existence screen
+  ✅ 29d. the bounded census shape is admitted and re-derived by execution
+  ✅ 29e-chained. the census refuses a chained form
+  ✅ 29e-piped. the census refuses a piped form
+  ✅ 29f. php -r is still refused and never executed
+  ✅ 29g. path traversal in a module path is still refused
+  ✅ 29h. every pre-existing rule is byte-for-byte unchanged and the table holds exactly 11 rules
+  ✅ 30. a non-re-derivable claim is UNVERIFIED, never RE_DERIVED
+
+── claim binding: declared routes and labelled derivation ──
+  ✅ 31. a command-bearing evidence line binds command_source declared
+  ✅ 32. a TEST_RESULT naming an existing pure test binds a labelled derived command
+  ✅ 33. a TEST_RESULT naming a missing file is refused and stays UNVERIFIED
+  ✅ 34. a TEST_RESULT naming an impure file is refused and stays UNVERIFIED
+
+── runner usage is artefact-derived; blocked history is acknowledged, never rewritten ──
+  ✅ 35. run binds the exposed runner session and derives exact tokens/cost from its JSONL
+  ✅ 36. absent runner usage is explicit null with a reason, never a figure
+  ✅ 37. acknowledgement refuses without a resolvable director decision (exit 3)
+  ✅ 38. one blocked run is acknowledged verbatim and commit-check becomes eligible
+  ✅ 39. acknowledgement does not mutate status, scope conformance, or any run-record byte
+  ✅ 40. a named blocked run can be acknowledged only once
+  ✅ 41. a new blocked run blocks again; acknowledgement is not a general unblock
+  ✅ 42. a still-running run cannot be acknowledged (exit 3)
+
+── declared harness artefacts: shown, guarded, and A-F2 unweakened ──
+  ✅ 43. GUARD 1 refuses a trust-surface artefact (exact file and covering directory), exit 2
+  ✅ 44. GUARD 1 refuses a forbidden_scope artefact, naming the entry, exit 2
+  ✅ 45. a traversal or absolute artefact is refused, exit 2
+  ✅ 46. GUARD 2 refuses --harness-artifact on finish and leaves the run running, exit 2
+  ✅ 47. a declared artefact is excluded from the delta and shown in scope_conformance
+  ✅ 48. A-F2 unweakened: an undeclared out-of-scope path still blocks (exit 3)
+  ✅ 49. a declaration narrows attribution only: declared shown, undeclared still blocks
+
+── CD-44 — an authorised existing-test change is recorded and attributed ──
+  ✅ 50. an authorised existing-test change finishes OK and the record names the exception and its authority
+  ✅ 51. the same existing-test delta without an exception still blocks (exit 3), unweakened
+  ✅ 52. an exception supplied after dispatch moves the revision and is refused (exit 3)
+
+══════════════════════════════════════
+  RESULTS
+  79/79 passed
+  Assertions: 79
+
+  Suite: ai-run
+  Time: 36.8s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-run.json
+
+$ php tests/ai_project_test.php
+
+══════════════════════════════════════
+  ai-project
+  Started: 2026-09-15 02:28:15
+══════════════════════════════════════
+  🧬 tools/ai-project.php — c270bb2eceff...
+
+── Derived obligations and first eligible slice ──
+  ✅ 1. two slices with two criteria each derive four remaining obligations
+  ✅ 2. next returns the first ordered slice
+
+── Done requires independently re-derived claims ──
+  ✅ 3. UNVERIFIED claims cannot mark a slice done
+  ✅ 4. RE_DERIVED evidence marks done and removes only that slice obligations
+  ✅ 5. after S1 completes, next returns S2
+
+── Blocked is fail closed ──
+  ✅ 6. a blocked slice refuses next with the recorded reason
+
+── Retry is the recorded way out of blocked ──
+  ✅ 7. retry moves blocked -> pending, records the reason and preserves the prior run id
+  ✅ 8. after a retry, next returns the slice again
+  ✅ 9. retry refuses a slice that is not blocked
+  ✅ 10. retry refuses an empty reason
+  ✅ 11. retry refuses a done slice
+
+── Done binds evidence to the run, the contract revision and the tree (D4) ──
+  ✅ 12. a foreign run record (internal id != run id) is refused
+  ✅ 13. a stale revision is refused
+  ✅ 14. a dirty-tree verification is refused
+  ✅ 15. a stale contract revision is refused
+  ✅ 16. a fully bound record is accepted (positive control)
+
+── Metrics derive usage from bound run artefacts without estimation ──
+  ✅ 17. metrics reports exact artefact tokens/cost and the run-session binding
+  ✅ 18. metrics keeps missing usage null and states the artefact reason
+
+══════════════════════════════════════
+  RESULTS
+  18/18 passed
+  Assertions: 18
+
+  Suite: ai-project
+  Time: 1.38s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-project.json
+
+$ php tests/ai_project_metrics_test.php
+
+══════════════════════════════════════
+  ai-project-metrics
+  Started: 2026-09-15 02:28:16
+══════════════════════════════════════
+  🧬 tools/ai-project.php — c270bb2eceff...
+
+── Derived metrics match hand-computed values ──
+  ✅ 1. only runs whose contract belongs to the project are counted (3 of 4)
+  ✅ 2. slices completed counts only slices with a completed run (S1, not S2)
+  ✅ 3. runs by status counts every canonical status
+  ✅ 4. wall-clock per slice is the run span; unfinished runs are null
+
+── Claim outcomes are counted per status ──
+  ✅ 5. RE_DERIVED, CONTRADICTED and UNVERIFIED are counted separately
+
+── Unavailable metrics are null with a reason — no estimation path ──
+  ✅ 6. cost and tokens are null even though log_bytes is present (bytes are not tokens)
+  ✅ 7. contract violations are null with a stated reason, not guessed zero
+  ✅ 8. every key in `unavailable` resolves to a null metric (no estimated number hides behind a reason)
+
+── Director minutes are an input, never inferred ──
+  ✅ 9. absent director-minutes.json reports null, not zero
+  ✅ 10. usage present on every matched run is captured for real (tokens and cost summed)
+  ✅ 11. director minutes present are summed by category (concept + verification)
+  ✅ 12. chair decisions are counted from headings and errors from the explicit list
+
+── --write persists a tool-written artefact ──
+  ✅ 13. --write produces metrics.json marked tool_written with a timestamp and schema
+  ✅ 14. the written artefact carries the same metrics as the printed payload
+
+── Smoke run over the real project artefacts ──
+  ✅ 15. harpp-gen4 produces a table without error
+  ✅ 16. the three recorded Chair errors appear in the error column
+
+══════════════════════════════════════
+  RESULTS
+  16/16 passed
+  Assertions: 16
+
+  Suite: ai-project-metrics
+  Time: 0.19s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-project-metrics.json
+
+$ php tests/ai_contract_lint_test.php
+
+══════════════════════════════════════
+  ai-contract-lint
+  Started: 2026-09-15 02:28:16
+══════════════════════════════════════
+  🧬 tools/ai-contract-lint.php — 6a99218b20b4...
+
+── Legitimate directory prohibitions are not phantoms (fact 3) ──
+  ✅ 1. kernel/ and tests/ prohibitions report phantoms=0 and exit 0
+
+── A genuine non-path bullet is still reported (fact 1 / fact 4) ──
+  ✅ 2. the dropped `git add` bullet is reported as a phantom and exits 3
+
+── Corpus smoke — the fixed rule removes false positives ──
+  ✅ 3. corpus lint keeps directory-only prohibitions phantom-free; a trust-surface contract is refused
+
+══════════════════════════════════════
+  RESULTS
+  3/3 passed
+  Assertions: 3
+
+  Suite: ai-contract-lint
+  Time: 4.6s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-contract-lint.json
+
+$ php tests/ai_loop_test.php
+
+══════════════════════════════════════
+  ai-loop
+  Started: 2026-09-15 02:28:21
+══════════════════════════════════════
+  🧬 tools/ai-loop.php — 39bcd7cc0c74...
+  🧬 tools/ai-project.php — c270bb2eceff...
+
+── Refusals before the happy path ──
+  ✅ 1. marker-only output blocks and never advances
+  ✅ 2. commit-check refusal stops before ledger start or project write
+  ✅ 3. dry-run writes no project state and records no run
+
+── Every failure mode stops immediately ──
+  ✅ 4. silent stops before the second slice
+  ✅ 5. failed stops before the second slice
+  ✅ 6. contradicted stops before the second slice
+
+── Unattended progression and bounds ──
+  ✅ 7. two slices advance unattended with ledger and RE_DERIVED gates
+  ✅ 8. max-slices caps advancement exactly
+
+── A-F2 binds actual changed paths to the dispatch-time envelope ──
+  ✅ 9. an out-of-scope write blocks the slice, ledger and event stream
+  ✅ 10. an all-in-scope changed-path delta advances (positive control)
+  ✅ 11. a pre-existing out-of-scope modification is baseline, not attributed to the run
+
+── S7 bounded repair ladder: promote, link evidence, and stop at L4 ──
+  ✅ 12. an implementation failure is repaired at L1 and completes as a linked new run
+  ✅ 13. an approach failure visibly promotes directly to L2, never replays L1
+  ✅ 14. exhausted/same failure promotes L1 -> L2 rather than replaying L1
+  ✅ 15. a contract-changing condition files L4 and stops without amending contract/verifier
+  ✅ 16. a rung declaring a verifier path is structurally refused before dispatch
+  ✅ 17. ladder refuses to advance when the failed attempt supplies no new evidence
+
+── the loop declares the project state it writes in the run name ──
+  ✅ 18. the loop declares its state file, excludes it from the attributed delta, and advances
+
+══════════════════════════════════════
+  RESULTS
+  18/18 passed
+  Assertions: 18
+
+  Suite: ai-loop
+  Time: 16.22s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-loop.json
+
+$ php tests/ai_autonomy_glob_scope_test.php
+
+══════════════════════════════════════
+  ai-autonomy-glob-scope
+  Started: 2026-09-15 02:28:37
+══════════════════════════════════════
+  🧬 tools/ai-autonomy.php — 8f663a4e5f44...
+  🧬 kernel/Workbench/Development/DevelopmentTaskContract.php — 20aa24b85b9a...
+
+── A glob stays precise and is enforced fail-closed ──
+  ✅ 1. the forbidden glob is kind `glob`, not its parent directory
+  ✅ 2. the glob does not intersect a non-matching allowed file in the same directory
+  ✅ 3. a non-matching allowed sibling still proceeds
+  ✅ 4. check enforces the glob against a matching path
+  ✅ 5. glob `*` does not cross `/`: a nested path is out of scope, not glob-matched
+
+══════════════════════════════════════
+  RESULTS
+  5/5 passed
+  Assertions: 5
+
+  Suite: ai-autonomy-glob-scope
+  Time: 0.19s
+══════════════════════════════════════
+
+  📄 Results: test_results/ai-autonomy-glob-scope.json
+
+$ php tools/ai-contract-lint.php
+COVERAGE .ai/*.contract.md + .ai/projects/**/*.md (project.md and slice contracts)
+ai-autonomy-harness                                  parse=FAIL harness_ref=yes phantoms=0  status=ADOPTED — STANDING REFERENCE (this file is no longer a one-shot slice) class=stale
+ai-autonomy-harpp-binding                            parse=FAIL harness_ref=no  phantoms=5  status=READY_FOR_IMPLEMENTATION                 class=live [seven files listed above., No printing or persisting of `~/.config/harpp/config.json` secret values., No edit to any other server entry, key or value in `~/.config/Code/User/mcp.json`; the change is the, No `git add`/`commit`/`push`; no branch creation or switching., No weakening, skipping or deleting an existing test to reach a pass.]
+ai-autonomy-mechanise-doctrine                       parse=FAIL harness_ref=yes phantoms=0  status=DONE — implemented and verified by the Chair 2026-09-14 (suite 46/46; safety floor probed; PHPStan clean) class=stale
+ai-autonomy-remote-shape-repair                      parse=FAIL harness_ref=no  phantoms=2  status=READY_FOR_IMPLEMENTATION                 class=live [this repair., `git add` — no staging, commit, push, branch creation or switching (a rule, not a path).]
+akira-cli-capability-scope                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-dedicated-test-tenant                          parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-editorial-finish                               parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-entity-view-contracts                          parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION (investigation-gated) class=live
+akira-media-surface                                  parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-mutation-cache-invalidation                    parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+akira-theme-scope                                    parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown
+allowlist-evidence-surface                           parse=FAIL harness_ref=yes phantoms=0  status=DIRECTOR_AUTHORISED (gen4-r1-d1)         class=unknown
+allowlist-native-evidence                            parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-33: *"A is approved"*) class=unknown
+authority-beyond-http                                parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-entrypoints                                parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-route-coverage-akira                       parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-route-coverage-privilege                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+authority-scope                                      parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+bf1-vacuity                                          parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-41)              class=unknown
+brief-refresh-groq                                   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+builder-spec-truth                                   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+c5-governance-census                                 parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+c6-route-authority                                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+contract-corpus-conformance                          parse=FAIL harness_ref=yes phantoms=1  status=DONE — implemented and verified by the Chair 2026-09-14 (lint reproduced independently; p2.1 retrofit corrected under CD-6) class=stale [`git add` — no staging, commit, push, branch creation or switching (a rule, not a path).]
+cycle4-provenance                                    parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+cycle4b-fixture-and-verify                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+disyl-include-root-cache-key                         parse=FAIL harness_ref=no  phantoms=0  status=QUEUED — dispatch after the read-authority-extension lane releases the working tree class=live
+disyl-rawtext-control-tags                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+disyl-style-compiled-fix                             parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+exceptions-route                                     parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-44)              class=unknown
+guardrail-ladder-cost                                parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-28)              class=unknown
+guardrail-scope-integrity                            parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (§see below)        class=unknown
+guardrail-trust-surface                              parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+harness-acceptance-a-simulated-harpp                 parse=ok   harness_ref=no  phantoms=2  status=READY_FOR_IMPLEMENTATION                 class=live [`~/.config/harpp/` — never read, never write., `git add` — no staging, commit, push, branch creation or switching (a rule, not a path).]
+harness-declared-artifacts                           parse=FAIL harness_ref=no  phantoms=0  status=DIRECTOR_AUTHORISED (CD-37: *"A is approved"*) class=unknown
+harpp5-claim-rederivation                            parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+media-contribute-authority                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+media-delete-request                                 parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+module-test-visibility-repair                        parse=FAIL harness_ref=no  phantoms=0  status=BLOCKING — PR #135 is RED and must not merge until green class=live
+module-test-visibility                               parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+p1.3-activation-enforcement                          parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2-closure-revocation                                parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+p2.1-navigation-surface                              parse=ok   harness_ref=yes phantoms=0  status=DONE — implementation present on disk; retrofitted for parseability only, do not dispatch class=stale
+p2.2-redirects                                       parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2.2a-post-redirects                                 parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2.3-seo-surface                                     parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p2.4-search-console                                  parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p3.1-akira-settings                                  parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p3.1b-more-settings                                  parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p3.2-workflow-console                                parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p4.0-theme-customizer                                parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p4.2a-module-manager-view                            parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p4.2a-r2-module-manager-view                         parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+p5.1-authority-surface                               parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p5.2-provenance-surface                              parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p5.2fix-provenance-capability                        parse=FAIL harness_ref=no  phantoms=0  status=none                                     class=unknown
+p6a-backup-export-console                            parse=ok   harness_ref=no  phantoms=0  status=none                                     class=unknown
+playwright-rate-limit-cap                            parse=ok   harness_ref=yes phantoms=0  status=none                                     class=unknown
+policy-seeding-hygiene                               parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+prohibition-leeway                                   parse=FAIL harness_ref=yes phantoms=0  status=DIRECTOR_AUTHORISED (CD-48)              class=unknown
+project.md                                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s1-stale-metrics-expectation.md                      parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s2-gui-settings-route-authority.md                   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+project.md                                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s2-s3-project-and-loop.md                            parse=FAIL harness_ref=yes phantoms=0  status=DELIVERED                                class=stale
+s4-metrics.md                                        parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s5-first-real-run.md                                 parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+s6-claim-commands.md                                 parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+r5-read-governance                                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+read-authority-extension                             parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+read-authority-probe                                 parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+repair-disyl-script-interpolation                    parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+review-implementations.sol                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_REVIEW                         class=unknown
+run-ledger-instrumentation                           parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+scope-path-semantics                                 parse=FAIL harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+t1-theme-lifecycle-gap-closure                       parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t2-theme-block-definitions                           parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t3-extension-registry                                parse=FAIL harness_ref=no  phantoms=0  status=changed: implementation_summary: (registry/shell_wiring/theme_contribution/seo_widget) class=unknown
+t4a-builder-canonical-blocks                         parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t4a-verify-repair                                    parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+t4b-builder-admin-editor                             parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+t4c-canvas                                           parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+t4pre-disyl-block-engine                             parse=FAIL harness_ref=no  phantoms=0  status=PLACEHOLDER                              class=unknown
+thesis-measurement                                   parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_MEASUREMENT                    class=live
+triage-test-gate                                     parse=FAIL harness_ref=no  phantoms=0  status=READY_FOR_IMPLEMENTATION                 class=live
+
+SUMMARY total=85 live=46 stale=5 unknown=34 live_parse_failures=40 live_with_phantoms=3 with_phantoms=4 missing_status=17

@@ -48,7 +48,7 @@ foreach (cms_akira_theme_capability_handlers() as $id => $handler) {
 
 $tenantA = 994701;
 $tenantB = 994702;
-requireTenantModulesActive($tenantA, ['cms-akira-theme']);
+requireTenantModulesActive($tenantA, ['cms-akira-core', 'cms-akira-theme']);
 $originalTenant = app()->tenant()->current();
 $db = app()->db();
 $prefix = 'theme-' . bin2hex(random_bytes(5));

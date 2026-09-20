@@ -1,0 +1,224 @@
+SLICE G — the missing authority route for existing test files (CD-22's exceptions: block)
+implementation report · status: COMPLETE · authority: CD-44 (owner: "lift the freeze. fix")
+
+Summary
+An `exceptions:` block is parsed from the task contract into the normalized record; it is bound into
+the contract revision id; it is guarded against the verifier trust surface and forbidden_scope; and
+the existing-test prohibition consults it as a route. The prohibition itself is unchanged and stays
+absolute: without a matching pre-declared exception the verdict is byte-for-byte the old one
+(ESCALATE / L4 / exit 3). The route is visible and attributed: the check verdict names the exception
+and its authority, and the run record carries both the declared exception (at start) and the
+authorised exception (at finish).
+
+Files changed
+- kernel/Workbench/Development/DevelopmentTaskContract.php — parse/validate the block; bind it into
+  the revision (only when present, so contracts without a block hash exactly as before).
+- tools/ai-autonomy.php — policy guards (trust surface, forbidden_scope), `check` consults the route,
+  `--dispatch-at` for the pre-declaration check, plan visibility.
+- tools/ai-run.php — `scopeConformance()` passes the run's started_at as dispatch time and records
+  the authorising exception; `start` records `declared_exceptions`; a refused exception is exit 2,
+  not a director gate.
+- tests/ai_autonomy_test.php — 10 new assertions (tests 51–59 plus 53a).
+- tests/ai_run_test.php — 3 new assertions (tests 50–52).
+No existing test was weakened, skipped or deleted. No trust-surface file was edited.
+
+FIRST CLAIM — rule 1 still refuses this contract's own scope (AC6)
+CLAIM: `plan` refuses .ai/exceptions-route.contract.md because its scope names the verifier trust surface; this refusal is rule 1 working and is unchanged by the route.
+COMMAND: php tools/ai-autonomy.php plan --contract=.ai/exceptions-route.contract.md
+OBSERVED: (stdout empty; stderr, exit 2)
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-autonomy.php' reaches 'tools/ai-autonomy.php'; entry 'tools/ai-run.php' reaches 'tools/ai-run.php'; entry 'kernel/Workbench/Development/DevelopmentTaskContract.php' reaches 'kernel/Workbench/Development/DevelopmentTaskContract.php' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+EXIT=2
+
+AC1 / D4 — the four directions, real exit codes
+Fixtures: /tmp/exc-match.md (matching exception, decided_when 2026-09-14T15:00:00+00:00),
+/tmp/exc-none.md (same body, no exceptions block), /tmp/exc-trustsurface.md (exception scope
+tools/ai-run.php), /tmp/exc-after.md (decided_when 2030-01-01, i.e. after dispatch). All four
+contracts allow `tests/` and forbid `kernel/`; the probe path tests/ai_run_test.php exists.
+
+CLAIM: Direction 1 — a matching pre-declared exception routes an existing-test change to RECORD, naming the exception and its authority.
+COMMAND: php tools/ai-autonomy.php check 'correct a stale assertion' --path=tests/ai_run_test.php --contract=/tmp/exc-match.md
+OBSERVED: (exit 0)
+VERDICT: RECORD
+level: L2
+action: correct a stale assertion
+paths:
+  - tests/ai_run_test.php
+reasons:
+  - path 'tests/ai_run_test.php' matched 'tests' by directory prefix
+  - path 'tests/ai_run_test.php' would trip the existing-test prohibition; authorised by exception 'correct the stale runs_by_status assertion' (authority: CD-44; scope: tests/ai_run_test.php; decided_when: 2026-09-14T15:00:00+00:00)
+authorised by exception:
+  - correct the stale runs_by_status assertion (authority: CD-44)
+EXIT=0
+
+CLAIM: Direction 2 — without an exception the same probe is ESCALATE / L4 / exit 3, byte-for-byte the old behaviour (AC2, "without"; also the unweakened-prohibition direction).
+COMMAND: php tools/ai-autonomy.php check 'correct a stale assertion' --path=tests/ai_run_test.php --contract=/tmp/exc-none.md
+OBSERVED: (exit 3)
+VERDICT: ESCALATE
+level: L4
+action: correct a stale assertion
+paths:
+  - tests/ai_run_test.php
+reasons:
+  - path 'tests/ai_run_test.php' matched 'tests' by directory prefix
+  - path 'tests/ai_run_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT=3
+
+CLAIM: Direction 3 — an exception naming the trust surface is refused (plan and check, exit 2), so the route is not a rule-1 bypass.
+COMMAND: php tools/ai-autonomy.php plan --contract=/tmp/exc-trustsurface.md ; php tools/ai-autonomy.php check 'anything' --path=tests/ai_run_test.php --contract=/tmp/exc-trustsurface.md
+OBSERVED: (both exit 2)
+ERROR: contract declares an exception that is refused: exception 'edit the verifier' scope 'tools/ai-run.php' reaches the verifier trust surface ('tools/ai-run.php') and is refused — the trust surface is never contract-authorisable (CD-21 rule 1)
+EXIT=2
+ERROR: contract declares an exception that is refused: exception 'edit the verifier' scope 'tools/ai-run.php' reaches the verifier trust surface ('tools/ai-run.php') and is refused — the trust surface is never contract-authorisable (CD-21 rule 1)
+EXIT=2
+
+CLAIM: Direction 4 — an exception dated after dispatch has no effect (ESCALATE / L4 / exit 3), and the same exception is honoured when dispatch is after it.
+COMMAND: php tools/ai-autonomy.php check 'correct a stale assertion' --path=tests/ai_run_test.php --contract=/tmp/exc-after.md --dispatch-at=2026-09-14T15:45:57+00:00
+OBSERVED: (exit 3)
+VERDICT: ESCALATE
+level: L4
+action: correct a stale assertion
+paths:
+  - tests/ai_run_test.php
+reasons:
+  - path 'tests/ai_run_test.php' matched 'tests' by directory prefix
+  - exception 'correct the stale assertion after seeing the red result' is dated after dispatch and has no effect on path 'tests/ai_run_test.php' (pre-declaration only)
+  - path 'tests/ai_run_test.php' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)
+next: file an L4 decision — php tools/ai-autonomy.php defer --task=<task_id> --question="..." --option=...
+EXIT=3
+
+CLAIM: Direction 4 control — dispatching after the exception's decided_when makes the same exception active (RECORD / exit 0), proving the timestamp, not the matcher, is the discriminator.
+COMMAND: php tools/ai-autonomy.php check 'correct a stale assertion' --path=tests/ai_run_test.php --contract=/tmp/exc-after.md --dispatch-at=2031-01-01T00:00:00+00:00
+OBSERVED: (exit 0, first three lines)
+VERDICT: RECORD
+level: L2
+action: correct a stale assertion
+EXIT=0
+
+D1 — the block is parsed and every field is validated, the missing field named
+CLAIM: an entry missing why, scope, decided_when or authority is refused with the missing field named; absolute and traversal scopes are refused.
+COMMAND: php tools/ai-autonomy.php plan --contract=/tmp/exc-missing-why.md ; (same for -scope, -decided, -authority, -absolute, -traversal)
+OBSERVED: (each exit 2)
+ERROR: contract '/tmp/exc-missing-why.md' rejected: Architecture import rejected: exception 'x' is missing required field 'why'
+EXIT=2
+ERROR: contract '/tmp/exc-missing-scope.md' rejected: Architecture import rejected: exception 'x' is missing required field 'scope'
+EXIT=2
+ERROR: contract '/tmp/exc-missing-decided.md' rejected: Architecture import rejected: exception 'x' is missing required field 'decided_when'
+EXIT=2
+ERROR: contract '/tmp/exc-missing-authority.md' rejected: Architecture import rejected: exception 'x' is missing required field 'authority'
+EXIT=2
+ERROR: contract '/tmp/exc-absolute.md' rejected: Architecture import rejected: exception scope '/etc/passwd' is invalid: Invalid absolute scope path: /etc/passwd
+EXIT=2
+ERROR: contract '/tmp/exc-traversal.md' rejected: Architecture import rejected: exception scope '../etc/passwd' is invalid: Invalid traversal scope path: ../etc/passwd
+EXIT=2
+
+D2 — an exception inside forbidden_scope is refused
+CLAIM: an exception whose scope lies inside the contract's forbidden_scope is refused, naming the entry.
+COMMAND: php tests/ai_autonomy_test.php (test 54; fixture scope kernel/Capabilities/Thing.php against forbidden `kernel/`)
+OBSERVED: test 54 passes (see AC5 run below); direct message form:
+ERROR: contract declares an exception that is refused: exception 'edit a forbidden path' scope 'kernel/Capabilities/Thing.php' lies inside forbidden_scope entry 'kernel' and is refused
+
+PRE-DECLARATION IS STRUCTURAL — an exception supplied after dispatch is refused
+CLAIM: retrofitting an exception into the contract after `start` moves the contract revision, and `finish` refuses the run (exit 3, status blocked).
+COMMAND: php tests/ai_run_test.php (test 52)
+OBSERVED: test 52 passes (see AC5 run below): start exit 0, finish exit 3, status blocked, reason "contract revision moved after dispatch".
+
+AC3 — an authorised change is recorded and attributed
+CLAIM: when an exception authorises a change, the run record names the declared exception and its authority at dispatch, and the authorising exception at finish.
+COMMAND: (manual end-to-end, run record at /tmp/exc-report-runs/report-probe.json)
+  php tools/ai-run.php start --contract=/tmp/exc-report-contract.md --lane=fixture --name=report-probe --runs-dir=/tmp/exc-report-runs
+  # probe file tests/zz-report-probe-*_test.php modified
+  php tools/ai-run.php finish --id=report-probe --exit=0 --runs-dir=/tmp/exc-report-runs
+OBSERVED: (finish exit 0)
+RUN report-probe finished: silent
+  exit:      0
+  log:       0 bytes
+  report:    0 bytes
+  scope:     OK delta=1
+declared_exceptions=[{"what":"correct a stale assertion in the report probe","why":"the report must show an authorised change recorded with its authority","scope":[{"path":"tests/zz-report-probe-1c7bf26b_test.php","kind":"file"}],"decided_when":"2020-01-01T00:00:00+00:00","authority":"CD-44"}]
+scope_conformance={"ok":true,"checked":["tests/zz-report-probe-1c7bf26b_test.php"],"offending":[],"authorised_exceptions":[{"path":"tests/zz-report-probe-1c7bf26b_test.php","scope":"tests/zz-report-probe-1c7bf26b_test.php","exception":{"what":"correct a stale assertion in the report probe","why":"the report must show an authorised change recorded with its authority","scope":[{"path":"tests/zz-report-probe-1c7bf26b_test.php","kind":"file"}],"decided_when":"2020-01-01T00:00:00+00:00","authority":"CD-44"}}],"declared_harness_artifacts":[]}
+status=silent
+EXIT=0
+The probe file was deleted immediately after; `ls tests/ | grep zz-report-probe` prints none.
+
+AC2 — a contract with no exceptions block behaves exactly as before
+CLAIM: without an exceptions block the same probe is the pre-existing ESCALATE / L4 / exit 3 (AC2, "without"), identical to the pre-change text.
+COMMAND: php tools/ai-autonomy.php check 'correct a stale assertion' --path=tests/ai_run_test.php --contract=/tmp/exc-none.md
+OBSERVED: exit 3, ESCALATE, L4, reason "trips an absolute prohibition ... (no justification can authorise it)" — the same reason string tests 22–26 asserted before the route existed, and those tests still pass unchanged.
+
+CLAIM: an absent or empty exceptions block leaves the contract revision unchanged, while a declared exception moves it.
+COMMAND: php tests/ai_autonomy_test.php (test 59)
+OBSERVED: test 59 passes: plain revision == revision with an empty `exceptions:` block; a declared exception moves the revision.
+
+AC4 — no existing behaviour weakened
+CLAIM: the covering scope refusal still fires for tools/, tools/ai-*.php and **/*.php (exit 2) while docs/ is accepted.
+COMMAND: php tools/ai-autonomy.php plan --json --contract=/tmp/scope-tools.md ; ... /tmp/scope-toolsglob.md ; ... /tmp/scope-phpglob.md ; ... /tmp/scope-docs.md
+OBSERVED:
+scope=tools EXIT=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools' reaches 'tools/ai-run.php'; entry 'tools' reaches 'tools/ai-autonomy.php'; entry 'tools' reaches 'tools/ai-project.php'; entry 'tools' reaches 'tools/ai-loop.php'; entry 'tools' reaches 'tools/ai-contract-lin...
+scope=toolsglob EXIT=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/ai-*.php' reaches 'tools/ai-run.php'; ...
+scope=phpglob EXIT=2
+ERROR: contract names the verifier trust surface in its scope and is refused: entry '**/*.php' reaches 'tools/ai-run.php'; ...
+scope=docs EXIT=0
+{"envelope":{"objective":"Scope probe.","contract_revision":"0b88b3fa07030dbc","allowed_scope":[{"path":"docs","kind":"directory"}],...
+
+CLAIM: a gate-config change still escalates even when an exception whose scope is phpstan.neon matches the path; and the exact trust-surface path and harness-artifact GUARD 1/GUARD 2 still refuse (existing tests, unchanged).
+COMMAND: php tools/ai-autonomy.php check 'lower the phpstan level' --path=phpstan.neon --contract=/tmp/exc-gate.md
+OBSERVED: (exit 3)
+VERDICT: ESCALATE
+level: L4
+action: lower the phpstan level
+paths:
+  - phpstan.neon
+reasons:
+  - path 'phpstan.neon' trips an absolute prohibition: disabling, skipping, deleting or weakening an existing test or gate to get a pass (no justification can authorise it)
+EXIT=3
+The exact trust-surface path refusal and the harness-artifact GUARD 1/GUARD 2 tests are unchanged and
+passing in tests/ai_autonomy_test.php (41, 42, 43, 43a) and tests/ai_run_test.php (43, 44, 45, 46, 47,
+48, 49).
+
+AC5 — the five pure suites pass with zero skips
+CLAIM: the required pure suites pass, all assertions, zero skips.
+COMMAND: php tests/ai_autonomy_test.php ; php tests/ai_run_test.php ; php tests/ai_project_test.php ; php tests/ai_loop_test.php ; php tests/ai_contract_lint_test.php
+OBSERVED: (from test_results/*.json after the run; every process exited 0)
+ai-autonomy: passed=69 failed=0 skipped=0 exit=0
+ai-run:      passed=70 failed=0 skipped=0 exit=0
+ai-project:  passed=18 failed=0 skipped=0 exit=0
+ai-loop:     passed=18 failed=0 skipped=0 exit=0
+ai-contract-lint: passed=3 failed=0 skipped=0 exit=0
+The new assertions are: ai-autonomy tests 51, 52, 53, 53a, 54, 55, 56, 57, 58, 59; ai-run tests 50,
+51, 52.
+
+Non-vacuity — what fails when each fix is reverted
+1. Matching exception -> RECORD (test 51). Revert the `existing_test` dismissal in commandCheck(): the
+   absolute branch fires again, test 51 fails on verdict RECORD, and the route is gone.
+2. No exception -> ESCALATE / L4 / exit 3 (test 52). Revert nothing here; this is the load-bearing
+   control. If the dismissal were applied to every absolute matcher (or to paths with no matching
+   exception), test 52 fails (exit 0 where 3 is required) and test 58 fails (a gate-config change
+   would record). It is the assertion that stops the route becoming the default.
+3. Trust-surface exception -> refused (tests 53, 53a). Remove exceptionPolicyViolations() from plan/
+   check: the exception is accepted, test 53/53a fail (exit 0 instead of 2), and the exception becomes
+   the rule-1 bypass.
+4. After-dispatch exception -> no effect (test 57). Remove `exceptionDecidedBeforeDispatch()` (or the
+   `--dispatch-at` pass-through in scopeConformance): test 57 fails (exit 0 instead of 3) and an
+   exemption shaped to fit a red result is honoured.
+5. Structural validation (tests 54, 55, 56). Remove parseExceptions()'s field validation: test 56
+   fails (exit 0 / no "missing required field"); remove parseExceptionScope()'s normalizePath call:
+   test 55 fails; remove the forbidden_scope guard: test 54 fails.
+6. Record naming (ai-run test 50). Remove `declared_exceptions`/`authorised_exceptions` recording:
+   test 50 fails on the record assertions, and an authorised change becomes invisible.
+7. Pre-declaration binding (ai-run test 52). Remove exceptions from revisionId(): the retrofitted
+   exception no longer moves the revision, test 52 fails (exit 0 instead of 3).
+8. Additive format (test 59). If exceptions were always included in revisionId(), the plain and
+   empty-block revisions would differ and test 59 fails; AC2's byte-identity claim would be false.
+
+Safety
+- No trust-surface file was edited: tools/ai-autonomy.php and tools/ai-run.php are in `Files likely
+  affected` of this contract, under the one-shot CD-44 lift; kernel/Workbench/Development/
+  DevelopmentTaskContract.php likewise. The route records and consults; it never edits the verifier's
+  prohibition at run time.
+- No forbidden path was changed. `git status` shows only the five intended source/test files plus the
+  pre-existing .ai working-tree entries.
+- No full-suite run: only the five pure suites above. Logs were written to /tmp.
+- No commit, stage or push was performed.

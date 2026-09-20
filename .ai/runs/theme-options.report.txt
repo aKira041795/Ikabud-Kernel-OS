@@ -1,0 +1,123 @@
+## Implemented
+
+Customizer expanded from **23 to 43 controls**, backed by **41 design tokens**.
+
+Changed:
+
+- `storage/cms-themes/akira-editorial/tokens.json`
+- `storage/cms-themes/akira-editorial/customizer.schema.json`
+- `storage/cms-themes/akira-editorial/layouts/public.disyl`
+- `modules/cms-akira/cms-akira-theme/handlers.php`
+- `modules/cms-akira/cms-akira-theme/helpers.php`
+- Added `modules/cms-akira/cms-akira-theme/tests/theme_options_test.php`
+
+### Control support found
+
+Before this change, Theme Studio rendered:
+
+- `color` as `<input type="color">`
+- `number` as `<input type="number">`
+- everything else as free text
+
+The declarative provider supports `boolean`, `number`, `integer`, `color`, `select`, and `textarea`. Theme Studio now also renders real `<select>` controls and applies `min`, `max`, and `step` attributes to numeric inputs.
+
+Numeric values are additionally validated server-side. Malformed, non-finite, or out-of-range values produce **HTTP 422**, and the customization transaction stores nothing.
+
+### Added controls and named consumers
+
+All consumers are in `storage/cms-themes/akira-editorial/layouts/public.disyl`:
+
+| Control | CSS consumer |
+|---|---|
+| `font_size_base` | `body` → `font-size` |
+| `line_height_body` | `body` → `line-height` |
+| `font_size_display_max` | `.t-display` → `font-size` |
+| `font_size_headline_lg_max` | `.t-headline-lg` → `font-size` |
+| `font_size_headline_md` | `.t-headline-md` → `font-size` |
+| `font_size_headline_sm` | `.t-headline-sm` → `font-size` |
+| `heading_letter_spacing_adjust` | `h1,h2,h3,h4`, `.t-display`, `.t-headline-lg`, `.t-headline-md` → `letter-spacing` |
+| `color_link` | `.content-card__link`, `.post-detail__back`, `.post-body a` → `color` |
+| `color_heading` | `h1,h2,h3,h4` → `color` |
+| `color_button_background` | `.btn` → `background` |
+| `color_button_text` | `.btn` → `color` |
+| `color_button_hover_background` | `.btn:hover` → `background` |
+| `color_field_border` | `.post-body input, textarea, select` → `border-color` |
+| `color_field_focus` | focused post-body fields → `outline-color` |
+| `color_code_surface` | `.post-body pre` → `background` |
+| `button_radius` | `.btn` → `border-radius` |
+| `button_padding_block` | `.btn` → vertical `padding` |
+| `button_padding_inline` | `.btn` → horizontal `padding` |
+| `card_shadow` | `.card` → `box-shadow` |
+| `header_height` | `.site-header__inner` → `height` |
+
+The verified public merge path remains:
+
+`cms-akira-shell/helpers.php` maps `control_id` to `--control-id`, updates the token default, places tokens in `ThemeRenderContext`, and the header region emits them under `<style data-akira-customizer>`.
+
+## Visual invariant
+
+A real headless Chrome capture of tenant 54 `/` was taken before and after at 1440×1200. The PNG hashes are identical:
+
+```text
+a3ea91d61a97364c070ac90ab08aaa9808b4f5a987eb03497e5d6b768c4110f0  /tmp/theme-options-before.png
+a3ea91d61a97364c070ac90ab08aaa9808b4f5a987eb03497e5d6b768c4110f0  /tmp/theme-options-after.png
+```
+
+Computed defaults after the change were `15px` body font, `22px` body line-height, `80px` header, `56px` display heading, and the original card shadow.
+
+## Required evidence
+
+$ php modules/cms-akira/cms-akira-theme/tests/theme_options_test.php
+```text
+10 passed, 0 failed
+```
+
+$ php modules/cms-akira/cms-akira-theme/tests/theme_contract_test.php
+```text
+SKIP: tenant 994701 does not activate required CLI module cms-akira-core
+```
+
+No assertions ran; this is not reported as a pass.
+
+$ php ikabud theme:validate akira-editorial
+```text
+✓ All checks passed
+```
+
+$ php _lint_disyl.php storage/cms-themes/akira-editorial/layouts/public.disyl
+```text
+✓ 96 file(s) valid
+```
+
+$ php -l modules/cms-akira/cms-akira-theme/handlers.php
+```text
+No syntax errors detected in modules/cms-akira/cms-akira-theme/handlers.php
+```
+
+Additional checks:
+
+$ php ikabud theme:validate akira-ark
+```text
+✓ All checks passed
+```
+
+$ php ikabud theme:validate akira-ark-demo
+```text
+✓ All checks passed
+```
+
+$ php -l modules/cms-akira/cms-akira-theme/helpers.php
+```text
+No syntax errors detected in modules/cms-akira/cms-akira-theme/helpers.php
+```
+
+$ php -l modules/cms-akira/cms-akira-theme/tests/theme_options_test.php
+```text
+No syntax errors detected in modules/cms-akira/cms-akira-theme/tests/theme_options_test.php
+```
+
+PHPStan was run but did not pass: it reported five existing findings in unchanged lines of `handlers.php` and `helpers.php`.
+
+## Remaining manual browser check
+
+Not run: authenticated Theme Studio inspection and saving each new control on tenant 54. That would mutate live tenant settings, so it was intentionally left for the director’s browser check.

@@ -1,0 +1,72 @@
+{# Context: posts #}
+{# Homepage / archive entity list (theme: akira-editorial) #}
+<div class="home" data-ark-renderer="post-list">
+
+  {# Editorial masthead. Theme-authored copy (edit in the theme or customizer);
+     a data-driven featured hero needs a `featured` field in the projection. #}
+  <section class="hero container">
+    <p class="t-kicker hero__kicker">Independent essays &amp; craft</p>
+    <h1 class="t-display hero__title">Slow publishing for people who read closely.</h1>
+    <p class="t-lead hero__lead">
+      Akira is an independent editorial desk. Long-form writing, deliberate typography,
+      and no algorithm deciding what you see next.
+    </p>
+    <a class="btn" href="/posts">Browse the archive</a>
+    <div class="hero__ornament" aria-hidden="true">
+      <span></span><i></i><span></span>
+    </div>
+  </section>
+
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <p class="t-kicker section-head__kicker">Curated dispatch</p>
+        <h2 class="t-headline-md">Latest stories</h2>
+      </div>
+      <p class="section-head__count">
+        {posts | count} published {if posts | count == 1}story{else}stories{/if}
+      </p>
+    </div>
+
+    {if posts | count == 0}
+      <div class="state-empty">
+        <div class="state-empty__icon" aria-hidden="true">&#9776;</div>
+        <h3 class="t-headline-sm">No published posts yet</h3>
+        <p>The editorial desk is composing new essays. Draft stories appear here once published.</p>
+        <a class="btn" href="/posts">Check the archive</a>
+      </div>
+    {/if}
+
+    <div class="card-grid">
+      {foreach posts as post}
+        <article class="card">
+          {if post.image}
+            <div class="card__media">
+              <img src="{post.image | esc_url | esc_attr}" alt="{post.title | esc_attr}" loading="lazy">
+              {foreach post.categories as category}
+                <span class="card__badge">{category.name | esc_html}</span>
+              {/foreach}
+            </div>
+          {/if}
+          <div class="card__body">
+            {if post.image}{else}
+              {foreach post.categories as category}
+                <p class="t-kicker section-head__kicker">{category.name | esc_html}</p>
+              {/foreach}
+            {/if}
+            <time class="t-meta card__date">{post.metadata | esc_html}</time>
+            <h3 class="card__title">
+              <a href="{post.url | esc_url | esc_attr}">{post.title | esc_html}</a>
+            </h3>
+            {if post.subtitle}
+              <p class="card__excerpt">{post.subtitle | esc_html}</p>
+            {/if}
+            <div class="card__foot">
+              <a class="card__more" href="{post.url | esc_url | esc_attr}">Read story &rarr;</a>
+            </div>
+          </div>
+        </article>
+      {/foreach}
+    </div>
+  </div>
+</div>

@@ -1,0 +1,44 @@
+Implementation complete. Here's the summary.
+
+## What changed
+
+**`tools/ai-autonomy.php` — D1 (trust surface contract-unreachable)**
+- Added `trustSurfacePaths()` (the seven enumerated files) and `isTrustSurfacePath()` (fail-closed: exact file, covering directory, glob that could match, unresolved/trust-resolving symlink).
+- Added one `absolute` entry to the existing single `l4Taxonomy()` list (`matchers => ['trust_surface']`), with a comment recording the 2026-09-14 owner directive, constituting-change status, and director-only amendments.
+- `plan` refuses (exit 2) a contract naming a trust-surface file/glob in allowed/baseline scope. A broad `tools/` directory is not refused at plan time.
+- `check` applies the matcher to `--path` **and** to path-shaped action tokens, so it escalates even when the path is inside `allowed_scope`.
+
+**`tools/ai-run.php` — D2 + D3**
+- `start` records `trust_surface_hash` (sha256 of the seven files, sorted, concatenated) plus per-file digests.
+- `commit-check` recomputes and blocks (`NOT ELIGIBLE`, exit 3) on mismatch, naming moved files; legacy records without a hash are not blocked (documented trade-off).
+- Malformed/unreadable run records are now blocking (`unreadable`, exit 3, naming the file) instead of being silently dropped.
+
+**`tools/ai-project.php` — D4**
+- `assertRunReDerived()` now binds `record['id'] === $runId`, start-time contract revision vs the slice contract's current revision, `claim_verification.contract_revision`, recorded `rev === git rev-parse HEAD`, and `dirty === false`. `verify` now carries the contract revision into the evidence record.
+
+**Tests**: added 40/40a/41–45 (`ai_autonomy`), 3a/25a–25c (`ai_run`), 12–16 (`ai_project`), plus a `trust_surface` probe in the taxonomy loop.
+
+## Key evidence (AC1, adversarial)
+
+| probe | before | after |
+|---|---|---|
+| `plan` on contract listing `tools/ai-run.php` | exit 0 | **exit 2** |
+| `check "widen…python3 evidence" --path=tools/ai-run.php` | RECORD/L2/**exit 0** | **ESCALATE/L4/exit 3** |
+| ordinary `--path=tools/guardrail-notes.md` | exit 0 | RECORD/L2/exit 0 |
+| normal `tools/`-scoped contract `plan` | exit 0 | exit 0 |
+
+## Required suites
+
+```
+php tests/ai_autonomy_test.php  -> 53/53 passed, skipped=0, exit 0
+php tests/ai_run_test.php       -> 39/39 passed, skipped=0, exit 0
+php tests/ai_project_test.php   -> 16/16 passed, skipped=0, exit 0
+```
+
+Revert matrix (all new tests fail without their fix): D1 → 40/40a/41/42/43 fail; D2/D3 → 3a/25a/25b fail (25c is the documented non-blocking legacy guard); D4 → 12/13/14/15 fail (16 positive control passes).
+
+Full `CLAIM`/`COMMAND`/`OBSERVED` report: `.ai/guardrail-trust-surface.report.txt`, including the two disclosed scope notes:
+1. `tests/ai_contract_lint_test.php` test 3 was updated because the historical `.ai/scope-path-semantics.contract.md` now legitimately refuses (it names the trust surface); `ai_run_test` test 32 re-runs that suite.
+2. The dispatch's suggested non-vacuity path `tools/ai-project.php` is itself on the trust surface; the guard uses an ordinary path instead, and escalation of `tools/ai-project.php` is demonstrated separately.
+
+No forbidden path was touched (`tools/harpp-bridge/` changes are the pre-existing baseline), no test/gate was skipped or deleted, and `scripts/run-tests.php`/`composer test`/CMS bootstrap were never run.

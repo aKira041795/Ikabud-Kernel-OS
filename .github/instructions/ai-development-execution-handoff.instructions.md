@@ -471,6 +471,9 @@ Critical flaky tests should not silently be treated as healthy.
 
 # 12. IMPLEMENTATION AUTONOMY
 
+- `.github/instructions/ai-autonomy-escalation.instructions.md` is normative for what the harness may and must not do autonomously.
+- The HARPP L0–L4 authority ladder is the repository-wide vocabulary; L4 is the only human stop.
+
 DeepSeek may autonomously:
 
 - inspect relevant files;
@@ -512,6 +515,9 @@ edit
 ```
 
 loops.
+
+- File every L4 condition with `harpp decision submit`, or `harpp_submit_decision` when an agent is inside VS Code with the MCP server attached; both deliver the request to the director through HARPP. (Authority is normative in `.github/instructions/ai-autonomy-escalation.instructions.md`; this section describes the workflow around it.)
+- A decision that HARPP cannot deliver is a failed run, not a filed decision; a second failed repair attempt on the same failure is an L4 stop.
 
 Stop and escalate when:
 

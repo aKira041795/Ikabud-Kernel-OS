@@ -1,0 +1,5 @@
+{# Block: richtext — context: props #}
+<section class="content-block richtext" data-ark-block="richtext">
+  {if props.title}<h2 class="t-headline-md richtext__title">{props.title | esc_html}</h2>{/if}
+  {if props.body}<div class="richtext__body">{props.body | esc_html}</div>{/if}
+</section>

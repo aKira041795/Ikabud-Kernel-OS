@@ -1,0 +1,84 @@
+Implementation complete. All four authorised files changed, nothing staged or committed.
+
+## What shipped
+
+**P0 — `commit-check`** (`tools/ai-run.php`)
+Decides commit eligibility from the ledger. Exit `0` only when every run is `completed` (or none); exit `3` naming each blocking run. Fail-closed: anything not `completed` blocks. It performs only the reconciliation `status` already does.
+
+Real matrix (six separate ledgers, real exit codes):
+
+```
+empty        exit 0
+completed    exit 0
+running      exit 3
+silent       exit 3
+failed       exit 3
+abandoned    exit 3
+
+COMMIT-CHECK — .../running
+  NOT ELIGIBLE — committing now would capture a non-final state; 1 run(s) are not completed
+  BLOCK  live  running  age=1s  pid=2127870
+exit 3
+```
+
+Binding rules written where they are read: `.ai/ai-autonomy-harness.contract.md` (runbook) and `.github/instructions/ai-autonomy-escalation.instructions.md` (prohibited behaviours).
+
+**P1 — structured claims + `verify`**
+`claims` now emits objects (`claim_id`, `run`, `type`, `re_derivable`, `subject.command`, `executor_claim`, `verification`, `status: UNVERIFIED`). `re_derivable` is honest per type: `TEST_RESULT/LINT_RESULT/CONTRACT_CONFORMANCE/ARTIFACT_HASH/FILE_SCOPE` true; `BROWSER_JOURNEY/PERFORMANCE_MEASUREMENT/MIGRATION_STATE` false.
+
+`verify` re-executes only allowlisted shapes (`php tests/<pure>.php`, `php -l <file>.php`, `php tools/ai-contract-lint.php` with a closed arg set), records `method=independent_execution`, `verifier=deterministic`, observed exit/values, and the tree binding `rev`+`dirty` into the run record's `claim_verification`.
+
+## Required evidence
+
+**Real claim from this repository (`.ai/ai-autonomy-mechanise-doctrine.flash-run.log`) → RE_DERIVED, tree binding recorded:**
+```
+VERIFY — real-verify-demo
+  binding: rev=64c164c61308c314e0fe8f39a53d9bf521d24c7d dirty=yes
+  [UNVERIFIED] TEST_RESULT  (no command)
+      reason: no_command_declared
+  [RE_DERIVED] LINT_RESULT  php -l tools/ai-autonomy.php
+      claimed {"syntax_ok":true,"exit_code":0} observed {"exit_code":0,"syntax_ok":true}
+  summary: attempted=1 re-derived=1 contradicted=0 refused=0 not_re_derivable=0 unverified=1
+```
+
+**CONTRADICTED (claim says exit 1, command exits 0) — exit 3:**
+```
+[CONTRADICTED] LINT_RESULT  php -l tools/ai-run.php
+    claimed exit_code=1 observed 0
+summary: attempted=1 re-derived=0 contradicted=1 ...
+EXIT=3
+```
+
+**REFUSAL first (chained command shown, not executed):**
+```
+[UNVERIFIED] LINT_RESULT  php -l tools/ai-run.php; touch /tmp/.../sentinel
+    reason: command_not_allowlisted
+summary: attempted=0 ... refused=1
+EXIT=0
+sentinel created by the chained command? no
+```
+Also proven: `php tests/activation_gate_dispatch_test.php` (a bootstrapping file) is refused as `command_not_allowlisted` — the pure-test screen prevents cache poisoning.
+
+**Non-re-derivable is never verified:**
+```
+[UNVERIFIED] BROWSER_JOURNEY  npx playwright test tests/browser
+    reason: not_re_derivable_by_pure_tool
+```
+
+**Suites, syntax, static analysis:**
+- `php tests/ai_run_test.php` → **31/31 passed**, exit `0`
+- `php tests/ai_autonomy_test.php` → **46/46 passed**, exit `0` (untouched)
+- `php -l tools/ai-run.php` and `php -l tests/ai_run_test.php` → no syntax errors
+- `phpstan analyse -c phpstan.neon tools/ai-run.php tests/ai_run_test.php` → `[OK] No errors`
+
+No case was relaxed: original 1–15 and 19 are unchanged; 16–18 were adapted to the mandated structured interface (same intent — claims extracted, unverified, re-derivation exists); 18b and 20–30 are new.
+
+## Decisions recorded (CD-8, all IN-CONTRACT)
+
+- **Allowlist is the boundary, as data** (`COMMAND_ALLOWLIST`): only the three shapes above; `..` and chaining are structurally excluded; execution uses argv + `bypass_shell`, never a shell.
+- **Refusal is a correct outcome** → `verify` exits `3` only on `CONTRADICTED`; refused/unobservable claims stay `UNVERIFIED` and are surfaced. A gate consumes `RE_DERIVED`, so it still will not advance on them.
+- **Impure tests are refused** (`MODE_INTEGRATION`/`bootstrap.php` screen) rather than executed.
+- **Claim blocks are bounded** by markdown headings/fences so evidence cannot be attributed across sections (this was required to make the real report re-derive correctly).
+- **Tree binding is evidence of what was verified**, not eternal validity.
+
+No out-of-scope path was needed or touched.

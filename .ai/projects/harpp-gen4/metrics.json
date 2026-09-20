@@ -1,0 +1,114 @@
+{
+    "schema": "ark.ai-project-metrics.v1",
+    "project": "harpp-gen4",
+    "generated_at": "2026-09-14T08:26:52+00:00",
+    "tool_written": true,
+    "source": "derived from .ai/runs/*.json matched to this project, the project slice table, chair-decisions.md headings, chair-errors.json and director-minutes.json; no model judgement, no estimation",
+    "metrics": {
+        "slices_dispatched": 5,
+        "slices_completed": 5,
+        "slices_dispatched_ids": [
+            "S2",
+            "S3",
+            "S4",
+            "S5",
+            "S6"
+        ],
+        "slices_completed_ids": [
+            "S2",
+            "S3",
+            "S4",
+            "S5",
+            "S6"
+        ],
+        "runs_by_status": {
+            "completed": 6,
+            "silent": 0,
+            "failed": 0,
+            "abandoned": 0,
+            "blocked": 1,
+            "running": 1,
+            "other": 0
+        },
+        "lane_distribution": {
+            "deepseek/deepseek-v4-flash": 5,
+            "deterministic-release-evidence": 1,
+            "openai-codex/gpt-5.6-sol": 2
+        },
+        "wall_clock_seconds_by_slice": {
+            "S2": 694,
+            "S3": 694,
+            "S6": 720,
+            "S4": 1502,
+            "S5": null
+        },
+        "wall_clock_seconds_total": null,
+        "claim_outcomes": {
+            "RE_DERIVED": 30,
+            "CONTRADICTED": 0,
+            "UNVERIFIED": 6,
+            "other": 0
+        },
+        "chair_decisions": 37,
+        "chair_decisions_incorrect": 3,
+        "chair_errors": [
+            "CD-6",
+            "CD-11",
+            "CD-12"
+        ],
+        "contract_violations": null,
+        "cost_usd": null,
+        "tokens_total": null,
+        "usage_by_run": {
+            "harpp-gen4-s4-20260914045055-cd664e": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "run record predates runner usage binding"
+            },
+            "harpp-gen4-s4-20260914051323-095234": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "run record predates runner usage binding"
+            },
+            "harpp-gen4-s5-20260914051616-73c40c": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "run record predates runner usage binding"
+            },
+            "harpp-gen4-s5-20260914074854-8dd9f1": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "harpp-gen4-s5-20260914082239-fce746": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "harpp-gen4-s6-20260914045910-393241": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "run record predates runner usage binding"
+            },
+            "s2s3-delivery": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "run record predates runner usage binding"
+            },
+            "s2s3-project-and-loop": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "run record predates runner usage binding"
+            }
+        },
+        "director_minutes": null
+    },
+    "unavailable": {
+        "wall_clock_seconds_by_slice.S5": "run harpp-gen4-s5-20260914082239-fce746 for slice S5 has no complete started_at/finished_at pair",
+        "wall_clock_seconds_total": "run harpp-gen4-s5-20260914082239-fce746 has no complete started_at/finished_at pair",
+        "cost_usd": "run harpp-gen4-s4-20260914045055-cd664e: run record predates runner usage binding; project totals are null, not estimated",
+        "tokens_total": "run harpp-gen4-s4-20260914045055-cd664e: run record predates runner usage binding; project totals are null, not estimated",
+        "contract_violations": "run harpp-gen4-s4-20260914045055-cd664e predates changed-path scope conformance; the total is not derivable",
+        "director_minutes": "director-minutes.json is absent; the director has not logged any minutes (not zero)"
+    }
+}

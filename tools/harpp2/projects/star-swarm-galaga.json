@@ -1,0 +1,534 @@
+{
+    "schema": "harpp2.concept-contract:v1",
+    "project": "star-swarm",
+    "concept": "Galaga fidelity — castes, formation, dives, tractor beam, dual fighter, arcade scoring",
+    "_why": "The director asked for a rebuild closer to the original (components, animation, points, gameplay). This file's predecessor exists because iteration 3 was reported as 'all acceptance gates passed' while half its brief was unbuilt: the requirements were PROSE, so nothing could fail on them. Every requirement here is DATA with a probe name, and tests/star_swarm_galaga_gate_test.php fails when one is missing or when its probe is not asserted inside an expect(...). The probes' strictness is the chair's; the gate checks that none is absent.",
+    "reference": {
+        "game": "Galaga (Namco, 1981)",
+        "sources": [
+            "https://tips.retrogames.com/gamepage/galaga.html — scoring table, tractor beam, extra ships",
+            "https://en.wikipedia.org/wiki/Galaga — formations, dives, bonus stages, dual fighter",
+            "https://strategywiki.org/wiki/Galaga/Gameplay — challenging-stage structure (403 on fetch 2026-09-18; scoring corroborated by the other two)"
+        ],
+        "discrepancy_recorded": "Extra-ship thresholds are quoted as 20,000 / 70,000-then-every-70,000 by the GitHub reference and 30,000 / 80,000 by the retrogames page. The DIP default (20,000 then every 70,000) is adopted and asserted as data; the alternative is recorded rather than silently dropped."
+    },
+    "observability": {
+        "_why": "Behaviour cannot be probed honestly by pixel-guessing alone. The game exposes a minimal read-only surface for tests; it must not become a second code path.",
+        "required_state_fields": [
+            "stage",
+            "stageKind",
+            "score",
+            "highScore",
+            "lives",
+            "extraShipAt",
+            "phase",
+            "enemies",
+            "formation",
+            "bosses",
+            "player",
+            "dualFighter",
+            "capturedFighter",
+            "shots",
+            "enemyShots",
+            "challenging",
+            "perfectBonus"
+        ]
+    },
+    "requirements": [
+        {
+            "id": "C1",
+            "group": "components",
+            "statement": "Three enemy castes exist and are visually distinct, matching Galaga's hierarchy: Bee (yellow/blue), Butterfly (red/white), Boss Galaga (large, four per stage).",
+            "probe": "three enemy castes are distinct|bee butterfly and boss",
+            "why": "Galaga's structure is the caste system: it drives formation rows, diving behaviour and scoring."
+        },
+        {
+            "id": "C2",
+            "group": "components",
+            "statement": "The player ship and the docked dual fighter are drawn as distinct silhouettes; the dual fighter is visibly two ships.",
+            "probe": "dual fighter is two docked ships|dual fighter silhouette",
+            "why": "The dual fighter is Galaga's signature power-up and must be recognisable, not a bigger single ship."
+        },
+        {
+            "id": "C3",
+            "group": "components",
+            "statement": "Raster assets stay at zero: every sprite is drawn procedurally (canvas paths), as the current game does.",
+            "probe": "no raster assets|procedural sprites",
+            "why": "Keeps the module dependency-free and diffable; it is also how a 1981 pixel game is honestly imitated in source."
+        },
+        {
+            "id": "C4",
+            "group": "components",
+            "statement": "The player may have at most two shots in flight at once, as in the arcade original; the limit is observable from the state surface.",
+            "probe": "at most two player shots|shot limit",
+            "why": "The shot limit is a core difficulty rule, not a detail: it is why Galaga rewards timing."
+        },
+        {
+            "id": "A1",
+            "group": "animation",
+            "statement": "Each stage opens with enemies flying in along curved entry paths — from the top and the sides — spinning, then settling into the formation grid.",
+            "probe": "entry paths sweep in|formation entry",
+            "why": "The entry swoop is the first thing a Galaga player recognises."
+        },
+        {
+            "id": "A2",
+            "group": "animation",
+            "statement": "Once assembled the formation breathes — expanding and contracting — rather than being static.",
+            "probe": "formation breathes|formation expands and contracts",
+            "why": "Galaga's formation visibly pulses; a static grid reads as unfinished."
+        },
+        {
+            "id": "A3",
+            "group": "animation",
+            "statement": "Enemies dive out of formation along curved paths, singly, in pairs and in threes, firing as they dive.",
+            "probe": "dives singly in pairs and in threes|dive attack",
+            "why": "The dive is the attack; formation-only enemies would not be Galaga."
+        },
+        {
+            "id": "A4",
+            "group": "animation",
+            "statement": "A destroyed enemy produces an explosion/spin animation, distinct from a plain removal.",
+            "probe": "destruction animation|explosion frames",
+            "why": "Feedback on the shot is what makes the loop legible."
+        },
+        {
+            "id": "P1",
+            "group": "points",
+            "statement": "Bee scores 50 in formation and 80 in flight (diving).",
+            "probe": "bee scores 50 in formation and 80 in flight|bee scoring",
+            "why": "Arcade table. In-formation and in-flight values differ for every caste."
+        },
+        {
+            "id": "P2",
+            "group": "points",
+            "statement": "Butterfly scores 80 in formation and 160 in flight.",
+            "probe": "butterfly scores 80 in formation and 160 in flight|butterfly scoring",
+            "why": "Arcade table."
+        },
+        {
+            "id": "P3",
+            "group": "points",
+            "statement": "Boss Galaga scores 150 in formation, 400 diving alone, 800 with one escort and 1,600 with two escorts.",
+            "probe": "boss scores 150 400 800 and 1600|boss escort scoring",
+            "why": "Arcade table, including the escort multiplier that makes bosses worth chasing."
+        },
+        {
+            "id": "P4",
+            "group": "points",
+            "statement": "A challenging stage awards 100 per enemy destroyed and a 10,000 perfect bonus for all forty.",
+            "probe": "perfect bonus of 10000|challenging stage scoring",
+            "why": "The perfect bonus is the single largest score in the original."
+        },
+        {
+            "id": "P5",
+            "group": "points",
+            "statement": "An extra ship is awarded at 20,000 points and every 70,000 after that, and the threshold is observable in state.",
+            "probe": "extra ship at 20000|extra ship threshold",
+            "why": "Recorded in reference.discrepancy_recorded: the alternative 30,000/80,000 reading exists and is not silently dropped."
+        },
+        {
+            "id": "G1",
+            "group": "gameplay",
+            "statement": "A stage is a cycle — entry, formation, repeated dive waves, stage clear — and difficulty ramps across stages (more enemy projectiles, faster dives).",
+            "probe": "difficulty ramps with stage|dive rate increases",
+            "why": "Progression is the game; a single static wave is a demo."
+        },
+        {
+            "id": "G2",
+            "group": "gameplay",
+            "statement": "Every fourth stage is a challenging stage where forty enemies fly preset patterns and do not fire.",
+            "probe": "every fourth stage is a challenging stage|challenging stage",
+            "why": "Stage 3 and every fourth thereafter in the original; it punctuates the loop."
+        },
+        {
+            "id": "G3",
+            "group": "gameplay",
+            "statement": "A Boss Galaga may capture the player's ship with a tractor beam, costing a life; destroying the diving captor frees the ship, which docks as a dual fighter with double firepower and a larger hitbox.",
+            "probe": "tractor beam captures the fighter|dual fighter doubles firepower",
+            "why": "Galaga's defining mechanic, and the reason the boss exists."
+        },
+        {
+            "id": "G4",
+            "group": "gameplay",
+            "statement": "Destroying the captor while it holds the fighter in formation turns the captured ship into an enemy, rather than freeing it.",
+            "probe": "captured fighter turns hostile|hostile captured fighter",
+            "why": "The original's sharpest rule and the reason capture is a gamble, not a free upgrade."
+        },
+        {
+            "id": "G5",
+            "group": "gameplay",
+            "statement": "Colliding with an enemy or an enemy shot costs a life; the player respawns with the remaining lives shown in state.",
+            "probe": "collision costs a life|lives decrease on hit",
+            "why": "The failure condition must be real for the score to mean anything."
+        },
+        {
+            "id": "V1",
+            "group": "fidelity",
+            "statement": "Ships are pixel art, not vector outlines: the game defines bee, butterfly, boss and fighter sprites as in-code pixel matrices (rows of . and #, equal length, at least 8x8), and draws them from that data. No raster assets, so the sprites stay diffable.",
+            "probe": "the game exposes sprite pixel matrices|sprite pixel matrices are exposed",
+            "why": "The director's finding: gameplay improved while the components looked nothing like Galaga. Vector polygons and anti-aliased curves are the difference the eye names first, and no assertion over state can see it."
+        },
+        {
+            "id": "V2",
+            "group": "fidelity",
+            "statement": "The Boss Galaga is the GREEN magnet ship of the original. Its dominant rendered ink is green-dominant, measured from the sprite's own pixels rather than by name or by a state flag.",
+            "probe": "the boss renders green",
+            "why": "The boss was orange (--ss-role-threat #f78c6b) while every gate passed, and the boss being green is how the player knows which ship is the magnet ship. Raw colour counts in a formation box are not sufficient: measured 2026-09-19, a box drawn before the colony settled contained bees and reported green for an orange boss. Dominant ink is the fix."
+        },
+        {
+            "id": "V3",
+            "group": "fidelity",
+            "statement": "The play field reads as black space with sparse stars drawn as pixel blocks: at least 90% of the field is near-black once sprites are cleared, and the stars leave no wide band of half-tones.",
+            "probe": "the field is black space|stars are pixel blocks",
+            "why": "Measured 47% black before the rebuild: a gradient nebula, dust wash and rings replaced the original's empty black, and anti-aliased discs replaced its pixel stars."
+        },
+        {
+            "id": "V4",
+            "group": "fidelity",
+            "statement": "Explosions are hard-edged pixel starbursts with a solid bright core and no soft glow, not anti-aliased stroked rings.",
+            "probe": "the burst has a solid core|the explosion is a pixel starburst",
+            "why": "A stroked ring is hollow in the middle, which is exactly how the two are told apart. The first version of this probe passed against the very stroked ring it exists to catch."
+        },
+        {
+            "id": "V5",
+            "group": "fidelity",
+            "statement": "The tractor beam is the original's cyan cone: painted cyan, tapering, with horizontal scan lines running down it, and animated rather than static.",
+            "probe": "the cone is painted cyan|the tractor beam is a cyan cone",
+            "why": "The beam is the magnet ship's signature and the only warning before a capture. The probe stops above the fighter on purpose: the player ship is cyan by role, so a box reaching the bottom would pass on the player's own paint."
+        },
+        {
+            "id": "L1",
+            "group": "legibility",
+            "statement": "A captured fighter is visibly held by the ship that took it: it is drawn, not merely recorded in state, and it belongs to the capturing ship.",
+            "probe": "the captured fighter is drawn under the magnet ship",
+            "why": "The capture must be legible as a loss in progress, because shooting the captor is the gamble the original is built around."
+        },
+        {
+            "id": "L2",
+            "group": "legibility",
+            "statement": "An awarded extra ship at 20,000 and every 70,000 thereafter is ANNOUNCED on screen in the central band of the play field, and the lives count rises by one. Granting it silently is not acceptable.",
+            "probe": "extra ship is announced on screen",
+            "why": "The director's finding, measured: state.lives rose by one while the rendered band gained exactly zero pixels (before 12, after 12). The mechanic existed and the player could not tell."
+        },
+        {
+            "id": "L3",
+            "group": "legibility",
+            "statement": "The play field is 16:9 and at least 1280 backing pixels wide, AND is DISPLAYED at 16:9: the on-screen geometry is asserted too, because a 16:9 canvas shown inside a 4:3 box satisfies a backing-store check while looking wrong on screen.",
+            "probe": "the play field is 16:9|the field is displayed at 16:9",
+            "why": "Director decision 2026-09-19: widescreen. The arcade original is portrait (224x288 on a rotated monitor), so this is a deliberate modern reinterpretation, recorded as a deviation rather than presented as fidelity. The displayed-geometry half was added after the director reported the field had NOT changed to 16:9 while the backing store said it had: the cause was an unversioned stylesheet (S1), but the probe could not have told him either way until it measured what he sees."
+        },
+        {
+            "id": "O1",
+            "group": "opening",
+            "statement": "An opening sequence plays BEFORE play begins, on the title screen: it starts on the title stage, advances to a byline stage, and is driven by game time through the update path, exposed as state.opening.stage and readable as state.opening.title and state.opening.byline.",
+            "probe": "the game exposes its opening sequence as state|the opening starts on the title",
+            "why": "Director request 2026-09-19. Driven by the game clock, not by a wall-clock sleep, so the probe can hold it on a named stage and a red gate stays honest."
+        },
+        {
+            "id": "O2",
+            "group": "opening",
+            "statement": "The opening shows 'Star Swarm' as a large pixel-block logo, then 'by IKON' as a smaller pixel-block byline. Both stages carry visible ink in the central band of the field, and the title lockup is markedly the larger mark.",
+            "probe": "the title is drawn as logo ink|then the byline is drawn",
+            "why": "The order is the requirement: the game's name first, the studio second, both actually rendered rather than present in string state only."
+        },
+        {
+            "id": "V6",
+            "group": "palette",
+            "statement": "The Bee is painted the arcade yellow: a vivid yellow with a strong red and green channel and a weak blue one (measured dominant ink, not a token name).",
+            "probe": "the bee is painted the arcade yellow|the bee is yellow: a strong red channel",
+            "why": "Director request 2026-09-19: 'assert the colours'. Row colour is how a player reads the caste hierarchy at arcade speed, and no probe checked it: C1 named the colours in prose only."
+        },
+        {
+            "id": "V7",
+            "group": "palette",
+            "statement": "The Butterfly is painted vivid red (with white), NOT a dark brown: the dominant ink is red-dominant (or near-white) and carries a luminance above 90.",
+            "probe": "the butterfly is painted red or white, not a dark brown",
+            "why": "Measured 2026-09-19: the butterfly rendered (88,40,24), luminance 49 -- it inherited --color-tertiary, a muddy brown, which is why the director read the formation as brown rows. This is the requirement the missing probe would have caught."
+        },
+        {
+            "id": "V8",
+            "group": "palette",
+            "statement": "No caste is painted muddy and all three are told apart by colour: every caste's dominant ink has luminance above 90, and the three dominant colours are pairwise distinct.",
+            "probe": "no caste is painted muddy|the three castes are told apart by colour",
+            "why": "A general floor rather than three fixed colours: it rules out the whole failure class (a formation that reads as brown mush) without forbidding a faithful palette choice, and it cannot be satisfied by one shared colour."
+        },
+        {
+            "id": "S1",
+            "group": "serving",
+            "statement": "The page requests its stylesheet and script with a version parameter tied to the asset's own timestamp, so a visual change cannot be served from a stale browser cache.",
+            "probe": "the stylesheet URL carries a timestamp version",
+            "why": "Director report 2026-09-19: 'game width did not change to 16:9'. It had -- backing store 1280x720 and displayed 1278x719 -- but the stylesheet URL was static and unversioned, so his browser kept the previous CSS, which carried no aspect-ratio. A stale asset made a delivered change look undelivered and cost a false defect report."
+        },
+        {
+            "id": "R1",
+            "group": "responsiveness",
+            "statement": "Holding a direction moves the fighter across at least HALF the field width in one second of game time (2.0 s to cross, where the same code took 3.05 s after the field was widened) and not more than 1.2 widths in a second (quick, not twitchy). The speed is derived from the field so a future resize cannot reintroduce the lag.",
+            "probe": "the fighter crosses half the field in a second",
+            "why": "Director report 2026-09-19: 'horizontal movement is sluggish'. Measured: PLAYER_SPEED 420 px/s against a 1280 px field = 3.05 s to cross; it was 1.9 s on the 800 px field. Widening the field diluted every absolute speed by 1.6x. Expressed as a fraction of the field so the fix cannot be undone by geometry."
+        },
+        {
+            "id": "R2",
+            "group": "responsiveness",
+            "statement": "A player shot clears the height of the field in at most 0.8 s and at least 0.25 s (measured 1.16 s after the widening, 0.97 s before it): fast, but not so fast that a diving enemy loses its lead.",
+            "probe": "a shot clears the field in under 0.8 s",
+            "why": "Director report 2026-09-19: 'shooting is sluggish'. Slow shots are felt twice: as latency to impact, and as a cap on the fire rate, because only two may be in flight at once."
+        },
+        {
+            "id": "R3",
+            "group": "responsiveness",
+            "statement": "Holding fire sustains at least 2.5 shots per second. The two-shots-in-flight allowance is FIDELITY and must not be raised to reach this: the rate has to come from shots that clear the field faster.",
+            "probe": "one second of held fire launches at least 2.5 shots",
+            "why": "Measured 2/s. With a 0.22 s cooldown the limiter is not the cooldown but the 1.16 s flight combined with PLAYER_SHOT_LIMIT = 2, so R3 follows from R2 rather than competing with it: at 0.8 s of travel the same limit sustains 2.5/s. The two requirements were set together on purpose, so the phase is satisfiable (CD-86)."
+        },
+        {
+            "id": "R4",
+            "group": "responsiveness",
+            "statement": "The first shot is fired on the frame after the keypress: input is not dependent on key repeat, and no key-up is needed between shots.",
+            "probe": "the first shot is fired on the frame after the keypress",
+            "why": "A guard, not a repair: latency measured one frame, so this passes today. It stays asserted so an input refactor cannot quietly introduce a key-repeat or key-up dependency."
+        },
+        {
+            "id": "A1",
+            "group": "audio",
+            "statement": "Audio is created from the player's gesture and reports a running context with a real sample rate; when Web Audio is unavailable the game reports it, plays on silently, raises no error, and issues no cue.",
+            "probe": "the audio context is running once the player has started|the game reports audio as unavailable",
+            "why": "Browsers refuse audio before a user gesture, so the Start press is the only correct moment to create the context. The unavailable branch is asserted because 'costs the player sound' must never mean 'costs the player the game'."
+        },
+        {
+            "id": "A2",
+            "group": "audio",
+            "statement": "Starting play sounds a start cue, distinct from the other cues.",
+            "probe": "the start cue is issued when play begins",
+            "why": "Director request 2026-09-19: sound effects for 'start'."
+        },
+        {
+            "id": "A3",
+            "group": "audio",
+            "statement": "Firing sounds a fire cue on the same frame the shot appears, once per shot.",
+            "probe": "the cue for firing is the fire cue",
+            "why": "Director request 2026-09-19: sound effects for 'firing'. Same frame, because a cue that trails the shot is felt as lag however good it sounds."
+        },
+        {
+            "id": "A4",
+            "group": "audio",
+            "statement": "Destroying an enemy sounds a hit cue that carries the destroyed enemy's own size, and the cue changes with that size: a bigger enemy sounds lower (and longer) than a smaller one.",
+            "probe": "the bigger enemy sounds lower|the hit cue records the size it was sounded for",
+            "why": "Director request 2026-09-19: 'blasting of enemy, according to size'. Asserted as an ORDER by size rather than as two magic numbers, and the size is recorded so the cue cannot be a constant that happens to differ."
+        },
+        {
+            "id": "A5",
+            "group": "audio",
+            "statement": "The tractor beam sounds for as long as the beam is open and stops when it closes: an ongoing tone, not a single blip when it opens.",
+            "probe": "the beam tone keeps sounding while the beam is open|the beam tone stops when the beam closes",
+            "why": "Director request 2026-09-19: sound for the 'tractor beam'. The beam is a sustained threat for up to 1.8 s, and one blip would leave the player unwarned for the rest of the dive."
+        },
+        {
+            "id": "A6",
+            "group": "audio",
+            "statement": "Losing the last life sounds its own game over cue, distinct from a routine hit.",
+            "probe": "the end of the game sounds its own cue",
+            "why": "Director request 2026-09-19: sound for 'game over'. It must be distinguishable from the hit cue that caused it, or the ending is not announced."
+        },
+        {
+            "id": "W1",
+            "group": "powerup",
+            "statement": "An earned firepower is granted at 10,000 points and every 20,000 after, stored to a maximum of three charges, and earning one is announced on the screen rather than granted in silence.",
+            "probe": "earning a charge is announced on screen|a charge is earned at the threshold",
+            "why": "Director request 2026-09-19: 'add a firepower when kill points reach x amount'. The announcement is in the requirement because the extra ship was once granted with 12 -> 12 rendered pixels: a reward the player cannot see is one they will not use."
+        },
+        {
+            "id": "W2",
+            "group": "powerup",
+            "statement": "Pressing S with a charge available consumes exactly one and opens the window; pressing S with NO charge does nothing at all -- no activation, no error, no charge invented.",
+            "probe": "S spends one charge|S does nothing without a charge",
+            "why": "Both halves are asserted because 'spend what you have' and 'do not invent what you lack' are different behaviours, and only the first is the happy path."
+        },
+        {
+            "id": "W3",
+            "group": "powerup",
+            "statement": "While the window is open the lance destroys an enemy it touches, through the same destruction path a shot uses, and the window expires on its own without refunding the charge.",
+            "probe": "the lance destroys an enemy it touches|the lance expires on its own",
+            "why": "The power-up has to do firepower and it has to be LIMITED USE, which is what the director asked for; an unexpiring lance is neither."
+        },
+        {
+            "id": "W4",
+            "group": "powerup",
+            "statement": "The lance is not a bullet: at most two player shots are in flight while the lance is being fired, so the verified arcade two-shot rule survives the power-up.",
+            "probe": "the lance is not a bullet",
+            "why": "The two-shots-in-flight rule is already verified fidelity (C4 and the state spec's [1, 2, 2, 2]). A multi-shot power-up would have bought this feature by invalidating that rule; a separate weapon class does not. Asserted WHILE the lance fires, not merely in the default state."
+        },
+        {
+            "id": "W5",
+            "group": "powerup",
+            "statement": "The HUD shows the stored charges and the live state of the window, so the player can see what they hold and when it is running.",
+            "probe": "the HUD shows the lance charges",
+            "why": "Legibility again, and the same lesson as the extra ship: a charge the player cannot count is a charge they cannot decide to spend."
+        },
+        {
+            "id": "B1",
+            "group": "bonus",
+            "statement": "A bonus round runs against a clock: a countdown of at least 15 seconds of game time, exposed as state.bonus.remaining, starting full when the round begins, never going negative, and rendered in the TOP BAND of the play field (the top 16% of the canvas) so the player can see it.",
+            "probe": "the bonus round has a countdown|the countdown never goes negative",
+            "why": "Director request 2026-09-19: 'a bonus round where i can kill all if possible all enemies, limited time'. The arcade challenging stage already exists (forty enemies, preset patterns, no fire, 100 each, a 10,000 perfect bonus) and had no clock, so this extends the round that exists rather than adding a second, near-identical mode that would drift from it."
+        },
+        {
+            "id": "B2",
+            "group": "bonus",
+            "statement": "Every bonus-round enemy is reachable and destroyable when the clock starts, so clearing all of them in time is possible; clearing them all awards the existing 10,000 perfect bonus and announces it on the screen.",
+            "probe": "every bonus enemy is reachable when the clock starts|clearing them all awards the perfect bonus",
+            "why": "'Kill all if possible' is only meaningful if all of them are actually killable -- the probe clears the field through the real destruction path, so the reward is earned by the same code a player's shots use."
+        },
+        {
+            "id": "B3",
+            "group": "bonus",
+            "statement": "When the clock reaches zero with enemies remaining the round ends cleanly: bonus inactive, remaining zero, no perfect bonus awarded, and play continues with no enemy left frozen on the field.",
+            "probe": "the round closes when the clock runs out",
+            "why": "A clock that ends the round by leaving a stuck field or a frozen enemy is a worse defect than no clock at all."
+        },
+        {
+            "id": "B4",
+            "group": "bonus",
+            "statement": "The HUD exposes the time remaining and the enemies left, so the player can see both the pressure and the progress.",
+            "probe": "the HUD shows the bonus clock and the enemies left",
+            "why": "A time limit nobody can see is not a time limit; it is just an unexplained end."
+        },
+        {
+            "id": "B5",
+            "group": "bonus",
+            "statement": "Nothing fires for the whole bonus round, including the transition out of it, measured against a standard stage in the same run so that a failed measurement can never be confused with a blind instrument.",
+            "probe": "nothing fires for the whole bonus round|the control stage fires",
+            "why": "Measured before this item was written, with a control: a bonus round fires 0 shots in 15 s where a standard stage fires 10. The rule already exists and is asserted over a window; the clock is where it could break -- enemies released from a frozen state while still on screen, or an expiry that drops into a firing regime with leftovers."
+        },
+        {
+            "id": "B6",
+            "group": "bonus",
+            "statement": "The round announces itself by name: BONUS ROUND is rendered on the play field in the central band, in the game's pixel idiom, and exposed as state.bonus.title.",
+            "probe": "the round announces itself as BONUS ROUND",
+            "why": "Director request 2026-09-19. Both halves are required: a probe cannot read text off a canvas, and a string sitting in state is exactly the claim this project was burned by when the extra ship was 'granted' with zero rendered pixels. Data carries the wording, ink carries the fact."
+        },
+        {
+            "id": "D1",
+            "group": "pickup",
+            "statement": "In a standard wave exactly one enemy carries the lance, and it is distinguishable ON THE RENDERED FIELD by a drawn marker, so the player can choose the right target.",
+            "probe": "exactly one carrier is in play and it is marked on the field",
+            "why": "Director request 2026-09-19: '1 enemy with the beam weapon, when hit, player need to get it before it disappears'. A carrier the player cannot pick out is just a random enemy that happened to drop something, so the marker is measured in ink, not read from a flag -- the same lesson as the extra-ship announcement."
+        },
+        {
+            "id": "D2",
+            "group": "pickup",
+            "statement": "Destroying the carrier drops a collectable at its position that drifts downward, with a bounded lifetime that decreases in game time and never goes negative.",
+            "probe": "killing the carrier drops a collectable that drifts",
+            "why": "The drop is what makes the decision: a weapon that appears in the player's hands with no action is the threshold rule again, not this one."
+        },
+        {
+            "id": "D3",
+            "group": "pickup",
+            "statement": "Flying into the drop grants exactly one charge, announced on screen, and the drop leaves the field.",
+            "probe": "collecting the drop grants exactly one charge and announces it",
+            "why": "Exactly one, because the charge is the currency phase 10 verified; the announcement because an unnoticeable grant is the same defect as an unrendered extra ship."
+        },
+        {
+            "id": "D4",
+            "group": "pickup",
+            "statement": "A drop that is not collected expires: it leaves the field, grants nothing, and leaves nothing behind.",
+            "probe": "an uncollected drop expires with nothing granted",
+            "why": "The director's rule stated as its own requirement -- get it before it disappears. A drop that waits forever is not a decision, and an expiry that still grants a charge would silently delete the urgency."
+        },
+        {
+            "id": "D5",
+            "group": "pickup",
+            "statement": "The drop is legible as its deadline approaches: its rendered ink changes in the final portion of its life, so the player sees the deadline rather than discovering it by losing the pickup.",
+            "probe": "the drop is legible as it expires",
+            "why": "Legibility is the recurring defect in this project, and a deadline nobody can see is just an unexplained loss."
+        },
+        {
+            "id": "D6",
+            "group": "pickup",
+            "statement": "The score threshold remains a guarantee: reaching it while holding no charge still grants one, so two carriers missed in a row cannot leave the weapon unreachable for the rest of a run.",
+            "probe": "the score threshold remains a guarantee",
+            "why": "This item ADDS a way to earn the lance; it must not take one away. Phase 10's W1 is verified behaviour, and it is also the anti-starvation backstop for a player who misses every carrier."
+        },
+        {
+            "id": "H1",
+            "group": "hud",
+            "statement": "The rendered score row sits on black: at least 60% of the HUD's own rendered pixels are near-black, measured from the HUD element's pixels rather than from a CSS declaration.",
+            "probe": "the score row renders on black",
+            "why": "Director request 2026-09-19: 'score row, black background color'. The row takes --color-surface-raised, which the page sets to #ffffff, so a white bar sits over a black space field. The HUD is DOM, not canvas, so this is the first probe in the project that measures DOM pixels -- a style lookup would report the fix whether or not the row changed."
+        },
+        {
+            "id": "H2",
+            "group": "hud",
+            "statement": "The row stays legible on that black: bright ink is present in the rendered row and the computed contrast ratio between the values' colour and their background is at least 7:1.",
+            "probe": "the score row stays legible",
+            "why": "Going black must not mean going dim. A score nobody can read is not an improvement, and this is the requirement that stops the fix being satisfied by deleting the contrast."
+        },
+        {
+            "id": "M1",
+            "group": "moon",
+            "statement": "The nursery body reads as a moon: its dominant rendered ink is neutral grey -- channel spread at most 24 AND a blue-red gap of at most 12 -- it is a mid grey tone (luminance between 60 and 200) rather than a near-white disc, and it carries craters: at least three shades each holding 3% of the body, the brightest and darkest of them at least 48 luminance apart.",
+            "probe": "the body reads as a moon",
+            "why": "Director request 2026-09-19: 'planet, change to moon, make it look like the moon'. CHAIR CORRECTION, measured 2026-09-19 before dispatch: this requirement was first written as a channel spread of at most 30, and the probe PASSED against the blue planet that is actually on screen. The body's dominant ink is [232, 248, 248] -- a spread of 16 that satisfies a spread-only test while sitting there plainly cyan -- so the threshold was a bad instrument, not a passing feature. It became a spread AND a blue-red gap, plus a mid-tone luminance band that excludes the near-white (luminance 245) disc, plus a third shade and a 48-level range so a two-stop radial gradient across a flat disc cannot pass as craters (it is exactly 2 shades, 16 apart, today). The lesson is the standing one: a probe that passes before the work is done is measuring the wrong property."
+        },
+        {
+            "id": "M2",
+            "group": "moon",
+            "statement": "The body carries no ring: an annulus sampled just outside the body's radius is essentially black space, measured on the rendered field.",
+            "probe": "the ring is gone",
+            "why": "Already true when this item was written, and asserted as a REGRESSION GUARD rather than as work -- measured 2026-09-19: all four bands just outside the radius read 0 ink, because phase 4 replaced the ringed planet with black space and the renderer ignores planet.ring. It is kept because the moon is a large pale body, and M2 plus M3 are what stop this item buying its look by putting a ring (or a glow) back. Precedent: B5, asserted for the same reason."
+        },
+        {
+            "id": "M3",
+            "group": "moon",
+            "statement": "The field still reads black with the moon drawn on it: at least 90% of the play field is near-black in the frame that contains the moon.",
+            "probe": "the field still reads black with the moon in it",
+            "why": "This is the guard on V3. A large bright body is exactly how a verified 'black space' requirement gets quietly broken, and the moon is deliberately a big pale object."
+        }
+    ],
+    "spec_probes": {
+        "_why": "Each requirement's probe (or one alias separated by |) must appear inside an expect(...) statement. WHICH spec counts is the anti-faking rule: the behaviour groups (components, animation, points, gameplay) are asserted in tests/browser/star-swarm.spec.ts, and the CHAIR-OWNED groups (fidelity, legibility, opening) are asserted ONLY in tests/browser/star-swarm-pixels.spec.ts, which the rebuild lane must not edit. A lane that can satisfy a requirement by weakening the instrument has proved nothing. Existence is checked mechanically by tests/star_swarm_galaga_gate_test.php; the chair reviews strictness.",
+        "rule": "existence of the probe name or alias inside expect(...) in the spec that owns the group",
+        "chair_owned_spec": "tests/browser/star-swarm-pixels.spec.ts",
+        "spec_by_group": {
+            "fidelity": "tests/browser/star-swarm-pixels.spec.ts",
+            "legibility": "tests/browser/star-swarm-pixels.spec.ts",
+            "opening": "tests/browser/star-swarm-pixels.spec.ts",
+            "palette": "tests/browser/star-swarm-pixels.spec.ts",
+            "serving": "tests/browser/star-swarm-pixels.spec.ts",
+            "responsiveness": "tests/browser/star-swarm-pixels.spec.ts",
+            "audio": "tests/browser/star-swarm-audio.spec.ts",
+            "powerup": "tests/browser/star-swarm-pixels.spec.ts",
+            "bonus": "tests/browser/star-swarm-pixels.spec.ts",
+            "pickup": "tests/browser/star-swarm-pixels.spec.ts",
+            "hud": "tests/browser/star-swarm-pixels.spec.ts",
+            "moon": "tests/browser/star-swarm-pixels.spec.ts"
+        },
+        "chair_owned_groups": [
+            "fidelity",
+            "legibility",
+            "opening",
+            "palette",
+            "serving",
+            "responsiveness",
+            "audio",
+            "powerup",
+            "bonus",
+            "pickup",
+            "hud",
+            "moon"
+        ]
+    },
+    "invariants": {
+        "raster_assets": 0,
+        "dependency_manifests_unchanged": [
+            "package.json",
+            "composer.json"
+        ],
+        "no_wait_for_timeout": true,
+        "browser_spec_assertion_floor": 60,
+        "browser_spec_assertion_baseline": 52,
+        "pixel_truth_spec": "tests/browser/star-swarm-pixels.spec.ts",
+        "pixel_spec_assertion_floor": 28,
+        "audio_spec_assertion_floor": 20,
+        "_why": "No raster assets and no new dependency keep the module diffable. A timing sleep is a race by construction (lesson L4) and is forbidden. The assertion FLOOR (60) is the completed state spec; the BASELINE (52) is what the 52-assertion spec already had, and it is the non-shrink rule applied to a phase. Measured 2026-09-18: a single all-or-nothing gate cannot turn green until the last requirement, so the driver's progress heuristic counted three real chunks (201 lines of product change, gate 12 -> 27) as no progress and escalated. Phases exist so acceptance is satisfiable incrementally; see --phase in tools/harpp2/gates/star_swarm_galaga_gate.php. ADDED 2026-09-19: this contract was satisfied in full while the components did not look like Galaga, because every probe read STATE and none read PIXELS. The state spec says so in its own header. pixel_truth_spec is the answer: rendered-canvas assertions, chair-owned, whose probes the lane cannot edit, and whose floor stops the instrument being shrunk after the fact."
+    }
+}

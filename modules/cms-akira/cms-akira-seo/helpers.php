@@ -23,12 +23,18 @@ function casSeedSeoMutationPolicies(): void
         return;
     }
     $rows = [];
+    $mutating = !function_exists('cacRequestMayMutate') || cacRequestMayMutate();
+    $path = function_exists('cacRequestPath') ? cacRequestPath() : '';
     foreach ([
         'akira.seo.content_health@1',
         'akira.seo.upsert@1',
         'akira.seo.delete@1',
     ] as $capabilityId) {
         $mutation = in_array($capabilityId, ['akira.seo.upsert@1', 'akira.seo.delete@1'], true);
+        if (($mutation && !$mutating)
+            || (!$mutation && !$mutating && $path !== '' && $path !== '/cms-akira-seo')) {
+            continue;
+        }
         $rows[] = [
             'policy_version' => 1,
             'capability_id' => $capabilityId,
@@ -41,7 +47,9 @@ function casSeedSeoMutationPolicies(): void
             'is_active' => true,
         ];
     }
-    \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    if ($rows !== []) {
+        \Ikabud\Kernel\Capabilities\CapabilityAuthorizationRegistry::seedPolicyForCurrentScope($rows);
+    }
 }
 
 casSeedSeoMutationPolicies();
@@ -368,7 +376,11 @@ function casSeoActor(): array
     if (!is_array($actor) || (int) ($actor['id'] ?? $actor['sub'] ?? 0) <= 0) {
         throw new CasSeoMutationException('Authentication required.', 401);
     }
-    if ((string) ($actor['role'] ?? '') !== 'admin') {
+    $role = (string) ($actor['role'] ?? '');
+    if (!in_array($role, ['admin', 'administrator', 'superadmin'], true)) {
+        throw new CasSeoMutationException('Administrator role required.', 403);
+    }
+    if ($role === 'superadmin' && (string) ($actor['source'] ?? '') !== 'kernel') {
         throw new CasSeoMutationException('Administrator role required.', 403);
     }
     return $actor;

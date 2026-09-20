@@ -1,0 +1,121 @@
+{
+    "schema": "ark.ai-project-metrics.v1",
+    "project": "gen4-r1",
+    "generated_at": "2026-09-15T02:21:20+00:00",
+    "tool_written": true,
+    "source": "derived from .ai/runs/*.json matched to this project, the project slice table, chair-decisions.md headings, chair-errors.json and director-minutes.json; no model judgement, no estimation",
+    "metrics": {
+        "slices_dispatched": 2,
+        "slices_completed": 2,
+        "slices_dispatched_ids": [
+            "S1",
+            "S2"
+        ],
+        "slices_completed_ids": [
+            "S1",
+            "S2"
+        ],
+        "runs_by_status": {
+            "completed": 9,
+            "silent": 0,
+            "failed": 0,
+            "abandoned": 0,
+            "blocked": 2,
+            "running": 0,
+            "other": 0
+        },
+        "lane_distribution": {
+            "deepseek/deepseek-v4-flash": 10,
+            "openai-codex/gpt-5.6-sol": 1
+        },
+        "wall_clock_seconds_by_slice": {
+            "S1": 2223,
+            "S2": 35770
+        },
+        "wall_clock_seconds_total": 38459,
+        "claim_outcomes": {
+            "RE_DERIVED": 13,
+            "CONTRADICTED": 0,
+            "UNVERIFIED": 14,
+            "other": 0
+        },
+        "chair_decisions": 49,
+        "chair_decisions_incorrect": 8,
+        "chair_errors": [
+            "CE-01",
+            "CE-02",
+            "CE-03",
+            "CE-04",
+            "CE-05",
+            "CE-06",
+            "CE-07",
+            "CE-08"
+        ],
+        "contract_violations": 2,
+        "cost_usd": null,
+        "tokens_total": null,
+        "usage_by_run": {
+            "gen4-r1-s1-20260914153917-4ff23f": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914160024-b44be7": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914160412-87ff12": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914160753-631a86": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s1-20260914161207-dae802": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s2-20260914162406-58f95c": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s2-20260914163558-380c79": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s2-census": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s2-evidence": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s2-evidence-tx": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            },
+            "gen4-r1-s2-final": {
+                "session_id": null,
+                "usage": null,
+                "unavailable_reason": "runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact"
+            }
+        },
+        "director_minutes": null
+    },
+    "unavailable": {
+        "cost_usd": "run gen4-r1-s1-20260914153917-4ff23f: runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact; project totals are null, not estimated",
+        "tokens_total": "run gen4-r1-s1-20260914153917-4ff23f: runner exposed no PI_SESSION_ID/PI_SESSION_FILE artefact; project totals are null, not estimated",
+        "director_minutes": "director-minutes.json is absent; the director has not logged any minutes (not zero)"
+    }
+}

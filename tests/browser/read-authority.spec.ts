@@ -24,8 +24,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const TENANT = process.env.TENANT_URL ?? 'http://akiracms.test';
-const TENANT_USER = process.env.TENANT_USER ?? 'charlienacario884';
-const TENANT_PASS = process.env.TENANT_PASS ?? 'iKabud6123!#';
 
 function watch(page: Page) {
     const consoleErrors: string[] = [];
@@ -37,14 +35,6 @@ function watch(page: Page) {
         if (r.status() === 403) denied.push(`${r.status()} ${r.url()}`);
     });
     return { consoleErrors, denied };
-}
-
-async function login(page: Page): Promise<void> {
-    await page.goto(`${TENANT}/login`);
-    await page.fill('#username', TENANT_USER);
-    await page.fill('#password', TENANT_PASS);
-    await page.locator('button[type="submit"]').first().click();
-    await page.waitForURL(/cms-akira-shell/, { timeout: 20000 });
 }
 
 /** Navigate and report, asserting the page was not refused at dispatch. */
@@ -83,7 +73,8 @@ async function deleteDisposablePost(page: Page): Promise<void> {
 
 test('admin surfaces render for an authorised operator (declared reads and exclusions)', async ({ page }) => {
     const w = watch(page);
-    await login(page);
+
+    // Authenticated by the shared storageState written in auth.setup.ts; no login POST.
 
     // ── Declared reads: must not 403, must actually render the admin surface ──
     await expectRendered(page, '/cms-akira-shell', /cms akira dashboard/i);
@@ -126,21 +117,26 @@ test('admin surfaces render for an authorised operator (declared reads and exclu
     expect(editStatus).toBe(200);
 });
 
-test('login entry point and anonymous public browsing are unaffected', async ({ page }) => {
-    // No login() call — this test starts anonymous and never submits credentials.
-    const response = await page.goto(`${TENANT}/cms-akira-shell/login`, { waitUntil: 'domcontentloaded' });
+// Anonymous behaviour must run on a clean context, not the shared authenticated one.
+test.describe(() => {
+    test.use({ storageState: { cookies: [], origins: [] } });
 
-    console.log(`[read] /cms-akira-shell/login -> ${response?.status()} landed on ${page.url()}`);
+    test('login entry point and anonymous public browsing are unaffected', async ({ page }) => {
+        // Starts anonymous (empty storageState) and never submits credentials.
+        const response = await page.goto(`${TENANT}/cms-akira-shell/login`, { waitUntil: 'domcontentloaded' });
 
-    // The shell route delegates to the stable kernel entry point.
-    expect(response?.status(), 'the login entry point must not 403').not.toBe(403);
-    await page.waitForURL(/\/login$/, { timeout: 20000 });
-    await expect(page.locator('#username')).toBeVisible();
-    await expect(page.locator('#password')).toBeVisible();
+        console.log(`[read] /cms-akira-shell/login -> ${response?.status()} landed on ${page.url()}`);
 
-    await expectRendered(page, '/', /cms akira|latest stories/i);
-    await expectRendered(page, '/posts', /all posts|cms akira/i);
-    const missing = await page.goto(`${TENANT}/posts/read-authority-missing`, { waitUntil: 'domcontentloaded' });
-    expect(missing?.status(), 'public detail must reach its handler, not dispatch authority').toBe(404);
-    await expect(page.locator('body')).toContainText(/post not found/i);
+        // The shell route delegates to the stable kernel entry point.
+        expect(response?.status(), 'the login entry point must not 403').not.toBe(403);
+        await page.waitForURL(/\/login$/, { timeout: 20000 });
+        await expect(page.locator('#username')).toBeVisible();
+        await expect(page.locator('#password')).toBeVisible();
+
+        await expectRendered(page, '/', /cms akira|latest stories/i);
+        await expectRendered(page, '/posts', /all posts|cms akira/i);
+        const missing = await page.goto(`${TENANT}/posts/read-authority-missing`, { waitUntil: 'domcontentloaded' });
+        expect(missing?.status(), 'public detail must reach its handler, not dispatch authority').toBe(404);
+        await expect(page.locator('body')).toContainText(/post not found/i);
+    });
 });

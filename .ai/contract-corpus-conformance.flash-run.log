@@ -1,0 +1,50 @@
+Implementation complete. All four deliverables are in place, with evidence below.
+
+## A1 — `tools/ai-contract-lint.php` (new, zero dependencies)
+
+Delegates parsing to `tools/ai-autonomy.php plan --json` (never re-implements the parser), reports one line per contract plus a summary, supports `--json` / `--live-only`, exit codes `0/3/2`.
+
+```
+$ php tools/ai-contract-lint.php
+p2.1-navigation-surface   parse=ok   harness_ref=yes phantoms=0  status=READY_FOR_IMPLEMENTATION  class=live
+...
+SUMMARY total=62 live=36 stale=1 unknown=25 live_parse_failures=31 live_with_phantoms=4 with_phantoms=13 missing_status=17
+$ echo $?
+3
+```
+
+- `--json` is valid JSON (`JSON_VALID=yes`).
+- Phantom counts reproduce the contract's verified facts exactly: `playwright-rate-limit-cap`=5, `akira-theme-scope`=2, `ai-autonomy-remote-shape-repair`=1, 1 each across the P-series.
+- Independent agreement: compared lint's `parse` against a fresh `plan --json` for **all 62** files → `checked=62 mismatches=0`.
+- Usage error path → exit `2`.
+
+## A2 — `.ai/contract-conformance-report.md` (new)
+
+Full lint table plus the 47-failure classification: **live 31 · stale 0 · unknown 9 · placeholder 7 = 47**, phantom entries listed by name. Classification is status-only (no filename guessing). It records that the tree now holds 62 contracts (two were added after the contract's verified 60) while the failing set remains 47 pre-retrofit.
+
+## A3 — `p2.1-navigation-surface.contract.md` retrofit
+
+```
+$ php tools/ai-autonomy.php plan --json --contract=.ai/p2.1-navigation-surface.contract.md
+exit=0
+allowed_scope_count=6   phantom_forbidden_count=0
+```
+
+- Original bytes provably untouched: reconstructed first 132 lines md5 = `c55ee7c61fcb21868127f48b4276f777`, byte-identical to the pre-edit md5 I captured.
+- `git diff --no-index --numstat` vs. reconstructed original: **97 insertions, 0 deletions** (`git diff --stat`: `1 file changed, 97 insertions(+)`).
+- Seven canonical headings non-empty; `harness:` block referencing `.ai/ai-autonomy-harness.contract.md`; `## Forbidden changes` is all path-first with zero phantoms.
+
+**One deliberate choice to flag:** A3's proof requires `--live-only` to show p2.1, but a no-status contract is `class=unknown`. I therefore added the additive line `status: READY_FOR_IMPLEMENTATION` to the appended envelope (the slice is a pending, now-runnable contract). Also, because the contract's own literal phantom rule treats top-level `kernel/`→`kernel` as a phantom (confirmed by its verified playwright=5 count), I used the corpus's own phantom-free pattern (`p2.2a`: multi-segment paths) and placed the broad `kernel/**`, `src/**`, `other modules`, `migrations/**` prohibitions as prose in `## Architectural constraints`, per A3's explicit "prose prohibitions belong in `## Architectural constraints`." They remain machine-enforced via `allowed_scope` and `sensitiveReasons`.
+
+## A4 — nothing else touched
+
+`git status --short .ai/` shows exactly one new `.ai` file (`.ai/contract-conformance-report.md`). `tools/ai-contract-lint.php` is the only new `tools/` file. The pre-existing ` M .ai/ai-autonomy-harness.contract.md` (mtime `10:24:46`) and ` M tools/ai-autonomy.php` (`10:24:46`) predate this session (my files are `10:58`+); I did not touch either. No in-flight contract (`playwright-rate-limit-cap`, or any with a `*-run.log`) was edited; p2.1 has no run log.
+
+## Test suite
+
+```
+$ php tests/ai_autonomy_test.php
+exit=0
+```
+
+Nothing was staged, committed, or pushed. The only reason the lint exits `3` is the 31 live contracts that still fail to parse and the 4 live contracts with phantoms — which is the contract's intended gating behaviour; this slice retrofits one worked example, not the corpus.

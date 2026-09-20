@@ -77,7 +77,7 @@ final class ResolvedEntityContext
         return new self(
             entityType:  $entityType,
             view:        $view,
-            fields:      $contract['fields'] ?? '*',
+            fields:      self::normalizeDeclaredFields($contract['fields'] ?? '*'),
             actions:     $contract['actions'] ?? [],
             limit:       (int)($contract['limit'] ?? 25),
             sort:        $contract['sort'] ?? ['field' => 'created_at', 'direction' => 'desc'],
@@ -99,6 +99,32 @@ final class ResolvedEntityContext
             sourceSchema:   isset($contract['source_schema']) && is_array($contract['source_schema']) ? $contract['source_schema'] : null,
             provenance:     $provenance,
         );
+    }
+
+    /**
+     * Normalize a declared `fields` value without inventing fields.
+     *
+     * `'*'` is the wildcard and is preserved. A list of strings is preserved.
+     * Anything else — a scalar, a CSV string, or an array with non-string
+     * members — is malformed and resolves to an empty list, i.e. render
+     * nothing. Malformed metadata must never be repaired into a field list.
+     *
+     * @return array|string
+     */
+    private static function normalizeDeclaredFields(mixed $fields): array|string
+    {
+        if ($fields === '*') {
+            return '*';
+        }
+        if (!is_array($fields)) {
+            return [];
+        }
+        foreach ($fields as $field) {
+            if (!is_string($field)) {
+                return [];
+            }
+        }
+        return array_values($fields);
     }
 
     /**

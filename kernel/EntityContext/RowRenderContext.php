@@ -32,6 +32,8 @@ final class RowRenderContext
      * @param bool   $hasBulk        Whether bulk checkboxes are enabled (table only)
      * @param array  $fieldContracts Field-level contracts (table only)
      * @param array  $roleFields     Semantic role-to-field mapping (e.g. ['title' => 'name', 'subtitle' => 'description', 'image' => 'photo'])
+     * @param list<string> $actionPayloadFields Declared row fields serialized into row-action POST payloads
+     * @param list<string> $urlKeyFields       Declared row fields interpolated into action URLs and row-click targets
      */
     public function __construct(
         public readonly array $row,
@@ -51,6 +53,10 @@ final class RowRenderContext
         public readonly bool $hasBulk = false,
         public readonly array $fieldContracts = [],
         public readonly array $roleFields = [],
+        /** @var list<string> Declared action_payload_fields for POST hidden inputs */
+        public readonly array $actionPayloadFields = [],
+        /** @var list<string> Declared url_key_fields for action URL / row-click interpolation */
+        public readonly array $urlKeyFields = [],
     ) {
     }
 }

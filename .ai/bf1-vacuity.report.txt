@@ -1,0 +1,305 @@
+================================================================================
+B-F1 — VACUITY CLOSURE REPORT  (SLICE F, GEN4-R1 P0)
+project: harness-guardrail · contract: .ai/bf1-vacuity.contract.md · revision 1
+repo: /var/www/html/ikabudsix
+================================================================================
+
+GOVERNING PRINCIPLE IMPLEMENTED
+  A verifier must be shown capable of failing before its pass counts as evidence.
+  D1 refuses verifiers whose exit status is independent of state (a deny-list of
+  constant-true shapes). D2 requires every evidence-required stage to declare a
+  negative control that MUST exit non-zero; the runner executes it, and a control
+  that exits 0 makes the stage UNPROVEN / NOT_FALSIFIABLE, never a pass.
+
+--------------------------------------------------------------------------------
+CLAIM 0 (first claim): `plan` refuses this contract, and the refusal is rule 1 working.
+COMMAND:
+  php tools/ai-autonomy.php plan --contract=.ai/bf1-vacuity.contract.md; echo "EXIT=$?"
+OBSERVED:
+  ERROR: contract names the verifier trust surface in its scope and is refused: entry 'tools/harpp-bridge/harpp_wake.py' reaches 'tools/harpp-bridge/harpp_wake.py' — the trust surface is not contract-authorisable (owner directive 2026-09-14)
+  EXIT=2
+  (The contract names tools/harpp-bridge/harpp_wake.py, which is on the trust-surface
+  list; plan must exit 2. That refusal is expected and is the first claim.)
+
+--------------------------------------------------------------------------------
+CLAIM D1 / AC1: a constant-true `verify` is refused at manifest validation, and a
+constant-true verify that reaches the runner is recorded UNPROVEN even when a
+declared negative control fails.
+
+COMMAND (real CLI, real message, real exit code):
+  cat > /tmp/bf1-true-manifest.json <<'EOF'
+  {"schema_version":1,"title":"constant-true probe","stages":[
+   {"name":"s","model":"deepseek/deepseek-v4-flash","prompt":"p","verify":"true","negative_control":"false"}]}
+  EOF
+  cd tools/harpp-bridge && PYTHONDONTWRITEBYTECODE=1 python3 harpp workflow validate --manifest=/tmp/bf1-true-manifest.json; echo "EXIT=$?"
+OBSERVED:
+  {
+    "manifest": "/tmp/bf1-true-manifest.json",
+    "valid": false,
+    "schema_version": 1,
+    "errors": [
+      "stages[0].verify: constant-true shape 'true' cannot fail; a verifier that cannot fail is not evidence"
+    ]
+  }
+  EXIT=1
+
+COMMAND (each contracted shape):
+  PYTHONDONTWRITEBYTECODE=1 python3 /tmp/bf1_acceptance.py
+OBSERVED (excerpt; full script at /tmp/bf1_acceptance.py, log /tmp/bf1-acceptance.txt):
+  == AC1: constant-true verify refused at manifest validation ==
+    verify='true'         -> ["stages[0].verify: constant-true shape 'true' cannot fail; a verifier that cannot fail is not evidence"]
+    verify=':'            -> ["stages[0].verify: constant-true shape ':' cannot fail; a verifier that cannot fail is not evidence"]
+    verify='exit 0'       -> ["stages[0].verify: constant-true shape 'exit 0' cannot fail; a verifier that cannot fail is not evidence"]
+    verify='/bin/true'    -> ["stages[0].verify: constant-true shape '/bin/true' cannot fail; a verifier that cannot fail is not evidence"]
+    verify='echo hello'   -> ["stages[0].verify: constant-true shape 'echo hello' cannot fail; a verifier that cannot fail is not evidence"]
+    verify='test -n ""'   -> ['stages[0].verify: constant-true shape \'test -n ""\' cannot fail; a verifier that cannot fail is not evidence']
+
+  == AC1: constant-true verify + declared failing control still UNPROVEN ==
+    outcome=FAILED claim_status=UNPROVEN negative_control_status=CONSTANT_TRUE_VERIFY
+    report: ["[Details] The job failed validation; remedy: inspect the job log Details: verification command 'true' is a constant-true shape; a verifier that cannot fail is not evidence (claim is UNPROVEN); produced claim status: UNPROVEN"]
+  EXIT=0
+
+  (The second result is the important one: a failing negative control is NOT enough to
+  let a constant-true verify pass; the runner refuses it independently.)
+
+--------------------------------------------------------------------------------
+CLAIM D2 / AC2: a stage with `evidence: required` and NO negative control does not pass.
+COMMAND: PYTHONDONTWRITEBYTECODE=1 python3 /tmp/bf1_acceptance.py
+OBSERVED:
+  == AC2: evidence required, no negative control declared -> no pass ==
+    outcome=FAILED claim_status=UNPROVEN negative_control_status=MISSING
+    report: ['[Details] The job failed validation; remedy: inspect the job log Details: no negative control declared for an evidence-required stage; a verifier must be shown capable of failing (claim is UNPROVEN); produced claim status: UNPROVEN']
+
+--------------------------------------------------------------------------------
+CLAIM AC3 (proves the control is load-bearing, not decorative): a stage whose
+negative control exits 0 does NOT pass, and the record says NOT_FALSIFIABLE / UNPROVEN.
+COMMAND: PYTHONDONTWRITEBYTECODE=1 python3 /tmp/bf1_acceptance.py
+OBSERVED:
+  == AC3: negative control exits 0 -> NOT_FALSIFIABLE / UNPROVEN ==
+    outcome=FAILED claim_status=UNPROVEN negative_control_status=NOT_FALSIFIABLE
+    report: ["[Details] The job exited with code 0; remedy: inspect the job log Details: negative control 'true' exited 0 and is NOT_FALSIFIABLE; the verifier has not been shown capable of failing (claim is UNPROVEN); produced claim status: UNPROVEN"]
+
+  This is the assertion that distinguishes D2 from decoration: the same real `verify`
+  (`test -f <probe>`) that passes in AC4 fails here purely because its control is vacuous.
+
+--------------------------------------------------------------------------------
+CLAIM AC4 (positive control): a legitimate stage with a real `verify` and a real
+failing negative control STILL passes. A fix that blocks everything is useless.
+COMMAND: PYTHONDONTWRITEBYTECODE=1 python3 /tmp/bf1_acceptance.py
+OBSERVED:
+  == AC4: real verify + real failing control -> still passes ==
+    outcome=DONE claim_status=RE_DERIVED negative_control_status=FALSIFIABLE
+    report: ['[Details] negative control exited non-zero (FALSIFIABLE); verification passed: ; produced claim status: RE_DERIVED']
+
+  AC3 (control exits 0 -> BLOCKED) and AC4 (control fails + verify passes -> PASS) are
+  the two opposing assertions; both are shown above with the same real verifier.
+
+--------------------------------------------------------------------------------
+CLAIM D3: every `evidence: required` stage in the six shipped manifests carries a
+negative control, the controls genuinely fail, and every manifest validates.
+COMMAND:
+  for m in governed-loop.json governed-loop-flash.json harpp-module-repair-loop.json \
+           roadmap-slices.json standalone-harpp-loop.json standalone-harpp-remediation-loop.json; do
+    PYTHONDONTWRITEBYTECODE=1 python3 harpp workflow validate --manifest="workflows/$m" ...
+  done
+OBSERVED (all six): "valid": true, EXIT=0 for every shipped manifest.
+
+COMMAND (execute each distinct control through the same runner used for `verify`):
+  PYTHONDONTWRITEBYTECODE=1 python3 /tmp/bf1_controls.py    # log: /tmp/bf1-controls.txt
+OBSERVED:
+  control_ok=False (must be False)  governed-loop-flash.json:stages[0]:architect
+     printf 'status: NOT_READY\n' > /tmp/harpp-negative-control-arch.md && test "$(tail -n 1 /tmp/harpp-n ...
+     out:
+  control_ok=False (must be False)  governed-loop-flash.json:stages[1]:implement
+     rm -rf "/tmp/harpp-negative-control-git" && mkdir -p /tmp/harpp-negative-control-git && cd /tmp/harp ...
+     out: f:1: trailing whitespace. | +x
+  control_ok=False (must be False)  roadmap-slices.json:stages[0]:slice2-authority
+     printf 'def broken(:\n' > /tmp/harpp-negative-control-broken.py && PYTHONDONTWRITEBYTECODE=1 PYTHONP ...
+     out: File "/tmp/harpp-negative-control-broken.py", line 1 |     def broken(: |                ^ | SyntaxError: invalid syntax
+
+  Control families (21 stages total, 3 distinct controls):
+    - architect (governed-loop, governed-loop-flash): re-runs the SAME tail/compare
+      check against a temp ARCHITECTURE.md whose last line is NOT_READY. It fails for
+      the same reason the real verifier would fail -> exercises the verifier's logic.
+    - implement/review/release-gate (governed-loop, -flash, standalone-loop,
+      standalone-remediation, module-repair): a temp git repo with a deliberately
+      trailing-whitespace change; the control runs the real `git diff --check` against
+      it and fails (exit 2). Proof the verifier is fallible (see D4 note).
+    - roadmap-slices: `python3 -m py_compile` against a syntactically broken temp file;
+      fails (exit 1) on the same primitive the real verify uses.
+  NO stage needed to be marked "control cannot be constructed"; all 21 have working
+  controls. Nothing was deleted; no fabricated always-passing control exists.
+
+  NOTE on honesty of the `git diff --check` control: the actual verifier is genuine —
+  `git diff --check` exits 0 on a clean repo and 2 on trailing whitespace:
+    CLEAN_REPO_DIFF_CHECK_EXIT=0
+    f:1: trailing whitespace.
+    +x
+    WHITESPACE_ERROR_DIFF_CHECK_EXIT=2
+
+--------------------------------------------------------------------------------
+CLAIM AC5: the bridge test module passes with zero failures and every pre-existing
+behaviour still holds (marker-only FAILS; evidence:"none" cannot hide a verify; the
+manifest validators pass for the shipped set).
+COMMAND:
+  PYTHONDONTWRITEBYTECODE=1 python3 tools/harpp-bridge/tests/test_harpp_wake.py
+OBSERVED:
+  Ran 215 tests in 12.549s
+  OK                      (EXIT=0; baseline was 207 tests / OK, +8 new tests)
+
+COMMAND:
+  cd tools/harpp-bridge && PYTHONDONTWRITEBYTECODE=1 python3 harpp self-test
+OBSERVED:
+  Ran 262 tests in 6.018s
+  OK                      (EXIT=0; test_harpp_bridge + test_harpp_wake)
+
+COMMAND (also run, unchanged): test_harpp_bridge.py, test_deploy_harpp.py,
+  test_deploy_worker.py
+OBSERVED: all EXIT=0 (27 and 13 tests OK for the latter two).
+
+OBSERVED pre-existing semantics (from the acceptance script):
+  marker-only: outcome=FAILED claim_status=UNVERIFIED
+  evidence=none+verify -> ["stages[0].evidence: 'none' cannot be combined with verify"]
+  Existing job-level tests that use a bare `verify="true"` with no `evidence` field
+  (e.g. test_monitor_runs_verify_command, test_monitor_reports_success_and_is_idempotent)
+  are unchanged: D2 applies only to stages that declare `evidence: required`, so no
+  pre-existing test was weakened, skipped, or deleted.
+
+--------------------------------------------------------------------------------
+CLAIM AC6: the manifest change is additive; no existing key changed meaning.
+COMMAND:
+  git diff --numstat -- tools/harpp-bridge/workflows/
+  git diff -U0 -- tools/harpp-bridge/workflows/ | grep -E '^-[^-]' || echo "NONE REMOVED"
+OBSERVED:
+  4  0  tools/harpp-bridge/workflows/governed-loop-flash.json
+  4  0  tools/harpp-bridge/workflows/governed-loop.json
+  3  0  tools/harpp-bridge/workflows/harpp-module-repair-loop.json
+  4  0  tools/harpp-bridge/workflows/roadmap-slices.json
+  3  0  tools/harpp-bridge/workflows/standalone-harpp-loop.json
+  3  0  tools/harpp-bridge/workflows/standalone-harpp-remediation-loop.json
+  NONE REMOVED
+
+  Every inserted line is `"negative_control": ...`. `verify`, `marker`, `evidence`,
+  `model`, `prompt_file`, and `timeout` are byte-for-byte unchanged.
+
+--------------------------------------------------------------------------------
+CLAIM D4: no shape in tools/ai-run.php's COMMAND_ALLOWLIST is constant-true by
+construction. Each shape has a reachable failing state:
+  1. php tests/<pure>.php            -> fails when the pure test asserts false (unittest
+                                        exit 1). The `pure_test` screen refuses a file
+                                        that contains MODE_INTEGRATION/bootstrap.php or
+                                        does not exist (never executed), so a missing or
+                                        impure file is refused, not counted as pass.
+  2. php -l <file>.php               -> fails on a parse error (exit 255) and on a
+                                        missing file (exit 1):
+                                          PHP Parse error: syntax error, unexpected token ";" ...
+                                          PHP_L_EXIT=255
+                                          Could not open input file: ...
+                                          PHP_L_MISSING_EXIT=1
+  3/4/5. ai-contract-lint.php [--json|--live-only]
+                                     -> fails when a live contract does not parse or has
+                                        phantoms (EXIT_LIVE_FAILURE=3); usage errors 2.
+  6. ai-contract-lint.php --contract=PATH
+                                     -> missing contract exit 2; unparseable contract
+                                        exit 3:
+                                          ERROR: contract '/tmp/...' not found
+                                          LINT_MISSING_EXIT=2
+                                          parse=FAIL ... status=none
+                                          LINT_BAD_EXIT=3
+  7. python3 -m py_compile <file>.py -> fails on a syntax error (exit 1):
+                                          SyntaxError: invalid syntax ... EXIT=1
+  8. python3 -m unittest tests.<mod> -> fails when a test fails/errors or the module is
+                                        absent:
+                                          FAILED (errors=1) ... UNITTEST_EXIT=1
+  9. python3 tools/harpp-bridge/tests/<name>.py (bridge_test)
+                                     -> fails when the tests fail; the `bridge_test`
+                                        screen refuses a missing file (never executed).
+
+  FINDING: none. No allowlisted shape is constant-true by construction. (Also note that
+  `composer test` and `php scripts/run-tests.php` are CLASSIFIED but deliberately NOT in
+  COMMAND_ALLOWLIST, so they are refused and cannot be counted as evidence at all.)
+
+--------------------------------------------------------------------------------
+CLAIM D5: non-vacuity by revert — the named assertion fails when each fix is removed.
+D5a (revert D1: delete the constant-true deny-list loop from validate_workflow_manifest)
+COMMAND:
+  cp tools/harpp-bridge/harpp_wake.py /tmp/bf1-harpp_wake.fixed.py
+  python3 /tmp/bf1_revert_d1.py
+  PYTHONDONTWRITEBYTECODE=1 python3 tools/harpp-bridge/tests/test_harpp_wake.py \
+      WorkflowManifestValidationTest.test_constant_true_verify_shapes_refused
+  cp /tmp/bf1-harpp_wake.fixed.py tools/harpp-bridge/harpp_wake.py   # restore
+OBSERVED (log /tmp/bf1-revert-d1.txt; D1_REVERT_TEST_EXIT=1):
+  D1 deny-list removed
+  FAIL: test_constant_true_verify_shapes_refused (...) (shape='echo hello')
+    AssertionError: False is not true : ('echo hello', [])
+  FAIL: test_constant_true_verify_shapes_refused (...) (shape='test -n ""')
+    AssertionError: False is not true : ('test -n ""', [])
+  Ran 1 test in 0.002s
+  FAILED (failures=6)
+  (one failure per contracted shape; each returns [] when the deny-list is absent)
+  (File restored; `grep -c "D1: a constant-true"` == 1 afterwards.)
+
+D5b (revert D2: restore the pre-slice `_report_job` verify block with no negative control)
+COMMAND:
+  python3 /tmp/bf1_revert_d2.py
+  PYTHONDONTWRITEBYTECODE=1 python3 tools/harpp-bridge/tests/test_harpp_wake.py \
+      HarppWakeTest.test_not_falsifiable_negative_control_does_not_pass \
+      HarppWakeTest.test_evidence_required_without_negative_control_does_not_pass
+  cp /tmp/bf1-harpp_wake.fixed.py tools/harpp-bridge/harpp_wake.py   # restore
+OBSERVED (log /tmp/bf1-revert-d2.txt; D2_REVERT_TEST_EXIT=1):
+  D2 negative-control enforcement reverted to pre-slice _report_job
+  FAIL: test_not_falsifiable_negative_control_does_not_pass
+    AssertionError: 'DONE' != 'FAILED'
+    - DONE
+    + FAILED
+  FAIL: test_evidence_required_without_negative_control_does_not_pass
+    AssertionError: 'DONE' != 'FAILED'
+    - DONE
+    + FAILED
+  Ran 2 tests in 0.018s
+  FAILED (failures=2)
+  (i.e. without D2 the vacuous control and the absent control both let the stage pass)
+  (File restored; `grep -c 'negative_control_status = "NOT_FALSIFIABLE"'` == 1 afterwards.)
+
+--------------------------------------------------------------------------------
+WHAT REMAINS UNPROVEN (explicit, so this report is not read as full coverage)
+
+1. Faithfulness of a negative control is not mechanically checked. The runner proves
+   the declared control exits non-zero; it cannot prove the control exercises the SAME
+   logic as `verify`. A manifest author could pair a cleverly vacuous (unlisted) verify
+   with an unrelated always-failing control and still pass D2. The six shipped controls
+   are constructed to exercise the verifier's own failure path (wrong-status compare,
+   real whitespace error, real syntax error), and D1 catches the enumerated constant-true
+   shapes, but "control exercises the verifier" is an authored property, not an enforced
+   one. Closing it fully would require a mutation/derivation mechanism (out of scope for
+   this last pre-freeze change).
+
+2. D1 is a deny-list, not a decision procedure. Shapes outside the list (e.g.
+   `bash -c 'exit 0'`, `[ -n "" ]` corner cases) are not refused by D1. They must still
+   survive D1's sibling guard: if such a verify is combined with an honest control, the
+   control is the only thing standing between it and a pass (see (1)).
+
+3. Standalone jobs (`harpp job` / `track_job`) with a bare `verify` and no `evidence`
+   field are unchanged and are NOT subject to D2. The contract scopes the fix to
+   `evidence: required` workflow stages. Those job-level paths still accept `verify:
+   "true"` and were deliberately left untouched to avoid weakening pre-existing tests
+   (AC5). This is a known, disclosed gap, not a silent one.
+
+4. `_stage_result_matches` still gates on `claim_status == RE_DERIVED` + `verify:PASSED`
+   and was not changed to additionally require `negative_control_status == FALSIFIABLE`.
+   The runner sets RE_DERIVED only after a falsifiable control for evidence-required
+   stages, so the practical path is safe; a hand-forged structured result that omitted
+   the control status would not be rejected by the identity check alone.
+
+--------------------------------------------------------------------------------
+FILES CHANGED (all within the contract's "likely affected" set; forbidden paths untouched)
+  tools/harpp-bridge/harpp_wake.py                  (D1 deny-list + D2 runner enforcement)
+  tools/harpp-bridge/tests/test_harpp_wake.py       (8 new tests; no test weakened/skipped)
+  tools/harpp-bridge/workflows/*.json (6 manifests) (additive negative_control)
+  tools/harpp-bridge/README.md                      (documents the new key and deny-list)
+
+LOGS: all run logs written under /tmp (e.g. /tmp/bf1-final-wake.txt,
+      /tmp/bf1-final-selftest.txt, /tmp/bf1-acceptance.txt). Nothing written into the
+      repository's scripts/, modules/, src/, kernel/, tools/ai-*.php, or .ai/projects/.
+      No commit, stage, or push was performed.
+================================================================================

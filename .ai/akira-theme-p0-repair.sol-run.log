@@ -1,0 +1,65 @@
+## Status
+
+**Bounded repair succeeded; overall validation remains incomplete due to two required-test SKIPs.** No further repair attempted.
+
+### Return-shape repair
+
+`kernel/EntityContext/EntityViewResolver.php`
+
+Before:
+```php
+@return array{rows: array<int, array>, total: int, view: array, display_fields: list<string>, source: array, error: string|null}
+```
+
+After:
+```php
+@return array{rows: array<int, array>, total: int, view: array, display_fields?: list<string>, source: array, error: string|null}
+```
+
+Successful results contain `display_fields`; error results legitimately omit it.
+
+## PHPStan
+
+Exact three-file analysis:
+
+```text
+/usr/bin/php8.3 vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G --error-format=json kernel/EntityContext/EntityViewResolver.php kernel/EntityContext/DefaultEntityRenderer.php kernel/DiSyL/Component/ComponentRenderer.php
+```
+
+- Exit code: **0**
+- Errors: **0**
+
+All four changed PHP files also passed `php -l`, exit code 0. `git diff --check` passed, exit code 0.
+
+## Required tests
+
+| Command | Passed | Failed | Skipped | Exit |
+|---|---:|---:|---:|---:|
+| `php tests/entity_fallback_test.php` | 4 | 0 | 1 | 0 |
+| `php tests/default_entity_renderer_post_row_action_test.php` | 17 | 0 | 0 | 0 |
+| `php tests/entity_view_resolver_version_fallback_test.php` | 4 | 0 | 0 | 0 |
+| `php tests/entity_list_result_sort_validation_test.php` | 36 | 0 | 0 | 0 |
+| `php tests/entity_cell_renderer_registry_test.php` | 104 | 0 | 0 | 0 |
+| `php tests/entity_view_render_cache_test.php` | 0 | 0 | 1 | 0 |
+| `php tests/architecture_component_integration_test.php` | 79 | 0 | 0 | 0 |
+| `php tests/disyl_v11_verify_test.php` | 64 | 0 | 0 | 0 |
+| `php tests/ai_autonomy_test.php` | 27 | 0 | 0 | 0 |
+| `php tests/akira_theme_safe_fallback_test.php` | 27 | 0 | 0 | 0 |
+
+All **10/10 commands ran**. Two test cases never ran:
+
+1. CMS fallback case: `cmsResolveEntityFallbackView not available (CMS module not loaded)`.
+2. Render-cache suite: `tenant 101 has no resolvable database configuration`.
+
+These SKIPs are not reported as passes.
+
+## Acceptance confirmation
+
+- **A1–A4:** Still hold; presence-sensitive metadata, metadata-only wildcard resolution, no row-derived field discovery, and cross-row consistency remain intact.
+- **A6:** Regression suite remains **27/27 passed**, including explicit absence checks for internal keys.
+- **A7:** `SAFE_FALLBACK_FIELDS` membership remains unchanged; no module or contract-data changes.
+- No baseline/config/dependency edits, no git staging/commit/push, and no live HARPP interaction.
+
+## Remaining blocker
+
+Required-test validation cannot be declared fully passed because the environment caused **two SKIPs**, for the exact reasons above.
