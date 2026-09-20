@@ -1693,18 +1693,77 @@ instrument with an unproven process behind it, and should falsify C16–C23 rath
 
 ```bash
 cd /var/www/html/ikabudsix
-php tools/chair.php --self-test                                # expect 37/37, both directions
+php tools/chair.php --self-test                                # expect 141/141, both directions
 php tools/chair.php lanes                                      # expect mechanical / visual / reasoning
-php kernel/Workbench/Retrieval/run.php --self-test             # expect 28/28
-php kernel/Workbench/Retrieval/run.php stats                   # expect a populated corpus; note stale and used
-grep -c harpp tools/chair.php                                  # expect 3 -- then ask why it is not 0 (C22)
-grep -cE 'flock|LOCK_EX|ledger|commit-check' tools/chair.php   # expect 0 -- then ask what two overlapping runs do (C23)
+php tools/chair.php commit-check                               # expect eligible when the lock is free, and abandoned runs named
+php kernel/Workbench/Retrieval/run.php --self-test             # expect 64/64
+php kernel/Workbench/Retrieval/run.php stats                   # expect a populated corpus; note stale, retired and used
+php kernel/Workbench/Retrieval/run.php recall                  # expect every case found within its rank
+php kernel/Workbench/Retrieval/run.php recall --control        # expect every case correctly MISSED
+```
+
+**Two of those expectations moved on 2026-09-20, and the old ones were themselves a hazard.** This section
+said `37/37` and `28/28` for the self-tests, and told a reviewer to expect **zero** `flock | LOCK_EX |
+ledger | commit-check` in `tools/chair.php`. All three were stale: a reviewer following this page would have
+read correct output as a failure. The counts below are measured, and C22/C23 are no longer open questions of
+"why is it zero" — they are answered, and the counts say so.
+
+```bash
+grep -c harpp tools/chair.php                                  # 21, not 3: C22 asked why it was not 0
+grep -cE 'flock|LOCK_EX|ledger|commit-check' tools/chair.php   # 110, not 0: C23 asked what two overlapping runs do
 ```
 
 Then do by hand what the chair had to do by hand: author a contract whose probe **already passes** on the
 untouched tree and confirm `run` **stops** (C17); then write a probe that passes **for the wrong reason** and
 confirm nothing in the harness catches it (§3.28). **If a check cannot be made to fail, it is decoration** — the
 sentence §8 ended on is the sentence this revision has to live up to.
+
+---
+
+### 9.10 The director round trip, closed and measured (2026-09-20)
+
+A decision had been filed, delivered and read back, but **no answer had ever come back and changed what the
+harness did**. Step 7 is the one that carries the claim, so the record is written around it rather than around
+the plumbing.
+
+| # | stage | what happened | where it is checkable |
+|---|---|---|---|
+| 1 | question | `tools/RETIRED.md` and `copilot-instructions.md` made opposite claims about which drivers are current, so an agent's choice of tool was arbitrary | both files, 2026-09-19 |
+| 2 | filed | `retired-tool-authority-20260919-153252` (harpp id 112): 4 mutually exclusive options, a recommendation, `default_if_no_response: stop` | the decision queue |
+| 3 | delivered + read back | delivery had been *claimed* without happening; the read-back found a real HTTP 422 (5 of the 6 required fields) | §4 |
+| 4 | **answered** | **option c** — retire the legacy drivers *and* exclude them from retrieval | harpp id 112 |
+| 5 | recorded in the channel | `harpp decision decide 112 --decision c`, at the director's instruction | `PENDING` → `DECIDED` |
+| 6 | closed | `harpp decision ack 112` then `harpp decision apply 112` | `ACKNOWLEDGED` → `APPLIED` |
+| **7** | **the answer changed execution** | the retrieval change exists *because of* the answer: `RETIRED_PREFIXES` carries the four retired paths, `RETIRED.md` is the authoritative list, the contradiction in `copilot-instructions.md` is gone | commit `657a1c7`, whose message names the decision key |
+| 8 | evidence | measured by the chair, never taken from the lane's report | below |
+| 9 | closed in the ledger | `advance --task=retired-drivers-option-c` → `[BASELINE] tests=2 exit=0 verdict=ALREADY-PASSES`, `owner_intervention="not required"` | `storage/private/chair/ledger.jsonl` |
+
+```bash
+php kernel/Workbench/Retrieval/run.php search "autonomy driver run ledger commit-check" --limit=30
+#   0 legacy drivers -- the exclusion holds beyond the top 8, not just inside it
+php kernel/Workbench/Retrieval/run.php search "autonomy driver run ledger commit-check" --limit=30 --include-retired
+#   ai-autonomy.php and ai-run.php return, marked RETIRED -- kept, not lost
+php kernel/Workbench/Retrieval/run.php recall            # 3 of 3 within rank   (was 1 of 3)
+php kernel/Workbench/Retrieval/run.php recall --control  # 3 of 3 correctly MISSED, so a green gate is not vacuous
+php tests/retrieval_index_test.php                       # 10 passed, 0 failed
+php tools/chair.php --self-test                          # 141 passed, 0 failed
+```
+
+**What reaching step 7 cost, and what it exposed.** Six instrument defects stood between the answer and the
+evidence for it, and three of them made a probe look red when the *instrument* was broken: a two-pipe
+deadlock that hung a required test forever, a warning flood that triggered it, and a timeout read as a
+product failure. A fourth was the probe running `chair.php --self-test` while the chair held its own run
+lock, so the nested controls could never pass and the ladder climbed three rungs on a red no lane could
+repair. A fifth was mine — closing the lane's inherited descriptors to stop the lock leaking broke every
+lane with `EBADF`, and the lane-fault classifier written an hour earlier caught it in one attempt instead of
+three. §9.6 is the record; the discipline that produced all six is the one this brief keeps asserting: **a
+check that cannot be made to fail is decoration, and a check that fails for the wrong reason is worse.**
+
+**What step 7 does not prove.** The answer reached the channel because the chair transcribed it there at the
+director's instruction — not because `harpp watch` received it through the owner channel. The channel
+therefore carries the answer, the causation is checkable, and the queue was cleared of four pending items —
+but the **receipt** path, an answer arriving that the chair did not write, remains unexercised. C22's limit
+is unchanged by this section.
 
 ---
 
