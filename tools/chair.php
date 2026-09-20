@@ -2127,8 +2127,14 @@ function acceptanceCoverage(string $acceptanceSection): array
 
     foreach (acceptanceCriteria($acceptanceSection) as $criterion) {
         // Measured means the criterion NAMES its instrument: a probe tag, or a runnable command.
+        //
+        // This vocabulary is deliberately WIDER than probeLines()' execution vocabulary. Reading a file
+        // with grep is machine-checkable evidence, so a criterion that names it must count as measured
+        // -- otherwise it is reported "unprobed" for ever and the warning becomes noise to be ignored,
+        // which is the very failure mode the warning exists to prevent. It stays out of what we
+        // auto-run, because `grep -c x` carries a threshold the exit code cannot express.
         if (preg_match('/@p\d+/', $criterion) === 1
-            || preg_match('/`(?:npx|php|composer|vendor\/bin)\b[^`]*`/', $criterion) === 1) {
+            || preg_match('/`(?:npx|php|composer|vendor\/bin|grep|rg|test|wc|jq)\b[^`]*`/', $criterion) === 1) {
             $measured[] = $criterion;
             continue;
         }

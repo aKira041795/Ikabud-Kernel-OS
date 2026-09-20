@@ -62,7 +62,10 @@ bookkeeping; it must not rewrite history — log **info**.
 6. Static analysis clean on the touched file, **with the config** (a bare path does not apply
    `phpstan.neon` and reports nothing):
    `vendor/bin/phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G kernel/Capabilities/CapabilityAuthorizationRegistry.php` → exit 0.
-7. The active-version case is **not** silenced. The probe's first group asserts it; do not weaken it.
+7. The active-version case is **not** silenced — the guard keeps its teeth:
+   `php tests/capability_seed_refusal_severity_test.php` → exit 0 **including** the group
+   `the dangerous case stays loud` (`refusing to widen the ACTIVE version is a WARNING`). The probe is
+   chair-owned; a lane that edits it to obtain a pass has tuned the acceptance, not the code.
 
 ## Required tests
 
